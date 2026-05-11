@@ -4,9 +4,14 @@
  * Usage: node scripts/mock-sharer.mjs [ws://localhost:8080/signal]
  *
  * Connects to the backend as a sharer, prints the assigned code as
- * `SCREENSHARE_CODE=NNN-NNN-NNN` so test harnesses can grep for it,
+ * `SCREENIE_CODE=NNN-NNN-NNN` so test harnesses can grep for it,
  * waits for a viewer to join, auto-confirms, negotiates WebRTC SDP/ICE,
  * and pushes a generated I420 video stream (moving colored rectangle at 30 fps).
+ *
+ * DataChannel handling:
+ * - Accepts `input` channel: logs received events as `INPUT_EVENT=<json>`
+ * - Accepts `files` channel: auto-accepts file offers, accumulates binary chunks,
+ *   logs `FILE_RECEIVED=<id>:<byteCount>` on completion
  *
  * Exit cleanly on SIGINT / SIGTERM.
  */
@@ -69,6 +74,117 @@ function generateI420Frame(tick) {
 
 function sendMsg(ws, msg) {
   ws.send(JSON.stringify(msg));
+}
+
+/**
+ * FNV-1a 32-bit hash — must match the viewer's buildChunkFrame id-hash.
+ * The binary chunk header carries this hash so we can identify which transfer
+ * a chunk belongs to without repeating the full UUID on every frame.
+ */
+function fnv1a32(str) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Wire up the `input` DataChannel (callee side).
+ * Logs every received JSON event as `INPUT_EVENT=<json>` on stdout so that
+ * Playwright tests can parse them from the process output buffer.
+ */
+function handleInputChannel(ch) {
+  // Accumulate partial UTF-8 text across `data` events — the Node.js wrtc
+  // implementation may deliver chunks of a single WebRTC message across
+  // multiple `message` events for large payloads, but in practice JSON input
+  // events are small enough that one message = one event. We still guard
+  // against fragmentation by buffering incomplete lines.
+  let lineBuffer = "";
+
+  ch.onmessage = (ev) => {
+    lineBuffer += typeof ev.data === "string" ? ev.data : ev.data.toString();
+
+    // Each input event is a self-contained JSON object. Try to parse
+    // everything buffered; if it throws we wait for more data.
+    let parsed;
+    try {
+      parsed = JSON.parse(lineBuffer);
+      lineBuffer = "";
+    } catch {
+      return;
+    }
+
+    process.stdout.write(`INPUT_EVENT=${JSON.stringify(parsed)}\n`);
+  };
+}
+
+/**
+ * Wire up the `files` DataChannel (callee side).
+ * - On `file-offer`: immediately sends `file-accept` back.
+ * - On binary chunks: accumulates raw bytes per transfer id (decoded from
+ *   the 8-byte frame header: 4-byte id-hash LE, 4-byte seq LE).
+ * - On `file-done`: logs `FILE_RECEIVED=<id>:<totalBytes>` on stdout.
+ */
+function handleFilesChannel(ch) {
+  /** @type {Map<string, { idHash: number; seqChunks: Map<number, Uint8Array> }>} */
+  const transfers = new Map();
+
+  ch.onmessage = (ev) => {
+    if (ev.data instanceof ArrayBuffer || ArrayBuffer.isView(ev.data)) {
+      const buf = ev.data instanceof ArrayBuffer ? ev.data : ev.data.buffer;
+      if (buf.byteLength < 8) return;
+
+      const view = new DataView(buf);
+      const idHash = view.getUint32(0, true);
+      const seq = view.getUint32(4, true);
+      const payload = new Uint8Array(buf, 8);
+
+      // Find which active transfer this hash belongs to.
+      for (const [id, state] of transfers) {
+        if (state.idHash === idHash) {
+          state.seqChunks.set(seq, payload.slice());
+          return;
+        }
+      }
+      // Unknown hash — chunk arrived before offer or after done; ignore.
+      return;
+    }
+
+    // JSON control message
+    let msg;
+    try {
+      msg = JSON.parse(typeof ev.data === "string" ? ev.data : ev.data.toString());
+    } catch {
+      return;
+    }
+
+    if (msg.kind === "file-offer") {
+      transfers.set(msg.id, { idHash: fnv1a32(msg.id), seqChunks: new Map() });
+      ch.send(JSON.stringify({ kind: "file-accept", id: msg.id }));
+      return;
+    }
+
+    if (msg.kind === "file-done") {
+      const state = transfers.get(msg.id);
+      if (!state) return;
+      transfers.delete(msg.id);
+
+      const seqNums = Array.from(state.seqChunks.keys()).sort((a, b) => a - b);
+      let totalBytes = 0;
+      for (const seq of seqNums) {
+        totalBytes += state.seqChunks.get(seq).byteLength;
+      }
+
+      process.stdout.write(`FILE_RECEIVED=${msg.id}:${totalBytes}\n`);
+      return;
+    }
+
+    if (msg.kind === "file-reject" || msg.kind === "file-error") {
+      transfers.delete(msg.id);
+    }
+  };
 }
 
 async function run() {
@@ -154,6 +270,7 @@ async function run() {
   /**
    * Create an RTCPeerConnection, attach a video source, answer the viewer's offer,
    * wire ICE, and start pushing frames.
+   * Also registers `ondatachannel` to accept `input` and `files` channels.
    */
   async function createPeerConnection(socket, offerSdp) {
     const videoSource = new RTCVideoSource({ isScreencast: true });
@@ -164,6 +281,16 @@ async function run() {
     });
 
     connection.addTrack(videoTrack);
+
+    // Callee side: register handlers for DataChannels opened by the viewer.
+    connection.ondatachannel = (ev) => {
+      const ch = ev.channel;
+      if (ch.label === "input") {
+        handleInputChannel(ch);
+      } else if (ch.label === "files") {
+        handleFilesChannel(ch);
+      }
+    };
 
     connection.onicecandidate = ({ candidate }) => {
       if (candidate === null) return;
