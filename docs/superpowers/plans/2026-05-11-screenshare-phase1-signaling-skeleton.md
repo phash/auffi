@@ -6,7 +6,11 @@
 
 **Architecture:** Backend = Node.js + Fastify + `ws`. Sharer = Tauri 2 (Rust + minimal Webview). Viewer = Vite + TS. Alle Peers reden dasselbe JSON-Protokoll über WSS. Backend-State ist In-Memory (Map), kein DB.
 
-**Tech Stack:** Node.js 20 + TypeScript 5, Fastify 4, `ws` 8, Vitest. Tauri 2 + tokio-tungstenite (Rust). Vite 5 + vanilla TS für Viewer. Alle Versionen gepinnt.
+**Tech Stack:** Node.js 20 + TypeScript 5, Fastify 4, `ws` 8, Vitest. Tauri 2 + tokio-tungstenite (Rust). Vite 5 + vanilla TS für Viewer. Alle Versionen gepinnt. Backend läuft in Docker (multi-stage build).
+
+**Version-Strategie:** Pinned-Versions im Plan sind Major-Pin-Guidance. Vor Install via `npm view <pkg> version` bzw. `cargo search <crate>` aktuelle Stable-Patch/Minor prüfen und exakt pinnen (kein `^`/`~`).
+
+**Clean-Code-Verpflichtung:** Siehe `/CLAUDE.md`. Keine `as any`-Casts, keine Reichweite in private Member, keine TODO/FIXME, ≥ 70 % Coverage pro Package.
 
 ---
 
@@ -14,7 +18,11 @@
 
 ```
 screenshare/
+├── CLAUDE.md                    # Project-Conventions (Clean Code, Docker, DSGVO)
+├── docker-compose.yml           # Lokales Dev-Setup
+├── .env.example                 # Konfigurations-Template
 ├── backend/
+│   ├── Dockerfile               # Multi-stage build (deps → builder → runner)
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── vitest.config.ts
@@ -22,12 +30,11 @@ screenshare/
 │   │   ├── index.ts             # entrypoint
 │   │   ├── server.ts            # Fastify setup + WSS plugin
 │   │   ├── signaling.ts         # WebSocket handler
-│   │   ├── codes.ts             # Code-Generator + In-Memory-State
-│   │   └── protocol.ts          # Message-Types (gemeinsam mit Viewer)
+│   │   ├── codes.ts             # Code-Generator + In-Memory-Session-Store
+│   │   └── protocol.ts          # Message-Types
 │   └── tests/
 │       ├── codes.test.ts
-│       ├── signaling.test.ts
-│       └── e2e.test.ts
+│       └── signaling.test.ts
 ├── viewer/
 │   ├── package.json
 │   ├── tsconfig.json
@@ -63,11 +70,13 @@ screenshare/
 
 ---
 
-## Task 1: .gitignore + Workspace-README
+## Task 1: Workspace Setup (.gitignore + README + Docker-Compose)
 
 **Files:**
 - Create: `.gitignore`
 - Create: `README.md`
+- Create: `docker-compose.yml`
+- Create: `.env.example`
 
 - [ ] **Step 1: Create .gitignore**
 
@@ -82,6 +91,8 @@ target/
 .DS_Store
 .vite/
 src-tauri/target/
+coverage/
+.vitest-cache/
 ```
 
 - [ ] **Step 2: Create README.md**
@@ -92,19 +103,69 @@ src-tauri/target/
 Simple, secure TeamViewer-style screen sharing. See `docs/superpowers/specs/` for design.
 
 ## Components
-- `backend/` — Node.js signaling server
+- `backend/` — Node.js signaling server (Dockerized)
 - `viewer/` — Browser viewer (Vite + TS)
-- `sharer/` — Tauri desktop app
+- `sharer/` — Tauri 2 desktop app
 
-## Development
-See per-component README inside each directory.
-```
+## Local Development
 
-- [ ] **Step 3: Commit**
+Backend runs in Docker:
 
 ```bash
-git add .gitignore README.md
-git commit -m "chore: workspace setup"
+cp .env.example .env
+docker compose up backend
+```
+
+Frontend components (viewer, sharer) run on the host directly. See their READMEs.
+
+## Project Conventions
+See `CLAUDE.md` for engineering rules (clean code, TDD, ≥70% coverage, Docker conventions).
+```
+
+- [ ] **Step 3: Create .env.example**
+
+```
+# Backend
+BACKEND_PORT=8080
+BACKEND_HOST=0.0.0.0
+
+# Frontend (Viewer dev)
+VITE_BACKEND_WS=ws://localhost:8080/signal
+
+# Sharer (Tauri dev)
+SCREENSHARE_BACKEND_WS=ws://localhost:8080/signal
+```
+
+- [ ] **Step 4: Create docker-compose.yml (root)**
+
+```yaml
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: screenshare-backend:dev
+    container_name: screenshare-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=${BACKEND_PORT:-8080}
+      - HOST=${BACKEND_HOST:-0.0.0.0}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add .gitignore README.md docker-compose.yml .env.example
+git commit -m "chore: workspace setup with docker compose"
 ```
 
 ---
@@ -319,11 +380,70 @@ cd backend && npm run build && node dist/index.js
 
 Expected output: `Screenshare backend (Phase 1) — not implemented yet`
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Create Dockerfile (multi-stage)**
+
+`backend/Dockerfile`:
+
+```dockerfile
+# syntax=docker/dockerfile:1.7
+
+FROM node:20.18-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+FROM deps AS builder
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+FROM node:20.18-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY package.json ./
+RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
+USER app
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1
+CMD ["node", "dist/index.js"]
+```
+
+- [ ] **Step 7: Add .dockerignore**
+
+`backend/.dockerignore`:
+
+```
+node_modules
+dist
+coverage
+.vitest-cache
+tests
+*.log
+.env
+.env.local
+.git
+```
+
+- [ ] **Step 8: Verify docker compose build works**
 
 ```bash
-git add backend/package.json backend/package-lock.json backend/tsconfig.json backend/vitest.config.ts backend/src/index.ts
-git commit -m "feat(backend): project scaffolding"
+docker compose build backend
+docker compose up -d backend
+sleep 3
+curl -fsS http://localhost:8080/healthz
+docker compose down
+```
+
+> **Note**: this step will fail until Task 7 (Fastify server) wires `/healthz`. Re-run after Task 7 — for now just verify `docker compose build backend` completes without error.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add backend/package.json backend/package-lock.json backend/tsconfig.json backend/vitest.config.ts backend/src/index.ts backend/Dockerfile backend/.dockerignore
+git commit -m "feat(backend): project scaffolding with docker build"
 ```
 
 ---
@@ -524,10 +644,33 @@ describe("SessionStore", () => {
 
   it("removes session on disconnect", () => {
     const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
-    const sharer = { id: "s1" } as any;
+    const sharer = { id: "s1" } as unknown as object;
     const { code } = store.registerSharer(sharer);
     store.removeBySharer(sharer);
     expect(store.getSession(code)).toBeNull();
+  });
+
+  it("findByPeer locates session by sharer reference", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const sharer = { id: "s1" } as unknown as object;
+    store.registerSharer(sharer);
+    const session = store.findByPeer(sharer);
+    expect(session?.sharer).toBe(sharer);
+  });
+
+  it("findByPeer locates session by viewer reference", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    const session = store.findByPeer(viewer);
+    expect(session?.viewer).toBe(viewer);
+  });
+
+  it("findByPeer returns null for unknown peer", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    expect(store.findByPeer({} as object)).toBeNull();
   });
 });
 ```
@@ -545,10 +688,12 @@ Expected: `SessionStore` is not exported.
 Append to `backend/src/codes.ts`:
 
 ```ts
+export type Peer = object;
+
 export type Session = {
   code: string;
-  sharer: unknown;
-  viewer: unknown | null;
+  sharer: Peer;
+  viewer: Peer | null;
   expiresAt: number;
   failedAttempts: number;
 };
@@ -557,10 +702,10 @@ export type StoreConfig = { ttlMs: number; maxAttempts: number };
 
 export class SessionStore {
   private sessions = new Map<string, Session>();
-  private bySharer = new Map<unknown, string>();
+  private byPeer = new Map<Peer, string>();
   constructor(private cfg: StoreConfig) {}
 
-  registerSharer(sharer: unknown): { code: string; session: Session } {
+  registerSharer(sharer: Peer): { code: string; session: Session } {
     let code: string;
     do {
       code = generateCode();
@@ -573,19 +718,31 @@ export class SessionStore {
       failedAttempts: 0,
     };
     this.sessions.set(code, session);
-    this.bySharer.set(sharer, code);
+    this.byPeer.set(sharer, code);
     return { code, session };
+  }
+
+  attachViewer(code: string, viewer: Peer): Session | null {
+    const session = this.getSession(code);
+    if (!session) return null;
+    session.viewer = viewer;
+    this.byPeer.set(viewer, code);
+    return session;
   }
 
   getSession(code: string): Session | null {
     const session = this.sessions.get(code);
     if (!session) return null;
     if (Date.now() > session.expiresAt) {
-      this.sessions.delete(code);
-      this.bySharer.delete(session.sharer);
+      this.dropSession(session);
       return null;
     }
     return session;
+  }
+
+  findByPeer(peer: Peer): Session | null {
+    const code = this.byPeer.get(peer);
+    return code ? this.getSession(code) : null;
   }
 
   recordFailedAttempt(code: string): boolean {
@@ -593,18 +750,30 @@ export class SessionStore {
     if (!session) return false;
     session.failedAttempts += 1;
     if (session.failedAttempts >= this.cfg.maxAttempts) {
-      this.sessions.delete(code);
-      this.bySharer.delete(session.sharer);
+      this.dropSession(session);
       return true;
     }
     return false;
   }
 
-  removeBySharer(sharer: unknown): void {
-    const code = this.bySharer.get(sharer);
+  removeBySharer(sharer: Peer): void {
+    const code = this.byPeer.get(sharer);
     if (!code) return;
-    this.sessions.delete(code);
-    this.bySharer.delete(sharer);
+    const session = this.sessions.get(code);
+    if (session) this.dropSession(session);
+  }
+
+  detachViewer(viewer: Peer): void {
+    const session = this.findByPeer(viewer);
+    if (!session || session.viewer !== viewer) return;
+    session.viewer = null;
+    this.byPeer.delete(viewer);
+  }
+
+  private dropSession(session: Session): void {
+    this.sessions.delete(session.code);
+    this.byPeer.delete(session.sharer);
+    if (session.viewer) this.byPeer.delete(session.viewer);
   }
 }
 ```
@@ -828,36 +997,34 @@ Expected: tests fail (timeout or "no /signal handler").
 - [ ] **Step 3: Implement signaling.ts**
 
 ```ts
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
-import { SessionStore } from "./codes.js";
+import type { SessionStore, Peer } from "./codes.js";
 import type {
   IncomingMessage,
   OutgoingMessage,
 } from "./protocol.js";
 
-type Peer = WebSocket;
-
 export function registerSignaling(
   app: FastifyInstance,
   store: SessionStore
-) {
-  function send(peer: Peer, msg: OutgoingMessage) {
+): void {
+  function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
   }
 
-  function ipPrefix(req: { ip?: string }): string {
-    const ip = req.ip ?? "";
+  function ipPrefix(req: FastifyRequest): string {
+    const ip = req.ip;
     const parts = ip.split(".");
     if (parts.length === 4) return `${parts[0]}.xxx`;
     return ip.split(":").slice(0, 2).join(":") + ":xxx";
   }
 
   app.get("/signal", { websocket: true }, (socket, req) => {
-    const peer: Peer = socket as any;
+    const peer = socket as WebSocket;
     let role: "sharer" | "viewer" | null = null;
 
-    peer.on("message", (raw) => {
+    peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
       let msg: IncomingMessage;
       try {
         msg = JSON.parse(raw.toString());
@@ -868,7 +1035,7 @@ export function registerSignaling(
 
       if (msg.type === "register" && msg.role === "sharer" && role === null) {
         role = "sharer";
-        const { code, session } = store.registerSharer(peer);
+        const { code, session } = store.registerSharer(peer as Peer);
         const ttlSec = Math.floor((session.expiresAt - Date.now()) / 1000);
         send(peer, { type: "code-assigned", code, expiresInSec: ttlSec });
         return;
@@ -892,8 +1059,8 @@ export function registerSignaling(
           return;
         }
         role = "viewer";
-        session.viewer = peer;
-        send(session.sharer as Peer, {
+        store.attachViewer(msg.code, peer as Peer);
+        send(session.sharer as WebSocket, {
           type: "peer-joined",
           viewerInfo: { ipPrefix: ipPrefix(req), country: null },
         });
@@ -901,26 +1068,27 @@ export function registerSignaling(
       }
 
       if (msg.type === "confirm" && role === "sharer") {
-        const found = findSessionByPeer(store, peer);
+        const found = store.findByPeer(peer as Peer);
         if (!found) return;
         if (msg.accepted) {
-          if (found.viewer) send(found.viewer as Peer, { type: "peer-confirmed" });
+          if (found.viewer) send(found.viewer as WebSocket, { type: "peer-confirmed" });
         } else {
           if (found.viewer) {
-            send(found.viewer as Peer, { type: "peer-rejected", reason: "declined" });
-            (found.viewer as Peer).close();
+            const viewerSocket = found.viewer as WebSocket;
+            send(viewerSocket, { type: "peer-rejected", reason: "declined" });
+            viewerSocket.close();
           }
-          store.removeBySharer(peer);
+          store.removeBySharer(peer as Peer);
           peer.close();
         }
         return;
       }
 
       if (msg.type === "relay") {
-        const found = findSessionByPeer(store, peer);
+        const found = store.findByPeer(peer as Peer);
         if (!found) return;
         const other = found.sharer === peer ? found.viewer : found.sharer;
-        if (other) send(other as Peer, { type: "relay", payload: msg.payload });
+        if (other) send(other as WebSocket, { type: "relay", payload: msg.payload });
         return;
       }
 
@@ -928,32 +1096,22 @@ export function registerSignaling(
     });
 
     peer.on("close", () => {
-      const found = findSessionByPeer(store, peer);
+      const found = store.findByPeer(peer as Peer);
       if (!found) return;
       if (found.sharer === peer) {
         if (found.viewer) {
-          send(found.viewer as Peer, { type: "peer-rejected", reason: "sharer-gone" });
-          (found.viewer as Peer).close();
+          const viewerSocket = found.viewer as WebSocket;
+          send(viewerSocket, { type: "peer-rejected", reason: "sharer-gone" });
+          viewerSocket.close();
         }
-        store.removeBySharer(peer);
+        store.removeBySharer(peer as Peer);
       } else if (found.viewer === peer) {
-        found.viewer = null;
+        store.detachViewer(peer as Peer);
       }
     });
   });
 }
-
-function findSessionByPeer(store: SessionStore, peer: Peer) {
-  // Walk internal map. Acceptable for MVP (sessions are typically <100).
-  const sessions = (store as any).sessions as Map<string, any>;
-  for (const s of sessions.values()) {
-    if (s.sharer === peer || s.viewer === peer) return s;
-  }
-  return null;
-}
 ```
-
-> **Note on the `findSessionByPeer` helper:** it reaches into `SessionStore`'s private map. For MVP with <100 concurrent sessions this is fine. If profiling shows it's hot, add a public `findByPeer` method to `SessionStore` (reverse-index map). Keep it ugly-but-honest for now rather than over-engineering.
 
 - [ ] **Step 4: Wire signaling into server.ts**
 
