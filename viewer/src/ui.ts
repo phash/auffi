@@ -89,6 +89,9 @@ export function bindUI(backendWsUrl: string): void {
   const connectBtn = document.getElementById("connect") as HTMLButtonElement;
   const disconnectBtn = document.getElementById("disconnect") as HTMLButtonElement;
   const inputToggleBtn = document.getElementById("input-toggle") as HTMLButtonElement;
+  const refreshBtn = document.getElementById("refresh-btn") as HTMLButtonElement | null;
+  const reconnectWrap = document.getElementById("reconnect-wrap") as HTMLElement | null;
+  const reconnectBtn = document.getElementById("reconnect-btn") as HTMLButtonElement | null;
 
   const fileSendBtn = document.getElementById("file-send-btn") as HTMLButtonElement;
   const fileInput = document.getElementById("file-input") as HTMLInputElement;
@@ -103,6 +106,7 @@ export function bindUI(backendWsUrl: string): void {
   let capture: InputCapture | null = null;
   let fileManager: FileTransferManager | null = null;
   let freeTierTimer: FreeTierTimer | null = null;
+  let lastCode: string | null = null;
 
   let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
 
@@ -121,7 +125,15 @@ export function bindUI(backendWsUrl: string): void {
     codeInput.value = parts.join("-");
   });
 
-  function teardown(reason: string, kind: "ok" | "err" | "info" = "info"): void {
+  function showReconnect(): void {
+    if (reconnectWrap) reconnectWrap.style.display = "block";
+  }
+
+  function hideReconnect(): void {
+    if (reconnectWrap) reconnectWrap.style.display = "none";
+  }
+
+  function teardown(reason: string, kind: "ok" | "err" | "info" = "info", canReconnect = false): void {
     freeTierTimer?.stop();
     freeTierTimer = null;
     hideFreeTierWarning();
@@ -141,9 +153,24 @@ export function bindUI(backendWsUrl: string): void {
     setConnectionType(null);
     setStatus(reason, kind);
     connectBtn.disabled = false;
+    if (canReconnect && lastCode) {
+      showReconnect();
+    }
   }
 
-  disconnectBtn.addEventListener("click", () => teardown("Getrennt.", "info"));
+  disconnectBtn.addEventListener("click", () => {
+    lastCode = null;
+    hideReconnect();
+    teardown("Getrennt.", "info");
+  });
+
+  refreshBtn?.addEventListener("click", () => {
+    lastCode = null;
+    hideReconnect();
+    codeInput.value = "";
+    codeInput.focus();
+    setStatus("", "info");
+  });
 
   fileOfferAccept.addEventListener("click", () => {
     pendingOfferResolve?.(true);
@@ -207,12 +234,9 @@ export function bindUI(backendWsUrl: string): void {
 
   document.addEventListener("keydown", escapeHandler);
 
-  connectBtn.addEventListener("click", () => {
-    const code = codeInput.value.trim();
-    if (!/^\d{3}-\d{3}-\d{3}$/.test(code)) {
-      setStatus("Bitte 9-stelligen Code eingeben.", "err");
-      return;
-    }
+  function doConnect(code: string): void {
+    lastCode = code;
+    hideReconnect();
     setStatus("Warte auf Bestätigung durch den Sharer…", "info");
     connectBtn.disabled = true;
 
@@ -269,7 +293,7 @@ export function bindUI(backendWsUrl: string): void {
       });
       peer.onIceState((state) => {
         if (state === "failed" || state === "disconnected") {
-          teardown("Verbindung verloren.", "err");
+          teardown("Verbindung verloren.", "err", true);
         }
       });
       peer.onConnectionType((type) => {
@@ -299,7 +323,7 @@ export function bindUI(backendWsUrl: string): void {
         }
       });
 
-      signaling.onDisconnect((reason) => teardown(`Verbindung beendet: ${reason}`, "err"));
+      signaling.onDisconnect((reason) => teardown(`Verbindung beendet: ${reason}`, "err", true));
 
       signaling
         .join(code)
@@ -310,8 +334,23 @@ export function bindUI(backendWsUrl: string): void {
           setStatus("Verbunden — empfange Stream…", "ok");
         })
         .catch((e: unknown) =>
-          teardown(`Fehler: ${e instanceof Error ? e.message : String(e)}`, "err"),
+          teardown(`Fehler: ${e instanceof Error ? e.message : String(e)}`, "err", true),
         );
     });
+  }
+
+  connectBtn.addEventListener("click", () => {
+    const code = codeInput.value.trim();
+    if (!/^\d{3}-\d{3}-\d{3}$/.test(code)) {
+      setStatus("Bitte 9-stelligen Code eingeben.", "err");
+      return;
+    }
+    doConnect(code);
+  });
+
+  reconnectBtn?.addEventListener("click", () => {
+    if (!lastCode) return;
+    hideReconnect();
+    doConnect(lastCode);
   });
 }

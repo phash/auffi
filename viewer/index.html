@@ -512,10 +512,23 @@
           inputmode="numeric"
           aria-label="Verbindungscode"
         />
-        <button id="connect">Verbinden</button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="connect" style="flex:1;">Verbinden</button>
+          <button id="refresh-btn" type="button" title="Zurücksetzen" aria-label="Code zurücksetzen" style="flex-shrink:0; padding: 0.75rem 0.875rem; min-height: 48px; background: transparent; color: var(--text-secondary); border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; transition: background 150ms ease, color 150ms ease; font-size: 1rem;">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M13.5 8a5.5 5.5 0 1 1-1.325-3.566L14 3v4h-4l1.698-1.698A4 4 0 1 0 12 8h1.5z"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div id="status" role="status" aria-live="polite"></div>
+
+      <div id="reconnect-wrap" style="display:none;">
+        <button id="reconnect-btn" type="button" style="width:100%; padding:0.75rem 1rem; min-height:48px; background:var(--accent); color:#fff; border:none; border-radius:8px; cursor:pointer; font-family:var(--font); font-size:1rem; font-weight:500; transition:background 150ms ease;">
+          Erneut verbinden
+        </button>
+      </div>
 
       <div class="video-wrapper" id="video-wrapper">
         <video id="remote-video" autoplay playsinline muted></video>
