@@ -1732,7 +1732,7 @@ git commit -m "feat(viewer): signaling client with unit tests"
 - Create: `viewer/src/ui.ts`
 - Modify: `viewer/index.html` (add CSS)
 
-- [ ] **Step 1: Add minimal CSS to index.html**
+- [x] **Step 1: Add minimal CSS to index.html**
 
 Replace `<body>` in `viewer/index.html`:
 
@@ -1758,7 +1758,7 @@ Replace `<body>` in `viewer/index.html`:
 </body>
 ```
 
-- [ ] **Step 2: Implement ui.ts**
+- [x] **Step 2: Implement ui.ts**
 
 ```ts
 import { SignalingClient } from "./signaling-client.js";
@@ -1811,18 +1811,18 @@ export function bindUI(backendWsUrl: string): void {
 }
 ```
 
-- [ ] **Step 3: Wire main.ts**
+- [x] **Step 3: Wire main.ts**
 
 ```ts
 import { bindUI } from "./ui.js";
 
-const backendWsUrl =
-  (import.meta as any).env?.VITE_BACKEND_WS ?? "ws://localhost:8080/signal";
+// env.d.ts provides typed ImportMetaEnv — no cast needed
+const backendWsUrl = import.meta.env.VITE_BACKEND_WS ?? "ws://localhost:8080/signal";
 
 bindUI(backendWsUrl);
 ```
 
-- [ ] **Step 4: Manual end-to-end check (Backend must be running)**
+- [x] **Step 4: Manual end-to-end check (Backend must be running)**
 
 ```bash
 # Terminal 1
@@ -1835,7 +1835,7 @@ cd viewer && npm run dev
 - Without a sharer running, type any 9 digits. Click "Verbinden".
 - Expected: "Fehler: invalid-code: no such session".
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add viewer/src/main.ts viewer/src/ui.ts viewer/index.html

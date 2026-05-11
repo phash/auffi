@@ -6,7 +6,22 @@
     <title>Screenshare — Viewer</title>
   </head>
   <body>
-    <main id="app"></main>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 480px; margin: 4rem auto; padding: 0 1rem; }
+      input { font-size: 1.5rem; padding: 0.5rem; width: 100%; text-align: center; letter-spacing: 0.1em; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-top: 1rem; cursor: pointer; }
+      #status { margin-top: 1.5rem; padding: 1rem; border-radius: 4px; }
+      #status.ok { background: #e6ffe6; }
+      #status.err { background: #ffe6e6; }
+      #status.info { background: #e6f0ff; }
+    </style>
+    <main id="app">
+      <h1>Screenshare</h1>
+      <p>Code vom Sharer eingeben:</p>
+      <input id="code" maxlength="11" placeholder="284-915-073" />
+      <button id="connect">Verbinden</button>
+      <div id="status"></div>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
