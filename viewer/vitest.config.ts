@@ -6,7 +6,7 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",
-      include: ["src/signaling-client.ts", "src/webrtc-client.ts", "src/input-capture.ts", "src/data-channels.ts", "src/file-transfer.ts", "src/turn-config.ts"],
+      include: ["src/signaling-client.ts", "src/webrtc-client.ts", "src/input-capture.ts", "src/data-channels.ts", "src/file-transfer.ts", "src/turn-config.ts", "src/free-tier-timer.ts"],
       exclude: ["src/main.ts"],
       thresholds: {
         lines: 70,

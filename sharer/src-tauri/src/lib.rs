@@ -1,6 +1,7 @@
 mod capture;
 mod encoder;
 mod files;
+mod free_tier_timer;
 mod hotkey;
 pub mod input;
 mod protocol;
@@ -191,6 +192,24 @@ async fn start_streaming(
         };
         if let Err(e) = app_for_conn_type.emit("connection-type", value) {
             log::warn!("connection-type emit failed: {e}");
+        }
+
+        if conn_type == ConnectionType::Relay {
+            let app_warn = app_for_conn_type.clone();
+            let app_cut = app_for_conn_type.clone();
+            free_tier_timer::start(
+                free_tier_timer::TimerConfig::default(),
+                move || {
+                    if let Err(e) = app_warn.emit("free-tier-warning", serde_json::json!({})) {
+                        log::warn!("free-tier-warning emit failed: {e}");
+                    }
+                },
+                move || {
+                    if let Err(e) = app_cut.emit("free-tier-cutoff", serde_json::json!({})) {
+                        log::warn!("free-tier-cutoff emit failed: {e}");
+                    }
+                },
+            );
         }
     });
 

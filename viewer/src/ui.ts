@@ -2,6 +2,7 @@ import { SignalingClient } from "./signaling-client.js";
 import { ViewerPeer } from "./webrtc-client.js";
 import type { ConnectionType } from "./webrtc-client.js";
 import { fetchIceServers } from "./turn-config.js";
+import { FreeTierTimer } from "./free-tier-timer.js";
 import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
@@ -73,6 +74,16 @@ function wsUrlToHttpUrl(wsUrl: string): string {
     .replace(/\/signal$/, "");
 }
 
+function showFreeTierWarning(): void {
+  const el = document.getElementById("free-tier-warning-toast");
+  if (el) el.classList.add("active");
+}
+
+function hideFreeTierWarning(): void {
+  const el = document.getElementById("free-tier-warning-toast");
+  if (el) el.classList.remove("active");
+}
+
 export function bindUI(backendWsUrl: string): void {
   const codeInput = document.getElementById("code") as HTMLInputElement;
   const connectBtn = document.getElementById("connect") as HTMLButtonElement;
@@ -91,6 +102,7 @@ export function bindUI(backendWsUrl: string): void {
   let peer: ViewerPeer | null = null;
   let capture: InputCapture | null = null;
   let fileManager: FileTransferManager | null = null;
+  let freeTierTimer: FreeTierTimer | null = null;
 
   let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
 
@@ -110,6 +122,9 @@ export function bindUI(backendWsUrl: string): void {
   });
 
   function teardown(reason: string, kind: "ok" | "err" | "info" = "info"): void {
+    freeTierTimer?.stop();
+    freeTierTimer = null;
+    hideFreeTierWarning();
     capture?.disable();
     capture = null;
     fileManager?.cancelAll();
@@ -259,6 +274,17 @@ export function bindUI(backendWsUrl: string): void {
       });
       peer.onConnectionType((type) => {
         setConnectionType(type);
+        if (type === "relay") {
+          freeTierTimer = new FreeTierTimer();
+          freeTierTimer.start({
+            onWarning: () => {
+              showFreeTierWarning();
+            },
+            onCutoff: () => {
+              teardown("Relay-Limit erreicht — Premium kommt bald.", "info");
+            },
+          });
+        }
       });
 
       signaling.onRelay((payload) => {
