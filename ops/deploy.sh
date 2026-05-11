@@ -124,6 +124,16 @@ maybe_run "rsync image tarball to remote" \
 maybe_run "Load image on remote" \
   remote "gunzip -c '${DEPLOY_PATH}/screenie-backend-${APP_VERSION}.tar.gz' | docker load"
 
+# Read APP_VERSION from .env.prod on the remote and retag the freshly-loaded
+# image to match — so docker compose can resolve ${APP_VERSION:-latest}.
+maybe_run "Tag loaded image to match remote APP_VERSION (and :latest)" \
+  remote "ENV_APP_VERSION=\$(grep -E '^APP_VERSION=' '${DEPLOY_PATH}/.env.prod' 2>/dev/null | cut -d= -f2- | tr -d '\"'); \
+    docker tag 'screenie-backend:${APP_VERSION}' 'screenie-backend:latest'; \
+    if [ -n \"\${ENV_APP_VERSION}\" ] && [ \"\${ENV_APP_VERSION}\" != '${APP_VERSION}' ]; then \
+      docker tag 'screenie-backend:${APP_VERSION}' \"screenie-backend:\${ENV_APP_VERSION}\"; \
+      echo \"[deploy] also tagged as screenie-backend:\${ENV_APP_VERSION}\"; \
+    fi"
+
 # Keep last 3 image tarballs on remote
 maybe_run "Prune old image tarballs (keep 3)" \
   remote "ls -t '${DEPLOY_PATH}'/screenie-backend-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --" || true

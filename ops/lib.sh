@@ -57,7 +57,10 @@ remote() {
 
 remote_compose() {
   # Run docker compose on the remote host inside DEPLOY_PATH.
-  remote "cd ${DEPLOY_PATH} && docker compose -f docker-compose.prod.yml $*"
+  # --env-file .env.prod feeds variable interpolation in docker-compose.prod.yml
+  # (e.g. ${TURN_SHARED_SECRET}, ${APP_VERSION}); per-service env_file: stanzas
+  # are independent and continue to inject runtime env into containers.
+  remote "cd ${DEPLOY_PATH} && docker compose --env-file .env.prod -f docker-compose.prod.yml $*"
 }
 
 rsync_to() {
