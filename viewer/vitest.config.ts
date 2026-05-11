@@ -2,11 +2,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    environment: "node",
+    environment: "jsdom",
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",
-      include: ["src/signaling-client.ts", "src/webrtc-client.ts"],
+      include: ["src/signaling-client.ts", "src/webrtc-client.ts", "src/input-capture.ts"],
       exclude: ["src/main.ts"],
       thresholds: {
         lines: 70,
