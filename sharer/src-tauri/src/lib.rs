@@ -89,6 +89,15 @@ async fn confirm_peer(
     tx.send(protocol::Outgoing::Confirm { accepted })
         .await
         .map_err(|e| e.to_string())?;
+
+    if !accepted {
+        // Clear the signaling state so start_signaling can be called again
+        // cleanly from a fresh state after a rejection.
+        if let Ok(mut guard) = state.0.lock() {
+            *guard = None;
+        }
+    }
+
     Ok(())
 }
 

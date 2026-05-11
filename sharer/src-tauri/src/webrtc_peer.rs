@@ -149,16 +149,14 @@ impl SharerPeer {
     /// The callback receives `None` when ICE gathering is complete.
     pub fn on_ice_candidate<F>(&self, handler: F)
     where
-        F: FnMut(Option<RTCIceCandidate>) + Send + Sync + 'static,
+        F: FnMut(Option<RTCIceCandidate>) + Send + 'static,
     {
-        use std::sync::Mutex;
-        let handler = Arc::new(Mutex::new(handler));
+        let handler = Arc::new(tokio::sync::Mutex::new(handler));
         self.pc.on_ice_candidate(Box::new(move |candidate| {
             let handler = handler.clone();
             Box::pin(async move {
-                if let Ok(mut h) = handler.lock() {
-                    h(candidate);
-                }
+                let mut h = handler.lock().await;
+                h(candidate);
             })
         }));
     }

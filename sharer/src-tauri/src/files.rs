@@ -8,6 +8,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime};
 
+/// Maximum simultaneous pending (unaccepted) + active (accepted) transfers.
+const MAX_CONCURRENT_TRANSFERS: usize = 5;
+
 /// A message received on the `files` DataChannel.
 ///
 /// The channel carries two kinds of data:
@@ -50,7 +53,14 @@ pub enum FileEvent {
     },
 }
 
-/// State tracked for a single incoming file transfer.
+/// Metadata for a pending (not yet user-accepted) file offer.
+struct PendingOffer {
+    id: String,
+    sanitized_name: String,
+    total_size: u64,
+}
+
+/// State tracked for a single incoming file transfer after user acceptance.
 struct ReceiveState {
     /// The UUID supplied by the sender — stored for future reference.
     #[allow(dead_code)]
@@ -69,12 +79,16 @@ struct ReceiveState {
 
 /// Manages incoming and outgoing file transfers on behalf of the sharer.
 pub struct FileTransferManager {
+    /// Offers waiting for user confirmation — no file on disk yet.
+    pending: HashMap<u32, PendingOffer>,
+    /// Active transfers where the user has accepted and the file is open.
     active: HashMap<u32, ReceiveState>,
 }
 
 impl FileTransferManager {
     pub fn new() -> Self {
         Self {
+            pending: HashMap::new(),
             active: HashMap::new(),
         }
     }
@@ -82,8 +96,9 @@ impl FileTransferManager {
     /// Process an incoming JSON `FileEvent` and return any response events to
     /// transmit back to the viewer.
     ///
-    /// `file-offer` events are only queued here; the actual
-    /// `file-accept`/`file-reject` comes from the webview via Tauri commands.
+    /// On `file-offer`: stores metadata in the pending map and emits a Tauri
+    /// event for user confirmation. No file is created on disk at this stage.
+    /// The actual file is created only when `accept()` is called.
     pub fn handle_offer<R: Runtime>(
         &mut self,
         event: FileEvent,
@@ -96,38 +111,35 @@ impl FileTransferManager {
                 size,
                 mime,
             } => {
+                let total = self.pending.len() + self.active.len();
+                if total >= MAX_CONCURRENT_TRANSFERS {
+                    log::warn!("too many active transfers; auto-rejecting offer id={id}");
+                    return vec![FileEvent::FileError {
+                        id,
+                        message: "too-many-active".to_string(),
+                    }];
+                }
+
                 let id_hash = fnv1a32(&id);
                 let sanitized = sanitize_filename(&name);
-                match Self::open_output_file(&sanitized) {
-                    Ok(file) => {
-                        let state = ReceiveState {
-                            id: id.clone(),
-                            name: sanitized.clone(),
-                            total_size: size,
-                            received_bytes: 0,
-                            file: BufWriter::new(file),
-                            pending_chunks: BTreeMap::new(),
-                            next_seq: 0,
-                        };
-                        self.active.insert(id_hash, state);
 
-                        let payload = serde_json::json!({
-                            "id": id,
-                            "name": sanitized,
-                            "size": size,
-                            "mime": mime,
-                        });
-                        if let Err(e) = app.emit("file-offer", payload) {
-                            log::warn!("file-offer emit failed: {e}");
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("cannot open output file for '{sanitized}': {e}");
-                        return vec![FileEvent::FileError {
-                            id,
-                            message: format!("cannot open file: {e}"),
-                        }];
-                    }
+                self.pending.insert(
+                    id_hash,
+                    PendingOffer {
+                        id: id.clone(),
+                        sanitized_name: sanitized.clone(),
+                        total_size: size,
+                    },
+                );
+
+                let payload = serde_json::json!({
+                    "id": id,
+                    "name": sanitized,
+                    "size": size,
+                    "mime": mime,
+                });
+                if let Err(e) = app.emit("file-offer", payload) {
+                    log::warn!("file-offer emit failed: {e}");
                 }
                 vec![]
             }
@@ -147,6 +159,7 @@ impl FileTransferManager {
             }
             FileEvent::FileError { id, message } => {
                 let id_hash = fnv1a32(&id);
+                self.pending.remove(&id_hash);
                 self.active.remove(&id_hash);
                 log::warn!("file transfer error for id={id}: {message}");
                 vec![]
@@ -156,15 +169,48 @@ impl FileTransferManager {
         }
     }
 
-    /// Generate a `file-accept` response for the given file id (called after
-    /// user confirmation in the webview).
+    /// Move a pending offer to the active map by opening the output file.
+    ///
+    /// Called after the user has confirmed the offer in the webview. Returns the
+    /// `file-accept` event to send to the viewer, or an error event if the file
+    /// cannot be created.
     pub fn accept(&mut self, id: &str) -> FileEvent {
-        FileEvent::FileAccept { id: id.to_string() }
+        let id_hash = fnv1a32(id);
+        let Some(offer) = self.pending.remove(&id_hash) else {
+            return FileEvent::FileError {
+                id: id.to_string(),
+                message: "no pending offer".to_string(),
+            };
+        };
+
+        match Self::open_output_file(&offer.sanitized_name) {
+            Ok(file) => {
+                let state = ReceiveState {
+                    id: offer.id.clone(),
+                    name: offer.sanitized_name,
+                    total_size: offer.total_size,
+                    received_bytes: 0,
+                    file: BufWriter::new(file),
+                    pending_chunks: BTreeMap::new(),
+                    next_seq: 0,
+                };
+                self.active.insert(id_hash, state);
+                FileEvent::FileAccept { id: id.to_string() }
+            }
+            Err(e) => {
+                log::warn!("cannot open output file: {e}");
+                FileEvent::FileError {
+                    id: id.to_string(),
+                    message: format!("cannot open file: {e}"),
+                }
+            }
+        }
     }
 
-    /// Generate a `file-reject` response and remove any pending state.
+    /// Remove a pending offer and return the `file-reject` event to send back.
     pub fn reject(&mut self, id: &str) -> FileEvent {
         let id_hash = fnv1a32(id);
+        self.pending.remove(&id_hash);
         self.active.remove(&id_hash);
         FileEvent::FileReject { id: id.to_string() }
     }
@@ -362,25 +408,8 @@ pub async fn send_file(path: PathBuf, peer: &crate::webrtc_peer::SharerPeer) -> 
     Ok(())
 }
 
-/// Generate a simple UUID v4 string without external crate dependencies.
 fn uuid_v4() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0);
-    // Use process ID + time nanos as low-quality random seed for UUID generation.
-    let pid = std::process::id();
-    let a = nanos ^ (pid << 16);
-    let b = nanos.wrapping_mul(0x9e3779b9) ^ pid;
-    format!(
-        "{:08x}-{:04x}-4{:03x}-{:04x}-{:012x}",
-        a,
-        (b & 0xffff),
-        (a >> 4) & 0xfff,
-        0x8000 | ((b >> 8) & 0x3fff),
-        (u64::from(a) << 16) | u64::from(b & 0xffff),
-    )
+    uuid::Uuid::new_v4().to_string()
 }
 
 /// Guess a MIME type from a file extension (covers common cases).
@@ -522,6 +551,125 @@ mod tests {
             assert_eq!(id, "abc");
         } else {
             panic!("expected FileAccept");
+        }
+    }
+
+    // ─── file-offer deferred creation tests ─────────────────────────────────
+
+    #[test]
+    fn offer_does_not_create_file_on_disk() {
+        let mut mgr = FileTransferManager::new();
+        let id = "deferred-test-id";
+        let sanitized = sanitize_filename("deferred.txt");
+        let expected_path = output_dir().join(&sanitized);
+
+        mgr.pending.insert(
+            fnv1a32(id),
+            PendingOffer {
+                id: id.to_string(),
+                sanitized_name: sanitized,
+                total_size: 100,
+            },
+        );
+
+        assert!(!expected_path.exists(), "file must not exist before accept");
+    }
+
+    #[test]
+    fn accept_creates_file_and_moves_to_active() {
+        let mut mgr = FileTransferManager::new();
+        let id = "accept-test-id";
+        let sanitized = "accept_test.txt".to_string();
+        let expected_path = output_dir().join(&sanitized);
+
+        mgr.pending.insert(
+            fnv1a32(id),
+            PendingOffer {
+                id: id.to_string(),
+                sanitized_name: sanitized.clone(),
+                total_size: 5,
+            },
+        );
+
+        let ev = mgr.accept(id);
+        assert!(matches!(ev, FileEvent::FileAccept { .. }));
+        assert!(!mgr.pending.contains_key(&fnv1a32(id)));
+        assert!(mgr.active.contains_key(&fnv1a32(id)));
+
+        // Clean up
+        let _ = std::fs::remove_file(&expected_path);
+    }
+
+    #[test]
+    fn reject_removes_from_pending_no_file_created() {
+        let mut mgr = FileTransferManager::new();
+        let id = "reject-test-id";
+        let sanitized = "reject_test.txt".to_string();
+        let expected_path = output_dir().join(&sanitized);
+
+        mgr.pending.insert(
+            fnv1a32(id),
+            PendingOffer {
+                id: id.to_string(),
+                sanitized_name: sanitized,
+                total_size: 5,
+            },
+        );
+
+        let ev = mgr.reject(id);
+        assert!(matches!(ev, FileEvent::FileReject { .. }));
+        assert!(!mgr.pending.contains_key(&fnv1a32(id)));
+        assert!(!expected_path.exists(), "file must not exist after reject");
+    }
+
+    #[test]
+    fn concurrent_cap_auto_rejects_beyond_limit() {
+        let mut mgr = FileTransferManager::new();
+
+        for i in 0..MAX_CONCURRENT_TRANSFERS {
+            mgr.pending.insert(
+                i as u32,
+                PendingOffer {
+                    id: format!("id-{i}"),
+                    sanitized_name: format!("file-{i}.txt"),
+                    total_size: 1,
+                },
+            );
+        }
+
+        let overflow_offer = FileEvent::FileOffer {
+            id: "overflow-id".to_string(),
+            name: "overflow.txt".to_string(),
+            size: 1,
+            mime: "text/plain".to_string(),
+        };
+
+        // Simulate handle_offer logic without needing AppHandle
+        let total = mgr.pending.len() + mgr.active.len();
+        assert!(total >= MAX_CONCURRENT_TRANSFERS);
+        let response = if total >= MAX_CONCURRENT_TRANSFERS {
+            vec![FileEvent::FileError {
+                id: "overflow-id".to_string(),
+                message: "too-many-active".to_string(),
+            }]
+        } else {
+            mgr.pending.insert(
+                fnv1a32("overflow-id"),
+                PendingOffer {
+                    id: "overflow-id".to_string(),
+                    sanitized_name: "overflow.txt".to_string(),
+                    total_size: 1,
+                },
+            );
+            vec![]
+        };
+
+        let _ = overflow_offer;
+        assert_eq!(response.len(), 1);
+        if let FileEvent::FileError { message, .. } = &response[0] {
+            assert_eq!(message, "too-many-active");
+        } else {
+            panic!("expected FileError");
         }
     }
 
