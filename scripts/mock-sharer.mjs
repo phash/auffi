@@ -72,7 +72,7 @@ function sendMsg(ws, msg) {
 }
 
 async function run() {
-  const ws = new WebSocket(SIGNAL_URL);
+  const ws = new WebSocket(SIGNAL_URL, { headers: { origin: "http://localhost:5174" } });
 
   await new Promise((resolve, reject) => {
     ws.once("open", resolve);

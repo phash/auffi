@@ -18,6 +18,10 @@ afterAll(async () => {
   await app.close();
 });
 
+function openWs(target: string): WebSocket {
+  return new WebSocket(target, { headers: { origin: "http://127.0.0.1" } });
+}
+
 function recv(ws: WebSocket): Promise<any> {
   return new Promise((resolve) => {
     ws.once("message", (data) => resolve(JSON.parse(data.toString())));
@@ -26,7 +30,7 @@ function recv(ws: WebSocket): Promise<any> {
 
 describe("signaling handshake", () => {
   it("sharer registers and gets a code", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const msg = await recv(sharer);
@@ -36,13 +40,13 @@ describe("signaling handshake", () => {
   });
 
   it("viewer joins with valid code and sharer receives peer-joined", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const assigned = await recv(sharer);
     const code = assigned.code;
 
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
 
@@ -54,7 +58,7 @@ describe("signaling handshake", () => {
   });
 
   it("viewer with invalid code receives error", async () => {
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(
       JSON.stringify({ type: "join", role: "viewer", code: "000-000-000" })
@@ -66,12 +70,12 @@ describe("signaling handshake", () => {
   });
 
   it("sharer confirms, viewer receives peer-confirmed", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const { code } = await recv(sharer);
 
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined
@@ -85,12 +89,12 @@ describe("signaling handshake", () => {
   });
 
   it("relay message flows from viewer to sharer", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const { code } = await recv(sharer);
 
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined
@@ -110,12 +114,12 @@ describe("signaling handshake", () => {
   });
 
   it("relay message flows from sharer to viewer", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const { code } = await recv(sharer);
 
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined
@@ -135,12 +139,12 @@ describe("signaling handshake", () => {
   });
 
   it("confirm with accepted:false → viewer receives peer-rejected, session cleaned up", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const { code } = await recv(sharer);
 
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined
@@ -159,13 +163,13 @@ describe("signaling handshake", () => {
   });
 
   it("viewer disconnect → session kept, new viewer can attach with same code", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const { code } = await recv(sharer);
 
     // first viewer joins and then disconnects
-    const viewer1 = new WebSocket(url);
+    const viewer1 = openWs(url);
     await new Promise((r) => viewer1.once("open", r));
     viewer1.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined
@@ -176,7 +180,7 @@ describe("signaling handshake", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     // second viewer can now attach with the same code
-    const viewer2 = new WebSocket(url);
+    const viewer2 = openWs(url);
     await new Promise((r) => viewer2.once("open", r));
     viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
     const peerJoined2 = await recv(sharer);
@@ -187,7 +191,7 @@ describe("signaling handshake", () => {
   });
 
   it("invalid JSON → receives bad-message error and connection stays open", async () => {
-    const ws = new WebSocket(url);
+    const ws = openWs(url);
     await new Promise((r) => ws.once("open", r));
     ws.send("not-valid-json{{{");
     const err = await recv(ws);
@@ -197,7 +201,7 @@ describe("signaling handshake", () => {
   });
 
   it("unexpected message type after register → bad-message error", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     await recv(sharer); // code-assigned
@@ -211,7 +215,7 @@ describe("signaling handshake", () => {
   });
 
   it("viewer joins with un-dashed code and matches canonical session", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const { code } = await recv(sharer); // e.g. "284-915-073"
@@ -219,7 +223,7 @@ describe("signaling handshake", () => {
     // Remove dashes → "284915073"
     const undashed = code.replace(/-/g, "");
 
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code: undashed }));
 
@@ -230,13 +234,22 @@ describe("signaling handshake", () => {
     viewer.close();
   });
 
+  it("connection with disallowed Origin is rejected", async () => {
+    const ws = new WebSocket(url, { headers: { origin: "https://evil.example.com" } });
+    await new Promise<void>((resolve) => {
+      ws.once("close", () => resolve());
+      ws.once("error", () => resolve());
+    });
+    expect(ws.readyState).toBe(WebSocket.CLOSED);
+  });
+
   it("relay sent before sharer confirms is silently dropped", async () => {
-    const sharer = new WebSocket(url);
+    const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     const { code } = await recv(sharer);
 
-    const viewer = new WebSocket(url);
+    const viewer = openWs(url);
     await new Promise((r) => viewer.once("open", r));
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined — sharer has NOT confirmed yet

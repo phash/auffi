@@ -6,6 +6,10 @@ import { createServer } from "../src/server.js";
 let app: FastifyInstance;
 let url: string;
 
+function openWs(target: string): WebSocket {
+  return new WebSocket(target, { headers: { origin: "http://127.0.0.1" } });
+}
+
 beforeAll(async () => {
   app = await createServer({ port: 0, host: "127.0.0.1" });
   await app.listen({ port: 0, host: "127.0.0.1" });
@@ -22,7 +26,7 @@ describe("rate limiting", () => {
   it("rate-limits more than 5 invalid joins per minute from same IP", async () => {
     const attempts = [];
     for (let i = 0; i < 7; i++) {
-      const ws = new WebSocket(url);
+      const ws = openWs(url);
       await new Promise((r) => ws.once("open", r));
       ws.send(JSON.stringify({ type: "join", role: "viewer", code: "000-000-000" }));
       const msg = await new Promise<{ type: string; code: string }>((r) =>

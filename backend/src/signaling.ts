@@ -7,35 +7,42 @@ import type {
   OutgoingMessage,
 } from "./protocol.js";
 
-type RateLimitEntry = { count: number; resetAt: number };
+export type RateLimitEntry = { count: number; resetAt: number };
 
-// Entries stay in the Map after expiry and are reset on next access — acceptable
-// for MVP since the key space is bounded to active IPs hitting the endpoint.
+export type RateLimitConfig = { windowMs: number; max: number };
+
+function stripIpv4Mapped(ip: string): string {
+  return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
+}
+
 function checkRateLimit(
-  ip: string,
-  counts: Map<string, RateLimitEntry>
+  rawIp: string,
+  counts: Map<string, RateLimitEntry>,
+  cfg: RateLimitConfig
 ): boolean {
+  const ip = stripIpv4Mapped(rawIp);
   const now = Date.now();
   const entry = counts.get(ip);
   if (!entry || now > entry.resetAt) {
-    counts.set(ip, { count: 1, resetAt: now + 60_000 });
+    counts.set(ip, { count: 1, resetAt: now + cfg.windowMs });
     return true;
   }
   entry.count += 1;
-  return entry.count <= 5;
+  return entry.count <= cfg.max;
 }
 
 export function registerSignaling(
   app: FastifyInstance,
   store: SessionStore,
+  rateLimitCfg: RateLimitConfig = { windowMs: 60_000, max: 5 },
   attemptCounts: Map<string, RateLimitEntry> = new Map()
-): void {
+): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
   }
 
   function ipPrefix(req: FastifyRequest): string {
-    const ip = req.ip;
+    const ip = stripIpv4Mapped(req.ip ?? "");
     const parts = ip.split(".");
     if (parts.length === 4) return `${parts[0]}.xxx`;
     return ip.split(":").slice(0, 2).join(":") + ":xxx";
@@ -71,7 +78,7 @@ export function registerSignaling(
         }
         const session = store.getSession(normalized);
         if (!session) {
-          if (!checkRateLimit(req.ip ?? "unknown", attemptCounts)) {
+          if (!checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg)) {
             send(peer, { type: "error", code: "rate-limit", message: "too many attempts" });
             peer.close();
             return;
@@ -144,4 +151,6 @@ export function registerSignaling(
       }
     });
   });
+
+  return attemptCounts;
 }
