@@ -374,7 +374,7 @@ git commit -m "feat(viewer): input control toggle + escape-to-disable"
 - Modify: `sharer/src-tauri/Cargo.toml`
 - Create: `sharer/src-tauri/src/input.rs`
 
-- [ ] **Step 1: Add `enigo` to Cargo.toml**
+- [x] **Step 1: Add `enigo` to Cargo.toml**
 
 ```
 cargo search enigo
@@ -382,7 +382,7 @@ cargo search enigo
 
 Pin exact. Verify it supports Linux+Windows. Note: on Linux, `enigo` defaults to X11 — that's compatible with the existing `x11rb` capture path. Wayland would need `wayland-protocols` and is out of scope for MVP.
 
-- [ ] **Step 2: Implement `input.rs` with TDD**
+- [x] **Step 2: Implement `input.rs` with TDD**
 
 ```rust
 use enigo::{Enigo, Key, KeyboardControllable, MouseButton, MouseControllable, Settings};
@@ -499,7 +499,7 @@ mod tests {
 
 (`Enigo::new` may require X11 environment for unit tests; the parsing tests above are pure and run anywhere.)
 
-- [ ] **Step 3: Run tests, build, commit.**
+- [x] **Step 3: Run tests, build, commit.**
 
 ```bash
 git commit -m "feat(sharer): input controller with enigo (mouse + keyboard + scroll)"
