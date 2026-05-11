@@ -38,7 +38,9 @@ pub async fn run(app: AppHandle, url: String) -> Signaling {
         let request = match url.as_str().into_client_request() {
             Ok(mut r) => {
                 match origin.parse() {
-                    Ok(v) => { r.headers_mut().insert("Origin", v); }
+                    Ok(v) => {
+                        r.headers_mut().insert("Origin", v);
+                    }
                     Err(e) => {
                         let _ = app.emit(
                             "disconnected",
