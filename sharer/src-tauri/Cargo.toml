@@ -24,3 +24,9 @@ interceptor = "=0.9.0"
 enigo = "=0.6.1"
 log = "=0.4.27"
 tauri-plugin-global-shortcut = "=2.3.1"
+tauri-plugin-dialog = "=2.7.1"
+dirs = "=6.0.0"
+bytes = "=1.11.1"
+
+[dev-dependencies]
+tempfile = "=3.27.0"

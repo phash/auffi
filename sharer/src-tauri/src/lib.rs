@@ -1,18 +1,20 @@
 mod capture;
 mod encoder;
+mod files;
 mod hotkey;
 pub mod input;
 mod protocol;
 mod signaling;
 mod webrtc_peer;
 
-use std::{sync::Arc, sync::Mutex, time::Duration};
+use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
 
 use tauri::{Emitter, Manager, State};
 use tokio::sync::mpsc;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
 use capture::DisplayInfo;
+use files::FileMessage;
 use input::{InputController, InputEvent};
 
 struct SignalingState(Mutex<Option<signaling::Signaling>>);
@@ -28,6 +30,9 @@ struct InputControllerState(Arc<tokio::sync::Mutex<Option<InputController>>>);
 /// IP prefix of the currently connected viewer, set when a peer-joined event
 /// arrives so it can be forwarded to the border overlay window.
 struct PeerIpState(Mutex<Option<String>>);
+
+/// Shared access to the active `FileTransferManager`.
+struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManager>>>);
 
 #[tauri::command]
 async fn start_signaling(
@@ -125,6 +130,7 @@ fn hide_border_window(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn start_streaming(
     app: tauri::AppHandle,
     monitor_id: u32,
@@ -132,6 +138,7 @@ async fn start_streaming(
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
     ip_state: State<'_, PeerIpState>,
+    file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
     let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
 
@@ -176,7 +183,8 @@ async fn start_streaming(
     let height = capturer.height();
 
     let (input_tx, mut input_rx) = mpsc::channel::<InputEvent>(256);
-    peer.on_input_channel(input_tx);
+    let (files_msg_tx, mut files_msg_rx) = mpsc::channel::<FileMessage>(256);
+    peer.on_data_channels(input_tx, files_msg_tx);
 
     let controller = InputController::new(width, height).map_err(|e| e.to_string())?;
     {
@@ -191,6 +199,36 @@ async fn start_streaming(
             if let Some(ctrl) = guard.as_mut() {
                 if let Err(e) = ctrl.apply(ev) {
                     log::warn!("input apply: {e}");
+                }
+            }
+        }
+    });
+
+    // Initialize the file transfer manager.
+    {
+        let mut guard = file_state.0.lock().await;
+        *guard = Some(files::FileTransferManager::new());
+    }
+
+    // Spawn the file-task that drives incoming file messages.
+    let file_mgr_arc = Arc::clone(&file_state.0);
+    let app_for_files = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(msg) = files_msg_rx.recv().await {
+            match msg {
+                FileMessage::Event(ev) => {
+                    let mut guard = file_mgr_arc.lock().await;
+                    if let Some(mgr) = guard.as_mut() {
+                        let _ = mgr.handle_offer(ev, &app_for_files);
+                    }
+                }
+                FileMessage::Chunk(data) => {
+                    let mut guard = file_mgr_arc.lock().await;
+                    if let Some(mgr) = guard.as_mut() {
+                        if let Err(e) = mgr.handle_chunk(&data) {
+                            log::warn!("file chunk error: {e}");
+                        }
+                    }
                 }
             }
         }
@@ -354,15 +392,87 @@ async fn receive_ice_candidate(
     Ok(())
 }
 
+/// Called by the webview when the user accepts an incoming file offer.
+///
+/// Sends a `file-accept` JSON event back to the viewer over the files
+/// DataChannel so it starts streaming chunks.
+#[tauri::command]
+async fn accept_file(
+    id: String,
+    rtc_state: State<'_, WebRtcState>,
+    file_state: State<'_, FileTransferState>,
+) -> Result<(), String> {
+    let event = {
+        let mut guard = file_state.0.lock().await;
+        guard
+            .as_mut()
+            .map(|mgr| mgr.accept(&id))
+            .ok_or_else(|| "file transfer not active".to_string())?
+    };
+    let guard = rtc_state.0.lock().await;
+    let peer = guard
+        .as_ref()
+        .ok_or_else(|| "WebRTC peer not initialized".to_string())?;
+    peer.send_file_event(&event).await
+}
+
+/// Called by the webview when the user rejects an incoming file offer.
+#[tauri::command]
+async fn reject_file(
+    id: String,
+    rtc_state: State<'_, WebRtcState>,
+    file_state: State<'_, FileTransferState>,
+) -> Result<(), String> {
+    let event = {
+        let mut guard = file_state.0.lock().await;
+        guard
+            .as_mut()
+            .map(|mgr| mgr.reject(&id))
+            .ok_or_else(|| "file transfer not active".to_string())?
+    };
+    let guard = rtc_state.0.lock().await;
+    let peer = guard
+        .as_ref()
+        .ok_or_else(|| "WebRTC peer not initialized".to_string())?;
+    peer.send_file_event(&event).await
+}
+
+/// Opens a native file-picker dialog and sends the chosen file to the viewer.
+#[tauri::command]
+async fn pick_and_send_file(
+    app: tauri::AppHandle,
+    rtc_state: State<'_, WebRtcState>,
+) -> Result<(), String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let path: Option<PathBuf> = app
+        .dialog()
+        .file()
+        .blocking_pick_file()
+        .map(|p| p.into_path().map_err(|e| e.to_string()))
+        .transpose()?;
+
+    let path = path.ok_or_else(|| "no file selected".to_string())?;
+
+    let guard = rtc_state.0.lock().await;
+    let peer = guard
+        .as_ref()
+        .ok_or_else(|| "WebRTC peer not initialized; start streaming first".to_string())?;
+
+    files::send_file(path, peer).await
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SignalingState(Mutex::new(None)))
         .manage(WebRtcState(tokio::sync::Mutex::new(None)))
         .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
             None,
         ))))
         .manage(PeerIpState(Mutex::new(None)))
+        .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
         .invoke_handler(tauri::generate_handler![
             start_signaling,
             confirm_peer,
@@ -371,6 +481,9 @@ pub fn run() {
             receive_offer,
             receive_ice_candidate,
             disconnect_streaming,
+            accept_file,
+            reject_file,
+            pick_and_send_file,
         ])
         .run(tauri::generate_context!())
         .expect("error running tauri");

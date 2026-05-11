@@ -6,6 +6,7 @@ use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine, APIBuilder,
     },
+    data_channel::RTCDataChannel,
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
         ice_server::RTCIceServer,
@@ -16,14 +17,19 @@ use webrtc::{
     Error,
 };
 
+use crate::files::FileMessage;
 use crate::input::InputEvent;
 
 /// A WebRTC peer connection for the sharer side.
 ///
 /// Holds a VP8 video track and the underlying `RTCPeerConnection`.
+/// `files_dc` is populated once the viewer opens the `"files"` channel so the
+/// sharer can send file offers and chunks back.
 pub struct SharerPeer {
     pc: Arc<RTCPeerConnection>,
     pub track: Arc<TrackLocalStaticSample>,
+    /// The `"files"` DataChannel, set once the viewer opens it.
+    files_dc: Arc<tokio::sync::Mutex<Option<Arc<RTCDataChannel>>>>,
 }
 
 impl SharerPeer {
@@ -62,7 +68,11 @@ impl SharerPeer {
         pc.add_track(track.clone() as Arc<dyn webrtc::track::track_local::TrackLocal + Send + Sync>)
             .await?;
 
-        Ok(Self { pc, track })
+        Ok(Self {
+            pc,
+            track,
+            files_dc: Arc::new(tokio::sync::Mutex::new(None)),
+        })
     }
 
     /// Set the remote offer SDP and return a local answer SDP string.
@@ -99,35 +109,109 @@ impl SharerPeer {
         }));
     }
 
-    /// Register a sender that receives parsed `InputEvent`s from the remote viewer.
+    /// Register senders for both the `"input"` and `"files"` DataChannels in a
+    /// single `on_data_channel` callback.
     ///
-    /// Must be called before ICE negotiation completes so that the `on_data_channel`
-    /// callback is in place when the viewer opens the `"input"` DataChannel.
-    pub fn on_input_channel(&self, tx: mpsc::Sender<InputEvent>) {
+    /// Must be called before ICE negotiation completes so the callback is in
+    /// place when the viewer opens the channels.  Also stores the `"files"` DC
+    /// internally so the sharer can send outbound file data via `send_on_files`.
+    ///
+    /// The `"files"` channel carries two kinds of data:
+    /// - JSON text (first byte `{`): a `FileEvent`.
+    /// - Binary: a raw chunk frame with an 8-byte header.
+    pub fn on_data_channels(
+        &self,
+        input_tx: mpsc::Sender<InputEvent>,
+        files_tx: mpsc::Sender<FileMessage>,
+    ) {
+        let files_dc_slot = Arc::clone(&self.files_dc);
         self.pc.on_data_channel(Box::new(move |dc| {
-            if dc.label() != "input" {
-                return Box::pin(async {});
-            }
-            let tx = tx.clone();
-            Box::pin(async move {
-                dc.on_message(Box::new(move |msg| {
-                    let tx = tx.clone();
-                    let bytes = msg.data.clone();
+            let label = dc.label().to_string();
+            match label.as_str() {
+                "input" => {
+                    let tx = input_tx.clone();
                     Box::pin(async move {
-                        match serde_json::from_slice::<InputEvent>(&bytes) {
-                            Ok(event) => {
-                                if tx.send(event).await.is_err() {
-                                    log::warn!("input channel: receiver dropped");
+                        dc.on_message(Box::new(move |msg| {
+                            let tx = tx.clone();
+                            let bytes = msg.data.clone();
+                            Box::pin(async move {
+                                match serde_json::from_slice::<InputEvent>(&bytes) {
+                                    Ok(event) => {
+                                        if tx.send(event).await.is_err() {
+                                            log::warn!("input channel: receiver dropped");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::warn!("input channel: failed to parse event: {e}");
+                                    }
                                 }
-                            }
-                            Err(e) => {
-                                log::warn!("input channel: failed to parse event: {e}");
-                            }
-                        }
+                            })
+                        }));
                     })
-                }));
-            })
+                }
+                "files" => {
+                    let tx = files_tx.clone();
+                    let slot = Arc::clone(&files_dc_slot);
+                    Box::pin(async move {
+                        // Store the DataChannel so we can send on it.
+                        {
+                            let mut guard = slot.lock().await;
+                            *guard = Some(Arc::clone(&dc));
+                        }
+                        dc.on_message(Box::new(move |msg| {
+                            let tx = tx.clone();
+                            let bytes = msg.data.clone();
+                            Box::pin(async move {
+                                let message = if bytes.first() == Some(&b'{') {
+                                    match serde_json::from_slice::<crate::files::FileEvent>(&bytes)
+                                    {
+                                        Ok(ev) => FileMessage::Event(ev),
+                                        Err(e) => {
+                                            log::warn!("files channel: failed to parse JSON: {e}");
+                                            return;
+                                        }
+                                    }
+                                } else {
+                                    FileMessage::Chunk(bytes.to_vec())
+                                };
+                                if tx.send(message).await.is_err() {
+                                    log::warn!("files channel: receiver dropped");
+                                }
+                            })
+                        }));
+                    })
+                }
+                other => {
+                    log::warn!("unexpected data channel: {other}");
+                    Box::pin(async {})
+                }
+            }
         }));
+    }
+
+    /// Send a JSON-serialized `FileEvent` on the `"files"` DataChannel.
+    pub async fn send_file_event(&self, event: &crate::files::FileEvent) -> Result<(), String> {
+        let guard = self.files_dc.lock().await;
+        let dc = guard
+            .as_ref()
+            .ok_or_else(|| "files data channel not open".to_string())?;
+        let json = serde_json::to_vec(event).map_err(|e| e.to_string())?;
+        dc.send(&bytes::Bytes::from(json))
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Send a raw binary chunk frame on the `"files"` DataChannel.
+    pub async fn send_file_chunk(&self, frame: Vec<u8>) -> Result<(), String> {
+        let guard = self.files_dc.lock().await;
+        let dc = guard
+            .as_ref()
+            .ok_or_else(|| "files data channel not open".to_string())?;
+        dc.send(&bytes::Bytes::from(frame))
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 }
 

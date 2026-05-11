@@ -1,6 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+interface FileOfferPayload {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
+interface FileReceivedPayload {
+  path: string;
+}
+
 interface DisplayInfo {
   id: number;
   title: string;
@@ -146,6 +157,39 @@ listen("streaming-stopped", () => {
   streamBtn.disabled = false;
   pauseBannerEl.classList.remove("visible");
   currentIpPrefix = null;
+});
+
+// ── File transfer ────────────────────────────────────────────────────────────
+
+const sendFileBtn = document.getElementById("send-file-btn") as HTMLButtonElement | null;
+
+if (sendFileBtn) {
+  sendFileBtn.addEventListener("click", () => {
+    invoke("pick_and_send_file").catch((err: unknown) => {
+      statusEl.textContent = `Datei-Fehler: ${String(err)}`;
+    });
+  });
+}
+
+listen<FileOfferPayload>("file-offer", (e) => {
+  const { id, name, size } = e.payload;
+  const sizeKb = (size / 1024).toFixed(1);
+  const confirmed = window.confirm(
+    `Helfer möchte „${name}" (${sizeKb} KB) senden — annehmen?`,
+  );
+  if (confirmed) {
+    invoke("accept_file", { id }).catch((err: unknown) => {
+      statusEl.textContent = `Annehmen fehlgeschlagen: ${String(err)}`;
+    });
+  } else {
+    invoke("reject_file", { id }).catch((err: unknown) => {
+      statusEl.textContent = `Ablehnen fehlgeschlagen: ${String(err)}`;
+    });
+  }
+});
+
+listen<FileReceivedPayload>("file-received", (e) => {
+  statusEl.textContent = `Datei empfangen: ${e.payload.path}`;
 });
 
 invoke("start_signaling");
