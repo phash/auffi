@@ -48,7 +48,7 @@ async fn start_signaling(
     }
 
     let url = std::env::var("SCREENIE_BACKEND_WS")
-        .unwrap_or_else(|_| "ws://localhost:8080/signal".to_string());
+        .unwrap_or_else(|_| std::option_env!("SCREENIE_DEFAULT_BACKEND_WS").unwrap_or("wss://screenie.mr-development.de/signal").to_string());
 
     let sig = signaling::run(app, url).await;
     match state.0.lock() {
@@ -143,7 +143,7 @@ async fn start_streaming(
     file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
     let ws_url = std::env::var("SCREENIE_BACKEND_WS")
-        .unwrap_or_else(|_| "ws://localhost:8080/signal".to_string());
+        .unwrap_or_else(|_| std::option_env!("SCREENIE_DEFAULT_BACKEND_WS").unwrap_or("wss://screenie.mr-development.de/signal").to_string());
     let backend_http_url = turn_config::ws_url_to_http(&ws_url);
     let ice_servers = turn_config::fetch_ice_servers(&backend_http_url).await;
 

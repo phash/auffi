@@ -11,7 +11,10 @@ lifetime=600
 no-multicast-peers
 no-tlsv1
 no-tlsv1_1
-cert=/etc/letsencrypt/live/${TURN_REALM}/fullchain.pem
-pkey=/etc/letsencrypt/live/${TURN_REALM}/privkey.pem
+# Cert files staged by entrypoint from the Caddy data volume.
+# If files are missing (cert not yet issued), coturn refuses to start the
+# TLS listener but plain UDP/TCP TURN on 3478 continues to work.
+cert=/var/lib/turn/cert.pem
+pkey=/var/lib/turn/key.pem
 log-file=stdout
 verbose
