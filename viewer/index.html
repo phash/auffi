@@ -19,6 +19,7 @@
         --shadow: 0 2px 8px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
         --radius: 12px;
         --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --topbar-height: 52px;
       }
 
       @media (prefers-color-scheme: dark) {
@@ -32,6 +33,118 @@
         }
       }
 
+      /* ============================================================
+         Top Bar
+         ============================================================ */
+      #top-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--topbar-height);
+        z-index: 500;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 1rem;
+        background: rgba(255,255,255,0.82);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border);
+        gap: 0.75rem;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        #top-bar {
+          background: rgba(13,17,23,0.85);
+        }
+      }
+
+      .topbar-wordmark {
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--accent);
+        white-space: nowrap;
+        flex-shrink: 0;
+        text-decoration: none;
+      }
+
+      .topbar-tagline {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        text-align: center;
+      }
+
+      @media (max-width: 480px) {
+        .topbar-tagline { display: none; }
+      }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-shrink: 0;
+      }
+
+      .topbar-btn {
+        font-family: var(--font);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        padding: 0.375rem 0.75rem;
+        min-height: 32px;
+        border: 1.5px solid var(--border);
+        border-radius: 100px;
+        cursor: pointer;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        text-decoration: none;
+        transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+        background: var(--card-bg);
+        color: var(--text);
+        -webkit-appearance: none;
+        outline: none;
+      }
+
+      .topbar-btn:focus-visible {
+        outline: 3px solid rgba(31,111,235,0.4);
+        outline-offset: 2px;
+      }
+
+      .topbar-btn:hover {
+        background: var(--bg);
+        border-color: var(--text-secondary);
+      }
+
+      .topbar-btn-coffee {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .topbar-btn-coffee:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+        color: #fff;
+      }
+
+      .topbar-btn-label {
+        display: inline;
+      }
+
+      @media (max-width: 380px) {
+        .topbar-btn-label { display: none; }
+        .topbar-btn { padding: 0.375rem 0.5rem; }
+      }
+
+      /* ============================================================ */
+
       body {
         font-family: var(--font);
         background: var(--bg);
@@ -40,7 +153,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 1rem;
+        padding: calc(var(--topbar-height) + 1rem) 1rem 1rem;
         transition: background 200ms ease;
       }
 
@@ -489,6 +602,37 @@
     </style>
   </head>
   <body>
+    <header id="top-bar" role="banner">
+      <span class="topbar-wordmark" aria-label="Screenie">Screenie</span>
+      <span class="topbar-tagline" aria-hidden="true">Screen-Sharing — Open Source</span>
+      <nav class="topbar-actions" aria-label="Links">
+        <a
+          id="topbar-download"
+          href="https://github.com/phash/screenie/releases/latest"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="topbar-btn"
+          aria-label="Sharer herunterladen (öffnet GitHub in neuem Tab)"
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-btn-label">Sharer herunterladen</span>
+        </a>
+        <a
+          id="topbar-coffee"
+          href="https://buymeacoffee.com/phash"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="topbar-btn topbar-btn-coffee"
+          aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)"
+        >
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
     <main id="app">
       <div class="brand">
         <div class="brand-icon" aria-hidden="true">
