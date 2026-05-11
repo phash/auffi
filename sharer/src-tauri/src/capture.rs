@@ -34,9 +34,7 @@ fn list_displays_inner() -> Result<Vec<DisplayInfo>, Box<dyn std::error::Error>>
     let screen = &conn.setup().roots[screen_num];
     let root = screen.root;
 
-    let monitors = conn
-        .randr_get_monitors(root, true)?
-        .reply()?;
+    let monitors = conn.randr_get_monitors(root, true)?.reply()?;
 
     let mut displays = Vec::new();
     for (idx, m) in monitors.monitors.iter().enumerate() {
@@ -69,8 +67,6 @@ fn list_displays_inner() -> Result<Vec<DisplayInfo>, Box<dyn std::error::Error>>
 
 /// A single BGRA video frame captured from the screen.
 pub struct BgraFrame {
-    pub width: i32,
-    pub height: i32,
     /// Raw pixel bytes in BGRA format.
     pub data: Vec<u8>,
     /// Monotonic presentation timestamp in microseconds.
@@ -80,7 +76,8 @@ pub struct BgraFrame {
 /// An active screen capture session, sending frames over a channel.
 pub struct ScreenCapturer {
     rx: mpsc::Receiver<BgraFrame>,
-    stop_tx: mpsc::SyncSender<()>,
+    /// Held so the background capture thread exits when this capturer is dropped.
+    _stop_tx: mpsc::SyncSender<()>,
     frame_width: u32,
     frame_height: u32,
 }
@@ -90,8 +87,7 @@ impl ScreenCapturer {
     ///
     /// Spawns a background thread that polls X11 for frames at ~30 fps.
     pub fn start(display_id: u32) -> Result<Self, String> {
-        let (conn, screen_num) =
-            RustConnection::connect(None).map_err(|e| e.to_string())?;
+        let (conn, screen_num) = RustConnection::connect(None).map_err(|e| e.to_string())?;
 
         let screen = &conn.setup().roots[screen_num];
         let root = screen.root;
@@ -108,7 +104,7 @@ impl ScreenCapturer {
             monitors
                 .monitors
                 .get(display_id as usize)
-                .map(|m| (m.x as i16, m.y as i16, m.width, m.height))
+                .map(|m| (m.x, m.y, m.width, m.height))
                 .unwrap_or((0, 0, root_width, root_height))
         };
 
@@ -148,12 +144,7 @@ impl ScreenCapturer {
                     };
 
                     let bgra = convert_to_bgra(image.data, image.depth);
-                    let frame = BgraFrame {
-                        width: frame_w as i32,
-                        height: frame_h as i32,
-                        data: bgra,
-                        pts_us,
-                    };
+                    let frame = BgraFrame { data: bgra, pts_us };
 
                     if tx.try_send(frame).is_err() {
                         // Receiver is full or dropped; drop this frame.
@@ -166,7 +157,7 @@ impl ScreenCapturer {
 
         Ok(Self {
             rx,
-            stop_tx,
+            _stop_tx: stop_tx,
             frame_width: frame_w as u32,
             frame_height: frame_h as u32,
         })
@@ -175,11 +166,6 @@ impl ScreenCapturer {
     /// Block until the next BGRA video frame is available.
     pub fn next_frame(&mut self) -> Result<BgraFrame, String> {
         self.rx.recv().map_err(|e| e.to_string())
-    }
-
-    /// Stop the capture session.
-    pub fn stop(&mut self) {
-        let _ = self.stop_tx.try_send(());
     }
 
     pub fn width(&self) -> u32 {

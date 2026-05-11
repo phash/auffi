@@ -64,7 +64,8 @@ impl SharerPeer {
 
     /// Set the remote offer SDP and return a local answer SDP string.
     pub async fn set_remote_offer(&self, sdp: String) -> Result<String, Error> {
-        let offer = webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(sdp)?;
+        let offer =
+            webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(sdp)?;
         self.pc.set_remote_description(offer).await?;
         let answer = self.pc.create_answer(None).await?;
         self.pc.set_local_description(answer.clone()).await?;
@@ -103,6 +104,8 @@ mod tests {
     #[tokio::test]
     async fn peer_new_succeeds() {
         let servers = vec!["stun:stun.l.google.com:19302".to_string()];
-        SharerPeer::new(servers).await.expect("SharerPeer::new failed");
+        SharerPeer::new(servers)
+            .await
+            .expect("SharerPeer::new failed");
     }
 }

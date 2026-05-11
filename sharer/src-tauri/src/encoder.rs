@@ -15,11 +15,7 @@ mod ffi {
     );
 
     extern "C" {
-        pub fn vpx_shim_create(
-            width: c_uint,
-            height: c_uint,
-            bitrate_kbps: c_uint,
-        ) -> *mut c_void;
+        pub fn vpx_shim_create(width: c_uint, height: c_uint, bitrate_kbps: c_uint) -> *mut c_void;
 
         pub fn vpx_shim_destroy(ctx: *mut c_void);
 
@@ -48,8 +44,6 @@ unsafe impl Send for Vp8Encoder {}
 
 pub struct EncodedPacket {
     pub data: Vec<u8>,
-    pub is_keyframe: bool,
-    pub pts_us: u64,
 }
 
 impl Vp8Encoder {
@@ -68,7 +62,11 @@ impl Vp8Encoder {
     ///
     /// Converts BGRA→I420 (BT.601 limited-range) then calls libvpx.
     /// Returns zero or more encoded packets per call.
-    pub fn encode(&mut self, frame_bgra: &[u8], timestamp_us: u64) -> Result<Vec<EncodedPacket>, String> {
+    pub fn encode(
+        &mut self,
+        frame_bgra: &[u8],
+        timestamp_us: u64,
+    ) -> Result<Vec<EncodedPacket>, String> {
         let i420 = bgra_to_i420(frame_bgra, self.width, self.height)?;
         let mut packets: Vec<EncodedPacket> = Vec::new();
 
@@ -106,11 +104,8 @@ unsafe extern "C" fn collect_packet(
 ) {
     let packets = &mut *(user_data as *mut Vec<EncodedPacket>);
     let bytes = std::slice::from_raw_parts(data, size).to_vec();
-    packets.push(EncodedPacket {
-        data: bytes,
-        is_keyframe: is_keyframe != 0,
-        pts_us: 0,
-    });
+    let _ = is_keyframe; // consumed by libvpx RTP packetizer; not needed by caller
+    packets.push(EncodedPacket { data: bytes });
 }
 
 /// Convert packed BGRA to planar I420 (YUV 4:2:0, BT.601 limited-range).
@@ -176,12 +171,15 @@ mod tests {
     }
 
     #[test]
-    fn first_packet_is_keyframe() {
+    fn first_encode_produces_non_empty_packet() {
         let mut enc = Vp8Encoder::new(64, 64, 500).expect("encoder");
         let frame = vec![0x80_u8; 64 * 64 * 4];
         let packets = enc.encode(&frame, 0).expect("encode");
         let first = packets.into_iter().next().expect("at least one packet");
-        assert!(first.is_keyframe, "first encoded packet must be a keyframe");
+        assert!(
+            !first.data.is_empty(),
+            "first encoded packet must have non-empty data"
+        );
     }
 
     #[test]

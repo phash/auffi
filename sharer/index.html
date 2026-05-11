@@ -8,6 +8,8 @@
       #code { font-size: 2.5rem; letter-spacing: 0.15em; text-align: center; margin: 2rem 0; user-select: all; }
       #status { padding: 1rem; border-radius: 4px; background: #eef; }
       #confirm { display: none; padding: 1rem; background: #ffe; border: 1px solid #cc9; margin-top: 1rem; }
+      #monitor-select { display: none; padding: 1rem; background: #efe; border: 1px solid #9c9; margin-top: 1rem; }
+      #monitor-list { margin: 0.5rem 0; }
       button { font-size: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
     </style>
   </head>
@@ -20,6 +22,11 @@
       <p id="confirm-text">Verbindungsanfrage</p>
       <button id="accept">Verbinden zulassen</button>
       <button id="decline">Ablehnen</button>
+    </div>
+    <div id="monitor-select">
+      <p>Monitor auswählen:</p>
+      <div id="monitor-list"></div>
+      <button id="stream-btn">Streamen</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
