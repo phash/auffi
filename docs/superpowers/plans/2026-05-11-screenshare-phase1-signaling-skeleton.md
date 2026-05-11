@@ -289,7 +289,7 @@ git commit -m "docs: signaling protocol spec"
 - Create: `backend/vitest.config.ts`
 - Create: `backend/src/index.ts`
 
-- [ ] **Step 1: Init package.json**
+- [x] **Step 1: Init package.json**
 
 ```bash
 cd backend && npm init -y
@@ -311,15 +311,15 @@ Then edit `backend/package.json` to:
     "test:watch": "vitest"
   },
   "dependencies": {
-    "fastify": "4.28.1",
-    "@fastify/websocket": "10.0.1",
-    "@fastify/rate-limit": "9.1.0"
+    "fastify": "5.8.5",
+    "@fastify/websocket": "11.2.0",
+    "@fastify/rate-limit": "10.3.0"
   },
   "devDependencies": {
-    "@types/node": "20.14.10",
-    "tsx": "4.16.2",
-    "typescript": "5.5.3",
-    "vitest": "2.0.3"
+    "@types/node": "22.19.18",
+    "tsx": "4.21.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5"
   }
 }
 ```
@@ -330,7 +330,7 @@ Then run:
 cd backend && npm install
 ```
 
-- [ ] **Step 2: Create tsconfig.json**
+- [x] **Step 2: Create tsconfig.json**
 
 ```json
 {
@@ -339,6 +339,7 @@ cd backend && npm install
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022"],
+    "types": ["node"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -351,7 +352,7 @@ cd backend && npm install
 }
 ```
 
-- [ ] **Step 3: Create vitest.config.ts**
+- [x] **Step 3: Create vitest.config.ts**
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -364,7 +365,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Stub entrypoint**
+- [x] **Step 4: Stub entrypoint**
 
 `backend/src/index.ts`:
 
@@ -372,7 +373,7 @@ export default defineConfig({
 console.log("Screenshare backend (Phase 1) — not implemented yet");
 ```
 
-- [ ] **Step 5: Verify build works**
+- [x] **Step 5: Verify build works**
 
 ```bash
 cd backend && npm run build && node dist/index.js
@@ -380,7 +381,7 @@ cd backend && npm run build && node dist/index.js
 
 Expected output: `Screenshare backend (Phase 1) — not implemented yet`
 
-- [ ] **Step 6: Create Dockerfile (multi-stage)**
+- [x] **Step 6: Create Dockerfile (multi-stage)**
 
 `backend/Dockerfile`:
 
@@ -411,7 +412,7 @@ HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
 CMD ["node", "dist/index.js"]
 ```
 
-- [ ] **Step 7: Add .dockerignore**
+- [x] **Step 7: Add .dockerignore**
 
 `backend/.dockerignore`:
 
@@ -427,7 +428,7 @@ tests
 .git
 ```
 
-- [ ] **Step 8: Verify docker compose build works**
+- [x] **Step 8: Verify docker compose build works**
 
 ```bash
 docker compose build backend
@@ -439,7 +440,7 @@ docker compose down
 
 > **Note**: this step will fail until Task 7 (Fastify server) wires `/healthz`. Re-run after Task 7 — for now just verify `docker compose build backend` completes without error.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add backend/package.json backend/package-lock.json backend/tsconfig.json backend/vitest.config.ts backend/src/index.ts backend/Dockerfile backend/.dockerignore
