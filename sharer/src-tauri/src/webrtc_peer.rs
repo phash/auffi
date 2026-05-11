@@ -7,18 +7,75 @@ use webrtc::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine, APIBuilder,
     },
     data_channel::RTCDataChannel,
+    ice::candidate::CandidateType,
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
+        ice_connection_state::RTCIceConnectionState,
         ice_server::RTCIceServer,
     },
     peer_connection::{configuration::RTCConfiguration, RTCPeerConnection},
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
+    stats::StatsReportType,
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
     Error,
 };
 
 use crate::files::FileMessage;
 use crate::input::InputEvent;
+
+/// Whether the active ICE path uses a TURN relay or a direct route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionType {
+    P2p,
+    Relay,
+}
+
+/// Inspect a stats report and return the connection type for the nominated,
+/// succeeded candidate pair. Returns `None` when no such pair exists yet.
+///
+/// Extracted as a pure function so it can be unit-tested without a real
+/// `RTCPeerConnection`.
+pub fn resolve_connection_type(
+    reports: &std::collections::HashMap<String, StatsReportType>,
+) -> Option<ConnectionType> {
+    let active_pair = reports.values().find_map(|r| {
+        if let StatsReportType::CandidatePair(pair) = r {
+            use webrtc::ice::candidate::CandidatePairState;
+            if pair.state == CandidatePairState::Succeeded && pair.nominated {
+                return Some(pair);
+            }
+        }
+        None
+    })?;
+
+    let local_relay = reports
+        .get(&active_pair.local_candidate_id)
+        .and_then(|r| {
+            if let StatsReportType::LocalCandidate(c) = r {
+                Some(c.candidate_type == CandidateType::Relay)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(false);
+
+    let remote_relay = reports
+        .get(&active_pair.remote_candidate_id)
+        .and_then(|r| {
+            if let StatsReportType::RemoteCandidate(c) = r {
+                Some(c.candidate_type == CandidateType::Relay)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(false);
+
+    if local_relay || remote_relay {
+        Some(ConnectionType::Relay)
+    } else {
+        Some(ConnectionType::P2p)
+    }
+}
 
 /// A WebRTC peer connection for the sharer side.
 ///
@@ -104,6 +161,42 @@ impl SharerPeer {
                 }
             })
         }));
+    }
+
+    /// Register a callback that fires once when the ICE connection reaches
+    /// `Connected` or `Completed` and emits whether the path uses a TURN relay
+    /// or a direct route.  The handler is called at most once per flip between
+    /// `P2p` and `Relay`.
+    pub fn on_connection_type<F>(&self, handler: F)
+    where
+        F: Fn(ConnectionType) + Send + Sync + 'static,
+    {
+        let pc_for_closure = Arc::clone(&self.pc);
+        let handler = Arc::new(handler);
+        let last: Arc<tokio::sync::Mutex<Option<ConnectionType>>> =
+            Arc::new(tokio::sync::Mutex::new(None));
+
+        self.pc
+            .on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
+                let pc = Arc::clone(&pc_for_closure);
+                let handler = Arc::clone(&handler);
+                let last = Arc::clone(&last);
+                Box::pin(async move {
+                    if state != RTCIceConnectionState::Connected
+                        && state != RTCIceConnectionState::Completed
+                    {
+                        return;
+                    }
+                    let report = pc.get_stats().await;
+                    let conn_type = resolve_connection_type(&report.reports);
+                    let Some(conn_type) = conn_type else { return };
+                    let mut guard = last.lock().await;
+                    if *guard != Some(conn_type) {
+                        *guard = Some(conn_type);
+                        handler(conn_type);
+                    }
+                })
+            }));
     }
 
     /// Register senders for both the `"input"` and `"files"` DataChannels in a
@@ -214,8 +307,137 @@ impl SharerPeer {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use tokio::time::Instant;
+    use webrtc::ice::candidate::{CandidatePairState, CandidateType};
+    use webrtc::ice::network_type::NetworkType;
+    use webrtc::stats::{ICECandidatePairStats, ICECandidateStats, RTCStatsType, StatsReportType};
+
     use super::*;
     use crate::input::InputEvent;
+
+    fn make_pair(
+        local_id: &str,
+        remote_id: &str,
+        state: CandidatePairState,
+        nominated: bool,
+    ) -> ICECandidatePairStats {
+        let now = Instant::now();
+        ICECandidatePairStats {
+            timestamp: now,
+            stats_type: RTCStatsType::CandidatePair,
+            id: "pair1".to_string(),
+            local_candidate_id: local_id.to_string(),
+            remote_candidate_id: remote_id.to_string(),
+            state,
+            nominated,
+            packets_sent: 0,
+            packets_received: 0,
+            bytes_sent: 0,
+            bytes_received: 0,
+            last_packet_sent_timestamp: now,
+            last_packet_received_timestamp: now,
+            total_round_trip_time: 0.0,
+            current_round_trip_time: 0.0,
+            available_outgoing_bitrate: 0.0,
+            available_incoming_bitrate: 0.0,
+            requests_received: 0,
+            requests_sent: 0,
+            responses_received: 0,
+            responses_sent: 0,
+            consent_requests_sent: 0,
+            circuit_breaker_trigger_count: 0,
+            consent_expired_timestamp: now,
+            first_request_timestamp: now,
+            last_request_timestamp: now,
+            retransmissions_sent: 0,
+        }
+    }
+
+    fn make_candidate(
+        id: &str,
+        candidate_type: CandidateType,
+        is_local: bool,
+    ) -> ICECandidateStats {
+        ICECandidateStats {
+            timestamp: Instant::now(),
+            stats_type: if is_local {
+                RTCStatsType::LocalCandidate
+            } else {
+                RTCStatsType::RemoteCandidate
+            },
+            id: id.to_string(),
+            candidate_type,
+            deleted: false,
+            ip: "127.0.0.1".to_string(),
+            network_type: NetworkType::Udp4,
+            port: 12345,
+            priority: 100,
+            relay_protocol: String::new(),
+            url: String::new(),
+        }
+    }
+
+    fn build_reports(
+        pair: ICECandidatePairStats,
+        local: ICECandidateStats,
+        remote: ICECandidateStats,
+    ) -> HashMap<String, StatsReportType> {
+        let mut map = HashMap::new();
+        map.insert(pair.id.clone(), StatsReportType::CandidatePair(pair));
+        map.insert(local.id.clone(), StatsReportType::LocalCandidate(local));
+        map.insert(remote.id.clone(), StatsReportType::RemoteCandidate(remote));
+        map
+    }
+
+    #[test]
+    fn resolve_connection_type_p2p_for_host_candidates() {
+        let pair = make_pair("local1", "remote1", CandidatePairState::Succeeded, true);
+        let local = make_candidate("local1", CandidateType::Host, true);
+        let remote = make_candidate("remote1", CandidateType::Host, false);
+        let reports = build_reports(pair, local, remote);
+        assert_eq!(resolve_connection_type(&reports), Some(ConnectionType::P2p));
+    }
+
+    #[test]
+    fn resolve_connection_type_relay_when_local_is_relay() {
+        let pair = make_pair("local1", "remote1", CandidatePairState::Succeeded, true);
+        let local = make_candidate("local1", CandidateType::Relay, true);
+        let remote = make_candidate("remote1", CandidateType::Host, false);
+        let reports = build_reports(pair, local, remote);
+        assert_eq!(
+            resolve_connection_type(&reports),
+            Some(ConnectionType::Relay)
+        );
+    }
+
+    #[test]
+    fn resolve_connection_type_relay_when_remote_is_relay() {
+        let pair = make_pair("local1", "remote1", CandidatePairState::Succeeded, true);
+        let local = make_candidate("local1", CandidateType::ServerReflexive, true);
+        let remote = make_candidate("remote1", CandidateType::Relay, false);
+        let reports = build_reports(pair, local, remote);
+        assert_eq!(
+            resolve_connection_type(&reports),
+            Some(ConnectionType::Relay)
+        );
+    }
+
+    #[test]
+    fn resolve_connection_type_none_when_no_succeeded_nominated_pair() {
+        let pair = make_pair("local1", "remote1", CandidatePairState::InProgress, false);
+        let local = make_candidate("local1", CandidateType::Host, true);
+        let remote = make_candidate("remote1", CandidateType::Host, false);
+        let reports = build_reports(pair, local, remote);
+        assert_eq!(resolve_connection_type(&reports), None);
+    }
+
+    #[test]
+    fn resolve_connection_type_none_for_empty_reports() {
+        let reports = HashMap::new();
+        assert_eq!(resolve_connection_type(&reports), None);
+    }
 
     #[tokio::test]
     async fn peer_new_succeeds() {

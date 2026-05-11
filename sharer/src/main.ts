@@ -157,6 +157,26 @@ listen("streaming-stopped", () => {
   streamBtn.disabled = false;
   pauseBannerEl.classList.remove("visible");
   currentIpPrefix = null;
+  const connTypeEl = document.getElementById("connection-type-info");
+  if (connTypeEl) {
+    connTypeEl.textContent = "";
+    connTypeEl.className = "";
+  }
+});
+
+listen<string>("connection-type", (e) => {
+  const connTypeEl = document.getElementById("connection-type-info");
+  if (!connTypeEl) return;
+  connTypeEl.classList.add("visible");
+  if (e.payload === "relay") {
+    connTypeEl.textContent = "Verbindung: über Relay";
+    connTypeEl.classList.add("relay");
+    connTypeEl.classList.remove("direct");
+  } else {
+    connTypeEl.textContent = "Verbindung: direkt";
+    connTypeEl.classList.remove("relay");
+    connTypeEl.classList.add("direct");
+  }
 });
 
 // ── File transfer ────────────────────────────────────────────────────────────

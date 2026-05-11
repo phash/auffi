@@ -1,5 +1,6 @@
 import { SignalingClient } from "./signaling-client.js";
 import { ViewerPeer } from "./webrtc-client.js";
+import type { ConnectionType } from "./webrtc-client.js";
 import { fetchIceServers } from "./turn-config.js";
 import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
@@ -9,6 +10,25 @@ function setStatus(text: string, kind: "ok" | "err" | "info"): void {
   const el = document.getElementById("status")!;
   el.textContent = text;
   el.className = kind;
+}
+
+function setConnectionType(type: ConnectionType | null): void {
+  const el = document.getElementById("connection-type")!;
+  if (type === null) {
+    el.textContent = "";
+    el.className = "";
+    return;
+  }
+  el.classList.add("active");
+  if (type === "relay") {
+    el.textContent = "Über Relay";
+    el.classList.add("relay");
+    el.classList.remove("p2p");
+  } else {
+    el.textContent = "Direkt";
+    el.classList.remove("relay");
+    el.classList.add("p2p");
+  }
 }
 
 function setVideoStream(stream: MediaStream | null): void {
@@ -103,6 +123,7 @@ export function bindUI(backendWsUrl: string): void {
     peer = null;
     signaling = null;
     setVideoStream(null);
+    setConnectionType(null);
     setStatus(reason, kind);
     connectBtn.disabled = false;
   }
@@ -235,6 +256,9 @@ export function bindUI(backendWsUrl: string): void {
         if (state === "failed" || state === "disconnected") {
           teardown("Verbindung verloren.", "err");
         }
+      });
+      peer.onConnectionType((type) => {
+        setConnectionType(type);
       });
 
       signaling.onRelay((payload) => {

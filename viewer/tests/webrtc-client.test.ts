@@ -1,6 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { ViewerPeer } from "../src/webrtc-client.js";
 
+type StatsEntry = {
+  type: string;
+  id: string;
+  state?: string;
+  nominated?: boolean;
+  localCandidateId?: string;
+  remoteCandidateId?: string;
+  candidateType?: string;
+};
+
 class MockRTCPeerConnection {
   static instances: MockRTCPeerConnection[] = [];
   localDescription: RTCSessionDescription | null = null;
@@ -8,6 +18,7 @@ class MockRTCPeerConnection {
   onicecandidate: ((e: { candidate: RTCIceCandidate | null }) => void) | null = null;
   oniceconnectionstatechange: (() => void) | null = null;
   iceConnectionState: RTCIceConnectionState = "new";
+  statsEntries: StatsEntry[] = [];
   constructor(_config?: RTCConfiguration) {
     MockRTCPeerConnection.instances.push(this);
   }
@@ -24,6 +35,13 @@ class MockRTCPeerConnection {
     return { onopen: null, onmessage: null, send: () => {}, close: () => {} } as unknown as RTCDataChannel;
   }
   close(): void { this.iceConnectionState = "closed"; }
+  async getStats(): Promise<RTCStatsReport> {
+    const map = new Map<string, StatsEntry>();
+    for (const entry of this.statsEntries) {
+      map.set(entry.id, entry);
+    }
+    return map as unknown as RTCStatsReport;
+  }
 }
 
 describe("ViewerPeer", () => {
@@ -154,5 +172,97 @@ describe("ViewerPeer", () => {
     expect(capturedArgs).toEqual([[track]]);
 
     vi.unstubAllGlobals();
+  });
+
+  it("onConnectionType fires 'p2p' when both candidates are host type", async () => {
+    const peer = new ViewerPeer({
+      pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
+    });
+    const handler = vi.fn();
+    peer.onConnectionType(handler);
+    await peer.start();
+    const pc = MockRTCPeerConnection.instances.at(-1)!;
+    pc.statsEntries = [
+      { type: "candidate-pair", id: "pair1", state: "succeeded", nominated: true, localCandidateId: "local1", remoteCandidateId: "remote1" },
+      { type: "local-candidate", id: "local1", candidateType: "host" },
+      { type: "remote-candidate", id: "remote1", candidateType: "host" },
+    ];
+    pc.iceConnectionState = "connected";
+    pc.oniceconnectionstatechange?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(handler).toHaveBeenCalledWith("p2p");
+  });
+
+  it("onConnectionType fires 'relay' when local candidate is relay type", async () => {
+    const peer = new ViewerPeer({
+      pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
+    });
+    const handler = vi.fn();
+    peer.onConnectionType(handler);
+    await peer.start();
+    const pc = MockRTCPeerConnection.instances.at(-1)!;
+    pc.statsEntries = [
+      { type: "candidate-pair", id: "pair1", state: "succeeded", nominated: true, localCandidateId: "local1", remoteCandidateId: "remote1" },
+      { type: "local-candidate", id: "local1", candidateType: "relay" },
+      { type: "remote-candidate", id: "remote1", candidateType: "host" },
+    ];
+    pc.iceConnectionState = "connected";
+    pc.oniceconnectionstatechange?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(handler).toHaveBeenCalledWith("relay");
+  });
+
+  it("onConnectionType fires 'relay' when remote candidate is relay type", async () => {
+    const peer = new ViewerPeer({
+      pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
+    });
+    const handler = vi.fn();
+    peer.onConnectionType(handler);
+    await peer.start();
+    const pc = MockRTCPeerConnection.instances.at(-1)!;
+    pc.statsEntries = [
+      { type: "candidate-pair", id: "pair1", state: "succeeded", nominated: true, localCandidateId: "local1", remoteCandidateId: "remote1" },
+      { type: "local-candidate", id: "local1", candidateType: "srflx" },
+      { type: "remote-candidate", id: "remote1", candidateType: "relay" },
+    ];
+    pc.iceConnectionState = "connected";
+    pc.oniceconnectionstatechange?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(handler).toHaveBeenCalledWith("relay");
+  });
+
+  it("onConnectionType fires once when state changes multiple times with same type", async () => {
+    const peer = new ViewerPeer({
+      pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
+    });
+    const handler = vi.fn();
+    peer.onConnectionType(handler);
+    await peer.start();
+    const pc = MockRTCPeerConnection.instances.at(-1)!;
+    pc.statsEntries = [
+      { type: "candidate-pair", id: "pair1", state: "succeeded", nominated: true, localCandidateId: "local1", remoteCandidateId: "remote1" },
+      { type: "local-candidate", id: "local1", candidateType: "host" },
+      { type: "remote-candidate", id: "remote1", candidateType: "host" },
+    ];
+    pc.iceConnectionState = "connected";
+    pc.oniceconnectionstatechange?.();
+    await new Promise((r) => setTimeout(r, 0));
+    pc.oniceconnectionstatechange?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("onConnectionType does not fire when state is not connected or completed", async () => {
+    const peer = new ViewerPeer({
+      pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
+    });
+    const handler = vi.fn();
+    peer.onConnectionType(handler);
+    await peer.start();
+    const pc = MockRTCPeerConnection.instances.at(-1)!;
+    pc.iceConnectionState = "checking";
+    pc.oniceconnectionstatechange?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(handler).not.toHaveBeenCalled();
   });
 });

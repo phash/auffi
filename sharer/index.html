@@ -154,6 +154,24 @@
         transition: background 200ms ease;
       }
 
+      /* Connection-type indicator */
+      #connection-type-info {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        display: none;
+        align-items: center;
+        gap: 0.375rem;
+        margin-top: 0.25rem;
+      }
+
+      #connection-type-info.visible {
+        display: flex;
+      }
+
+      #connection-type-info.relay {
+        color: #f0a500;
+      }
+
       /* Confirm dialog */
       #confirm {
         display: none;
@@ -377,6 +395,7 @@
       <div class="divider" style="margin-top: 1.25rem; margin-bottom: 1.25rem;"></div>
 
       <div id="status" role="status" aria-live="polite">Verbinde mit Backend…</div>
+      <div id="connection-type-info" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
 
       <div id="confirm">
         <div class="divider" style="margin: 0 -1.5rem;"></div>

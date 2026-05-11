@@ -254,6 +254,34 @@
         outline-offset: 2px;
       }
 
+      /* Connection-type badge */
+      #connection-type {
+        position: absolute;
+        top: 0.625rem;
+        left: 0.625rem;
+        font-family: var(--font);
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.25rem 0.5rem;
+        background: rgba(0,0,0,0.55);
+        color: rgba(255,255,255,0.85);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 5px;
+        backdrop-filter: blur(4px);
+        display: none;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      #connection-type.active {
+        display: inline-block;
+      }
+
+      #connection-type.relay {
+        color: #f0a500;
+        border-color: rgba(240,165,0,0.4);
+      }
+
       /* Input control toolbar */
       #video-toolbar {
         position: absolute;
@@ -474,6 +502,7 @@
           <input type="file" id="file-input" hidden />
         </div>
         <button id="disconnect">Trennen</button>
+        <div id="connection-type" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
       </div>
     </main>
 

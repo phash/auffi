@@ -182,6 +182,18 @@ async fn start_streaming(
         }
     });
 
+    let app_for_conn_type = app.clone();
+    peer.on_connection_type(move |conn_type| {
+        use webrtc_peer::ConnectionType;
+        let value = match conn_type {
+            ConnectionType::P2p => "p2p",
+            ConnectionType::Relay => "relay",
+        };
+        if let Err(e) = app_for_conn_type.emit("connection-type", value) {
+            log::warn!("connection-type emit failed: {e}");
+        }
+    });
+
     let mut capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| e.to_string())?;
     let width = capturer.width();
     let height = capturer.height();
