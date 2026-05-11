@@ -1372,21 +1372,22 @@ afterAll(async () => {
   await app.close();
 });
 
-it("rate-limits more than 5 invalid joins per minute from same IP", async () => {
-  const attempts = [];
-  for (let i = 0; i < 7; i++) {
-    const ws = new WebSocket(url);
-    await new Promise((r) => ws.once("open", r));
-    ws.send(JSON.stringify({ type: "join", role: "viewer", code: "000-000-000" }));
-    const msg = await new Promise<any>((r) =>
-      ws.once("message", (d) => r(JSON.parse(d.toString())))
-    );
-    attempts.push(msg);
-    ws.close();
-  }
-  // First 5 should be "invalid-code", 6th+ should be "rate-limit"
-  expect(attempts.slice(0, 5).every((m) => m.code === "invalid-code")).toBe(true);
-  expect(attempts.slice(5).every((m) => m.code === "rate-limit")).toBe(true);
+describe("rate limiting", () => {
+  it("rate-limits more than 5 invalid joins per minute from same IP", async () => {
+    const attempts: Array<{ type: string; code: string }> = [];
+    for (let i = 0; i < 7; i++) {
+      const ws = new WebSocket(url);
+      await new Promise((r) => ws.once("open", r));
+      ws.send(JSON.stringify({ type: "join", role: "viewer", code: "000-000-000" }));
+      const msg = await new Promise<{ type: string; code: string }>((r) =>
+        ws.once("message", (d) => r(JSON.parse(d.toString())))
+      );
+      attempts.push(msg);
+      ws.close();
+    }
+    expect(attempts.slice(0, 5).every((m) => m.code === "invalid-code")).toBe(true);
+    expect(attempts.slice(5).every((m) => m.code === "rate-limit")).toBe(true);
+  });
 });
 ```
 
@@ -1400,16 +1401,19 @@ Expected: 6th attempt still returns "invalid-code", not "rate-limit".
 
 - [x] **Step 3: Add per-IP rate-limit in signaling.ts**
 
-In `backend/src/signaling.ts`, add at the top:
+In `backend/src/signaling.ts`, add a rate-limit type and inject the counter map into `registerSignaling` (so tests can isolate state):
 
 ```ts
-const attemptCounts = new Map<string, { count: number; resetAt: number }>();
+type RateLimitEntry = { count: number; resetAt: number };
 
-function checkRateLimit(ip: string): boolean {
+function checkRateLimit(
+  ip: string,
+  counts: Map<string, RateLimitEntry>,
+): boolean {
   const now = Date.now();
-  const entry = attemptCounts.get(ip);
+  const entry = counts.get(ip);
   if (!entry || now > entry.resetAt) {
-    attemptCounts.set(ip, { count: 1, resetAt: now + 60_000 });
+    counts.set(ip, { count: 1, resetAt: now + 60_000 });
     return true;
   }
   entry.count += 1;
@@ -1417,16 +1421,19 @@ function checkRateLimit(ip: string): boolean {
 }
 ```
 
-Then in the `join` handler, before checking the session:
+Update `registerSignaling(app, store, attemptCounts = new Map<string, RateLimitEntry>())`. The `attemptCounts` parameter is optional; production wires the default empty map, tests can inject a fresh map per run.
+
+Place the rate-limit gate **inside the `!session` branch** of the `join` handler — only invalid-code attempts count toward the limit. Legitimate viewers joining valid sessions are never throttled. (The plan originally placed this before the session lookup, but that would lock out legitimate viewers from the same IP and break the integration tests.)
 
 ```ts
-if (msg.type === "join" && msg.role === "viewer" && role === null) {
-  if (!checkRateLimit(req.ip ?? "unknown")) {
+if (!session) {
+  if (!checkRateLimit(req.ip ?? "unknown", attemptCounts)) {
     send(peer, { type: "error", code: "rate-limit", message: "too many attempts" });
     peer.close();
     return;
   }
-  // ... existing logic
+  const burned = store.recordFailedAttempt(msg.code);
+  // ... existing invalid-code/code-expired response logic
 }
 ```
 
