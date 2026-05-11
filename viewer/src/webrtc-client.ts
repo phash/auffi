@@ -1,3 +1,7 @@
+import { DataChannelHub } from "./data-channels.js";
+
+export type { DataChannelHub };
+
 export type IceServers = { urls: string | string[]; username?: string; credential?: string }[];
 
 export type ViewerPeerOpts = {
@@ -9,6 +13,7 @@ const DEFAULT_ICE: IceServers = [{ urls: "stun:stun.l.google.com:19302" }];
 
 export class ViewerPeer {
   private pc: RTCPeerConnection | null = null;
+  private dataHub: DataChannelHub | null = null;
   private trackHandlers: Array<(stream: MediaStream) => void> = [];
   private iceHandlers: Array<(candidate: RTCIceCandidateInit | null) => void> = [];
   private stateHandlers: Array<(state: RTCIceConnectionState) => void> = [];
@@ -39,6 +44,8 @@ export class ViewerPeer {
       for (const h of this.stateHandlers) h(pc.iceConnectionState);
     };
 
+    this.dataHub = new DataChannelHub(pc, "caller");
+
     pc.addTransceiver("video", { direction: "recvonly" });
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -67,7 +74,14 @@ export class ViewerPeer {
     this.stateHandlers.push(fn);
   }
 
+  getDataHub(): DataChannelHub {
+    if (!this.dataHub) throw new Error("peer not started");
+    return this.dataHub;
+  }
+
   close(): void {
+    this.dataHub?.close();
+    this.dataHub = null;
     this.pc?.close();
     this.pc = null;
   }

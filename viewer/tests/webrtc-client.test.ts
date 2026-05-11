@@ -20,6 +20,9 @@ class MockRTCPeerConnection {
   async setRemoteDescription(_d: RTCSessionDescriptionInit): Promise<void> {}
   async addIceCandidate(_c: RTCIceCandidateInit): Promise<void> {}
   addTransceiver(_kind: string, _init: { direction: RTCRtpTransceiverDirection }): void {}
+  createDataChannel(_label: string, _init?: RTCDataChannelInit): RTCDataChannel {
+    return { onopen: null, onmessage: null, send: () => {}, close: () => {} } as unknown as RTCDataChannel;
+  }
   close(): void { this.iceConnectionState = "closed"; }
 }
 
