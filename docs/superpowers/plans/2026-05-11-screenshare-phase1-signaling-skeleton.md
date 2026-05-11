@@ -454,7 +454,7 @@ git commit -m "feat(backend): project scaffolding with docker build"
 **Files:**
 - Create: `backend/src/protocol.ts`
 
-- [ ] **Step 1: Define TypeScript types matching docs/protocol.md**
+- [x] **Step 1: Define TypeScript types matching docs/protocol.md**
 
 ```ts
 export type SharerRegister = { type: "register"; role: "sharer" };
@@ -497,7 +497,7 @@ export type OutgoingMessage =
   | ErrorMessage;
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add backend/src/protocol.ts
@@ -512,7 +512,7 @@ git commit -m "feat(backend): protocol types"
 - Create: `backend/src/codes.ts`
 - Create: `backend/tests/codes.test.ts`
 
-- [ ] **Step 1: Write failing tests for code generator**
+- [x] **Step 1: Write failing tests for code generator**
 
 `backend/tests/codes.test.ts`:
 
@@ -547,7 +547,7 @@ describe("normalizeCode", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests — verify they fail**
+- [x] **Step 2: Run tests — verify they fail**
 
 ```bash
 cd backend && npm test
@@ -555,7 +555,7 @@ cd backend && npm test
 
 Expected: tests fail with "Cannot find module '../src/codes.js'".
 
-- [ ] **Step 3: Implement codes.ts (minimal — just generateCode + normalizeCode)**
+- [x] **Step 3: Implement codes.ts (minimal — just generateCode + normalizeCode)**
 
 ```ts
 import { randomInt } from "node:crypto";
@@ -574,7 +574,7 @@ export function normalizeCode(input: string): string | null {
 }
 ```
 
-- [ ] **Step 4: Run tests — verify they pass**
+- [x] **Step 4: Run tests — verify they pass**
 
 ```bash
 cd backend && npm test
@@ -582,7 +582,7 @@ cd backend && npm test
 
 Expected: all tests in `codes.test.ts` pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/codes.ts backend/tests/codes.test.ts
