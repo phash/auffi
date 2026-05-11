@@ -8,7 +8,7 @@ mod webrtc_peer;
 
 use std::{sync::Arc, sync::Mutex, time::Duration};
 
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use tokio::sync::mpsc;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
@@ -25,13 +25,24 @@ struct WebRtcState(tokio::sync::Mutex<Option<webrtc_peer::SharerPeer>>);
 /// both hold a reference without borrowing Tauri state across await points.
 struct InputControllerState(Arc<tokio::sync::Mutex<Option<InputController>>>);
 
+/// IP prefix of the currently connected viewer, set when a peer-joined event
+/// arrives so it can be forwarded to the border overlay window.
+struct PeerIpState(Mutex<Option<String>>);
+
 #[tauri::command]
 async fn start_signaling(
     app: tauri::AppHandle,
     state: State<'_, SignalingState>,
+    ip_state: State<'_, PeerIpState>,
 ) -> Result<(), String> {
+    // Clear any stale peer IP from a previous session.
+    if let Ok(mut guard) = ip_state.0.lock() {
+        *guard = None;
+    }
+
     let url = std::env::var("SCREENSHARE_BACKEND_WS")
         .unwrap_or_else(|_| "ws://localhost:8080/signal".to_string());
+
     let sig = signaling::run(app, url).await;
     match state.0.lock() {
         Ok(mut guard) => {
@@ -43,7 +54,18 @@ async fn start_signaling(
 }
 
 #[tauri::command]
-async fn confirm_peer(accepted: bool, state: State<'_, SignalingState>) -> Result<(), String> {
+async fn confirm_peer(
+    accepted: bool,
+    ip_prefix: Option<String>,
+    state: State<'_, SignalingState>,
+    ip_state: State<'_, PeerIpState>,
+) -> Result<(), String> {
+    if let Some(ip) = ip_prefix {
+        if let Ok(mut guard) = ip_state.0.lock() {
+            *guard = Some(ip);
+        }
+    }
+
     let tx = {
         let guard = state
             .0
@@ -65,6 +87,43 @@ fn list_monitors() -> Result<Vec<DisplayInfo>, String> {
     Ok(capture::list_displays())
 }
 
+/// Show the border overlay window on the monitor being streamed, emit
+/// `border-info` with the connected peer's IP prefix.
+fn show_border_window(app: &tauri::AppHandle, monitor: &DisplayInfo, ip_prefix: &str) {
+    let Some(border) = app.get_webview_window("border") else {
+        log::warn!("border window not found");
+        return;
+    };
+
+    let pos = tauri::PhysicalPosition::new(monitor.x, monitor.y);
+    let size = tauri::PhysicalSize::new(monitor.width, monitor.height);
+
+    if let Err(e) = border.set_position(pos) {
+        log::warn!("border window set_position failed: {e}");
+    }
+    if let Err(e) = border.set_size(size) {
+        log::warn!("border window set_size failed: {e}");
+    }
+
+    let payload = serde_json::json!({ "ipPrefix": ip_prefix });
+    if let Err(e) = app.emit_to("border", "border-info", payload) {
+        log::warn!("border-info emit failed: {e}");
+    }
+
+    if let Err(e) = border.show() {
+        log::warn!("border window show failed: {e}");
+    }
+}
+
+/// Hide the border overlay window, ignoring errors (window may already be hidden).
+fn hide_border_window(app: &tauri::AppHandle) {
+    if let Some(border) = app.get_webview_window("border") {
+        if let Err(e) = border.hide() {
+            log::warn!("border window hide failed: {e}");
+        }
+    }
+}
+
 #[tauri::command]
 async fn start_streaming(
     app: tauri::AppHandle,
@@ -72,6 +131,7 @@ async fn start_streaming(
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
+    ip_state: State<'_, PeerIpState>,
 ) -> Result<(), String> {
     let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
 
@@ -144,11 +204,63 @@ async fn start_streaming(
         *guard = Some(peer);
     }
 
+    // Position and show the border overlay on the chosen monitor.
+    let monitors = capture::list_displays();
+    let monitor = monitors
+        .iter()
+        .find(|m| m.id == monitor_id)
+        .cloned()
+        .unwrap_or(DisplayInfo {
+            id: monitor_id,
+            title: String::new(),
+            x: 0,
+            y: 0,
+            width,
+            height,
+        });
+    let ip_prefix = ip_state
+        .0
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+        .unwrap_or_default();
+    show_border_window(&app, &monitor, &ip_prefix);
+
     let mut enc = encoder::Vp8Encoder::new(width, height, 2000)?;
 
     tauri::async_runtime::spawn(async move {
         streaming_loop(&mut capturer, &mut enc, track).await;
     });
+
+    Ok(())
+}
+
+/// Tear down the active WebRTC session and hide the border overlay.
+///
+/// Invocable both from the main window (future use) and from the border
+/// overlay's "Trennen" button.
+#[tauri::command]
+async fn disconnect_streaming(
+    app: tauri::AppHandle,
+    rtc_state: State<'_, WebRtcState>,
+    input_state: State<'_, InputControllerState>,
+) -> Result<(), String> {
+    // Drop the peer — this closes all ICE/DTLS transports.
+    {
+        let mut guard = rtc_state.0.lock().await;
+        *guard = None;
+    }
+
+    // Drop the input controller.
+    {
+        let mut guard = input_state.0.lock().await;
+        *guard = None;
+    }
+
+    hide_border_window(&app);
+
+    // Notify the main window so it can reset its UI state.
+    let _ = app.emit("streaming-stopped", serde_json::json!({}));
 
     Ok(())
 }
@@ -250,6 +362,7 @@ pub fn run() {
         .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
             None,
         ))))
+        .manage(PeerIpState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             start_signaling,
             confirm_peer,
@@ -257,6 +370,7 @@ pub fn run() {
             start_streaming,
             receive_offer,
             receive_ice_candidate,
+            disconnect_streaming,
         ])
         .run(tauri::generate_context!())
         .expect("error running tauri");

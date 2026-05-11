@@ -29,6 +29,8 @@ const streamBtn = document.getElementById("stream-btn")! as HTMLButtonElement;
 const copyBtn = document.getElementById("copy-btn")! as HTMLButtonElement;
 const pauseBannerEl = document.getElementById("pause-banner")!;
 
+let currentIpPrefix: string | null = null;
+
 copyBtn.addEventListener("click", () => {
   const code = codeEl.textContent?.trim() ?? "";
   if (!code || code === "…") return;
@@ -46,6 +48,7 @@ listen<{ code: string }>("code-assigned", (e) => {
 });
 
 listen<{ ipPrefix: string }>("peer-joined", (e) => {
+  currentIpPrefix = e.payload.ipPrefix;
   confirmTextEl.textContent = `Verbindungsanfrage von ${e.payload.ipPrefix}`;
   confirmEl.classList.add("visible");
 });
@@ -75,7 +78,7 @@ listen<{ reason: string }>("disconnected", (e) => {
 });
 
 document.getElementById("accept")!.addEventListener("click", () => {
-  invoke("confirm_peer", { accepted: true });
+  invoke("confirm_peer", { accepted: true, ipPrefix: currentIpPrefix });
   confirmEl.classList.remove("visible");
   statusEl.textContent = "Verbindung akzeptiert — Monitor auswählen…";
 
@@ -136,6 +139,13 @@ listen<{ paused: boolean }>("input-paused-changed", (e) => {
   } else {
     pauseBannerEl.classList.remove("visible");
   }
+});
+
+listen("streaming-stopped", () => {
+  statusEl.textContent = "Stream beendet.";
+  streamBtn.disabled = false;
+  pauseBannerEl.classList.remove("visible");
+  currentIpPrefix = null;
 });
 
 invoke("start_signaling");

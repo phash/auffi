@@ -13,6 +13,8 @@ use x11rb::{
 pub struct DisplayInfo {
     pub id: u32,
     pub title: String,
+    pub x: i32,
+    pub y: i32,
     pub width: u32,
     pub height: u32,
 }
@@ -23,6 +25,8 @@ pub fn list_displays() -> Vec<DisplayInfo> {
         vec![DisplayInfo {
             id: 0,
             title: "Primary Display".to_string(),
+            x: 0,
+            y: 0,
             width: 1920,
             height: 1080,
         }]
@@ -47,6 +51,8 @@ fn list_displays_inner() -> Result<Vec<DisplayInfo>, Box<dyn std::error::Error>>
         displays.push(DisplayInfo {
             id: idx as u32,
             title: name,
+            x: m.x as i32,
+            y: m.y as i32,
             width: m.width as u32,
             height: m.height as u32,
         });
@@ -57,6 +63,8 @@ fn list_displays_inner() -> Result<Vec<DisplayInfo>, Box<dyn std::error::Error>>
         displays.push(DisplayInfo {
             id: 0,
             title: "Primary Display".to_string(),
+            x: 0,
+            y: 0,
             width: screen.width_in_pixels as u32,
             height: screen.height_in_pixels as u32,
         });
@@ -214,6 +222,8 @@ mod tests {
         let info = DisplayInfo {
             id: 1,
             title: "Test Display".to_string(),
+            x: 0,
+            y: 0,
             width: 1920,
             height: 1080,
         };
@@ -230,6 +240,8 @@ mod tests {
         let info = DisplayInfo {
             id: 0,
             title: "Primary Display".to_string(),
+            x: 1920,
+            y: 0,
             width: 2560,
             height: 1440,
         };
@@ -237,6 +249,8 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&info).unwrap()).unwrap();
         assert_eq!(val["id"], 0);
         assert_eq!(val["title"], "Primary Display");
+        assert_eq!(val["x"], 1920);
+        assert_eq!(val["y"], 0);
         assert_eq!(val["width"], 2560);
         assert_eq!(val["height"], 1440);
     }
