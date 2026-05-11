@@ -1855,11 +1855,11 @@ git commit -m "feat(viewer): minimal UI with code input and status"
 ```bash
 cd sharer
 npm init -y
-npm install --save-dev typescript@5.5.3 vite@5.3.4 @tauri-apps/cli@2.0.0-rc.0
-npm install @tauri-apps/api@2.0.0-rc.0
+npm install --save-dev typescript@6.0.3 vite@8.0.12 @tauri-apps/cli@2.11.1
+npm install @tauri-apps/api@2.11.0
 ```
 
-> If `@tauri-apps/cli@2.0.0-rc.0` is no longer in the registry by the time you run this, use the latest `2.x` stable release. Adjust pinning accordingly.
+> Installed stable versions: typescript@6.0.3, vite@8.0.12, @tauri-apps/cli@2.11.1, @tauri-apps/api@2.11.0.
 
 - [x] **Step 2: package.json scripts**
 
@@ -1882,37 +1882,6 @@ Set `sharer/package.json`:
 ```
 
 (Keep the dependencies that `npm install` populated; add scripts to the existing file.)
-
-- [ ] **Step 3: index.html (Webview UI)**
-
-```html
-<!doctype html>
-<html lang="de">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Screenshare — Sharer</title>
-    <style>
-      body { font-family: system-ui, sans-serif; padding: 2rem; }
-      #code { font-size: 2.5rem; letter-spacing: 0.15em; text-align: center; margin: 2rem 0; user-select: all; }
-      #status { padding: 1rem; border-radius: 4px; background: #eef; }
-      #confirm { display: none; padding: 1rem; background: #ffe; border: 1px solid #cc9; margin-top: 1rem; }
-      button { font-size: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
-    </style>
-  </head>
-  <body>
-    <h1>Screenshare — Sharer</h1>
-    <p>Diesen Code an die Person geben, die helfen soll:</p>
-    <div id="code">…</div>
-    <div id="status">Verbinde mit Backend…</div>
-    <div id="confirm">
-      <p id="confirm-text">Verbindungsanfrage</p>
-      <button id="accept">Verbinden zulassen</button>
-      <button id="decline">Ablehnen</button>
-    </div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
-</html>
-```
 
 - [x] **Step 3: index.html (Webview UI)**
 
@@ -1984,19 +1953,19 @@ edition = "2021"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.0-rc", features = [] }
+tauri-build = { version = "=2.6.1", features = [] }
 
 [dependencies]
-tauri = { version = "2.0.0-rc", features = [] }
-tokio = { version = "1.39", features = ["rt-multi-thread", "macros", "sync"] }
-tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-url = "2.5"
-futures-util = "0.3"
+tauri = { version = "=2.11.1", features = [] }
+tokio = { version = "=1.52.3", features = ["rt-multi-thread", "macros", "sync"] }
+tokio-tungstenite = { version = "=0.29.0", features = ["native-tls"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+url = "=2.5.8"
+futures-util = "=0.3.32"
 ```
 
-> Same pinning caveat as `@tauri-apps/cli` — if `2.0.0-rc` of `tauri` and `tauri-build` is no longer published when this is executed, upgrade to the matching stable 2.x and adjust feature flags if needed.
+> Use `=X.Y.Z` syntax for exact pinning in Rust (bare `"X.Y.Z"` uses caret-default allowing minor bumps).
 
 - [x] **Step 7: src-tauri/build.rs**
 
@@ -2010,7 +1979,7 @@ fn main() {
 
 ```json
 {
-  "$schema": "https://schema.tauri.app/config/2.0.0-rc",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Screenshare",
   "version": "0.1.0",
   "identifier": "de.mr-development.screenshare",
@@ -2037,14 +2006,22 @@ fn main() {
 }
 ```
 
-- [x] **Step 9: Stub main.rs (will be expanded next task)**
+- [x] **Step 9: Tauri 2 stable lib.rs + main.rs (mobile-compat pattern)**
 
+`src-tauri/src/lib.rs` (new file required by `[lib]` crate-type):
 ```rust
-fn main() {
+pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![])
         .run(tauri::generate_context!())
         .expect("error running tauri");
+}
+```
+
+`src-tauri/src/main.rs` (thin entry point delegating to lib):
+```rust
+fn main() {
+    screenshare_sharer::run();
 }
 ```
 
