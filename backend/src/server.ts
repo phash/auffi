@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from "fastify";
 import websocketPlugin from "@fastify/websocket";
 import rateLimitPlugin from "@fastify/rate-limit";
+import corsPlugin from "@fastify/cors";
 import { SessionStore } from "./codes.js";
 import { registerSignaling } from "./signaling.js";
 import { registerTurnEndpoint } from "./turn-credentials.js";
@@ -82,6 +83,11 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
 
   await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
 
+  await app.register(corsPlugin, {
+    origin: ALLOWED_ORIGINS,
+    methods: ["POST"],
+  });
+
   await app.register(websocketPlugin, {
     options: {
       maxPayload: 65_536,
@@ -133,6 +139,7 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
       realm: turnRealm,
       urls: turnHosts,
       ttlSec: turnTtlSec,
+      allowedOrigins: ALLOWED_ORIGINS,
     });
   }
 

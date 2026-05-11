@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { FastifyInstance } from "fastify";
 import { createServer } from "../src/server.js";
 
@@ -7,12 +7,14 @@ function setTurnEnv(): void {
   process.env.TURN_REALM = "turn.screenie.local";
   process.env.TURN_HOSTS =
     "turn:turn.screenie.local:3478,turns:turn.screenie.local:5349";
+  process.env.ALLOWED_ORIGINS = "http://localhost:5173";
 }
 
 function clearTurnEnv(): void {
   delete process.env.TURN_SHARED_SECRET;
   delete process.env.TURN_REALM;
   delete process.env.TURN_HOSTS;
+  delete process.env.ALLOWED_ORIGINS;
 }
 
 type TurnBody = {
@@ -42,9 +44,10 @@ describe("POST /turn-credentials — credentials", () => {
     clearTurnEnv();
   });
 
-  it("returns ephemeral credentials with TURN URLs", async () => {
+  it("returns ephemeral credentials with TURN URLs from allowed origin", async () => {
     const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
       method: "POST",
+      headers: { Origin: "http://localhost:5173" },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as TurnBody;
@@ -58,6 +61,7 @@ describe("POST /turn-credentials — credentials", () => {
     const before = Math.floor(Date.now() / 1000);
     const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
       method: "POST",
+      headers: { Origin: "http://localhost:5173" },
     });
     const body = (await res.json()) as TurnBody;
     const [tsStr] = body.username.split(":");
@@ -69,6 +73,7 @@ describe("POST /turn-credentials — credentials", () => {
   it("credential is HMAC-SHA1(secret, username) base64", async () => {
     const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
       method: "POST",
+      headers: { Origin: "http://localhost:5173" },
     });
     const body = (await res.json()) as TurnBody;
     const { createHmac } = await import("node:crypto");
@@ -76,6 +81,33 @@ describe("POST /turn-credentials — credentials", () => {
       .update(body.username)
       .digest("base64");
     expect(body.credential).toBe(expected);
+  });
+
+  it("rejects POST from a disallowed origin with 403", async () => {
+    const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
+      method: "POST",
+      headers: { Origin: "https://evil.example.com" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects POST with no Origin header with 403", async () => {
+    const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("preflight from evil origin does not expose Access-Control-Allow-Origin", async () => {
+    const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://evil.example.com",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+    const acao = res.headers.get("Access-Control-Allow-Origin");
+    expect(acao).not.toBe("https://evil.example.com");
   });
 });
 
@@ -98,6 +130,7 @@ describe("POST /turn-credentials — rate limiting", () => {
     for (let i = 0; i < 11; i++) {
       const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
         method: "POST",
+        headers: { Origin: "http://localhost:5173" },
       });
       statuses.push(res.status);
     }

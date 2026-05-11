@@ -8,6 +8,7 @@ export function generateCode(): string {
 }
 
 export function normalizeCode(input: string): string | null {
+  if (typeof input !== "string" || input.length > 20) return null;
   const digits = input.replace(/[\s-]/g, "");
   if (!/^\d{9}$/.test(digits)) return null;
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 9)}`;

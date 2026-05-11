@@ -25,6 +25,15 @@ describe("normalizeCode", () => {
     expect(normalizeCode("123")).toBeNull();
     expect(normalizeCode("1234567890")).toBeNull();
   });
+
+  it("returns null immediately for inputs longer than 20 characters", () => {
+    const longInput = "1".repeat(200_000);
+    const start = performance.now();
+    const result = normalizeCode(longInput);
+    const elapsed = performance.now() - start;
+    expect(result).toBeNull();
+    expect(elapsed).toBeLessThan(5);
+  });
 });
 
 describe("SessionStore", () => {
