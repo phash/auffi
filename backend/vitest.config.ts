@@ -10,6 +10,7 @@ export default defineConfig({
       thresholds: {
         lines: 70,
       },
+      exclude: ["src/index.ts", "**/*.config.*"],
     },
   },
 });

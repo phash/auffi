@@ -361,6 +361,14 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts"],
+      thresholds: {
+        lines: 70,
+      },
+      exclude: ["src/index.ts", "**/*.config.*"],
+    },
   },
 });
 ```
@@ -597,7 +605,7 @@ git commit -m "feat(backend): code generator and normalizer"
 - Modify: `backend/src/codes.ts`
 - Modify: `backend/tests/codes.test.ts`
 
-- [ ] **Step 1: Write failing tests for SessionStore**
+- [x] **Step 1: Write failing tests for SessionStore**
 
 Append to `backend/tests/codes.test.ts`:
 
@@ -673,10 +681,40 @@ describe("SessionStore", () => {
     const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
     expect(store.findByPeer({} as object)).toBeNull();
   });
+
+  it("detachViewer removes viewer from session, session still findable by sharer", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    store.detachViewer(viewer);
+    const session = store.getSession(code);
+    expect(session).not.toBeNull();
+    expect(session?.viewer).toBeNull();
+    expect(session?.sharer).toBe(sharer);
+  });
+
+  it("detachViewer is a no-op when called with a peer that is not the attached viewer", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const stranger = { id: "x1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    store.detachViewer(stranger); // stranger has no session — must be a no-op
+    const session = store.getSession(code);
+    expect(session?.viewer).toBe(viewer);
+  });
+
+  it("recordFailedAttempt returns false for unknown code", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    expect(store.recordFailedAttempt("000-000-000")).toBe(false);
+  });
 });
 ```
 
-- [ ] **Step 2: Run tests — verify they fail**
+- [x] **Step 2: Run tests — verify they fail**
 
 ```bash
 cd backend && npm test
@@ -684,7 +722,7 @@ cd backend && npm test
 
 Expected: `SessionStore` is not exported.
 
-- [ ] **Step 3: Implement SessionStore in codes.ts**
+- [x] **Step 3: Implement SessionStore in codes.ts**
 
 Append to `backend/src/codes.ts`:
 
@@ -779,13 +817,13 @@ export class SessionStore {
 }
 ```
 
-- [ ] **Step 4: Run tests — verify all pass**
+- [x] **Step 4: Run tests — verify all pass**
 
 ```bash
 cd backend && npm test
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/codes.ts backend/tests/codes.test.ts
