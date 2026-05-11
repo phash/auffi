@@ -59,4 +59,32 @@ describe("SignalingClient", () => {
     mock.fakeMessage({ type: "relay", payload: { hi: 1 } });
     expect(fn).toHaveBeenCalledWith({ hi: 1 });
   });
+
+  it("no double-disconnect after peer-confirmed then close", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const disconnectFn = vi.fn();
+    client.onDisconnect(disconnectFn);
+    const p = client.join("284-915-073");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+    // Simulate server closing connection after promise already resolved
+    mock.onclose?.({});
+    expect(disconnectFn).not.toHaveBeenCalled();
+  });
+
+  it("user-initiated close does not fire rejection listeners", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const disconnectFn = vi.fn();
+    client.onDisconnect(disconnectFn);
+    const p = client.join("284-915-073");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+    // User-initiated close
+    client.close();
+    expect(disconnectFn).not.toHaveBeenCalled();
+  });
 });
