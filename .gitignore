@@ -5,9 +5,11 @@ target/
 *.log
 .env
 .env.local
+.env.prod
 .DS_Store
 .vite/
 src-tauri/target/
 coverage/
 .vitest-cache/
 sharer/src-tauri/gen/
+ops/.env.deploy
