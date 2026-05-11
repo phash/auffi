@@ -283,7 +283,7 @@ git commit -m "feat(viewer): RTCPeerConnection wrapper with mock-based tests"
 **Files:**
 - Modify: `viewer/index.html`, `viewer/src/ui.ts`
 
-- [ ] **Step 1: Add `<video>` element**
+- [x] **Step 1: Add `<video>` element**
 
 In `viewer/index.html`, inside `<main id="app">` after the `#status` div, add:
 
@@ -299,7 +299,7 @@ CSS additions in the `<style>` block:
 #disconnect.active { display: inline-block; }
 ```
 
-- [ ] **Step 2: Wire WebRTC + signaling in `ui.ts`**
+- [x] **Step 2: Wire WebRTC + signaling in `ui.ts`**
 
 Replace the body of `viewer/src/ui.ts` so the connect flow now:
 1. On click, validates code and creates `SignalingClient` + `ViewerPeer`
@@ -418,13 +418,13 @@ export function bindUI(backendWsUrl: string): void {
 }
 ```
 
-- [ ] **Step 3: Verify build + lint + existing tests.**
+- [x] **Step 3: Verify build + lint + existing tests.**
 
 ```bash
 cd viewer && npm run build && npm test
 ```
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
 ```bash
 git add viewer/src/ui.ts viewer/index.html

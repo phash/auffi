@@ -1,10 +1,10 @@
-import type { OutgoingMessage } from "./protocol.js";
+import type { OutgoingMessage, RelayPayload } from "./protocol.js";
 
 export type WSFactory = (url: string) => WebSocket;
 
 export class SignalingClient {
   private ws: WebSocket | null = null;
-  private relayListeners: Array<(payload: unknown) => void> = [];
+  private relayListeners: Array<(payload: RelayPayload) => void> = [];
   private rejectionListeners: Array<(reason: string) => void> = [];
 
   constructor(
@@ -43,7 +43,7 @@ export class SignalingClient {
     this.ws?.send(JSON.stringify({ type: "relay", payload }));
   }
 
-  onRelay(fn: (payload: unknown) => void): void {
+  onRelay(fn: (payload: RelayPayload) => void): void {
     this.relayListeners.push(fn);
   }
 
