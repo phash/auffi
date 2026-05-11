@@ -9,15 +9,25 @@ function setStatus(text: string, kind: "ok" | "err" | "info"): void {
 
 function setVideoStream(stream: MediaStream | null): void {
   const video = document.getElementById("remote-video") as HTMLVideoElement;
+  const wrapper = document.getElementById("video-wrapper")!;
   const disconnect = document.getElementById("disconnect")!;
+  const inputGroup = document.querySelector<HTMLElement>(".input-group")!;
+  const instruction = document.querySelector<HTMLElement>(".instruction")!;
+
   if (stream) {
     video.srcObject = stream;
     video.classList.add("active");
+    wrapper.classList.add("active");
     disconnect.classList.add("active");
+    inputGroup.style.display = "none";
+    instruction.style.display = "none";
   } else {
     video.srcObject = null;
     video.classList.remove("active");
+    wrapper.classList.remove("active");
     disconnect.classList.remove("active");
+    inputGroup.style.display = "";
+    instruction.style.display = "";
   }
 }
 

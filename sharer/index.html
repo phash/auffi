@@ -4,30 +4,373 @@
     <meta charset="UTF-8" />
     <title>Screenie — Sharer</title>
     <style>
-      body { font-family: system-ui, sans-serif; padding: 2rem; }
-      #code { font-size: 2.5rem; letter-spacing: 0.15em; text-align: center; margin: 2rem 0; user-select: all; }
-      #status { padding: 1rem; border-radius: 4px; background: #eef; }
-      #confirm { display: none; padding: 1rem; background: #ffe; border: 1px solid #cc9; margin-top: 1rem; }
-      #monitor-select { display: none; padding: 1rem; background: #efe; border: 1px solid #9c9; margin-top: 1rem; }
-      #monitor-list { margin: 0.5rem 0; }
-      button { font-size: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --accent: #1f6feb;
+        --bg: #0d1117;
+        --card-bg: #161b22;
+        --surface: #21262d;
+        --text: #e6edf3;
+        --text-secondary: #8b949e;
+        --border: #30363d;
+        --shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+        --radius: 12px;
+        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+
+      /* Sharer is a native Tauri window — dark theme always looks good here */
+
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 1.5rem 1rem;
+        gap: 1.25rem;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        align-self: flex-start;
+      }
+
+      .brand-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 5px;
+        background: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .brand-icon svg {
+        width: 14px;
+        height: 14px;
+        fill: #fff;
+      }
+
+      .brand-name {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        letter-spacing: -0.01em;
+      }
+
+      .card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.5rem;
+        width: 100%;
+        box-shadow: var(--shadow);
+      }
+
+      .code-label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+        margin-bottom: 0.5rem;
+      }
+
+      .code-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      #code {
+        font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+        font-size: 2.25rem;
+        font-weight: 600;
+        letter-spacing: 0.15em;
+        color: var(--text);
+        user-select: all;
+        flex: 1;
+        line-height: 1.2;
+      }
+
+      #copy-btn {
+        font-family: var(--font);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        padding: 0.375rem 0.75rem;
+        min-height: 32px;
+        background: var(--surface);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease, opacity 150ms ease;
+        flex-shrink: 0;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .code-row:hover #copy-btn,
+      #copy-btn:focus-visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      #copy-btn:hover {
+        background: var(--border);
+        color: var(--text);
+      }
+
+      #copy-btn:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      #status {
+        font-size: 0.875rem;
+        line-height: 1.5;
+        color: var(--text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 1.375rem;
+        transition: color 200ms ease;
+      }
+
+      #status::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: var(--text-secondary);
+        transition: background 200ms ease;
+      }
+
+      /* Confirm dialog */
+      #confirm {
+        display: none;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      #confirm.visible {
+        display: flex;
+      }
+
+      .confirm-header {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text);
+      }
+
+      #confirm-text {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+
+      .confirm-actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      #accept {
+        font-family: var(--font);
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        min-height: 36px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 150ms ease, transform 100ms ease;
+        flex: 1;
+      }
+
+      #accept:hover {
+        background: #1a5ecb;
+      }
+
+      #accept:active {
+        transform: translateY(1px);
+      }
+
+      #accept:focus-visible {
+        outline: 3px solid rgba(31, 111, 235, 0.4);
+        outline-offset: 2px;
+      }
+
+      #decline {
+        font-family: var(--font);
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        min-height: 36px;
+        background: var(--surface);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease;
+        flex: 1;
+      }
+
+      #decline:hover {
+        background: var(--border);
+        color: var(--text);
+      }
+
+      #decline:focus-visible {
+        outline: 2px solid var(--border);
+        outline-offset: 2px;
+      }
+
+      /* Divider */
+      .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 0 -1.5rem;
+      }
+
+      /* Monitor select */
+      #monitor-select {
+        display: none;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      #monitor-select.visible {
+        display: flex;
+      }
+
+      .monitor-label-heading {
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+
+      #monitor-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+      }
+
+      #monitor-list label {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        padding: 0.625rem 0.75rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 150ms ease, border-color 150ms ease;
+        font-size: 0.875rem;
+        color: var(--text);
+      }
+
+      #monitor-list label:hover {
+        background: var(--surface);
+      }
+
+      #monitor-list input[type="radio"] {
+        accent-color: var(--accent);
+        width: 15px;
+        height: 15px;
+        flex-shrink: 0;
+        cursor: pointer;
+      }
+
+      #monitor-list label:has(input:checked) {
+        border-color: var(--accent);
+        background: rgba(31, 111, 235, 0.08);
+      }
+
+      #stream-btn {
+        font-family: var(--font);
+        font-size: 0.9375rem;
+        font-weight: 500;
+        padding: 0.625rem 1rem;
+        min-height: 44px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 150ms ease, opacity 150ms ease, transform 100ms ease;
+        width: 100%;
+      }
+
+      #stream-btn:hover:not(:disabled) {
+        background: #1a5ecb;
+      }
+
+      #stream-btn:active:not(:disabled) {
+        transform: translateY(1px);
+      }
+
+      #stream-btn:focus-visible {
+        outline: 3px solid rgba(31, 111, 235, 0.4);
+        outline-offset: 2px;
+      }
+
+      #stream-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
-    <h1>Screenie — Sharer</h1>
-    <p>Diesen Code an die Person geben, die helfen soll:</p>
-    <div id="code">…</div>
-    <div id="status">Verbinde mit Backend…</div>
-    <div id="confirm">
-      <p id="confirm-text">Verbindungsanfrage</p>
-      <button id="accept">Verbinden zulassen</button>
-      <button id="decline">Ablehnen</button>
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1" y="2" width="14" height="9" rx="1.5"/>
+          <rect x="5" y="12" width="6" height="1.5" rx="0.75"/>
+          <rect x="4" y="13.5" width="8" height="1" rx="0.5"/>
+        </svg>
+      </div>
+      <span class="brand-name">Screenie</span>
     </div>
-    <div id="monitor-select">
-      <p>Monitor auswählen:</p>
-      <div id="monitor-list"></div>
-      <button id="stream-btn">Streamen</button>
+
+    <div class="card">
+      <p class="code-label">Dein Code</p>
+      <div class="code-row">
+        <div id="code">…</div>
+        <button id="copy-btn" type="button" aria-label="Code kopieren">Kopieren</button>
+      </div>
+
+      <div class="divider" style="margin-top: 1.25rem; margin-bottom: 1.25rem;"></div>
+
+      <div id="status" role="status" aria-live="polite">Verbinde mit Backend…</div>
+
+      <div id="confirm">
+        <div class="divider" style="margin: 0 -1.5rem;"></div>
+        <p class="confirm-header">Verbindungsanfrage</p>
+        <p id="confirm-text"></p>
+        <div class="confirm-actions">
+          <button id="accept" type="button">Verbinden zulassen</button>
+          <button id="decline" type="button">Ablehnen</button>
+        </div>
+      </div>
+
+      <div id="monitor-select">
+        <div class="divider" style="margin: 0 -1.5rem;"></div>
+        <p class="monitor-label-heading">Monitor auswählen</p>
+        <div id="monitor-list"></div>
+        <button id="stream-btn" type="button">Streamen</button>
+      </div>
     </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

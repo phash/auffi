@@ -26,6 +26,18 @@ const confirmTextEl = document.getElementById("confirm-text")!;
 const monitorSelectEl = document.getElementById("monitor-select")!;
 const monitorListEl = document.getElementById("monitor-list")!;
 const streamBtn = document.getElementById("stream-btn")! as HTMLButtonElement;
+const copyBtn = document.getElementById("copy-btn")! as HTMLButtonElement;
+
+copyBtn.addEventListener("click", () => {
+  const code = codeEl.textContent?.trim() ?? "";
+  if (!code || code === "…") return;
+  navigator.clipboard.writeText(code).then(() => {
+    copyBtn.textContent = "Kopiert!";
+    setTimeout(() => {
+      copyBtn.textContent = "Kopieren";
+    }, 1500);
+  });
+});
 
 listen<{ code: string }>("code-assigned", (e) => {
   codeEl.textContent = e.payload.code;
@@ -34,7 +46,7 @@ listen<{ code: string }>("code-assigned", (e) => {
 
 listen<{ ipPrefix: string }>("peer-joined", (e) => {
   confirmTextEl.textContent = `Verbindungsanfrage von ${e.payload.ipPrefix}`;
-  confirmEl.style.display = "block";
+  confirmEl.classList.add("visible");
 });
 
 listen<{ payload: RelayPayload }>("relay", (e) => {
@@ -57,21 +69,19 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
 
 listen<{ reason: string }>("disconnected", (e) => {
   statusEl.textContent = "Getrennt: " + e.payload.reason;
-  confirmEl.style.display = "none";
-  monitorSelectEl.style.display = "none";
+  confirmEl.classList.remove("visible");
+  monitorSelectEl.classList.remove("visible");
 });
 
 document.getElementById("accept")!.addEventListener("click", () => {
   invoke("confirm_peer", { accepted: true });
-  confirmEl.style.display = "none";
+  confirmEl.classList.remove("visible");
   statusEl.textContent = "Verbindung akzeptiert — Monitor auswählen…";
 
   invoke<DisplayInfo[]>("list_monitors")
     .then((monitors) => {
       const nodes: Node[] = monitors.map((m, idx) => {
         const label = document.createElement("label");
-        label.style.display = "block";
-        label.style.margin = "0.3rem 0";
         const radio = document.createElement("input");
         radio.type = "radio";
         radio.name = "monitor";
@@ -82,7 +92,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
         return label;
       });
       monitorListEl.replaceChildren(...nodes);
-      monitorSelectEl.style.display = "block";
+      monitorSelectEl.classList.add("visible");
     })
     .catch((err: unknown) => {
       statusEl.textContent = `Monitor-Liste fehlgeschlagen: ${String(err)}`;
@@ -91,7 +101,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
 
 document.getElementById("decline")!.addEventListener("click", () => {
   invoke("confirm_peer", { accepted: false });
-  confirmEl.style.display = "none";
+  confirmEl.classList.remove("visible");
   statusEl.textContent = "Abgelehnt.";
 });
 
@@ -104,7 +114,7 @@ streamBtn.addEventListener("click", () => {
     return;
   }
   const monitorId = parseInt(checked.value, 10);
-  monitorSelectEl.style.display = "none";
+  monitorSelectEl.classList.remove("visible");
   streamBtn.disabled = true;
   statusEl.textContent = "Stream wird gestartet…";
 
@@ -115,7 +125,7 @@ streamBtn.addEventListener("click", () => {
     .catch((err: unknown) => {
       statusEl.textContent = `Stream-Fehler: ${String(err)}`;
       streamBtn.disabled = false;
-      monitorSelectEl.style.display = "block";
+      monitorSelectEl.classList.add("visible");
     });
 });
 
