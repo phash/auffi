@@ -34,34 +34,50 @@ const ALLOWED_ORIGINS = envList("ALLOWED_ORIGINS", [
   "http://127.0.0.1",
 ]);
 
+const REDACT_PATHS = [
+  "req.remoteAddress",
+  "req.remotePort",
+  'req.headers["x-forwarded-for"]',
+  'req.headers["x-real-ip"]',
+  "req.headers.cookie",
+  "req.headers.authorization",
+];
+
+const REQ_SERIALIZER = {
+  req(request: { method: string; url: string }) {
+    return { method: request.method, url: request.url };
+  },
+};
+
+function buildLoggerOptions(nodeEnv: string | undefined) {
+  const redact = { paths: REDACT_PATHS, remove: true };
+  if (nodeEnv !== "production") {
+    return {
+      level: "debug",
+      base: null,
+      redact,
+      serializers: REQ_SERIALIZER,
+      transport: {
+        target: "pino-pretty",
+        options: { colorize: true, ignore: "pid,hostname" },
+      },
+    };
+  }
+  return {
+    level: "info",
+    base: null,
+    redact,
+    serializers: REQ_SERIALIZER,
+  };
+}
+
 export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance> {
   const turnSharedSecret = process.env.TURN_SHARED_SECRET ?? "";
   const turnRealm = process.env.TURN_REALM ?? "localhost";
   const turnHosts = envList("TURN_HOSTS", []);
   const turnTtlSec = envNumber("TURN_TTL_SEC", 3600);
   const app = Fastify({
-    logger: {
-      base: null,
-      redact: {
-        paths: [
-          "req.remoteAddress",
-          "req.remotePort",
-          'req.headers["x-forwarded-for"]',
-          'req.headers["x-real-ip"]',
-          "req.headers.cookie",
-          "req.headers.authorization",
-        ],
-        remove: true,
-      },
-      serializers: {
-        req(request) {
-          return {
-            method: request.method,
-            url: request.url,
-          };
-        },
-      },
-    },
+    logger: buildLoggerOptions(process.env.NODE_ENV),
   });
 
   await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
@@ -97,7 +113,14 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
     clearInterval(sweepHandle);
   });
 
-  app.get("/healthz", async () => ({ status: "ok" }));
+  const healthPayload = () => ({
+    status: "ok",
+    version: process.env.APP_VERSION ?? "dev",
+    uptime: Math.floor(process.uptime()),
+  });
+
+  app.get("/healthz", async () => healthPayload());
+  app.get("/readyz", async () => healthPayload());
 
   if (!turnSharedSecret) {
     app.log.warn("TURN_SHARED_SECRET not set — /turn-credentials endpoint disabled");

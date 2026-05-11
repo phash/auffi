@@ -166,11 +166,11 @@ git commit -m "feat(backend): POST /turn-credentials with HMAC ephemeral creds"
 **Files:**
 - Modify: `backend/src/server.ts`
 
-- [ ] **Step 1: Differentiate dev vs prod log level via `NODE_ENV`**
+- [x] **Step 1: Differentiate dev vs prod log level via `NODE_ENV`**
 
 Pino: dev → `level: "debug"` with pretty-print (via `pino-pretty`, dev-only dep), prod → `level: "info"`, JSON output. Already JSON in prod by default — just gate the prettify.
 
-- [ ] **Step 2: Extend `/healthz` to expose minimal status**
+- [x] **Step 2: Extend `/healthz` to expose minimal status**
 
 ```ts
 app.get("/healthz", async () => ({
@@ -180,11 +180,11 @@ app.get("/healthz", async () => ({
 }));
 ```
 
-- [ ] **Step 3: Add `/readyz` for orchestrator probes**
+- [x] **Step 3: Add `/readyz` for orchestrator probes**
 
 Same as healthz today. Differentiated later if we add deeper readiness checks.
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
 ```bash
 git commit -m "feat(backend): production-grade logging and health/readiness endpoints"
