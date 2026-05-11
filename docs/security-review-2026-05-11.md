@@ -352,10 +352,37 @@ All five are transitive dependencies of `webrtc = 0.8.0` (via `webrtc-dtls 0.7.2
 
 All crypto CVEs trace to `webrtc = "=0.8.0"` pulling in `webrtc-dtls 0.7.2` which vendors old versions of `rustls (0.19.1)`, `webpki (0.21.4)`, `ring (0.16.20)`, and `curve25519-dalek (3.2.0)`. The `aws-lc-sys` CVEs come from `reqwest 0.13.3 → aws-lc-rs 1.13.3 → aws-lc-sys 0.30.0`.
 
-**Recommendation:**
-1. Upgrade `reqwest` to current (`0.12.x` or newer) to pull in patched `aws-lc-sys ≥0.39.0`.
-2. Evaluate upgrading `webrtc` from `0.8.0` to a newer version. If `webrtc-rs` is still unmaintained at `0.8.0`, consider migrating to `str0m` (actively maintained, no old rustls/ring vendoring) or `libdatachannel` Rust bindings.
-3. Pin to `rustls ≥ 0.21.11` in `Cargo.toml` via `[patch.crates-io]` as a temporary workaround for the DoS until the webrtc crate is replaced.
+**Decision taken (2026-05-12):** Keep `webrtc = "=0.8.0"` and accept the transitive CVE chain as a known residual risk. See section below.
+
+---
+
+### Residual Risk: rustls CVE chain via webrtc-dtls — Known, Accepted (2026-05-12)
+
+**Affected crates (all transitive via `webrtc = "=0.8.0"`):**
+
+| Crate | Version | RUSTSEC | Severity | Title |
+|-------|---------|---------|----------|-------|
+| `rustls` | 0.19.1 | RUSTSEC-2024-0336 | 7.5 | `complete_io` infinite loop on network input |
+| `webpki` | 0.21.4 | RUSTSEC-2023-0052 | 7.5 | CPU DoS in certificate path building |
+| `aws-lc-sys` | 0.30.0 | RUSTSEC-2026-0045/46/47/48 | 5.9–7.5 | AES-CCM side-channel, PKCS7 bypass, CRL scope |
+| `curve25519-dalek` | 3.2.0 | RUSTSEC-2024-0344 | — | Timing variability in Scalar sub |
+| `ring` | 0.16.20 | RUSTSEC-2025-0009 | — | AES panic with overflow-checks |
+| `rustls-webpki` | 0.103.4 | RUSTSEC-2026-0049/98/99/104 | — | CRL/name-constraint parsing issues |
+
+**Why the risk is accepted for now:**
+
+- `webrtc = "=0.8.0"` pins an exact version because its API is tightly coupled to our `webrtc_peer.rs` implementation. All higher-level `webrtc-rs` releases (`0.9+`) contain breaking API changes in `PeerConnection`, ICE candidate handling, and the `MediaEngine`.
+- The `rustls 0.19.1` DoS (RUSTSEC-2024-0336 — `complete_io` infinite loop) requires an attacker with network position to send a crafted DTLS record during the DTLS handshake. The DTLS handshake is already inside an ICE-authenticated pair; unauthenticated attackers cannot reach it. Risk is elevated from theoretical to limited-attacker.
+- `[patch.crates-io]` to override `rustls 0.19 → 0.21+` is not feasible: `webrtc-dtls 0.7.2` calls `rustls::internal::msgs` private APIs that were removed in 0.20. Compilation fails.
+- `aws-lc-sys` CVEs (PKCS7 validation bypass) are not reachable from our code path; we do not call PKCS7 verification APIs.
+
+**Migration path (tracked, not blocked):**
+
+1. **Short term:** Monitor `webrtc-rs` upstream for a `0.9+` release or an official CVE fix backport.
+2. **Medium term:** Evaluate migrating to [`str0m`](https://github.com/algesten/str0m) (actively maintained pure-Rust WebRTC, no old rustls vendoring). API is different; migration estimate is ~2–4 days of work.
+3. **Long term:** If `str0m` proves too large an API change, consider `libdatachannel` Rust bindings which link against a C++ WebRTC stack with its own patch cadence.
+
+**Monitoring:** Re-run `cargo audit` on every PR and before each production deployment. If RUSTSEC-2024-0336 severity is upgraded to critical or a PoC exploit appears, accelerate the `str0m` migration.
 
 ---
 
@@ -386,6 +413,12 @@ All crypto CVEs trace to `webrtc = "=0.8.0"` pulling in `webrtc-dtls 0.7.2` whic
 | Bounded out-of-order chunk buffer | ⚠️ Partial — `BTreeMap` still unbounded per transfer; MAX_CONCURRENT_TRANSFERS=5 cap added (I-5) |
 | Concurrent transfer limit | ✅ Resolved — MAX_CONCURRENT_TRANSFERS=5 across pending+active (I-5, 2026-05-12) |
 | CSPRNG for file transfer UUIDs | ✅ Resolved — uuid::Uuid::new_v4() with OS CSPRNG (I-4, 2026-05-12) |
+| Bot UA filtering at reverse proxy | ✅ Resolved — @scrapers matcher in Caddy, /healthz+/readyz excluded (2026-05-12) |
+| Per-IP rate limiting on screenie site | ✅ Resolved — screenie_general 300/min, screenie_turn 10/min in Caddy (2026-05-12) |
+| Per-peer WebSocket message rate limit | ✅ Resolved — 50 msg/10 s per connection, close on exceed (2026-05-12) |
+| coturn TLS cipher hardening | ✅ Resolved — explicit cipher-list with TLS 1.3 AEADs + ECDHE-AEAD for 1.2 (2026-05-12) |
+| rustls CVE chain (webrtc transitive deps) | ⚠️ Known, accepted — see "Residual Risk" section above; migration path documented |
+| TLS 1.1 disabled on edge | ✅ Verified — openssl s_client -tls1_1 rejected; TLS 1.2+1.3 with AEAD only |
 
 ---
 
