@@ -1,4 +1,5 @@
 mod capture;
+mod encoder;
 mod protocol;
 mod signaling;
 
