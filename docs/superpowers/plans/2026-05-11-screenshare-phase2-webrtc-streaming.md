@@ -94,7 +94,7 @@ git commit -m "feat(protocol): discriminated relay payloads (sdp/ice/hello)"
 **Files:**
 - Create: `viewer/src/webrtc-client.ts`, `viewer/tests/webrtc-client.test.ts`
 
-- [ ] **Step 1: Write failing tests with a mock RTCPeerConnection**
+- [x] **Step 1: Write failing tests with a mock RTCPeerConnection**
 
 `viewer/tests/webrtc-client.test.ts`:
 
@@ -190,13 +190,13 @@ describe("ViewerPeer", () => {
 });
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
 ```bash
 cd viewer && npm test -- webrtc-client
 ```
 
-- [ ] **Step 3: Implement `viewer/src/webrtc-client.ts`**
+- [x] **Step 3: Implement `viewer/src/webrtc-client.ts`**
 
 ```ts
 export type IceServers = { urls: string | string[]; username?: string; credential?: string }[];
@@ -268,7 +268,7 @@ export class ViewerPeer {
 }
 ```
 
-- [ ] **Step 4: Run tests, verify pass. Coverage ≥ 70%. Commit.**
+- [x] **Step 4: Run tests, verify pass. Coverage ≥ 70%. Commit.**
 
 ```bash
 cd viewer && npm test -- --coverage
