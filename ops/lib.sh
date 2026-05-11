@@ -60,7 +60,11 @@ remote_compose() {
   # --env-file .env.prod feeds variable interpolation in docker-compose.prod.yml
   # (e.g. ${TURN_SHARED_SECRET}, ${APP_VERSION}); per-service env_file: stanzas
   # are independent and continue to inject runtime env into containers.
-  remote "cd ${DEPLOY_PATH} && docker compose --env-file .env.prod -f docker-compose.prod.yml $*"
+  # CLUSTER_PROXY adds docker-compose.cluster.yml overlay (disables internal
+  # Caddy, attaches backend to the external proxy network).
+  local cluster_flag=""
+  [[ -n "${CLUSTER_PROXY:-}" ]] && cluster_flag="-f docker-compose.cluster.yml"
+  remote "cd ${DEPLOY_PATH} && docker compose --env-file .env.prod -f docker-compose.prod.yml ${cluster_flag} $*"
 }
 
 rsync_to() {

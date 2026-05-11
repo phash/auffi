@@ -151,6 +151,18 @@ maybe_run "rsync docker-compose.prod.yml" \
     "${REPO_ROOT}/docker-compose.prod.yml" \
     "${DEPLOY_PATH}/"
 
+if [[ -n "${CLUSTER_PROXY:-}" ]]; then
+  maybe_run "rsync docker-compose.cluster.yml" \
+    rsync_to \
+      "${REPO_ROOT}/docker-compose.cluster.yml" \
+      "${DEPLOY_PATH}/"
+  maybe_run "rsync nginx/ (viewer static server config)" \
+    rsync_to \
+      "${REPO_ROOT}/nginx/" \
+      "${DEPLOY_PATH}/nginx/" \
+      --delete
+fi
+
 maybe_run "rsync caddy/" \
   rsync_to \
     "${REPO_ROOT}/caddy/" \
@@ -179,11 +191,15 @@ maybe_run "rsync viewer/dist → viewer-dist/" \
 # ---------------------------------------------------------------------------
 log_step "Populate viewer-static volume"
 
-maybe_run "Copy viewer-dist into viewer-static volume" \
-  remote "docker run --rm \
-    -v screenshare_viewer-static:/data \
-    -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
-    busybox sh -c 'cp -a /src/. /data/'"
+if [[ -z "${CLUSTER_PROXY:-}" ]]; then
+  maybe_run "Copy viewer-dist into viewer-static volume" \
+    remote "docker run --rm \
+      -v screenie_viewer-static:/data \
+      -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
+      busybox sh -c 'cp -a /src/. /data/'"
+else
+  log_info "Cluster mode — viewer container bind-mounts viewer-dist directly; skipping volume copy"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 8: Ensure .env.prod exists on remote (never overwrite if present)
