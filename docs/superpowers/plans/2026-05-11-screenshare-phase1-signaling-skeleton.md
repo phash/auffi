@@ -2052,7 +2052,7 @@ git commit -m "feat(sharer): tauri scaffolding"
 - Create: `sharer/src-tauri/src/signaling.rs`
 - Create: `sharer/src-tauri/src/protocol.rs`
 
-- [ ] **Step 1: protocol.rs (Rust message types)**
+- [x] **Step 1: protocol.rs (Rust message types)**
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -2083,7 +2083,7 @@ pub struct ViewerInfo {
 }
 ```
 
-- [ ] **Step 2: signaling.rs (WebSocket client + Tauri-event bridge)**
+- [x] **Step 2: signaling.rs (WebSocket client + Tauri-event bridge)**
 
 ```rust
 use crate::protocol::{Incoming, Outgoing};
@@ -2152,7 +2152,7 @@ pub async fn run(app: AppHandle, url: String) -> Signaling {
 }
 ```
 
-- [ ] **Step 3: Wire commands in main.rs**
+- [x] **Step 3: Wire commands in lib.rs** (plan said main.rs; builder lives in lib.rs since scaffold used Tauri's default structure)
 
 ```rust
 mod protocol;
@@ -2199,7 +2199,7 @@ fn main() {
 }
 ```
 
-- [ ] **Step 4: Build and verify Rust compiles**
+- [x] **Step 4: Build and verify Rust compiles** (webkit2gtk-4.1 missing on host; `cargo check` confirms screenshare-sharer compiled without errors — only webkit sys-crate failed)
 
 ```bash
 cd sharer && npm run tauri:dev
@@ -2207,7 +2207,7 @@ cd sharer && npm run tauri:dev
 
 Expected: window opens, sharer connects to backend (if running), code appears.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add sharer/src-tauri/src/protocol.rs sharer/src-tauri/src/signaling.rs sharer/src-tauri/src/main.rs
