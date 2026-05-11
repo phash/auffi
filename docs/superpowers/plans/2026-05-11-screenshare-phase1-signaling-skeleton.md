@@ -850,7 +850,29 @@ export type ServerConfig = {
 };
 
 export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      redact: {
+        paths: [
+          "req.remoteAddress",
+          "req.remotePort",
+          'req.headers["x-forwarded-for"]',
+          'req.headers["x-real-ip"]',
+          "req.headers.cookie",
+          "req.headers.authorization",
+        ],
+        remove: true,
+      },
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: request.url,
+          };
+        },
+      },
+    },
+  });
   await app.register(websocketPlugin);
 
   app.get("/healthz", async () => ({ status: "ok" }));
@@ -907,7 +929,7 @@ git commit -m "feat(backend): fastify server with healthz"
 - Modify: `backend/src/server.ts`
 - Create: `backend/tests/signaling.test.ts`
 
-- [ ] **Step 1: Write integration test for the full handshake**
+- [x] **Step 1: Write integration test for the full handshake**
 
 `backend/tests/signaling.test.ts`:
 
@@ -1022,10 +1044,111 @@ describe("signaling handshake", () => {
     sharer.close();
     viewer.close();
   });
+
+  it("relay message flows from sharer to viewer", async () => {
+    const sharer = new WebSocket(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer = new WebSocket(url);
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await recv(viewer); // peer-confirmed
+
+    sharer.send(
+      JSON.stringify({ type: "relay", payload: { frame: "data" } })
+    );
+    const relayed = await recv(viewer);
+    expect(relayed.type).toBe("relay");
+    expect(relayed.payload).toEqual({ frame: "data" });
+
+    sharer.close();
+    viewer.close();
+  });
+
+  it("confirm with accepted:false → viewer receives peer-rejected, session cleaned up", async () => {
+    const sharer = new WebSocket(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer = new WebSocket(url);
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+
+    sharer.send(JSON.stringify({ type: "confirm", accepted: false }));
+    const rejected = await recv(viewer);
+    expect(rejected.type).toBe("peer-rejected");
+    expect(rejected.reason).toBe("declined");
+
+    // viewer socket should close after rejection
+    await new Promise<void>((r) => {
+      if (viewer.readyState === WebSocket.CLOSED) return r();
+      viewer.once("close", () => r());
+    });
+    expect(viewer.readyState).toBe(WebSocket.CLOSED);
+  });
+
+  it("viewer disconnect → session kept, new viewer can attach with same code", async () => {
+    const sharer = new WebSocket(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    // first viewer joins and then disconnects
+    const viewer1 = new WebSocket(url);
+    await new Promise((r) => viewer1.once("open", r));
+    viewer1.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+
+    // close viewer — sharer session should survive
+    viewer1.close();
+    // wait a tick for the close event to propagate on the server side
+    await new Promise((r) => setTimeout(r, 50));
+
+    // second viewer can now attach with the same code
+    const viewer2 = new WebSocket(url);
+    await new Promise((r) => viewer2.once("open", r));
+    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    const peerJoined2 = await recv(sharer);
+    expect(peerJoined2.type).toBe("peer-joined");
+
+    sharer.close();
+    viewer2.close();
+  });
+
+  it("invalid JSON → receives bad-message error and connection stays open", async () => {
+    const ws = new WebSocket(url);
+    await new Promise((r) => ws.once("open", r));
+    ws.send("not-valid-json{{{");
+    const err = await recv(ws);
+    expect(err.type).toBe("error");
+    expect(err.code).toBe("bad-message");
+    ws.close();
+  });
+
+  it("unexpected message type after register → bad-message error", async () => {
+    const sharer = new WebSocket(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    await recv(sharer); // code-assigned
+
+    sharer.send(JSON.stringify({ type: "unknown-type", data: 42 }));
+    const err = await recv(sharer);
+    expect(err.type).toBe("error");
+    expect(err.code).toBe("bad-message");
+
+    sharer.close();
+  });
 });
 ```
 
-- [ ] **Step 2: Run tests — they should fail because /signal isn't wired**
+- [x] **Step 2: Run tests — they should fail because /signal isn't wired**
 
 ```bash
 cd backend && npm test
@@ -1033,7 +1156,7 @@ cd backend && npm test
 
 Expected: tests fail (timeout or "no /signal handler").
 
-- [ ] **Step 3: Implement signaling.ts**
+- [x] **Step 3: Implement signaling.ts**
 
 ```ts
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -1060,7 +1183,7 @@ export function registerSignaling(
   }
 
   app.get("/signal", { websocket: true }, (socket, req) => {
-    const peer = socket as WebSocket;
+    const peer = socket;
     let role: "sharer" | "viewer" | null = null;
 
     peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
@@ -1126,8 +1249,8 @@ export function registerSignaling(
       if (msg.type === "relay") {
         const found = store.findByPeer(peer as Peer);
         if (!found) return;
-        const other = found.sharer === peer ? found.viewer : found.sharer;
-        if (other) send(other as WebSocket, { type: "relay", payload: msg.payload });
+        const target = role === "sharer" ? found.viewer : found.sharer;
+        if (target) send(target as WebSocket, { type: "relay", payload: msg.payload });
         return;
       }
 
@@ -1152,7 +1275,7 @@ export function registerSignaling(
 }
 ```
 
-- [ ] **Step 4: Wire signaling into server.ts**
+- [x] **Step 4: Wire signaling into server.ts**
 
 Modify `backend/src/server.ts`:
 
@@ -1168,7 +1291,29 @@ export type ServerConfig = {
 };
 
 export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      redact: {
+        paths: [
+          "req.remoteAddress",
+          "req.remotePort",
+          'req.headers["x-forwarded-for"]',
+          'req.headers["x-real-ip"]',
+          "req.headers.cookie",
+          "req.headers.authorization",
+        ],
+        remove: true,
+      },
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: request.url,
+          };
+        },
+      },
+    },
+  });
   await app.register(websocketPlugin);
 
   const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
@@ -1179,7 +1324,7 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
 }
 ```
 
-- [ ] **Step 5: Run tests — verify all pass**
+- [x] **Step 5: Run tests — verify all pass**
 
 ```bash
 cd backend && npm test
@@ -1187,7 +1332,7 @@ cd backend && npm test
 
 Expected: all signaling tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/src/signaling.ts backend/src/server.ts backend/tests/signaling.test.ts
