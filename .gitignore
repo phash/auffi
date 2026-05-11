@@ -10,3 +10,4 @@ target/
 src-tauri/target/
 coverage/
 .vitest-cache/
+sharer/src-tauri/gen/
