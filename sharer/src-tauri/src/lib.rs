@@ -364,7 +364,7 @@ async fn streaming_loop(
             Ok(p) => p,
             Err(e) => {
                 encode_failures += 1;
-                if encode_failures <= 3 || encode_failures % 30 == 0 {
+                if encode_failures <= 3 || encode_failures.is_multiple_of(30) {
                     eprintln!(
                         "[streaming_loop] encode error (#{encode_failures}, frame bytes={} pts={}): {e}",
                         frame.data.len(),
@@ -397,7 +397,7 @@ async fn streaming_loop(
             }
         }
 
-        if frames % 30 == 0 {
+        if frames.is_multiple_of(30) {
             eprintln!(
                 "[streaming_loop] {:.1}s: frames={frames} packets={packets_total} written={packets_written} enc_fail={encode_failures} write_fail={write_failures}",
                 start.elapsed().as_secs_f32()
