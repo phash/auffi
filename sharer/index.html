@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Screenshare — Sharer</title>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 2rem; }
+      #code { font-size: 2.5rem; letter-spacing: 0.15em; text-align: center; margin: 2rem 0; user-select: all; }
+      #status { padding: 1rem; border-radius: 4px; background: #eef; }
+      #confirm { display: none; padding: 1rem; background: #ffe; border: 1px solid #cc9; margin-top: 1rem; }
+      button { font-size: 1rem; padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Screenshare — Sharer</h1>
+    <p>Diesen Code an die Person geben, die helfen soll:</p>
+    <div id="code">…</div>
+    <div id="status">Verbinde mit Backend…</div>
+    <div id="confirm">
+      <p id="confirm-text">Verbindungsanfrage</p>
+      <button id="accept">Verbinden zulassen</button>
+      <button id="decline">Ablehnen</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

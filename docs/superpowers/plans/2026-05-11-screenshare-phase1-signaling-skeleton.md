@@ -1850,7 +1850,7 @@ git commit -m "feat(viewer): minimal UI with code input and status"
 - Create: `sharer/package.json`, `sharer/index.html`, `sharer/vite.config.ts`, `sharer/src/main.ts`
 - Create: `sharer/src-tauri/Cargo.toml`, `sharer/src-tauri/tauri.conf.json`, `sharer/src-tauri/build.rs`, `sharer/src-tauri/src/main.rs`
 
-- [ ] **Step 1: Init Tauri project**
+- [x] **Step 1: Init Tauri project**
 
 ```bash
 cd sharer
@@ -1861,7 +1861,7 @@ npm install @tauri-apps/api@2.0.0-rc.0
 
 > If `@tauri-apps/cli@2.0.0-rc.0` is no longer in the registry by the time you run this, use the latest `2.x` stable release. Adjust pinning accordingly.
 
-- [ ] **Step 2: package.json scripts**
+- [x] **Step 2: package.json scripts**
 
 Set `sharer/package.json`:
 
@@ -1914,7 +1914,9 @@ Set `sharer/package.json`:
 </html>
 ```
 
-- [ ] **Step 4: vite.config.ts**
+- [x] **Step 3: index.html (Webview UI)**
+
+- [x] **Step 4: vite.config.ts**
 
 ```ts
 import { defineConfig } from "vite";
@@ -1925,7 +1927,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 5: src/main.ts (Webview ↔ Rust bridge stub)**
+- [x] **Step 5: src/main.ts (Webview ↔ Rust bridge stub)**
 
 ```ts
 import { invoke } from "@tauri-apps/api/core";
@@ -1970,7 +1972,7 @@ document.getElementById("decline")!.addEventListener("click", () => {
 invoke("start_signaling");
 ```
 
-- [ ] **Step 6: src-tauri/Cargo.toml**
+- [x] **Step 6: src-tauri/Cargo.toml**
 
 ```toml
 [package]
@@ -1996,7 +1998,7 @@ futures-util = "0.3"
 
 > Same pinning caveat as `@tauri-apps/cli` — if `2.0.0-rc` of `tauri` and `tauri-build` is no longer published when this is executed, upgrade to the matching stable 2.x and adjust feature flags if needed.
 
-- [ ] **Step 7: src-tauri/build.rs**
+- [x] **Step 7: src-tauri/build.rs**
 
 ```rust
 fn main() {
@@ -2004,7 +2006,7 @@ fn main() {
 }
 ```
 
-- [ ] **Step 8: src-tauri/tauri.conf.json**
+- [x] **Step 8: src-tauri/tauri.conf.json**
 
 ```json
 {
@@ -2035,7 +2037,7 @@ fn main() {
 }
 ```
 
-- [ ] **Step 9: Stub main.rs (will be expanded next task)**
+- [x] **Step 9: Stub main.rs (will be expanded next task)**
 
 ```rust
 fn main() {
@@ -2046,7 +2048,7 @@ fn main() {
 }
 ```
 
-- [ ] **Step 10: Verify Tauri dev build runs**
+- [x] **Step 10: Verify Tauri dev build runs**
 
 ```bash
 cd sharer && npm run tauri:dev
@@ -2055,7 +2057,9 @@ cd sharer && npm run tauri:dev
 Expected: a window opens with "Screenshare — Sharer" and the empty placeholder code "…".
 Stop with Ctrl+C.
 
-- [ ] **Step 11: Commit**
+> DONE_WITH_CONCERNS: webkit2gtk-4.1 system library not installed on this host. `cargo check` blocked at webkit2gtk-sys build script. TS type-check passes; Rust syntax validated via rustc. See Task 13 report.
+
+- [x] **Step 11: Commit**
 
 ```bash
 git add sharer/
