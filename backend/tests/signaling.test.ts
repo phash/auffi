@@ -99,11 +99,11 @@ describe("signaling handshake", () => {
     await recv(viewer); // peer-confirmed
 
     viewer.send(
-      JSON.stringify({ type: "relay", payload: { hello: "world" } })
+      JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 0 } })
     );
     const relayed = await recv(sharer);
     expect(relayed.type).toBe("relay");
-    expect(relayed.payload).toEqual({ hello: "world" });
+    expect(relayed.payload).toEqual({ kind: "hello", ts: 0 });
 
     sharer.close();
     viewer.close();
@@ -124,11 +124,11 @@ describe("signaling handshake", () => {
     await recv(viewer); // peer-confirmed
 
     sharer.send(
-      JSON.stringify({ type: "relay", payload: { frame: "data" } })
+      JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 1 } })
     );
     const relayed = await recv(viewer);
     expect(relayed.type).toBe("relay");
-    expect(relayed.payload).toEqual({ frame: "data" });
+    expect(relayed.payload).toEqual({ kind: "hello", ts: 1 });
 
     sharer.close();
     viewer.close();

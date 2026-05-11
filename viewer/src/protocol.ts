@@ -1,7 +1,13 @@
 export type SharerRegister = { type: "register"; role: "sharer" };
 export type SharerConfirm = { type: "confirm"; accepted: boolean };
 export type ViewerJoin = { type: "join"; role: "viewer"; code: string };
-export type RelayMsg = { type: "relay"; payload: unknown };
+
+export type RelaySdp = { kind: "sdp"; sdp: RTCSessionDescriptionInit };
+export type RelayIce = { kind: "ice"; candidate: RTCIceCandidateInit };
+export type RelayHello = { kind: "hello"; ts: number };
+export type RelayPayload = RelaySdp | RelayIce | RelayHello;
+
+export type RelayMsg = { type: "relay"; payload: RelayPayload };
 
 export type IncomingMessage =
   | SharerRegister

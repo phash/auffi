@@ -40,7 +40,7 @@ export function bindUI(backendWsUrl: string): void {
       .join(code)
       .then(() => {
         setStatus("Verbunden mit Sharer. (Phase 1: kein Video — sende Test-Relay)", "ok");
-        client.sendRelay({ hello: "from viewer", ts: Date.now() });
+        client.sendRelay({ kind: "hello", ts: Date.now() });
       })
       .catch((e: unknown) => {
         const message = e instanceof Error ? e.message : String(e);

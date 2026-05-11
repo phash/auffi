@@ -26,11 +26,23 @@ On "No":
 ```
 
 ### `relay` (any peer → any peer)
-Used for arbitrary peer-to-peer messages relayed by the backend.
-In later phases this carries SDP offers/answers and ICE candidates.
-In Phase 1 it carries "hello" test payloads.
+Used for WebRTC signaling messages relayed by the backend without inspection.
+The `payload` field is a discriminated union on `kind`:
+
+**SDP offer / answer:**
 ```json
-{ "type": "relay", "payload": { "...": "..." } }
+{ "type": "relay", "payload": { "kind": "sdp", "sdp": { "type": "offer", "sdp": "v=0..." } } }
+{ "type": "relay", "payload": { "kind": "sdp", "sdp": { "type": "answer", "sdp": "v=0..." } } }
+```
+
+**ICE candidate:**
+```json
+{ "type": "relay", "payload": { "kind": "ice", "candidate": { "candidate": "candidate:...", "sdpMid": "0", "sdpMLineIndex": 0 } } }
+```
+
+**Hello (smoke-test / keepalive):**
+```json
+{ "type": "relay", "payload": { "kind": "hello", "ts": 1715000000000 } }
 ```
 
 ## Viewer-Initiated Messages
