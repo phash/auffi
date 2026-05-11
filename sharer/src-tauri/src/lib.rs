@@ -96,6 +96,11 @@ fn list_monitors() -> Result<Vec<DisplayInfo>, String> {
 
 /// Show the border overlay window on the monitor being streamed, emit
 /// `border-info` with the connected peer's IP prefix.
+///
+/// Temporarily unused — the transparent overlay window renders opaque-black on
+/// some compositors and traps user input. Re-enable once the compositor /
+/// pass-through behaviour is verified on the target distros.
+#[allow(dead_code)]
 fn show_border_window(app: &tauri::AppHandle, monitor: &DisplayInfo, ip_prefix: &str) {
     let Some(border) = app.get_webview_window("border") else {
         log::warn!("border window not found");
@@ -297,7 +302,11 @@ async fn start_streaming(
         .ok()
         .and_then(|g| g.clone())
         .unwrap_or_default();
-    show_border_window(&app, &monitor, &ip_prefix);
+    // TEMP-DISABLED: the transparent overlay window currently renders opaque
+    // black on this compositor and traps the user's desktop. Re-enable once
+    // the transparency / pass-through behaviour is verified end-to-end.
+    let _ = (&monitor, &ip_prefix);
+    // show_border_window(&app, &monitor, &ip_prefix);
 
     let mut enc = encoder::Vp8Encoder::new(width, height, 2000)?;
 
@@ -343,10 +352,29 @@ async fn streaming_loop(
     enc: &mut encoder::Vp8Encoder,
     track: std::sync::Arc<TrackLocalStaticSample>,
 ) {
+    let mut frames = 0u64;
+    let mut packets_total = 0u64;
+    let mut packets_written = 0u64;
+    let mut encode_failures = 0u64;
+    let mut write_failures = 0u64;
+    let start = std::time::Instant::now();
     while let Ok(frame) = capturer.next_frame() {
-        let Ok(packets) = enc.encode(&frame.data, frame.pts_us) else {
-            continue;
+        frames += 1;
+        let packets = match enc.encode(&frame.data, frame.pts_us) {
+            Ok(p) => p,
+            Err(e) => {
+                encode_failures += 1;
+                if encode_failures <= 3 || encode_failures % 30 == 0 {
+                    eprintln!(
+                        "[streaming_loop] encode error (#{encode_failures}, frame bytes={} pts={}): {e}",
+                        frame.data.len(),
+                        frame.pts_us,
+                    );
+                }
+                continue;
+            }
         };
+        packets_total += packets.len() as u64;
 
         for pkt in packets {
             let sample = webrtc::media::Sample {
@@ -354,11 +382,31 @@ async fn streaming_loop(
                 duration: Duration::from_millis(33),
                 ..Default::default()
             };
-            if track.write_sample(&sample).await.is_err() {
-                return;
+            match track.write_sample(&sample).await {
+                Ok(_) => packets_written += 1,
+                Err(e) => {
+                    write_failures += 1;
+                    if write_failures <= 3 {
+                        eprintln!("[streaming_loop] write_sample error: {e}");
+                    }
+                    if write_failures > 30 {
+                        eprintln!("[streaming_loop] write_sample failing repeatedly; exiting");
+                        return;
+                    }
+                }
             }
         }
+
+        if frames % 30 == 0 {
+            eprintln!(
+                "[streaming_loop] {:.1}s: frames={frames} packets={packets_total} written={packets_written} enc_fail={encode_failures} write_fail={write_failures}",
+                start.elapsed().as_secs_f32()
+            );
+        }
     }
+    eprintln!(
+        "[streaming_loop] capturer ended after {frames} frames, {packets_written}/{packets_total} packets written"
+    );
 }
 
 /// Called by the webview when a relay with kind="sdp" (offer) is received.

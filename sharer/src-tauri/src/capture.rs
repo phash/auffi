@@ -148,7 +148,14 @@ impl ScreenCapturer {
                         .and_then(|cookie| cookie.reply().map_err(|e| e.to_string()))
                     {
                         Ok(img) => img,
-                        Err(_e) => break,
+                        Err(e) => {
+                            eprintln!(
+                                "[screen-capture] X11 get_image failed at ({frame_x},{frame_y}) {frame_w}x{frame_h}: {e} — \
+                                 this is expected on Wayland sessions (XWayland does not expose desktop content). \
+                                 Log out and log back into an Xorg / X11 session, or wait for the Wayland-portal capture backend."
+                            );
+                            break;
+                        }
                     };
 
                     let bgra = convert_to_bgra(image.data, image.depth);
