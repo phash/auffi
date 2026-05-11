@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+target/
+*.log
+.env
+.env.local
+.DS_Store
+.vite/
+src-tauri/target/
+coverage/
+.vitest-cache/

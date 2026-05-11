@@ -78,7 +78,7 @@ screenshare/
 - Create: `docker-compose.yml`
 - Create: `.env.example`
 
-- [ ] **Step 1: Create .gitignore**
+- [x] **Step 1: Create .gitignore**
 
 ```
 node_modules/
@@ -95,7 +95,7 @@ coverage/
 .vitest-cache/
 ```
 
-- [ ] **Step 2: Create README.md**
+- [x] **Step 2: Create README.md**
 
 ```markdown
 # Screenshare
@@ -122,7 +122,7 @@ Frontend components (viewer, sharer) run on the host directly. See their READMEs
 See `CLAUDE.md` for engineering rules (clean code, TDD, ≥70% coverage, Docker conventions).
 ```
 
-- [ ] **Step 3: Create .env.example**
+- [x] **Step 3: Create .env.example**
 
 ```
 # Backend
@@ -136,7 +136,7 @@ VITE_BACKEND_WS=ws://localhost:8080/signal
 SCREENSHARE_BACKEND_WS=ws://localhost:8080/signal
 ```
 
-- [ ] **Step 4: Create docker-compose.yml (root)**
+- [x] **Step 4: Create docker-compose.yml (root)**
 
 ```yaml
 services:
@@ -161,7 +161,7 @@ services:
       start_period: 5s
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .gitignore README.md docker-compose.yml .env.example
