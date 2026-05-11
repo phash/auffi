@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-binaries:
+    name: Build Sharer Binaries
+    uses: ./.github/workflows/build-sharer.yml
+    secrets: inherit
+
+  docker:
+    name: Build & Push Backend Docker Image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract tag name
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/phash/screenie-backend:${{ steps.tag.outputs.tag }}
+            ghcr.io/phash/screenie-backend:latest
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-24.04
+    needs: [build-binaries, docker]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Linux binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: sharer-linux
+          path: release-artifacts/linux/
+
+      - name: Download Windows binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: sharer-windows
+          path: release-artifacts/windows/
+
+      - name: Generate SHA256SUMS
+        run: |
+          find release-artifacts/ -type f | sort | xargs sha256sum > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Extract tag name
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            release-artifacts/linux/**
+            release-artifacts/windows/**
+            SHA256SUMS
+          body: |
+            ## Docker Image
+
+            ```
+            docker pull ghcr.io/phash/screenie-backend:${{ steps.tag.outputs.tag }}
+            ```
+
+            ## Sharer Installers
+
+            | Platform | Format | Notes |
+            |----------|--------|-------|
+            | Linux    | .deb   | Debian / Ubuntu |
+            | Linux    | .rpm   | Fedora / CentOS |
+            | Linux    | .AppImage | Universal |
+            | Windows  | .msi   | Windows Installer |
+            | Windows  | .exe   | NSIS Setup |
+
+            ## Verify Downloads
+
+            ```
+            sha256sum --check SHA256SUMS
+            ```
