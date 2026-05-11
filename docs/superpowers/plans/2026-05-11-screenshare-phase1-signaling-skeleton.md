@@ -1569,11 +1569,11 @@ git commit -m "feat(viewer): project scaffolding"
 - Create: `viewer/src/signaling-client.ts`
 - Create: `viewer/tests/signaling-client.test.ts`
 
-- [ ] **Step 1: Copy protocol types**
+- [x] **Step 1: Copy protocol types**
 
 Copy `backend/src/protocol.ts` to `viewer/src/protocol.ts` verbatim.
 
-- [ ] **Step 2: Write failing test using mock WebSocket**
+- [x] **Step 2: Write failing test using mock WebSocket**
 
 `viewer/tests/signaling-client.test.ts`:
 
@@ -1640,13 +1640,13 @@ describe("SignalingClient", () => {
 });
 ```
 
-- [ ] **Step 3: Run tests — verify they fail**
+- [x] **Step 3: Run tests — verify they fail**
 
 ```bash
 cd viewer && npm test
 ```
 
-- [ ] **Step 4: Implement signaling-client.ts**
+- [x] **Step 4: Implement signaling-client.ts**
 
 ```ts
 import type { IncomingMessage, OutgoingMessage } from "./protocol.js";
@@ -1708,13 +1708,13 @@ export class SignalingClient {
 }
 ```
 
-- [ ] **Step 5: Run tests — verify all pass**
+- [x] **Step 5: Run tests — verify all pass**
 
 ```bash
 cd viewer && npm test
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add viewer/src/protocol.ts viewer/src/signaling-client.ts viewer/tests/signaling-client.test.ts
