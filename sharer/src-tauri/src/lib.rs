@@ -5,16 +5,24 @@ mod protocol;
 mod signaling;
 mod webrtc_peer;
 
-use std::{sync::Mutex, time::Duration};
+use std::{sync::Arc, sync::Mutex, time::Duration};
 
 use tauri::State;
+use tokio::sync::mpsc;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
 use capture::DisplayInfo;
+use input::{InputController, InputEvent};
 
 struct SignalingState(Mutex<Option<signaling::Signaling>>);
 
 struct WebRtcState(tokio::sync::Mutex<Option<webrtc_peer::SharerPeer>>);
+
+/// Shared mutable access to the active `InputController`.
+///
+/// Wrapped in `Arc` so the input-applier task and future hotkey handlers can
+/// both hold a reference without borrowing Tauri state across await points.
+struct InputControllerState(Arc<tokio::sync::Mutex<Option<InputController>>>);
 
 #[tauri::command]
 async fn start_signaling(
@@ -61,6 +69,7 @@ async fn start_streaming(
     monitor_id: u32,
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
+    input_state: State<'_, InputControllerState>,
 ) -> Result<(), String> {
     let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
 
@@ -100,15 +109,37 @@ async fn start_streaming(
         }
     });
 
+    let mut capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| e.to_string())?;
+    let width = capturer.width();
+    let height = capturer.height();
+
+    let (input_tx, mut input_rx) = mpsc::channel::<InputEvent>(256);
+    peer.on_input_channel(input_tx);
+
+    let controller = InputController::new(width, height).map_err(|e| e.to_string())?;
+    {
+        let mut guard = input_state.0.lock().await;
+        *guard = Some(controller);
+    }
+
+    let controller_arc = Arc::clone(&input_state.0);
+    tauri::async_runtime::spawn(async move {
+        while let Some(ev) = input_rx.recv().await {
+            let mut guard = controller_arc.lock().await;
+            if let Some(ctrl) = guard.as_mut() {
+                if let Err(e) = ctrl.apply(ev) {
+                    log::warn!("input apply: {e}");
+                }
+            }
+        }
+    });
+
     let track = peer.track.clone();
     {
         let mut guard = rtc_state.0.lock().await;
         *guard = Some(peer);
     }
 
-    let mut capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| e.to_string())?;
-    let width = capturer.width();
-    let height = capturer.height();
     let mut enc = encoder::Vp8Encoder::new(width, height, 2000)?;
 
     tauri::async_runtime::spawn(async move {
@@ -211,6 +242,9 @@ pub fn run() {
     tauri::Builder::default()
         .manage(SignalingState(Mutex::new(None)))
         .manage(WebRtcState(tokio::sync::Mutex::new(None)))
+        .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
+            None,
+        ))))
         .invoke_handler(tauri::generate_handler![
             start_signaling,
             confirm_peer,

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use interceptor::registry::Registry;
+use tokio::sync::mpsc;
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine, APIBuilder,
@@ -14,6 +15,8 @@ use webrtc::{
     track::track_local::track_local_static_sample::TrackLocalStaticSample,
     Error,
 };
+
+use crate::input::InputEvent;
 
 /// A WebRTC peer connection for the sharer side.
 ///
@@ -95,11 +98,43 @@ impl SharerPeer {
             })
         }));
     }
+
+    /// Register a sender that receives parsed `InputEvent`s from the remote viewer.
+    ///
+    /// Must be called before ICE negotiation completes so that the `on_data_channel`
+    /// callback is in place when the viewer opens the `"input"` DataChannel.
+    pub fn on_input_channel(&self, tx: mpsc::Sender<InputEvent>) {
+        self.pc.on_data_channel(Box::new(move |dc| {
+            if dc.label() != "input" {
+                return Box::pin(async {});
+            }
+            let tx = tx.clone();
+            Box::pin(async move {
+                dc.on_message(Box::new(move |msg| {
+                    let tx = tx.clone();
+                    let bytes = msg.data.clone();
+                    Box::pin(async move {
+                        match serde_json::from_slice::<InputEvent>(&bytes) {
+                            Ok(event) => {
+                                if tx.send(event).await.is_err() {
+                                    log::warn!("input channel: receiver dropped");
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("input channel: failed to parse event: {e}");
+                            }
+                        }
+                    })
+                }));
+            })
+        }));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::InputEvent;
 
     #[tokio::test]
     async fn peer_new_succeeds() {
@@ -107,5 +142,25 @@ mod tests {
         SharerPeer::new(servers)
             .await
             .expect("SharerPeer::new failed");
+    }
+
+    #[test]
+    fn parses_input_event_from_bytes() {
+        let bytes = br#"{"kind":"mouse-move","x":0.25,"y":0.75}"#;
+        let ev: InputEvent =
+            serde_json::from_slice(bytes).expect("should parse mouse-move from bytes");
+        if let InputEvent::MouseMove { x, y } = ev {
+            assert!((x - 0.25).abs() < f64::EPSILON);
+            assert!((y - 0.75).abs() < f64::EPSILON);
+        } else {
+            panic!("expected MouseMove variant");
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_input_event() {
+        let bytes = b"not valid json {{{";
+        let result = serde_json::from_slice::<InputEvent>(bytes);
+        assert!(result.is_err(), "malformed JSON must be rejected");
     }
 }

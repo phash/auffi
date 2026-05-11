@@ -22,3 +22,4 @@ x11rb = { version = "=0.13.2", features = ["randr", "render", "shm", "image"] }
 webrtc = "=0.8.0"
 interceptor = "=0.9.0"
 enigo = "=0.6.1"
+log = "=0.4.27"
