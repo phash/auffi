@@ -7,6 +7,11 @@ export default defineConfig({
     baseURL: process.env.VIEWER_URL ?? "http://localhost:5173",
     headless: true,
     trace: "retain-on-failure",
+    // Override the default HeadlessChrome User-Agent — the production
+    // Caddy bot filter blocks it (intentionally — real users don't run
+    // headless browsers, and the filter discourages drive-by scrapers).
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
     launchOptions: {
       args: [
         "--use-fake-ui-for-media-stream",
