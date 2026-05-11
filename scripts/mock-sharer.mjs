@@ -188,7 +188,8 @@ function handleFilesChannel(ch) {
 }
 
 async function run() {
-  const ws = new WebSocket(SIGNAL_URL, { headers: { origin: "http://localhost:5174" } });
+  const origin = process.env.MOCK_SHARER_ORIGIN ?? "http://localhost:5174";
+  const ws = new WebSocket(SIGNAL_URL, { headers: { origin } });
 
   await new Promise((resolve, reject) => {
     ws.once("open", resolve);
