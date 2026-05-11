@@ -210,6 +210,26 @@ describe("signaling handshake", () => {
     sharer.close();
   });
 
+  it("viewer joins with un-dashed code and matches canonical session", async () => {
+    const sharer = new WebSocket(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer); // e.g. "284-915-073"
+
+    // Remove dashes → "284915073"
+    const undashed = code.replace(/-/g, "");
+
+    const viewer = new WebSocket(url);
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: undashed }));
+
+    const peerJoined = await recv(sharer);
+    expect(peerJoined.type).toBe("peer-joined");
+
+    sharer.close();
+    viewer.close();
+  });
+
   it("relay sent before sharer confirms is silently dropped", async () => {
     const sharer = new WebSocket(url);
     await new Promise((r) => sharer.once("open", r));

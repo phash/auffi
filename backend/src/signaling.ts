@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import type { SessionStore, Peer } from "./codes.js";
+import { normalizeCode } from "./codes.js";
 import type {
   IncomingMessage,
   OutgoingMessage,
@@ -62,14 +63,20 @@ export function registerSignaling(
       }
 
       if (msg.type === "join" && msg.role === "viewer" && role === null) {
-        const session = store.getSession(msg.code);
+        const normalized = normalizeCode(msg.code);
+        if (!normalized) {
+          send(peer, { type: "error", code: "bad-message", message: "invalid code format" });
+          peer.close();
+          return;
+        }
+        const session = store.getSession(normalized);
         if (!session) {
           if (!checkRateLimit(req.ip ?? "unknown", attemptCounts)) {
             send(peer, { type: "error", code: "rate-limit", message: "too many attempts" });
             peer.close();
             return;
           }
-          const burned = store.recordFailedAttempt(msg.code);
+          const burned = store.recordFailedAttempt(normalized);
           send(peer, {
             type: "error",
             code: burned ? "code-expired" : "invalid-code",
@@ -84,7 +91,7 @@ export function registerSignaling(
           return;
         }
         role = "viewer";
-        store.attachViewer(msg.code, peer as Peer);
+        store.attachViewer(normalized, peer as Peer);
         send(session.sharer as WebSocket, {
           type: "peer-joined",
           viewerInfo: { ipPrefix: ipPrefix(req), country: null },
