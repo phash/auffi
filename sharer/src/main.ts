@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { load } from "@tauri-apps/plugin-store";
+import type { TrustedPeer } from "./trusted-peers.js";
+import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted-peers.js";
 
 interface FileOfferPayload {
   id: string;
@@ -30,12 +32,6 @@ interface RelayPayload {
     sdpMLineIndex: number | null;
     usernameFragment: string | null;
   };
-}
-
-interface TrustedPeer {
-  ipPrefix: string;
-  label: string;
-  addedAt: number;
 }
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -93,21 +89,19 @@ async function saveTrustedPeers(peers: TrustedPeer[]): Promise<void> {
 
 async function addTrustedPeer(ipPrefix: string, label: string): Promise<void> {
   const peers = await loadTrustedPeers();
-  if (peers.some((p) => p.ipPrefix === ipPrefix)) return;
-  peers.push({ ipPrefix, label, addedAt: Date.now() });
-  await saveTrustedPeers(peers);
+  await saveTrustedPeers(addPeerToList(peers, ipPrefix, label));
   await renderTrustedPeers();
 }
 
 async function removeTrustedPeer(ipPrefix: string): Promise<void> {
   const peers = await loadTrustedPeers();
-  await saveTrustedPeers(peers.filter((p) => p.ipPrefix !== ipPrefix));
+  await saveTrustedPeers(removePeerFromList(peers, ipPrefix));
   await renderTrustedPeers();
 }
 
 async function isTrustedPeer(ipPrefix: string): Promise<boolean> {
   const peers = await loadTrustedPeers();
-  return peers.some((p) => p.ipPrefix === ipPrefix);
+  return matchesTrustedPeer(ipPrefix, peers);
 }
 
 async function loadSettings(): Promise<void> {
