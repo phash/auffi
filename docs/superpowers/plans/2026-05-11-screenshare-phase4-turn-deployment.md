@@ -58,7 +58,7 @@ sharer/src-tauri/src/turn_config.rs              # new — same on the Rust side
 - Create: `backend/src/turn-credentials.ts`, `backend/tests/turn-credentials.test.ts`
 - Modify: `backend/src/server.ts`
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```ts
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -118,7 +118,7 @@ describe("POST /turn-credentials", () => {
 });
 ```
 
-- [ ] **Step 2: Implementation**
+- [x] **Step 2: Implementation**
 
 `turn-credentials.ts`:
 
@@ -151,9 +151,9 @@ export function registerTurnEndpoint(app: FastifyInstance, cfg: TurnConfig): voi
 
 Wire in `server.ts`: read env vars (`TURN_SHARED_SECRET`, `TURN_REALM`, `TURN_HOSTS`, `TURN_TTL_SEC`). If `TURN_SHARED_SECRET` is unset → log warning and skip endpoint registration (dev mode without TURN).
 
-- [ ] **Step 3: Register @fastify/rate-limit globally if not already, with per-route override**
+- [x] **Step 3: Register @fastify/rate-limit globally if not already, with per-route override**
 
-- [ ] **Step 4: Tests pass, coverage ≥ 70% for the new module. Commit.**
+- [x] **Step 4: Tests pass, coverage ≥ 70% for the new module. Commit.**
 
 ```bash
 git commit -m "feat(backend): POST /turn-credentials with HMAC ephemeral creds"

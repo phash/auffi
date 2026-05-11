@@ -1,7 +1,9 @@
 import Fastify, { FastifyInstance } from "fastify";
 import websocketPlugin from "@fastify/websocket";
+import rateLimitPlugin from "@fastify/rate-limit";
 import { SessionStore } from "./codes.js";
 import { registerSignaling } from "./signaling.js";
+import { registerTurnEndpoint } from "./turn-credentials.js";
 
 export type ServerConfig = {
   port: number;
@@ -33,6 +35,10 @@ const ALLOWED_ORIGINS = envList("ALLOWED_ORIGINS", [
 ]);
 
 export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance> {
+  const turnSharedSecret = process.env.TURN_SHARED_SECRET ?? "";
+  const turnRealm = process.env.TURN_REALM ?? "localhost";
+  const turnHosts = envList("TURN_HOSTS", []);
+  const turnTtlSec = envNumber("TURN_TTL_SEC", 3600);
   const app = Fastify({
     logger: {
       base: null,
@@ -57,6 +63,8 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
       },
     },
   });
+
+  await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
 
   await app.register(websocketPlugin, {
     options: {
@@ -90,5 +98,17 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
   });
 
   app.get("/healthz", async () => ({ status: "ok" }));
+
+  if (!turnSharedSecret) {
+    app.log.warn("TURN_SHARED_SECRET not set — /turn-credentials endpoint disabled");
+  } else {
+    registerTurnEndpoint(app, {
+      sharedSecret: turnSharedSecret,
+      realm: turnRealm,
+      urls: turnHosts,
+      ttlSec: turnTtlSec,
+    });
+  }
+
   return app;
 }
