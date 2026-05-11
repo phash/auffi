@@ -1,0 +1,116 @@
+name: Build Sharer Binaries
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact-linux:
+        description: "Linux artifact name"
+        value: ${{ jobs.build-linux.outputs.artifact-name }}
+      artifact-windows:
+        description: "Windows artifact name"
+        value: ${{ jobs.build-windows.outputs.artifact-name }}
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-linux:
+    name: Build Sharer (Linux)
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact-name: sharer-linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libvpx-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libxtst-dev \
+            libx11-dev \
+            libxrandr-dev
+
+      - name: Install Rust stable toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache-workspaces: sharer/src-tauri
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sharer/package-lock.json
+
+      - name: Install sharer Node dependencies
+        working-directory: sharer
+        run: npm ci
+
+      - name: Build Tauri app (Linux)
+        working-directory: sharer
+        run: npm run tauri:build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload Linux bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: sharer-linux
+          path: |
+            sharer/src-tauri/target/release/bundle/deb/*.deb
+            sharer/src-tauri/target/release/bundle/rpm/*.rpm
+            sharer/src-tauri/target/release/bundle/appimage/*.AppImage
+          retention-days: 30
+
+  build-windows:
+    name: Build Sharer (Windows)
+    runs-on: windows-latest
+    outputs:
+      artifact-name: sharer-windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache-workspaces: sharer/src-tauri
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sharer/package-lock.json
+
+      - name: Install sharer Node dependencies
+        working-directory: sharer
+        run: npm ci
+
+      - name: Build Tauri app (Windows)
+        working-directory: sharer
+        run: npm run tauri:build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload Windows bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: sharer-windows
+          path: |
+            sharer/src-tauri/target/release/bundle/msi/*.msi
+            sharer/src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 30
