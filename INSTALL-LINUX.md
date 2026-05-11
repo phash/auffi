@@ -23,28 +23,33 @@ Das Skript erkennt die Distribution, installiert Abhängigkeiten und richtet Scr
 |---|---|
 | `webkit2gtk-4.1` | WebView-Engine (Tauri) |
 | `libvpx` | VP8/VP9 Video-Codec für WebRTC |
-| X11 oder XWayland | Bildschirmerfassung |
+| X11 oder Wayland + PipeWire | Bildschirmerfassung |
 
-**Wayland-Hinweis:** Screenie nutzt XWayland als Fallback auf Wayland-Sessions. Bildschirmerfassung
-funktioniert, aber native Wayland-Capture (via PipeWire) ist noch nicht implementiert. Die
-Capture-Qualität unter XWayland kann geringfügig schlechter sein.
+**Wayland-Hinweis:** Screenie unterstützt native Wayland-Capture über
+`xdg-desktop-portal` (ScreenCast-Portal) und PipeWire. Beim Start erscheint ein
+Systemdialog ("Choose what to share"), den der User bei **jedem Start** bestätigen muss.
+Das ist das Sicherheitsmodell des Compositors — es gibt kein "Immer erlauben" für
+Screen Capture. Der Dialog erscheint in der Regel als Fenster des Desktop-Environments
+(KDE, GNOME usw.).
+
+Für PipeWire-Support sind folgende Pakete erforderlich:
 
 ### Distro-spezifische Abhängigkeiten
 
 **Arch Linux / Manjaro:**
 ```bash
-sudo pacman -S webkit2gtk-4.1 libvpx
+sudo pacman -S webkit2gtk-4.1 libvpx pipewire xdg-desktop-portal
 ```
 
 **Debian / Ubuntu (22.04+):**
 ```bash
 sudo apt-get update
-sudo apt-get install -y libwebkit2gtk-4.1-0 libvpx-dev
+sudo apt-get install -y libwebkit2gtk-4.1-0 libvpx-dev libpipewire-0.3-dev xdg-desktop-portal
 ```
 
 **Fedora / RHEL / CentOS:**
 ```bash
-sudo dnf install -y webkit2gtk4.1 libvpx
+sudo dnf install -y webkit2gtk4.1 libvpx pipewire xdg-desktop-portal
 ```
 
 ---
@@ -143,9 +148,9 @@ sudo update-desktop-database /usr/share/applications/ 2>/dev/null || true
 
 ## Erstmaliger Start
 
-Beim ersten Start erscheint auf **Wayland** ein Screen-Capture-Portal-Dialog — dieser muss
-bestätigt werden, damit Screenie Zugriff auf den Bildschirm erhält. Der Dialog erscheint
-nur einmal (Berechtigung wird gespeichert).
+Beim Start erscheint auf **Wayland** ein Screen-Capture-Portal-Dialog ("Choose what to
+share") — dieser muss bei **jedem Start** bestätigt werden.  Das ist das
+Sicherheitsmodell des Compositors; es gibt keine dauerhafte Freigabe für Screen Capture.
 
 Auf **X11** ist keine zusätzliche Berechtigung notwendig.
 
@@ -219,5 +224,5 @@ curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install
 ## Probleme & Hilfe
 
 - **Issues:** [github.com/phash/screenie/issues](https://github.com/phash/screenie/issues)
-- **Schwarzer Bildschirm auf Wayland:** Screen-Capture-Portal-Dialog bestätigen oder in X11-Session wechseln
+- **Schwarzer Bildschirm auf Wayland:** Screen-Capture-Portal-Dialog bestätigen; PipeWire und xdg-desktop-portal installiert?
 - **Verbindung schlägt fehl:** TURN-Fallback ist aktiviert; Firewall auf UDP-Ports 3478/5349 prüfen

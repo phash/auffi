@@ -281,10 +281,13 @@ Jeder Punkt machbar, aber bricht „einfach". Liste später bei Bedarf abarbeite
 
 ## 10. Open Questions / Risiken
 
-Nichts blockt den Implementierungsplan. Drei Punkte, die in der Umsetzung auftauchen werden:
+Nichts blockt den Implementierungsplan. Verbleibende Punkte:
 
-1. **Wayland-Capture auf Linux**: Läuft über `xdg-desktop-portal` und triggert bei jedem
-   Start einen User-Prompt. Akzeptabel, muss im Onboarding erklärt werden.
+1. **Wayland-Capture auf Linux**: ✅ Implementiert (Phase 5, 2026-05-12).
+   Läuft über `xdg-desktop-portal` (ScreenCast-Portal) + PipeWire. Triggert bei
+   jedem Start einen User-Prompt ("Choose what to share") — das ist das
+   Sicherheitsmodell des Compositors und unumgehbar. Erklärt in `INSTALL-LINUX.md`.
+   Backend-Auswahl erfolgt automatisch anhand von `XDG_SESSION_TYPE`.
 2. **macOS-Permissions**: Screen Recording + Accessibility müssen vom User in den
    Systemeinstellungen erlaubt werden. Da macOS nicht im Test-Scope ist, dokumentieren wir
    das in einem README, garantieren aber nichts.
