@@ -1,4 +1,4 @@
-# Screenshare — Konzept (MVP)
+# Screenie — Konzept (MVP)
 
 **Datum:** 2026-05-11
 **Status:** Draft, in Review
@@ -73,7 +73,7 @@ Sharer-App startet                                Viewer (Browser)
        │                                                  │
    [User zeigt Code via Telefon/Chat dem Helfer]          │
        │                                                  │
-       │                          3. öffnet screenshare.mr-development.de
+       │                          3. öffnet screenie.mr-development.de
        │                          4. tippt Code ein       │
        │                          ┌──────────┐            │
        │                          │ Backend  │◄───────────┤
@@ -207,15 +207,15 @@ TURN-Last: nur bei P2P-Fehlschlag (geschätzt 20–30 % der Sessions), dann **al
 - **coturn** auf IONOS VPS.
 - Ports: 3478 (UDP/TCP), 5349 (TLS).
 - Modus: `use-auth-secret`, Secret geteilt mit Backend.
-- Subdomain: `turn.screenshare.mr-development.de`.
+- Subdomain: `turn.screenie.mr-development.de`.
 - Quota-Settings: `bps-capacity` (Server-Cap), `user-quota` (per-Session-Cap z.B. 5 Mbit/s),
   `max-bps`. Session-Tracking via coturn-Logs → täglicher Cron meldet Volumen an MRD-API.
 
 ### Deployment
 
-- `screenshare.mr-development.de` → Nginx → statisches Viewer-Build + Backend-Reverse-Proxy.
-- `turn.screenshare.mr-development.de` → coturn (eigene Ports).
-- Sharer-App-Binaries: Download unter `screenshare.mr-development.de/download`.
+- `screenie.mr-development.de` → Nginx → statisches Viewer-Build + Backend-Reverse-Proxy.
+- `turn.screenie.mr-development.de` → coturn (eigene Ports).
+- Sharer-App-Binaries: Download unter `screenie.mr-development.de/download`.
 - Code-Signing für Win/Mac: **nicht im MVP** (Zertifikatskosten). Linux: signiert.
   Win/Mac: selbstsigniert mit Erstöffnen-Warnung-Hinweis im Onboarding.
 
@@ -226,7 +226,7 @@ TURN-Last: nur bei P2P-Fehlschlag (geschätzt 20–30 % der Sessions), dann **al
 Drei Verzeichnisse, jedes mit einer Verantwortung:
 
 ```
-screenshare/
+screenie/
 ├── sharer/          # Tauri-App  (Rust + minimales TS-UI)
 ├── viewer/          # Web-App    (TS + Vite)
 ├── backend/         # Signaling  (Node.js + Fastify)

@@ -1,4 +1,4 @@
-# Screenshare Phase 2 — WebRTC + Screen-Streaming
+# Screenie Phase 2 — WebRTC + Screen-Streaming
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to execute this plan.
 
@@ -631,7 +631,7 @@ impl SharerPeer {
                 ..Default::default()
             },
             "video".to_string(),
-            "screenshare".to_string(),
+            "screenie".to_string(),
         ));
         pc.add_track(track.clone()).await?;
 

@@ -105,7 +105,7 @@ async function run() {
 
     if (msg.type === "code-assigned") {
       // Print in a format that test harnesses can grep.
-      process.stdout.write(`SCREENSHARE_CODE=${msg.code}\n`);
+      process.stdout.write(`SCREENIE_CODE=${msg.code}\n`);
       return;
     }
 

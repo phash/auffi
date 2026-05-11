@@ -1,4 +1,4 @@
-# Screenshare Phase 3 — Remote-Control + Dateitransfer (Outline)
+# Screenie Phase 3 — Remote-Control + Dateitransfer (Outline)
 
 > **Status:** Outline only. Wird detailliert, sobald Phase 2 läuft.
 
@@ -28,7 +28,7 @@
 
 7. **Protocol: File-Transfer-Schema.** `{ kind: "file-offer", id, name, size, mime }`, `{ kind: "file-accept", id }` / `{ kind: "file-reject", id }`, `{ kind: "file-chunk", id, seq, data: base64 }`, `{ kind: "file-done", id }`.
 8. **Viewer: Datei-Upload via Drag&Drop.** Zone neben/über dem `<video>`. Auf Drop: `file-offer` schicken, auf `accept` warten, dann Chunks streamen.
-9. **Sharer (Rust): Datei-Empfang.** Auf `file-offer` Tauri-Webview-Dialog zeigen ("Helfer möchte `report.pdf` (2.3 MB) senden — annehmen?"). Bei Akzeptieren: Chunks zusammensetzen, in `~/Downloads/Screenshare/` ablegen.
+9. **Sharer (Rust): Datei-Empfang.** Auf `file-offer` Tauri-Webview-Dialog zeigen ("Helfer möchte `report.pdf` (2.3 MB) senden — annehmen?"). Bei Akzeptieren: Chunks zusammensetzen, in `~/Downloads/Screenie/` ablegen.
 10. **Umgekehrte Richtung: Sharer → Viewer.** Sharer kann Datei via Webview-Picker auswählen und senden. Viewer lädt sie als Browser-Download.
 11. **Chunking-Größe + Backpressure.** 16 KB pro Chunk. Bei `bufferedAmount > 1 MB` auf `bufferedamountlow`-Event warten.
 

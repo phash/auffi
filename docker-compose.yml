@@ -3,8 +3,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: screenshare-backend:dev
-    container_name: screenshare-backend
+    image: screenie-backend:dev
+    container_name: screenie-backend
     restart: unless-stopped
     environment:
       - NODE_ENV=development

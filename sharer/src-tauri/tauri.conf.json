@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Screenshare",
+  "productName": "Screenie",
   "version": "0.1.0",
-  "identifier": "de.mr-development.screenshare",
+  "identifier": "de.mr-development.screenie",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5174",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Screenshare — Sharer",
+        "title": "Screenie — Sharer",
         "width": 480,
         "height": 600
       }

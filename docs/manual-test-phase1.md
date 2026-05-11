@@ -1,4 +1,4 @@
-# Phase 1 Manual Smoke Test
+# Phase 1 Manual Smoke Test — Screenie
 
 ## Setup
 

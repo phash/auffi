@@ -1,4 +1,4 @@
-# Screenshare Phase 1 — Signaling-Skelett
+# Screenie Phase 1 — Signaling-Skelett
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -17,7 +17,7 @@
 ## File Structure (Phase 1)
 
 ```
-screenshare/
+screenie/
 ├── CLAUDE.md                    # Project-Conventions (Clean Code, Docker, DSGVO)
 ├── docker-compose.yml           # Lokales Dev-Setup
 ├── .env.example                 # Konfigurations-Template
@@ -98,7 +98,7 @@ coverage/
 - [x] **Step 2: Create README.md**
 
 ```markdown
-# Screenshare
+# Screenie
 
 Simple, secure TeamViewer-style screen sharing. See `docs/superpowers/specs/` for design.
 
@@ -144,8 +144,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: screenshare-backend:dev
-    container_name: screenshare-backend
+    image: screenie-backend:dev
+    container_name: screenie-backend
     restart: unless-stopped
     environment:
       - NODE_ENV=development
@@ -178,7 +178,7 @@ git commit -m "chore: workspace setup with docker compose"
 - [x] **Step 1: Document the wire protocol**
 
 ```markdown
-# Screenshare Signaling Protocol
+# Screenie Signaling Protocol
 
 Transport: WebSocket Secure (WSS) to `/signal` on the backend.
 All messages are JSON. Each message has a `type` field.
@@ -299,7 +299,7 @@ Then edit `backend/package.json` to:
 
 ```json
 {
-  "name": "screenshare-backend",
+  "name": "screenie-backend",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -378,7 +378,7 @@ export default defineConfig({
 `backend/src/index.ts`:
 
 ```ts
-console.log("Screenshare backend (Phase 1) — not implemented yet");
+console.log("Screenie backend (Phase 1) — not implemented yet");
 ```
 
 - [x] **Step 5: Verify build works**
@@ -387,7 +387,7 @@ console.log("Screenshare backend (Phase 1) — not implemented yet");
 cd backend && npm run build && node dist/index.js
 ```
 
-Expected output: `Screenshare backend (Phase 1) — not implemented yet`
+Expected output: `Screenie backend (Phase 1) — not implemented yet`
 
 - [x] **Step 6: Create Dockerfile (multi-stage)**
 
@@ -1471,7 +1471,7 @@ Then edit `viewer/package.json`:
 
 ```json
 {
-  "name": "screenshare-viewer",
+  "name": "screenie-viewer",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -1529,7 +1529,7 @@ export default defineConfig({
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Screenshare — Viewer</title>
+    <title>Screenie — Viewer</title>
   </head>
   <body>
     <main id="app"></main>
@@ -1541,7 +1541,7 @@ export default defineConfig({
 - [x] **Step 5: Stub main.ts**
 
 ```ts
-document.getElementById("app")!.textContent = "Screenshare Viewer (Phase 1) — stub";
+document.getElementById("app")!.textContent = "Screenie Viewer (Phase 1) — stub";
 ```
 
 - [x] **Step 6: Verify dev server runs**
@@ -1550,7 +1550,7 @@ document.getElementById("app")!.textContent = "Screenshare Viewer (Phase 1) — 
 cd viewer && npm run dev
 ```
 
-Open http://localhost:5173 in browser. Expected: "Screenshare Viewer (Phase 1) — stub".
+Open http://localhost:5173 in browser. Expected: "Screenie Viewer (Phase 1) — stub".
 Stop with Ctrl+C.
 
 - [x] **Step 7: Commit**
@@ -1748,7 +1748,7 @@ Replace `<body>` in `viewer/index.html`:
     #status.info { background: #e6f0ff; }
   </style>
   <main id="app">
-    <h1>Screenshare</h1>
+    <h1>Screenie</h1>
     <p>Code vom Sharer eingeben:</p>
     <input id="code" maxlength="11" placeholder="284-915-073" />
     <button id="connect">Verbinden</button>
@@ -1867,7 +1867,7 @@ Set `sharer/package.json`:
 
 ```json
 {
-  "name": "screenshare-sharer",
+  "name": "screenie-sharer",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -1945,7 +1945,7 @@ invoke("start_signaling");
 
 ```toml
 [package]
-name = "screenshare-sharer"
+name = "screenie-sharer"
 version = "0.1.0"
 edition = "2021"
 
@@ -1980,9 +1980,9 @@ fn main() {
 ```json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Screenshare",
+  "productName": "Screenie",
   "version": "0.1.0",
-  "identifier": "de.mr-development.screenshare",
+  "identifier": "de.mr-development.screenie",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5174",
@@ -1992,7 +1992,7 @@ fn main() {
   "app": {
     "windows": [
       {
-        "title": "Screenshare — Sharer",
+        "title": "Screenie — Sharer",
         "width": 480,
         "height": 600
       }
@@ -2021,7 +2021,7 @@ pub fn run() {
 `src-tauri/src/main.rs` (thin entry point delegating to lib):
 ```rust
 fn main() {
-    screenshare_sharer::run();
+    screenie_sharer::run();
 }
 ```
 
@@ -2031,7 +2031,7 @@ fn main() {
 cd sharer && npm run tauri:dev
 ```
 
-Expected: a window opens with "Screenshare — Sharer" and the empty placeholder code "…".
+Expected: a window opens with "Screenie — Sharer" and the empty placeholder code "…".
 Stop with Ctrl+C.
 
 > DONE_WITH_CONCERNS: webkit2gtk-4.1 system library not installed on this host. `cargo check` blocked at webkit2gtk-sys build script. TS type-check passes; Rust syntax validated via rustc. See Task 13 report.
@@ -2199,7 +2199,7 @@ fn main() {
 }
 ```
 
-- [x] **Step 4: Build and verify Rust compiles** (webkit2gtk-4.1 missing on host; `cargo check` confirms screenshare-sharer compiled without errors — only webkit sys-crate failed)
+- [x] **Step 4: Build and verify Rust compiles** (webkit2gtk-4.1 missing on host; `cargo check` confirms screenie-sharer compiled without errors — only webkit sys-crate failed)
 
 ```bash
 cd sharer && npm run tauri:dev

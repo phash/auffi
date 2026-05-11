@@ -1,4 +1,4 @@
-# Screenshare — Project Conventions
+# Screenie — Project Conventions
 
 ## Project Overview
 

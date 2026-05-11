@@ -1,7 +1,7 @@
 {
-  "name": "screenshare-scripts",
+  "name": "screenie-scripts",
   "version": "1.0.0",
-  "description": "Development and test helper scripts for the screenshare project",
+  "description": "Development and test helper scripts for the screenie project",
   "type": "module",
   "scripts": {
     "mock-sharer": "node mock-sharer.mjs"

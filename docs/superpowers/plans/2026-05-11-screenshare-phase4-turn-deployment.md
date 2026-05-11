@@ -1,4 +1,4 @@
-# Screenshare Phase 4 — TURN + Free-Tier-Limits + Deployment (Outline)
+# Screenie Phase 4 — TURN + Free-Tier-Limits + Deployment (Outline)
 
 > **Status:** Outline only. Wird detailliert, sobald Phase 3 läuft.
 
@@ -11,7 +11,7 @@
 - **Neuer Komponenten:** coturn-Server (eigener Dienst).
 - **Backend bekommt** `POST /turn-credentials`-Endpoint, der kurzlebige HMAC-Tokens ausgibt.
 - **Sharer + Viewer**: Holen vor jeder Session TURN-Credentials und konfigurieren `RTCPeerConnection` mit ICE-Servern (eigener STUN+TURN).
-- **Backend**: Mit echtem TLS (Let's-Encrypt via Nginx) auf `screenshare.mr-development.de`.
+- **Backend**: Mit echtem TLS (Let's-Encrypt via Nginx) auf `screenie.mr-development.de`.
 - **Quota-Enforcement**: coturn-Lifetime + Bandwidth-Limits via `lifetime` und `max-bps`-Settings. Aus Sicht des WebRTC-Stacks beendet ein Lifetime-Cut die Session sauber (ICE wird disconnected) — Frontend zeigt Upgrade-Hinweis.
 
 ## Vorgesehene Tasks
@@ -21,14 +21,14 @@
 1. **coturn auf IONOS VPS installieren.** Über MRD-Conventions/Cluster-Skill checken, welcher Port-Bereich frei ist. Standard: 3478 (UDP/TCP), 5349 (TLS).
 2. **coturn-Config** (`/etc/turnserver.conf`):
    - `use-auth-secret` + langes Secret (geteilt mit Backend via Env-Var)
-   - `realm=turn.screenshare.mr-development.de`
+   - `realm=turn.screenie.mr-development.de`
    - `total-quota=100` (max gleichzeitige Sessions)
    - `user-quota=5000000` (~5 Mbit/s pro Session, in bps)
    - `max-bps=5000000`
    - `lifetime=600` (10 Min pro TURN-Allocation — Free-Tier-Limit!)
    - `cert=/etc/letsencrypt/live/turn.../fullchain.pem`
    - `pkey=/etc/letsencrypt/live/turn.../privkey.pem`
-3. **DNS:** `turn.screenshare.mr-development.de` A-Record auf VPS-IP.
+3. **DNS:** `turn.screenie.mr-development.de` A-Record auf VPS-IP.
 4. **systemd-Service** für coturn, Auto-Restart, Logs nach journald.
 5. **Smoke-Test:** `turnutils_uclient` von externem Rechner gegen Server, mit Test-Credentials.
 
@@ -55,12 +55,12 @@
 
 ### Deployment-Hardening
 
-15. **Nginx als Reverse-Proxy** vor Backend. Let's Encrypt Cert für `screenshare.mr-development.de`. WSS-Upgrade durchreichen.
+15. **Nginx als Reverse-Proxy** vor Backend. Let's Encrypt Cert für `screenie.mr-development.de`. WSS-Upgrade durchreichen.
 16. **Backend als systemd-Service** mit Auto-Restart, Logs nach journald.
-17. **Static Viewer-Build** unter `/var/www/screenshare/`, von Nginx ausgeliefert.
+17. **Static Viewer-Build** unter `/var/www/screenie/`, von Nginx ausgeliefert.
 18. **Sharer-Binaries hosten.** GitHub-Releases oder unter `/download` auf dem VPS. README für Erstinstallation pro OS.
 19. **CI/CD:** GitHub Actions baut Tauri-Binaries für Linux + Windows. Auto-Upload zu Release.
-20. **Health-Monitoring:** Cron pingt `screenshare.mr-development.de/healthz` und `turn.screenshare.mr-development.de:3478`. Bei Fehler: MRD-API-Status auf "degraded".
+20. **Health-Monitoring:** Cron pingt `screenie.mr-development.de/healthz` und `turn.screenie.mr-development.de:3478`. Bei Fehler: MRD-API-Status auf "degraded".
 
 ### Premium-Hook (vorbereiten, nicht aktivieren)
 
@@ -69,10 +69,10 @@
 
 ## Done When
 
-- TURN-Server läuft auf `turn.screenshare.mr-development.de` mit TLS.
+- TURN-Server läuft auf `turn.screenie.mr-development.de` mit TLS.
 - Eine Session aus restriktivem Netz (Mobile-Tethering mit Symmetric-NAT als Realtest) verbindet sich erfolgreich.
 - Lifetime-Cut nach 10 Min sichtbar als sauberer Upgrade-Prompt.
 - 500-MB-Cap durch `max-bps × lifetime` faktisch erreicht (Worst Case: 5 Mbit/s × 600s = 375 MB. Wenn 500 MB Ziel exakter sein soll: `lifetime=800s` und `max-bps=5000000`. Im echten Use-Case selten relevant, weil Lifetime früher greift.).
-- `screenshare.mr-development.de/healthz` liefert `{ status: "ok" }` über HTTPS.
+- `screenie.mr-development.de/healthz` liefert `{ status: "ok" }` über HTTPS.
 - Sharer-Binaries (Linux + Windows) sind unter `/download` herunterladbar.
 - Tägliches Traffic-Reporting an MRD-API funktioniert.

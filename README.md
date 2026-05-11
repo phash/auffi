@@ -1,4 +1,4 @@
-# Screenshare
+# Screenie
 
 Simple, secure TeamViewer-style screen sharing. See `docs/superpowers/specs/` for design.
 

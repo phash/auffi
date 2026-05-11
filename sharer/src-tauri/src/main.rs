@@ -1,3 +1,3 @@
 fn main() {
-    screenshare_sharer::run();
+    screenie_sharer::run();
 }
