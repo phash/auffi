@@ -100,7 +100,7 @@ git commit -m "feat(protocol): input events + file transfer message schemas"
 **Files:**
 - Create: `viewer/src/input-capture.ts`, `viewer/tests/input-capture.test.ts`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```ts
 import { describe, it, expect, vi } from "vitest";
@@ -175,7 +175,7 @@ describe("InputCapture", () => {
 
 Add `environment: "jsdom"` to `viewer/vitest.config.ts` (install `jsdom` exact pin). Run, verify fail.
 
-- [ ] **Step 2: Implement `viewer/src/input-capture.ts`**
+- [x] **Step 2: Implement `viewer/src/input-capture.ts`**
 
 ```ts
 import type { InputEvent, Modifier } from "./protocol.js";
@@ -260,7 +260,7 @@ export class InputCapture {
 }
 ```
 
-- [ ] **Step 3: Run tests pass, coverage ≥ 70%. Commit.**
+- [x] **Step 3: Run tests pass, coverage ≥ 70%. Commit.**
 
 ```bash
 git add viewer/src/input-capture.ts viewer/tests/input-capture.test.ts viewer/vitest.config.ts viewer/package.json viewer/package-lock.json
