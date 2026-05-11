@@ -96,7 +96,15 @@ impl ScreenCapturer {
 
                     let image = match monitor.capture_image() {
                         Ok(img) => img,
-                        Err(_) => break,
+                        Err(e) => {
+                            eprintln!(
+                                "[screen-capture] xcap capture_image failed for monitor {display_id}: {e} — \
+                                 on Linux this typically means a native Wayland session (xcap currently uses X11 / DXGI); \
+                                 log out and back into Xorg or wait for the Wayland-portal backend. \
+                                 On Windows this is unexpected — check that Windows Graphics Capture is available (Win10 1903+)."
+                            );
+                            break;
+                        }
                     };
 
                     let bgra = rgba_to_bgra(image.into_raw());
