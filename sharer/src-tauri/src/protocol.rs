@@ -14,7 +14,7 @@ pub enum Incoming {
     CodeAssigned {
         code: String,
         #[serde(rename = "expiresInSec")]
-        expires_in_sec: u64,
+        _expires_in_sec: u64,
     },
     PeerJoined {
         #[serde(rename = "viewerInfo")]
@@ -37,5 +37,5 @@ pub enum Incoming {
 pub struct ViewerInfo {
     #[serde(rename = "ipPrefix")]
     pub ip_prefix: String,
-    pub country: Option<String>,
+    pub _country: Option<String>,
 }

@@ -2,7 +2,7 @@ mod protocol;
 mod signaling;
 
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::State;
 
 struct SignalingState(Mutex<Option<signaling::Signaling>>);
 
