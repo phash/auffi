@@ -24,10 +24,7 @@ async fn start_signaling(
 }
 
 #[tauri::command]
-async fn confirm_peer(
-    accepted: bool,
-    state: State<'_, SignalingState>,
-) -> Result<(), String> {
+async fn confirm_peer(accepted: bool, state: State<'_, SignalingState>) -> Result<(), String> {
     let tx = {
         let guard = state
             .0
