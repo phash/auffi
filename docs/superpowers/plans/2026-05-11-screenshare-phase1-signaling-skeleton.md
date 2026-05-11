@@ -1597,9 +1597,11 @@ class MockWS {
 describe("SignalingClient", () => {
   it("sends join after connect", async () => {
     const mock = new MockWS();
-    const client = new SignalingClient("ws://x", { factory: () => mock as any });
-    await client.join("284-915-073");
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const p = client.join("284-915-073");
     mock.fakeOpen();
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
     expect(JSON.parse(mock.sent[0])).toEqual({
       type: "join",
       role: "viewer",
@@ -1609,7 +1611,7 @@ describe("SignalingClient", () => {
 
   it("resolves connect promise on peer-confirmed", async () => {
     const mock = new MockWS();
-    const client = new SignalingClient("ws://x", { factory: () => mock as any });
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
     const p = client.join("284-915-073");
     mock.fakeOpen();
     mock.fakeMessage({ type: "peer-confirmed" });
@@ -1618,7 +1620,7 @@ describe("SignalingClient", () => {
 
   it("rejects on invalid-code error", async () => {
     const mock = new MockWS();
-    const client = new SignalingClient("ws://x", { factory: () => mock as any });
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
     const p = client.join("000-000-000");
     mock.fakeOpen();
     mock.fakeMessage({ type: "error", code: "invalid-code", message: "no such session" });
@@ -1627,7 +1629,7 @@ describe("SignalingClient", () => {
 
   it("emits relay events to listeners", async () => {
     const mock = new MockWS();
-    const client = new SignalingClient("ws://x", { factory: () => mock as any });
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
     const fn = vi.fn();
     client.onRelay(fn);
     const p = client.join("284-915-073");
