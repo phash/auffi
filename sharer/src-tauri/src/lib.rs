@@ -1,5 +1,6 @@
 mod capture;
 mod encoder;
+pub mod input;
 mod protocol;
 mod signaling;
 mod webrtc_peer;
