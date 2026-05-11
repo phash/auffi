@@ -1,0 +1,93 @@
+# Smoke-test overlay for local pre-deploy validation.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.smoke.yml up -d
+#
+# What this overlay changes:
+#   1. Backend — built locally from ./backend instead of using a pre-pushed image.
+#      Dummy env overrides replace the real .env.prod values where needed.
+#   2. Caddy — mounts caddy/Caddyfile.local (tls internal, localhost site) instead of
+#      the production Caddyfile that references screenie.mr-development.de.
+#      caddy-data volume is replaced by a fresh local volume so Caddy can store its
+#      local-CA material without touching any persistent caddy-data.
+#   3. coturn — runs without TLS certificates (no-tls flag), using a loopback listen
+#      address so it does not require host-network privileges that might be blocked on
+#      some dev boxes.  TURN_REALM is set to "localhost" for local testing.
+#   4. viewer-build one-shot — copies from the pre-built ./viewer/dist into the
+#      viewer-static volume so that Caddy can serve the SPA.
+#
+# This file does NOT replace docker-compose.prod.yml; it extends it.
+
+services:
+  backend:
+    # Build locally instead of pulling a pre-tagged image.
+    image: screenie-backend:smoke
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # Expose backend port to the host so smoke-ws.mjs can connect directly.
+    ports:
+      - "127.0.0.1:8081:8080"
+    env_file: []
+    environment:
+      NODE_ENV: production
+      APP_VERSION: smoke
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
+      TURN_REALM: localhost
+      TURN_HOSTS: turn:localhost:3478
+      TURN_TTL_SEC: "3600"
+      SESSION_TTL_MS: "600000"
+      MAX_FAILED_ATTEMPTS: "5"
+      RATE_LIMIT_WINDOW_MS: "60000"
+      RATE_LIMIT_MAX: "10"
+      # Allow connections from localhost — the smoke WS test connects from the host.
+      ALLOWED_ORIGINS: "https://localhost,http://localhost,http://127.0.0.1"
+
+  caddy:
+    # Ports are configured via CADDY_HTTP_PORT / CADDY_HTTPS_PORT env vars in
+    # docker-compose.prod.yml — the smoke.sh script exports them to 8080/8443 so
+    # we don't clash with other local services.
+    volumes:
+      # Override the production Caddyfile with the local variant.
+      - ./caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - viewer-static:/srv/viewer:ro
+      # Use a dedicated smoke caddy-data volume so the local CA root is isolated.
+      - caddy-data-smoke:/data
+      - caddy-config:/config
+    # Override healthcheck to use HTTPS with -k (skip cert verify) on the smoke port.
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
+             "--no-check-certificate", "https://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  coturn:
+    # Override coturn to run without TLS certs (no-tls mode).
+    # In local smoke we only need to verify the service starts and basic STUN/TURN works.
+    volumes:
+      # Mount the no-TLS template in place of the production template.
+      - ./coturn/turnserver.conf.notls.tmpl:/etc/coturn/turnserver.conf.tmpl:ro
+      - ./coturn/entrypoint.sh:/entrypoint.sh:ro
+      # Deliberately omit the turn-certs volume — no TLS certs needed here.
+    environment:
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
+      TURN_REALM: localhost
+
+  viewer-build:
+    # One-shot: copies the pre-built viewer/dist into the viewer-static volume so
+    # Caddy can serve it.  Runs before any other service starts.
+    image: busybox:1.36.1
+    container_name: screenie-viewer-build
+    volumes:
+      - ./viewer/dist:/src:ro
+      - viewer-static:/dst
+    command: ["sh", "-c", "cp -r /src/. /dst/ && echo 'viewer-build: done'"]
+    restart: "no"
+    networks:
+      - internal
+
+volumes:
+  # Separate caddy-data volume for the smoke run so we don't pollute prod caddy-data.
+  caddy-data-smoke:

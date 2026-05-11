@@ -26,7 +26,7 @@ services:
     expose:
       - "8080"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -39,16 +39,16 @@ services:
     container_name: screenie-caddy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+      - "${CADDY_HTTPS_PORT:-443}:443/udp"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - viewer-static:/srv/viewer:ro
       - caddy-data:/data
       - caddy-config:/config
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/healthz"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3
