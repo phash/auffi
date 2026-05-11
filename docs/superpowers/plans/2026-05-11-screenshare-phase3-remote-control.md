@@ -47,7 +47,7 @@ scripts/mock-sharer.mjs                          # extend to handle input events
 - Modify: `docs/protocol.md`
 - Modify: `viewer/src/protocol.ts`
 
-- [ ] **Step 1: Document the two DataChannel sub-protocols in `docs/protocol.md`**
+- [x] **Step 1: Document the two DataChannel sub-protocols in `docs/protocol.md`**
 
 Append a new section "DataChannel Sub-Protocols" describing:
 - Channel `input` (Viewer → Sharer): JSON messages
@@ -67,7 +67,7 @@ Append a new section "DataChannel Sub-Protocols" describing:
   { "kind": "file-error", "id": "uuid", "message": "..." }
   ```
 
-- [ ] **Step 2: Add the types to `viewer/src/protocol.ts`**
+- [x] **Step 2: Add the types to `viewer/src/protocol.ts`**
 
 ```ts
 export type Modifier = { shift: boolean; ctrl: boolean; alt: boolean; meta: boolean };
@@ -86,7 +86,7 @@ export type FileEvent =
   | { kind: "file-error"; id: string; message: string };
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/protocol.md viewer/src/protocol.ts

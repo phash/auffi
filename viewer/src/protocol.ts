@@ -1,3 +1,33 @@
+// --- DataChannel types ---
+
+export type Modifier = {
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  meta: boolean;
+};
+
+export type InputEvent =
+  | { kind: "mouse-move"; x: number; y: number }
+  | { kind: "mouse-button"; button: "left" | "right" | "middle"; pressed: boolean }
+  | { kind: "scroll"; dx: number; dy: number }
+  | { kind: "key"; code: string; pressed: boolean; modifiers: Modifier };
+
+/**
+ * JSON messages sent over the `files` DataChannel.
+ * Binary chunk frames (ArrayBuffer with 8-byte header + payload) are handled
+ * separately and are not part of this union — see docs/protocol.md for the
+ * binary frame layout.
+ */
+export type FileEvent =
+  | { kind: "file-offer"; id: string; name: string; size: number; mime: string }
+  | { kind: "file-accept"; id: string }
+  | { kind: "file-reject"; id: string }
+  | { kind: "file-done"; id: string }
+  | { kind: "file-error"; id: string; message: string };
+
+// --- Signaling protocol types ---
+
 export type SharerRegister = { type: "register"; role: "sharer" };
 export type SharerConfirm = { type: "confirm"; accepted: boolean };
 export type ViewerJoin = { type: "join"; role: "viewer"; code: string };
