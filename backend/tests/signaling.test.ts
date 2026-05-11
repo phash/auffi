@@ -209,4 +209,32 @@ describe("signaling handshake", () => {
 
     sharer.close();
   });
+
+  it("relay sent before sharer confirms is silently dropped", async () => {
+    const sharer = new WebSocket(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer = new WebSocket(url);
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined — sharer has NOT confirmed yet
+
+    // Viewer sends relay before confirmation
+    viewer.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 0 } }));
+
+    // Sharer should NOT receive any message — wait 100 ms and check nothing arrived
+    const received = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 100);
+      sharer.once("message", () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+    expect(received).toBe(false);
+
+    sharer.close();
+    viewer.close();
+  });
 });

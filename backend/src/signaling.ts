@@ -96,6 +96,7 @@ export function registerSignaling(
         const found = store.findByPeer(peer as Peer);
         if (!found) return;
         if (msg.accepted) {
+          store.markConfirmed(found.code);
           if (found.viewer) send(found.viewer as WebSocket, { type: "peer-confirmed" });
         } else {
           if (found.viewer) {
@@ -112,6 +113,7 @@ export function registerSignaling(
       if (msg.type === "relay") {
         const found = store.findByPeer(peer as Peer);
         if (!found) return;
+        if (!found.confirmed) return;
         const target = role === "sharer" ? found.viewer : found.sharer;
         if (target) send(target as WebSocket, { type: "relay", payload: msg.payload });
         return;

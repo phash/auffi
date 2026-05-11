@@ -21,6 +21,7 @@ export type Session = {
   viewer: Peer | null;
   expiresAt: number;
   failedAttempts: number;
+  confirmed: boolean;
 };
 
 export type StoreConfig = { ttlMs: number; maxAttempts: number };
@@ -41,6 +42,7 @@ export class SessionStore {
       viewer: null,
       expiresAt: Date.now() + this.cfg.ttlMs,
       failedAttempts: 0,
+      confirmed: false,
     };
     this.sessions.set(code, session);
     this.byPeer.set(sharer, code);
@@ -79,6 +81,13 @@ export class SessionStore {
       return true;
     }
     return false;
+  }
+
+  markConfirmed(code: string): boolean {
+    const session = this.sessions.get(code);
+    if (!session) return false;
+    session.confirmed = true;
+    return true;
   }
 
   removeBySharer(sharer: Peer): void {
