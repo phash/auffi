@@ -1461,7 +1461,7 @@ git commit -m "feat(backend): per-IP rate limit on join attempts"
 - Create: `viewer/index.html`
 - Create: `viewer/src/main.ts`
 
-- [ ] **Step 1: package.json**
+- [x] **Step 1: package.json**
 
 ```bash
 cd viewer && npm init -y
@@ -1493,7 +1493,7 @@ Then edit `viewer/package.json`:
 cd viewer && npm install
 ```
 
-- [ ] **Step 2: tsconfig.json**
+- [x] **Step 2: tsconfig.json**
 
 ```json
 {
@@ -1511,7 +1511,7 @@ cd viewer && npm install
 }
 ```
 
-- [ ] **Step 3: vite.config.ts**
+- [x] **Step 3: vite.config.ts**
 
 ```ts
 import { defineConfig } from "vite";
@@ -1521,7 +1521,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: index.html**
+- [x] **Step 4: index.html**
 
 ```html
 <!doctype html>
@@ -1538,13 +1538,13 @@ export default defineConfig({
 </html>
 ```
 
-- [ ] **Step 5: Stub main.ts**
+- [x] **Step 5: Stub main.ts**
 
 ```ts
 document.getElementById("app")!.textContent = "Screenshare Viewer (Phase 1) — stub";
 ```
 
-- [ ] **Step 6: Verify dev server runs**
+- [x] **Step 6: Verify dev server runs**
 
 ```bash
 cd viewer && npm run dev
@@ -1553,7 +1553,7 @@ cd viewer && npm run dev
 Open http://localhost:5173 in browser. Expected: "Screenshare Viewer (Phase 1) — stub".
 Stop with Ctrl+C.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add viewer/package.json viewer/package-lock.json viewer/tsconfig.json viewer/vite.config.ts viewer/index.html viewer/src/main.ts
