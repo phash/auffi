@@ -175,7 +175,7 @@ git commit -m "chore: workspace setup with docker compose"
 **Files:**
 - Create: `docs/protocol.md`
 
-- [ ] **Step 1: Document the wire protocol**
+- [x] **Step 1: Document the wire protocol**
 
 ```markdown
 # Screenshare Signaling Protocol
@@ -272,7 +272,7 @@ Forwarded `relay` message from the other peer.
 ```
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/protocol.md
