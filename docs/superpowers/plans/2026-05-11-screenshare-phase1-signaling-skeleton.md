@@ -838,7 +838,7 @@ git commit -m "feat(backend): session store with TTL and attempt limits"
 - Create: `backend/src/server.ts`
 - Modify: `backend/src/index.ts`
 
-- [ ] **Step 1: Implement server.ts**
+- [x] **Step 1: Implement server.ts**
 
 ```ts
 import Fastify, { FastifyInstance } from "fastify";
@@ -860,7 +860,7 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
 }
 ```
 
-- [ ] **Step 2: Wire entrypoint**
+- [x] **Step 2: Wire entrypoint**
 
 `backend/src/index.ts`:
 
@@ -875,7 +875,7 @@ await app.listen({ port, host });
 console.log(`Listening on ${host}:${port}`);
 ```
 
-- [ ] **Step 3: Manually verify**
+- [x] **Step 3: Manually verify**
 
 ```bash
 cd backend && npm run dev
@@ -891,7 +891,7 @@ Expected: `{"status":"ok"}`
 
 Stop the dev server (Ctrl+C).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/src/server.ts backend/src/index.ts
