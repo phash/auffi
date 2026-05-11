@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { load } from "@tauri-apps/plugin-store";
 
 interface FileOfferPayload {
   id: string;
@@ -30,71 +32,249 @@ interface RelayPayload {
   };
 }
 
+interface TrustedPeer {
+  ipPrefix: string;
+  label: string;
+  addedAt: number;
+}
+
+// ── DOM refs ────────────────────────────────────────────────────────────────
+
 const codeEl = document.getElementById("code")!;
 const statusEl = document.getElementById("status")!;
 const confirmEl = document.getElementById("confirm")!;
 const confirmTextEl = document.getElementById("confirm-text")!;
+const rememberPeerCheckbox = document.getElementById("remember-peer") as HTMLInputElement;
 const monitorSelectEl = document.getElementById("monitor-select")!;
 const monitorListEl = document.getElementById("monitor-list")!;
 const streamBtn = document.getElementById("stream-btn")! as HTMLButtonElement;
 const copyBtn = document.getElementById("copy-btn")! as HTMLButtonElement;
+const newCodeBtn = document.getElementById("new-code-btn")! as HTMLButtonElement;
 const pauseBannerEl = document.getElementById("pause-banner")!;
+const streamingActionsEl = document.getElementById("streaming-actions")!;
+const stopStreamingBtn = document.getElementById("stop-streaming-btn")! as HTMLButtonElement;
+const sendFileBtn = document.getElementById("send-file-btn")! as HTMLButtonElement;
+const reconnectBtnWrap = document.getElementById("reconnect-btn-wrap")!;
+const reconnectBtn = document.getElementById("reconnect-btn")! as HTMLButtonElement;
+const connTypeInfoEl = document.getElementById("connection-type-info")!;
+
+// Settings
+const trustedPeersList = document.getElementById("trusted-peers-list")!;
+const largeCodeToggle = document.getElementById("large-code-toggle") as HTMLInputElement;
+
+// About
+const bmcBtn = document.getElementById("bmc-btn")! as HTMLButtonElement;
+const linkPhash = document.getElementById("link-phash")! as HTMLButtonElement;
+const linkMrd = document.getElementById("link-mrd")! as HTMLButtonElement;
+const aboutVersionEl = document.getElementById("about-version")!;
+
+// ── State ───────────────────────────────────────────────────────────────────
 
 let currentIpPrefix: string | null = null;
+let currentCode: string | null = null;
+let isStreaming = false;
+let signalingActive = false;
 
-copyBtn.addEventListener("click", () => {
-  const code = codeEl.textContent?.trim() ?? "";
-  if (!code || code === "…") return;
-  navigator.clipboard.writeText(code).then(() => {
-    copyBtn.textContent = "Kopiert!";
-    setTimeout(() => {
-      copyBtn.textContent = "Kopieren";
-    }, 1500);
+// ── Persistent store ────────────────────────────────────────────────────────
+
+async function getStore() {
+  return load("screenie-settings.json", { autoSave: true });
+}
+
+async function loadTrustedPeers(): Promise<TrustedPeer[]> {
+  const store = await getStore();
+  return (await store.get<TrustedPeer[]>("trustedPeers")) ?? [];
+}
+
+async function saveTrustedPeers(peers: TrustedPeer[]): Promise<void> {
+  const store = await getStore();
+  await store.set("trustedPeers", peers);
+}
+
+async function addTrustedPeer(ipPrefix: string, label: string): Promise<void> {
+  const peers = await loadTrustedPeers();
+  if (peers.some((p) => p.ipPrefix === ipPrefix)) return;
+  peers.push({ ipPrefix, label, addedAt: Date.now() });
+  await saveTrustedPeers(peers);
+  await renderTrustedPeers();
+}
+
+async function removeTrustedPeer(ipPrefix: string): Promise<void> {
+  const peers = await loadTrustedPeers();
+  await saveTrustedPeers(peers.filter((p) => p.ipPrefix !== ipPrefix));
+  await renderTrustedPeers();
+}
+
+async function isTrustedPeer(ipPrefix: string): Promise<boolean> {
+  const peers = await loadTrustedPeers();
+  return peers.some((p) => p.ipPrefix === ipPrefix);
+}
+
+async function loadSettings(): Promise<void> {
+  const store = await getStore();
+  const largeCode = (await store.get<boolean>("largeCode")) ?? false;
+  largeCodeToggle.checked = largeCode;
+  applyLargeCode(largeCode);
+}
+
+function applyLargeCode(enabled: boolean): void {
+  if (enabled) {
+    codeEl.style.fontSize = "2.75rem";
+  } else {
+    codeEl.style.fontSize = "";
+  }
+}
+
+async function renderTrustedPeers(): Promise<void> {
+  const peers = await loadTrustedPeers();
+  if (peers.length === 0) {
+    trustedPeersList.innerHTML = '<p class="trusted-empty">Keine bekannten Helfer gespeichert.</p>';
+    return;
+  }
+  trustedPeersList.innerHTML = "";
+  for (const peer of peers) {
+    const item = document.createElement("div");
+    item.className = "trusted-peer-item";
+
+    const label = document.createElement("div");
+    label.className = "trusted-peer-label";
+
+    const ip = document.createElement("span");
+    ip.className = "trusted-peer-ip";
+    ip.textContent = peer.ipPrefix;
+
+    const alias = document.createElement("span");
+    alias.className = "trusted-peer-alias";
+    alias.textContent = peer.label || "Unbekannt";
+
+    label.appendChild(ip);
+    label.appendChild(alias);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn-remove-peer";
+    removeBtn.textContent = "Entfernen";
+    removeBtn.type = "button";
+    removeBtn.setAttribute("aria-label", `${peer.ipPrefix} entfernen`);
+    removeBtn.addEventListener("click", () => {
+      removeTrustedPeer(peer.ipPrefix).catch(() => {});
+    });
+
+    item.appendChild(label);
+    item.appendChild(removeBtn);
+    trustedPeersList.appendChild(item);
+  }
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+
+function setStatus(text: string, kind: "idle" | "waiting" | "success" | "error"): void {
+  statusEl.textContent = text;
+  statusEl.className = kind;
+}
+
+function showCode(code: string): void {
+  codeEl.textContent = code;
+  codeEl.classList.remove("placeholder");
+  currentCode = code;
+}
+
+function resetCode(): void {
+  codeEl.textContent = "— — —";
+  codeEl.classList.add("placeholder");
+  currentCode = null;
+  newCodeBtn.classList.remove("visible");
+}
+
+function showReconnect(): void {
+  reconnectBtnWrap.style.display = "block";
+}
+
+function hideReconnect(): void {
+  reconnectBtnWrap.style.display = "none";
+}
+
+function showStreamingActions(): void {
+  streamingActionsEl.classList.add("visible");
+  isStreaming = true;
+}
+
+function hideStreamingActions(): void {
+  streamingActionsEl.classList.remove("visible");
+  isStreaming = false;
+}
+
+// ── Tab navigation ───────────────────────────────────────────────────────────
+
+document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-selected", "false");
+    });
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    btn.setAttribute("aria-selected", "true");
+    const panelId = `panel-${btn.dataset.panel}`;
+    document.getElementById(panelId)?.classList.add("active");
+
+    if (btn.dataset.panel === "settings") {
+      renderTrustedPeers().catch(() => {});
+    }
   });
 });
 
-listen<{ code: string }>("code-assigned", (e) => {
-  codeEl.textContent = e.payload.code;
-  statusEl.textContent = "Warte auf Verbindung…";
+// ── Copy code ────────────────────────────────────────────────────────────────
+
+copyBtn.addEventListener("click", () => {
+  const code = currentCode ?? "";
+  if (!code) return;
+  navigator.clipboard.writeText(code).then(() => {
+    copyBtn.textContent = "Kopiert!";
+    setTimeout(() => { copyBtn.textContent = "Kopieren"; }, 1500);
+  }).catch(() => {});
 });
 
-listen<{ ipPrefix: string }>("peer-joined", (e) => {
-  currentIpPrefix = e.payload.ipPrefix;
-  confirmTextEl.textContent = `Verbindungsanfrage von ${e.payload.ipPrefix}`;
-  confirmEl.classList.add("visible");
+// ── New code button ──────────────────────────────────────────────────────────
+
+newCodeBtn.addEventListener("click", () => {
+  newCodeBtn.classList.remove("visible");
+  resetCode();
+  setStatus("Neuer Code wird angefragt…", "waiting");
+  startSignaling().catch((e: unknown) => {
+    setStatus(`Fehler: ${String(e)}`, "error");
+    showReconnect();
+  });
 });
 
-listen<{ payload: RelayPayload }>("relay", (e) => {
-  const p = e.payload.payload;
-  if (p.kind === "sdp" && p.sdp) {
-    invoke("receive_offer", { sdp: p.sdp.sdp }).catch((err: unknown) => {
-      statusEl.textContent = `SDP-Fehler: ${String(err)}`;
-    });
-  } else if (p.kind === "ice" && p.candidate) {
-    invoke("receive_ice_candidate", {
-      candidate: p.candidate.candidate,
-      sdpMid: p.candidate.sdpMid,
-      sdpMlineIndex: p.candidate.sdpMLineIndex,
-      usernameFragment: p.candidate.usernameFragment,
-    }).catch(() => {
-      // Benign: ICE candidate may arrive before remote description is set.
-    });
-  }
+// ── Reconnect button ─────────────────────────────────────────────────────────
+
+reconnectBtn.addEventListener("click", () => {
+  hideReconnect();
+  resetCode();
+  setStatus("Verbinde neu…", "waiting");
+  startSignaling().catch((e: unknown) => {
+    setStatus(`Fehler: ${String(e)}`, "error");
+    showReconnect();
+  });
 });
 
-listen<{ reason: string }>("disconnected", (e) => {
-  statusEl.textContent = "Getrennt: " + e.payload.reason;
-  confirmEl.classList.remove("visible");
-  monitorSelectEl.classList.remove("visible");
-});
+// ── Accept / Decline ─────────────────────────────────────────────────────────
 
 document.getElementById("accept")!.addEventListener("click", () => {
-  invoke("confirm_peer", { accepted: true, ipPrefix: currentIpPrefix });
-  confirmEl.classList.remove("visible");
-  statusEl.textContent = "Verbindung akzeptiert — Monitor auswählen…";
+  const ip = currentIpPrefix ?? "";
+  const rememberIt = rememberPeerCheckbox.checked;
 
-  invoke<DisplayInfo[]>("list_monitors")
-    .then((monitors) => {
+  invoke("confirm_peer", { accepted: true, ipPrefix: ip })
+    .then(async () => {
+      confirmEl.classList.remove("visible");
+      setStatus("Verbindung akzeptiert — Monitor auswählen…", "waiting");
+
+      if (rememberIt && ip) {
+        await addTrustedPeer(ip, "Helfer");
+      }
+      rememberPeerCheckbox.checked = false;
+
+      const monitors = await invoke<DisplayInfo[]>("list_monitors");
       const nodes: Node[] = monitors.map((m, idx) => {
         const label = document.createElement("label");
         const radio = document.createElement("input");
@@ -110,38 +290,154 @@ document.getElementById("accept")!.addEventListener("click", () => {
       monitorSelectEl.classList.add("visible");
     })
     .catch((err: unknown) => {
-      statusEl.textContent = `Monitor-Liste fehlgeschlagen: ${String(err)}`;
+      setStatus(`Fehler: ${String(err)}`, "error");
     });
 });
 
 document.getElementById("decline")!.addEventListener("click", () => {
   invoke("confirm_peer", { accepted: false });
   confirmEl.classList.remove("visible");
-  statusEl.textContent = "Abgelehnt.";
+  rememberPeerCheckbox.checked = false;
+  currentIpPrefix = null;
+  setStatus("Abgelehnt. Warte auf neue Verbindung…", "waiting");
+  newCodeBtn.classList.add("visible");
+  startSignaling().catch(() => {});
 });
+
+// ── Start streaming ──────────────────────────────────────────────────────────
 
 streamBtn.addEventListener("click", () => {
   const checked = monitorListEl.querySelector<HTMLInputElement>(
     'input[name="monitor"]:checked',
   );
   if (!checked) {
-    statusEl.textContent = "Bitte einen Monitor auswählen.";
+    setStatus("Bitte einen Monitor auswählen.", "error");
     return;
   }
   const monitorId = parseInt(checked.value, 10);
   monitorSelectEl.classList.remove("visible");
   streamBtn.disabled = true;
-  statusEl.textContent = "Stream wird gestartet…";
+  setStatus("Stream wird gestartet…", "waiting");
 
   invoke("start_streaming", { monitorId })
     .then(() => {
-      statusEl.textContent = "Streaming läuft.";
+      setStatus("Streaming läuft.", "success");
+      showStreamingActions();
     })
     .catch((err: unknown) => {
-      statusEl.textContent = `Stream-Fehler: ${String(err)}`;
+      setStatus(`Stream-Fehler: ${String(err)}`, "error");
       streamBtn.disabled = false;
       monitorSelectEl.classList.add("visible");
     });
+});
+
+// ── Stop streaming ───────────────────────────────────────────────────────────
+
+stopStreamingBtn.addEventListener("click", () => {
+  invoke("disconnect_streaming").catch(() => {});
+  hideStreamingActions();
+  setStatus("Stream beendet. Warte auf neue Verbindung…", "waiting");
+  newCodeBtn.classList.add("visible");
+});
+
+// ── Send file ────────────────────────────────────────────────────────────────
+
+sendFileBtn.addEventListener("click", () => {
+  invoke("pick_and_send_file").catch((err: unknown) => {
+    setStatus(`Datei-Fehler: ${String(err)}`, "error");
+  });
+});
+
+// ── About page buttons ───────────────────────────────────────────────────────
+
+bmcBtn.addEventListener("click", () => {
+  openUrl("https://buymeacoffee.com/phash").catch(() => {});
+});
+
+linkPhash.addEventListener("click", () => {
+  openUrl("https://phash.de").catch(() => {});
+});
+
+linkMrd.addEventListener("click", () => {
+  openUrl("https://mr-development.de").catch(() => {});
+});
+
+// ── Settings toggles ─────────────────────────────────────────────────────────
+
+largeCodeToggle.addEventListener("change", async () => {
+  const enabled = largeCodeToggle.checked;
+  applyLargeCode(enabled);
+  const store = await getStore();
+  await store.set("largeCode", enabled);
+});
+
+// ── Signaling events ─────────────────────────────────────────────────────────
+
+listen<{ code: string }>("code-assigned", (e) => {
+  showCode(e.payload.code);
+  setStatus("Warte auf Verbindung…", "waiting");
+  newCodeBtn.classList.add("visible");
+  signalingActive = true;
+});
+
+listen<{ ipPrefix: string }>("peer-joined", async (e) => {
+  currentIpPrefix = e.payload.ipPrefix;
+  newCodeBtn.classList.remove("visible");
+
+  const trusted = await isTrustedPeer(e.payload.ipPrefix);
+  if (trusted) {
+    setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — Monitor auswählen…`, "waiting");
+    invoke("confirm_peer", { accepted: true, ipPrefix: currentIpPrefix })
+      .then(async () => {
+        const monitors = await invoke<DisplayInfo[]>("list_monitors");
+        const nodes: Node[] = monitors.map((m, idx) => {
+          const label = document.createElement("label");
+          const radio = document.createElement("input");
+          radio.type = "radio";
+          radio.name = "monitor";
+          radio.value = String(m.id);
+          if (idx === 0) radio.checked = true;
+          label.appendChild(radio);
+          label.appendChild(document.createTextNode(` ${m.title} (${m.width}×${m.height})`));
+          return label;
+        });
+        monitorListEl.replaceChildren(...nodes);
+        monitorSelectEl.classList.add("visible");
+      })
+      .catch((err: unknown) => {
+        setStatus(`Fehler: ${String(err)}`, "error");
+      });
+  } else {
+    confirmTextEl.textContent = `Verbindungsanfrage von ${e.payload.ipPrefix}`;
+    confirmEl.classList.add("visible");
+  }
+});
+
+listen<{ payload: RelayPayload }>("relay", (e) => {
+  const p = e.payload.payload;
+  if (p.kind === "sdp" && p.sdp) {
+    invoke("receive_offer", { sdp: p.sdp.sdp }).catch((err: unknown) => {
+      setStatus(`SDP-Fehler: ${String(err)}`, "error");
+    });
+  } else if (p.kind === "ice" && p.candidate) {
+    invoke("receive_ice_candidate", {
+      candidate: p.candidate.candidate,
+      sdpMid: p.candidate.sdpMid,
+      sdpMlineIndex: p.candidate.sdpMLineIndex,
+      usernameFragment: p.candidate.usernameFragment,
+    }).catch(() => {
+      // Benign: ICE candidate may arrive before remote description is set.
+    });
+  }
+});
+
+listen<{ reason: string }>("disconnected", (e) => {
+  setStatus("Getrennt: " + e.payload.reason, "error");
+  confirmEl.classList.remove("visible");
+  monitorSelectEl.classList.remove("visible");
+  hideStreamingActions();
+  signalingActive = false;
+  showReconnect();
 });
 
 listen<{ paused: boolean }>("input-paused-changed", (e) => {
@@ -153,43 +449,28 @@ listen<{ paused: boolean }>("input-paused-changed", (e) => {
 });
 
 listen("streaming-stopped", () => {
-  statusEl.textContent = "Stream beendet.";
+  setStatus("Stream beendet.", "idle");
   streamBtn.disabled = false;
   pauseBannerEl.classList.remove("visible");
   currentIpPrefix = null;
-  const connTypeEl = document.getElementById("connection-type-info");
-  if (connTypeEl) {
-    connTypeEl.textContent = "";
-    connTypeEl.className = "";
-  }
+  connTypeInfoEl.textContent = "";
+  connTypeInfoEl.className = "";
+  hideStreamingActions();
+  newCodeBtn.classList.add("visible");
 });
 
 listen<string>("connection-type", (e) => {
-  const connTypeEl = document.getElementById("connection-type-info");
-  if (!connTypeEl) return;
-  connTypeEl.classList.add("visible");
+  connTypeInfoEl.classList.add("visible");
   if (e.payload === "relay") {
-    connTypeEl.textContent = "Verbindung: über Relay";
-    connTypeEl.classList.add("relay");
-    connTypeEl.classList.remove("direct");
+    connTypeInfoEl.textContent = "Verbindung: über Relay";
+    connTypeInfoEl.classList.add("relay");
+    connTypeInfoEl.classList.remove("direct");
   } else {
-    connTypeEl.textContent = "Verbindung: direkt";
-    connTypeEl.classList.remove("relay");
-    connTypeEl.classList.add("direct");
+    connTypeInfoEl.textContent = "Verbindung: direkt";
+    connTypeInfoEl.classList.remove("relay");
+    connTypeInfoEl.classList.add("direct");
   }
 });
-
-// ── File transfer ────────────────────────────────────────────────────────────
-
-const sendFileBtn = document.getElementById("send-file-btn") as HTMLButtonElement | null;
-
-if (sendFileBtn) {
-  sendFileBtn.addEventListener("click", () => {
-    invoke("pick_and_send_file").catch((err: unknown) => {
-      statusEl.textContent = `Datei-Fehler: ${String(err)}`;
-    });
-  });
-}
 
 listen<FileOfferPayload>("file-offer", (e) => {
   const { id, name, size } = e.payload;
@@ -199,17 +480,33 @@ listen<FileOfferPayload>("file-offer", (e) => {
   );
   if (confirmed) {
     invoke("accept_file", { id }).catch((err: unknown) => {
-      statusEl.textContent = `Annehmen fehlgeschlagen: ${String(err)}`;
+      setStatus(`Annehmen fehlgeschlagen: ${String(err)}`, "error");
     });
   } else {
     invoke("reject_file", { id }).catch((err: unknown) => {
-      statusEl.textContent = `Ablehnen fehlgeschlagen: ${String(err)}`;
+      setStatus(`Ablehnen fehlgeschlagen: ${String(err)}`, "error");
     });
   }
 });
 
 listen<FileReceivedPayload>("file-received", (e) => {
-  statusEl.textContent = `Datei empfangen: ${e.payload.path}`;
+  setStatus(`Datei empfangen: ${e.payload.path}`, "success");
 });
 
-invoke("start_signaling");
+// ── About: version ───────────────────────────────────────────────────────────
+
+const appVersion = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "dev";
+aboutVersionEl.textContent = `Version ${appVersion}`;
+
+// ── Start ────────────────────────────────────────────────────────────────────
+
+async function startSignaling(): Promise<void> {
+  await invoke("start_signaling");
+}
+
+loadSettings().catch(() => {});
+renderTrustedPeers().catch(() => {});
+startSignaling().catch((e: unknown) => {
+  setStatus(`Backend nicht erreichbar: ${String(e)}`, "error");
+  showReconnect();
+});

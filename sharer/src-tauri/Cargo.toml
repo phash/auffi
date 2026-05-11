@@ -31,6 +31,8 @@ dirs = "=6.0.0"
 bytes = "=1.11.1"
 reqwest = { version = "=0.13.3", default-features = false, features = ["rustls", "json"] }
 uuid = { version = "=1.23.1", features = ["v4"] }
+tauri-plugin-store = "=2.4.3"
+tauri-plugin-shell = "=2.3.5"
 
 [dev-dependencies]
 tempfile = "=3.27.0"

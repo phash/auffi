@@ -11,6 +11,8 @@
     "core:app:default",
     "dialog:default",
     "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister"
+    "global-shortcut:allow-unregister",
+    "store:default",
+    "shell:allow-open"
   ]
 }

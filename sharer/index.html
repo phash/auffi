@@ -8,6 +8,8 @@
 
       :root {
         --accent: #1f6feb;
+        --accent-hover: #1a5ecb;
+        --accent-active: #164faa;
         --bg: #0d1117;
         --card-bg: #161b22;
         --surface: #21262d;
@@ -17,9 +19,10 @@
         --shadow: 0 2px 12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
         --radius: 12px;
         --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --success: #2da44e;
+        --error: #cf222e;
+        --warning: #d29922;
       }
-
-      /* Sharer is a native Tauri window — dark theme always looks good here */
 
       body {
         font-family: var(--font);
@@ -31,14 +34,22 @@
         align-items: center;
         justify-content: flex-start;
         padding: 1.5rem 1rem;
-        gap: 1.25rem;
+        gap: 0;
+      }
+
+      /* ── Top bar with brand + tabs ── */
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        margin-bottom: 1.25rem;
       }
 
       .brand {
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        align-self: flex-start;
       }
 
       .brand-icon {
@@ -65,6 +76,46 @@
         letter-spacing: -0.01em;
       }
 
+      .tabs {
+        display: flex;
+        gap: 0.25rem;
+      }
+
+      .tab-btn {
+        font-family: var(--font);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        padding: 0.3125rem 0.6875rem;
+        min-height: 30px;
+        background: transparent;
+        color: var(--text-secondary);
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+      }
+
+      .tab-btn:hover {
+        background: var(--surface);
+        color: var(--text);
+      }
+
+      .tab-btn.active {
+        background: var(--surface);
+        color: var(--text);
+        border-color: var(--border);
+      }
+
+      .tab-btn:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* ── Panel visibility ── */
+      .panel { display: none; width: 100%; }
+      .panel.active { display: flex; flex-direction: column; gap: 1.25rem; }
+
+      /* ── Card ── */
       .card {
         background: var(--card-bg);
         border: 1px solid var(--border);
@@ -74,6 +125,7 @@
         box-shadow: var(--shadow);
       }
 
+      /* ── Code display ── */
       .code-label {
         font-size: 0.75rem;
         font-weight: 500;
@@ -87,6 +139,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        flex-wrap: wrap;
       }
 
       #code {
@@ -98,6 +151,12 @@
         user-select: all;
         flex: 1;
         line-height: 1.2;
+        min-width: 0;
+      }
+
+      #code.placeholder {
+        color: var(--border);
+        letter-spacing: 0.1em;
       }
 
       #copy-btn {
@@ -123,16 +182,30 @@
         pointer-events: auto;
       }
 
-      #copy-btn:hover {
-        background: var(--border);
-        color: var(--text);
+      #copy-btn:hover { background: var(--border); color: var(--text); }
+      #copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+      #new-code-btn {
+        font-family: var(--font);
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.3125rem 0.625rem;
+        min-height: 28px;
+        background: transparent;
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease;
+        flex-shrink: 0;
+        display: none;
       }
 
-      #copy-btn:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
+      #new-code-btn.visible { display: inline-flex; align-items: center; gap: 0.3rem; }
+      #new-code-btn:hover { background: var(--surface); color: var(--text); }
+      #new-code-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+      /* ── Status pill ── */
       #status {
         font-size: 0.875rem;
         line-height: 1.5;
@@ -154,6 +227,13 @@
         transition: background 200ms ease;
       }
 
+      #status.idle::before { background: var(--text-secondary); }
+      #status.waiting::before { background: var(--accent); }
+      #status.success { color: var(--text); }
+      #status.success::before { background: var(--success); }
+      #status.error { color: var(--error); }
+      #status.error::before { background: var(--error); }
+
       /* Connection-type indicator */
       #connection-type-info {
         font-size: 0.8rem;
@@ -163,112 +243,100 @@
         gap: 0.375rem;
         margin-top: 0.25rem;
       }
+      #connection-type-info.visible { display: flex; }
+      #connection-type-info.relay { color: #f0a500; }
 
-      #connection-type-info.visible {
-        display: flex;
-      }
-
-      #connection-type-info.relay {
-        color: #f0a500;
-      }
-
-      /* Confirm dialog */
-      #confirm {
-        display: none;
-        flex-direction: column;
-        gap: 1rem;
-      }
-
-      #confirm.visible {
-        display: flex;
-      }
-
-      .confirm-header {
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: var(--text);
-      }
-
-      #confirm-text {
-        font-size: 0.875rem;
-        color: var(--text-secondary);
-      }
-
-      .confirm-actions {
-        display: flex;
-        gap: 0.5rem;
-      }
-
-      #accept {
-        font-family: var(--font);
-        font-size: 0.875rem;
-        font-weight: 500;
-        padding: 0.5rem 1rem;
-        min-height: 36px;
-        background: var(--accent);
-        color: #fff;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: background 150ms ease, transform 100ms ease;
-        flex: 1;
-      }
-
-      #accept:hover {
-        background: #1a5ecb;
-      }
-
-      #accept:active {
-        transform: translateY(1px);
-      }
-
-      #accept:focus-visible {
-        outline: 3px solid rgba(31, 111, 235, 0.4);
-        outline-offset: 2px;
-      }
-
-      #decline {
-        font-family: var(--font);
-        font-size: 0.875rem;
-        font-weight: 500;
-        padding: 0.5rem 1rem;
-        min-height: 36px;
-        background: var(--surface);
-        color: var(--text-secondary);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        cursor: pointer;
-        transition: background 150ms ease, color 150ms ease;
-        flex: 1;
-      }
-
-      #decline:hover {
-        background: var(--border);
-        color: var(--text);
-      }
-
-      #decline:focus-visible {
-        outline: 2px solid var(--border);
-        outline-offset: 2px;
-      }
-
-      /* Divider */
+      /* ── Divider ── */
       .divider {
         height: 1px;
         background: var(--border);
         margin: 0 -1.5rem;
       }
 
-      /* Monitor select */
-      #monitor-select {
-        display: none;
-        flex-direction: column;
-        gap: 0.75rem;
+      /* ── Confirm dialog ── */
+      #confirm { display: none; flex-direction: column; gap: 1rem; }
+      #confirm.visible { display: flex; }
+
+      .confirm-header { font-size: 0.875rem; font-weight: 500; color: var(--text); }
+      #confirm-text { font-size: 0.875rem; color: var(--text-secondary); }
+
+      .confirm-actions { display: flex; gap: 0.5rem; flex-direction: column; }
+
+      .confirm-remember {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+        user-select: none;
       }
 
-      #monitor-select.visible {
-        display: flex;
+      .confirm-remember input[type="checkbox"] {
+        accent-color: var(--accent);
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
       }
+
+      .btn-row { display: flex; gap: 0.5rem; }
+
+      /* ── Buttons base ── */
+      .btn {
+        font-family: var(--font);
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+        min-height: 36px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease, transform 100ms ease, opacity 150ms ease;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+      }
+
+      .btn:active { transform: translateY(1px); }
+      .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+      .btn:focus-visible { outline: 3px solid rgba(31,111,235,0.4); outline-offset: 2px; }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+        flex: 1;
+      }
+      .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+      .btn-secondary {
+        background: var(--surface);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        flex: 1;
+      }
+      .btn-secondary:hover:not(:disabled) { background: var(--border); color: var(--text); }
+      .btn-secondary:focus-visible { outline: 2px solid var(--border); outline-offset: 2px; }
+
+      .btn-danger {
+        background: rgba(207,34,46,0.12);
+        color: #f85149;
+        border: 1px solid rgba(207,34,46,0.4);
+        width: 100%;
+      }
+      .btn-danger:hover:not(:disabled) { background: rgba(207,34,46,0.2); }
+
+      .btn-large {
+        font-size: 0.9375rem;
+        padding: 0.625rem 1rem;
+        min-height: 44px;
+        border-radius: 8px;
+        width: 100%;
+      }
+
+      /* ── Monitor select ── */
+      #monitor-select { display: none; flex-direction: column; gap: 0.75rem; }
+      #monitor-select.visible { display: flex; }
 
       .monitor-label-heading {
         font-size: 0.8125rem;
@@ -278,11 +346,7 @@
         letter-spacing: 0.07em;
       }
 
-      #monitor-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.375rem;
-      }
+      #monitor-list { display: flex; flex-direction: column; gap: 0.375rem; }
 
       #monitor-list label {
         display: flex;
@@ -297,138 +361,403 @@
         color: var(--text);
       }
 
-      #monitor-list label:hover {
-        background: var(--surface);
-      }
+      #monitor-list label:hover { background: var(--surface); }
+      #monitor-list input[type="radio"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+      #monitor-list label:has(input:checked) { border-color: var(--accent); background: rgba(31,111,235,0.08); }
 
-      #monitor-list input[type="radio"] {
-        accent-color: var(--accent);
-        width: 15px;
-        height: 15px;
-        flex-shrink: 0;
-        cursor: pointer;
-      }
+      /* ── Streaming actions (while streaming) ── */
+      #streaming-actions { display: none; flex-direction: column; gap: 0.5rem; }
+      #streaming-actions.visible { display: flex; }
 
-      #monitor-list label:has(input:checked) {
-        border-color: var(--accent);
-        background: rgba(31, 111, 235, 0.08);
-      }
+      /* ── Reconnect button ── */
+      #reconnect-btn { display: none; }
+      #reconnect-btn.visible { display: flex; }
 
-      #stream-btn {
-        font-family: var(--font);
-        font-size: 0.9375rem;
-        font-weight: 500;
-        padding: 0.625rem 1rem;
-        min-height: 44px;
-        background: var(--accent);
-        color: #fff;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: background 150ms ease, opacity 150ms ease, transform 100ms ease;
-        width: 100%;
-      }
-
-      #stream-btn:hover:not(:disabled) {
-        background: #1a5ecb;
-      }
-
-      #stream-btn:active:not(:disabled) {
-        transform: translateY(1px);
-      }
-
-      #stream-btn:focus-visible {
-        outline: 3px solid rgba(31, 111, 235, 0.4);
-        outline-offset: 2px;
-      }
-
-      #stream-btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-
-      /* Input-pause banner */
+      /* ── Input-pause banner ── */
       #pause-banner {
         display: none;
         align-items: center;
         gap: 0.625rem;
         padding: 0.625rem 0.875rem;
-        background: rgba(210, 153, 34, 0.12);
-        border: 1px solid rgba(210, 153, 34, 0.5);
+        background: rgba(210,153,34,0.12);
+        border: 1px solid rgba(210,153,34,0.5);
         border-radius: 8px;
         font-size: 0.8125rem;
         font-weight: 500;
         color: #d29922;
         width: 100%;
       }
+      #pause-banner.visible { display: flex; }
 
-      #pause-banner.visible {
+      .pause-icon { flex-shrink: 0; width: 16px; height: 16px; }
+
+      /* ── About page ── */
+      .about-logo {
         display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        margin-bottom: 0.5rem;
       }
 
-      .pause-icon {
-        flex-shrink: 0;
-        width: 16px;
-        height: 16px;
+      .about-logo-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
+
+      .about-logo-icon svg { width: 20px; height: 20px; fill: #fff; }
+
+      .about-logo-name {
+        font-size: 1.375rem;
+        font-weight: 700;
+        color: var(--text);
+        letter-spacing: -0.02em;
+      }
+
+      .about-desc {
+        font-size: 0.875rem;
+        line-height: 1.6;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+      }
+
+      .about-links {
+        display: flex;
+        gap: 0.625rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .about-link {
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--accent);
+        text-decoration: none;
+        padding: 0.25rem 0;
+        border-bottom: 1px solid transparent;
+        transition: border-color 150ms ease;
+        cursor: pointer;
+        background: none;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+      }
+      .about-link:hover { border-bottom-color: var(--accent); }
+
+      .bmc-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: var(--font);
+        font-size: 0.9375rem;
+        font-weight: 600;
+        padding: 0.75rem 1.5rem;
+        min-height: 48px;
+        background: #FFDD00;
+        color: #000;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 150ms ease, transform 100ms ease;
+        width: 100%;
+        justify-content: center;
+        margin-top: 0.5rem;
+      }
+      .bmc-btn:hover { background: #f5d000; }
+      .bmc-btn:active { transform: translateY(1px); }
+      .bmc-btn:focus-visible { outline: 3px solid rgba(255,221,0,0.5); outline-offset: 2px; }
+
+      .bmc-support-text {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        text-align: center;
+        margin-top: 0.5rem;
+        line-height: 1.5;
+      }
+
+      .about-version {
+        font-size: 0.75rem;
+        color: var(--border);
+        margin-top: 0.75rem;
+      }
+
+      /* ── Settings page ── */
+      .settings-section-title {
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+        margin-bottom: 0.625rem;
+      }
+
+      .trusted-peer-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+        min-height: 2rem;
+      }
+
+      .trusted-peer-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.625rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 0.8125rem;
+        color: var(--text);
+        background: var(--surface);
+      }
+
+      .trusted-peer-label { display: flex; flex-direction: column; gap: 0.1rem; }
+      .trusted-peer-ip { font-family: ui-monospace, monospace; }
+      .trusted-peer-alias { color: var(--text-secondary); font-size: 0.75rem; }
+
+      .btn-remove-peer {
+        font-family: var(--font);
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.25rem 0.5rem;
+        min-height: 24px;
+        background: transparent;
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease;
+        flex-shrink: 0;
+      }
+      .btn-remove-peer:hover { background: rgba(207,34,46,0.12); color: #f85149; border-color: rgba(207,34,46,0.4); }
+      .btn-remove-peer:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+      .trusted-empty {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        padding: 0.5rem 0;
+        font-style: italic;
+      }
+
+      .settings-toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+      }
+
+      .settings-toggle-label {
+        font-size: 0.875rem;
+        color: var(--text);
+      }
+
+      .settings-toggle-desc {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin-top: 0.125rem;
+      }
+
+      .settings-toggle {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+
+      .settings-toggle input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        position: absolute;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        inset: 0;
+        background: var(--border);
+        border-radius: 20px;
+        cursor: pointer;
+        transition: background 150ms ease;
+      }
+
+      .toggle-slider::before {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #fff;
+        top: 3px;
+        left: 3px;
+        transition: transform 150ms ease;
+      }
+
+      .settings-toggle input:checked + .toggle-slider { background: var(--accent); }
+      .settings-toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+      .settings-toggle input:focus-visible + .toggle-slider { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 20px; }
     </style>
   </head>
   <body>
-    <div class="brand">
-      <div class="brand-icon" aria-hidden="true">
-        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-          <rect x="1" y="2" width="14" height="9" rx="1.5"/>
-          <rect x="5" y="12" width="6" height="1.5" rx="0.75"/>
-          <rect x="4" y="13.5" width="8" height="1" rx="0.5"/>
-        </svg>
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="2" width="14" height="9" rx="1.5"/>
+            <rect x="5" y="12" width="6" height="1.5" rx="0.75"/>
+            <rect x="4" y="13.5" width="8" height="1" rx="0.5"/>
+          </svg>
+        </div>
+        <span class="brand-name">Screenie</span>
       </div>
-      <span class="brand-name">Screenie</span>
+      <nav class="tabs" role="tablist" aria-label="Navigation">
+        <button class="tab-btn active" role="tab" aria-selected="true" data-panel="main" id="tab-main">Teilen</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-panel="settings" id="tab-settings">Einstellungen</button>
+        <button class="tab-btn" role="tab" aria-selected="false" data-panel="about" id="tab-about">Info</button>
+      </nav>
     </div>
 
-    <div class="card">
-      <p class="code-label">Dein Code</p>
-      <div class="code-row">
-        <div id="code">…</div>
-        <button id="copy-btn" type="button" aria-label="Code kopieren">Kopieren</button>
-      </div>
+    <!-- ── Main panel ── -->
+    <div id="panel-main" class="panel active" role="tabpanel" aria-labelledby="tab-main">
+      <div class="card">
+        <p class="code-label">Dein Code</p>
+        <div class="code-row">
+          <div id="code" class="placeholder" aria-label="Verbindungscode">— — —</div>
+          <button id="copy-btn" type="button" aria-label="Code kopieren">Kopieren</button>
+          <button id="new-code-btn" type="button" aria-label="Neuen Code generieren">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M13.5 8a5.5 5.5 0 1 1-1.325-3.566L14 3v4h-4l1.698-1.698A4 4 0 1 0 12 8h1.5z"/>
+            </svg>
+            Neuer Code
+          </button>
+        </div>
 
-      <div class="divider" style="margin-top: 1.25rem; margin-bottom: 1.25rem;"></div>
+        <div class="divider" style="margin-top: 1.25rem; margin-bottom: 1.25rem;"></div>
 
-      <div id="status" role="status" aria-live="polite">Verbinde mit Backend…</div>
-      <div id="connection-type-info" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
+        <div id="status" class="idle" role="status" aria-live="polite">Verbinde mit Backend…</div>
+        <div id="connection-type-info" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
 
-      <div id="confirm">
-        <div class="divider" style="margin: 0 -1.5rem;"></div>
-        <p class="confirm-header">Verbindungsanfrage</p>
-        <p id="confirm-text"></p>
-        <div class="confirm-actions">
-          <button id="accept" type="button">Verbinden zulassen</button>
-          <button id="decline" type="button">Ablehnen</button>
+        <!-- Confirm dialog -->
+        <div id="confirm" aria-live="polite">
+          <div class="divider" style="margin: 0 -1.5rem;"></div>
+          <p class="confirm-header">Verbindungsanfrage</p>
+          <p id="confirm-text"></p>
+          <div class="confirm-actions">
+            <label class="confirm-remember">
+              <input type="checkbox" id="remember-peer" />
+              Diesen Helfer merken
+            </label>
+            <div class="btn-row">
+              <button id="accept" type="button" class="btn btn-primary">Verbinden zulassen</button>
+              <button id="decline" type="button" class="btn btn-secondary">Ablehnen</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monitor select -->
+        <div id="monitor-select">
+          <div class="divider" style="margin: 0 -1.5rem;"></div>
+          <p class="monitor-label-heading">Monitor auswählen</p>
+          <div id="monitor-list"></div>
+          <button id="stream-btn" type="button" class="btn btn-primary btn-large">Stream starten</button>
+        </div>
+
+        <!-- Streaming actions (while streaming) -->
+        <div id="streaming-actions">
+          <div class="divider" style="margin: 0 -1.5rem; margin-bottom: 0;"></div>
+          <button id="stop-streaming-btn" type="button" class="btn btn-danger">Beenden</button>
+          <button id="send-file-btn" type="button" class="btn btn-secondary">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+              <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+            </svg>
+            Datei senden
+          </button>
+        </div>
+
+        <!-- Reconnect button (after disconnect) -->
+        <div id="reconnect-btn-wrap" style="display:none; margin-top: 0.75rem;">
+          <button id="reconnect-btn" type="button" class="btn btn-primary btn-large">Neu verbinden</button>
         </div>
       </div>
 
-      <div id="monitor-select">
-        <div class="divider" style="margin: 0 -1.5rem;"></div>
-        <p class="monitor-label-heading">Monitor auswählen</p>
-        <div id="monitor-list"></div>
-        <button id="stream-btn" type="button">Streamen</button>
+      <div
+        id="pause-banner"
+        role="status"
+        aria-live="polite"
+        aria-label="Steuerung pausiert"
+      >
+        <svg class="pause-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8Zm6-1.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 1 0V7a.5.5 0 0 0-.5-.5Zm0-2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
+        </svg>
+        Steuerung pausiert — Ctrl+Alt+Pause zum Fortsetzen
       </div>
     </div>
 
-    <div
-      id="pause-banner"
-      role="status"
-      aria-live="polite"
-      aria-label="Steuerung pausiert"
-    >
-      <svg class="pause-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-        <path d="M2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8Zm6-1.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 1 0V7a.5.5 0 0 0-.5-.5Zm0-2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
-      </svg>
-      Steuerung pausiert — Ctrl+Alt+Pause zum Fortsetzen
+    <!-- ── Settings panel ── -->
+    <div id="panel-settings" class="panel" role="tabpanel" aria-labelledby="tab-settings">
+      <div class="card">
+        <p class="settings-section-title">Bekannte Helfer</p>
+        <div id="trusted-peers-list" class="trusted-peer-list">
+          <p class="trusted-empty">Keine bekannten Helfer gespeichert.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="settings-section-title">Darstellung</p>
+        <div class="settings-toggle-row">
+          <div>
+            <div class="settings-toggle-label">Großer Code</div>
+            <div class="settings-toggle-desc">Code größer anzeigen (für Lesbarkeit auf Distanz)</div>
+          </div>
+          <label class="settings-toggle" aria-label="Großer Code umschalten">
+            <input type="checkbox" id="large-code-toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
     </div>
 
-    <div id="file-actions" style="padding:0.75rem 1.5rem;">
-      <button id="send-file-btn" type="button">Datei senden</button>
+    <!-- ── About panel ── -->
+    <div id="panel-about" class="panel" role="tabpanel" aria-labelledby="tab-about">
+      <div class="card">
+        <div class="about-logo">
+          <div class="about-logo-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="2" width="14" height="9" rx="1.5"/>
+              <rect x="5" y="12" width="6" height="1.5" rx="0.75"/>
+              <rect x="4" y="13.5" width="8" height="1" rx="0.5"/>
+            </svg>
+          </div>
+          <span class="about-logo-name">Screenie</span>
+        </div>
+
+        <p class="about-desc">
+          Screenie ermöglicht sicheres Bildschirmteilen über eine verschlüsselte WebRTC-Verbindung — ohne Installation auf der Seite des Betrachters.
+          Einfach Code weitergeben, Verbindung bestätigen, fertig.
+        </p>
+
+        <div class="about-links">
+          <button class="about-link" id="link-phash" type="button">phash.de</button>
+          <button class="about-link" id="link-mrd" type="button">mr-development.de</button>
+        </div>
+
+        <p style="font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.375rem;">
+          Screenie ist kostenlos. Wenn es dir hilft, freue ich mich über einen Kaffee:
+        </p>
+
+        <button class="bmc-btn" id="bmc-btn" type="button">
+          ☕ Buy me a coffee
+        </button>
+
+        <p class="bmc-support-text">
+          Danke für deine Unterstützung — das hilft Hosting-Kosten und Weiterentwicklung!
+        </p>
+
+        <p class="about-version" id="about-version">Version dev</p>
+      </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
