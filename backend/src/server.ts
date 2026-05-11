@@ -88,7 +88,10 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
       verifyClient(info, cb) {
         const origin = info.req.headers.origin as string | undefined;
         if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
-          cb(false, 1008, "Origin not allowed");
+          // 403 is the correct pre-handshake reject status. 1008 (Policy
+          // Violation) is a WebSocket close code, NOT a valid HTTP status —
+          // reverse proxies reject the malformed response as 502.
+          cb(false, 403, "Origin not allowed");
           return;
         }
         cb(true);
