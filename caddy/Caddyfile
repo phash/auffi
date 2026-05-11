@@ -1,0 +1,39 @@
+{
+    email m.roedig@gmail.com
+}
+
+screenie.mr-development.de {
+    encode zstd gzip
+
+    # Backend WebSocket signaling
+    handle /signal {
+        reverse_proxy backend:8080
+    }
+
+    # TURN credential endpoint
+    handle /turn-credentials {
+        reverse_proxy backend:8080
+    }
+
+    # Health + readiness probes
+    handle /healthz {
+        reverse_proxy backend:8080
+    }
+    handle /readyz {
+        reverse_proxy backend:8080
+    }
+
+    # Viewer assets (hashed filenames — long-lived caching)
+    handle /assets/* {
+        root * /srv/viewer
+        file_server
+        header Cache-Control "public, max-age=31536000, immutable"
+    }
+
+    # SPA fallback — all other paths serve index.html
+    handle {
+        root * /srv/viewer
+        try_files {path} /index.html
+        file_server
+    }
+}
