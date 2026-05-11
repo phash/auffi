@@ -43,6 +43,55 @@ services:
     networks:
       - cluster-proxy
 
+  # One-shot sidecar: copies the Caddy-issued TLS cert + key for the TURN
+  # subdomain from the cluster Caddy's data volume into a small shared
+  # volume that coturn can read as its unprivileged user. Re-runs on every
+  # `docker compose up` so cert renewals propagate after a redeploy or a
+  # `maintenance.sh restart coturn`. Exits 0 cleanly even if the cert is
+  # missing — coturn's entrypoint then disables TURNS but keeps UDP/TCP
+  # TURN on 3478.
+  turn-cert-stage:
+    image: alpine:3.20
+    container_name: screenie-turn-cert-stage
+    restart: "no"
+    user: "0:0"
+    volumes:
+      - caddy-data:/caddy-data:ro
+      - turn-certs-staged:/staged
+    environment:
+      TURN_REALM: ${TURN_REALM:-turn.screenie.mr-development.de}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        SRC_DIR=$$(find /caddy-data/caddy/certificates -type d -name "$${TURN_REALM}" 2>/dev/null | head -n1)
+        if [ -n "$${SRC_DIR}" ] && [ -s "$${SRC_DIR}/$${TURN_REALM}.crt" ] && [ -s "$${SRC_DIR}/$${TURN_REALM}.key" ]; then
+          cp "$${SRC_DIR}/$${TURN_REALM}.crt" /staged/cert.pem
+          cp "$${SRC_DIR}/$${TURN_REALM}.key" /staged/key.pem
+          chmod 644 /staged/cert.pem /staged/key.pem
+          echo "[turn-cert-stage] staged cert and key from $${SRC_DIR}"
+        else
+          echo "[turn-cert-stage] no cert found for $${TURN_REALM}; TURNS will be disabled until Caddy issues one" >&2
+          # Truncate any stale staged files so coturn's entrypoint disables TLS cleanly.
+          : > /staged/cert.pem
+          : > /staged/key.pem
+        fi
+
+  coturn:
+    volumes:
+      - ./coturn/turnserver.conf.tmpl:/etc/coturn/turnserver.conf.tmpl:ro
+      - ./coturn/entrypoint.sh:/entrypoint.sh:ro
+      - turn-certs-staged:/var/lib/turn:ro
+    depends_on:
+      turn-cert-stage:
+        condition: service_completed_successfully
+
+volumes:
+  turn-certs-staged:
+  caddy-data:
+    external: true
+    name: caddyserver_caddy_data
+
 networks:
   cluster-proxy:
     external: true

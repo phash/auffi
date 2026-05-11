@@ -2,10 +2,31 @@ use crate::protocol::{Incoming, Outgoing};
 use futures_util::{SinkExt, StreamExt};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 pub struct Signaling {
     pub tx: mpsc::Sender<Outgoing>,
+}
+
+/// Derive the WebSocket Origin header value from the backend URL. The
+/// production backend's `verifyClient` rejects connections whose Origin is
+/// not in `ALLOWED_ORIGINS`; native clients have no Origin by default, so we
+/// supply the matching origin explicitly. `wss://host/path` → `https://host`,
+/// `ws://host/path` → `http://host`. Override with `SCREENIE_SHARER_ORIGIN`.
+fn derive_origin(ws_url: &str) -> String {
+    if let Ok(custom) = std::env::var("SCREENIE_SHARER_ORIGIN") {
+        return custom;
+    }
+    if let Some(rest) = ws_url.strip_prefix("wss://") {
+        let host = rest.split('/').next().unwrap_or(rest);
+        return format!("https://{host}");
+    }
+    if let Some(rest) = ws_url.strip_prefix("ws://") {
+        let host = rest.split('/').next().unwrap_or(rest);
+        return format!("http://{host}");
+    }
+    "http://localhost".to_string()
 }
 
 pub async fn run(app: AppHandle, url: String) -> Signaling {
@@ -13,7 +34,30 @@ pub async fn run(app: AppHandle, url: String) -> Signaling {
     let tx_for_handle = tx.clone();
 
     tauri::async_runtime::spawn(async move {
-        let (ws, _) = match connect_async(&url).await {
+        let origin = derive_origin(&url);
+        let request = match url.as_str().into_client_request() {
+            Ok(mut r) => {
+                match origin.parse() {
+                    Ok(v) => { r.headers_mut().insert("Origin", v); }
+                    Err(e) => {
+                        let _ = app.emit(
+                            "disconnected",
+                            serde_json::json!({ "reason": format!("invalid origin {origin:?}: {e}") }),
+                        );
+                        return;
+                    }
+                }
+                r
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "disconnected",
+                    serde_json::json!({ "reason": format!("invalid signaling url: {e}") }),
+                );
+                return;
+            }
+        };
+        let (ws, _) = match connect_async(request).await {
             Ok(v) => v,
             Err(e) => {
                 let _ = app.emit(
