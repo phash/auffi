@@ -5,6 +5,7 @@ mod hotkey;
 pub mod input;
 mod protocol;
 mod signaling;
+mod turn_config;
 mod webrtc_peer;
 
 use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
@@ -140,7 +141,10 @@ async fn start_streaming(
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
-    let ice_servers = vec!["stun:stun.l.google.com:19302".to_string()];
+    let ws_url = std::env::var("SCREENSHARE_BACKEND_WS")
+        .unwrap_or_else(|_| "ws://localhost:8080/signal".to_string());
+    let backend_http_url = turn_config::ws_url_to_http(&ws_url);
+    let ice_servers = turn_config::fetch_ice_servers(&backend_http_url).await;
 
     let peer = webrtc_peer::SharerPeer::new(ice_servers)
         .await

@@ -27,6 +27,7 @@ tauri-plugin-global-shortcut = "=2.3.1"
 tauri-plugin-dialog = "=2.7.1"
 dirs = "=6.0.0"
 bytes = "=1.11.1"
+reqwest = { version = "=0.13.3", default-features = false, features = ["rustls", "json"] }
 
 [dev-dependencies]
 tempfile = "=3.27.0"

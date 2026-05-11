@@ -33,8 +33,8 @@ pub struct SharerPeer {
 }
 
 impl SharerPeer {
-    /// Create a new peer connection with the provided STUN/TURN servers.
-    pub async fn new(ice_servers: Vec<String>) -> Result<Self, Error> {
+    /// Create a new peer connection with the provided ICE servers.
+    pub async fn new(ice_servers: Vec<RTCIceServer>) -> Result<Self, Error> {
         let mut media_engine = MediaEngine::default();
         media_engine.register_default_codecs()?;
 
@@ -47,10 +47,7 @@ impl SharerPeer {
             .build();
 
         let config = RTCConfiguration {
-            ice_servers: vec![RTCIceServer {
-                urls: ice_servers,
-                ..Default::default()
-            }],
+            ice_servers,
             ..Default::default()
         };
 
@@ -222,7 +219,10 @@ mod tests {
 
     #[tokio::test]
     async fn peer_new_succeeds() {
-        let servers = vec!["stun:stun.l.google.com:19302".to_string()];
+        let servers = vec![RTCIceServer {
+            urls: vec!["stun:stun.l.google.com:19302".to_string()],
+            ..Default::default()
+        }];
         SharerPeer::new(servers)
             .await
             .expect("SharerPeer::new failed");
