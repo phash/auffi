@@ -5,6 +5,14 @@
 screenie.mr-development.de {
     encode zstd gzip
 
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://screenie.mr-development.de wss://turn.screenie.mr-development.de:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
+    }
+
     # Backend WebSocket signaling
     handle /signal {
         reverse_proxy backend:8080
