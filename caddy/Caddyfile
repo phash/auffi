@@ -1,5 +1,6 @@
 {
     email m.roedig@gmail.com
+    order rate_limit before basicauth
 }
 
 screenie.mr-development.de {
@@ -11,6 +12,41 @@ screenie.mr-development.de {
         X-Content-Type-Options "nosniff"
         Referrer-Policy "no-referrer"
         Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://screenie.mr-development.de wss://turn.screenie.mr-development.de:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
+    }
+
+    # Bot prevention: known scraper UAs get 403.
+    # Excludes /healthz and /readyz so deploy-scripts using curl still work.
+    @scrapers {
+        header_regexp User-Agent (?i)(scrapy|wget|curl|bot|crawler|spider|headlesschrome|phantomjs|nikto|sqlmap|nmap)
+        not path /healthz
+        not path /readyz
+    }
+    handle @scrapers {
+        respond "Forbidden" 403
+    }
+
+    # Rate limiting per IP.
+    # /signal (WebSocket) is excluded: the WS connection itself is long-lived
+    # and app-level per-peer message limits apply inside the backend.
+    # /turn-credentials has its own tighter zone (10 req/min, enforced by backend too).
+    rate_limit {
+        zone screenie_general {
+            match {
+                not path /signal
+                not path /turn-credentials
+            }
+            key {remote_host}
+            events 300
+            window 1m
+        }
+        zone screenie_turn {
+            match {
+                path /turn-credentials
+            }
+            key {remote_host}
+            events 10
+            window 1m
+        }
     }
 
     # Backend WebSocket signaling
