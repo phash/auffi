@@ -328,6 +328,31 @@
         opacity: 0.45;
         cursor: not-allowed;
       }
+
+      /* Input-pause banner */
+      #pause-banner {
+        display: none;
+        align-items: center;
+        gap: 0.625rem;
+        padding: 0.625rem 0.875rem;
+        background: rgba(210, 153, 34, 0.12);
+        border: 1px solid rgba(210, 153, 34, 0.5);
+        border-radius: 8px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: #d29922;
+        width: 100%;
+      }
+
+      #pause-banner.visible {
+        display: flex;
+      }
+
+      .pause-icon {
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+      }
     </style>
   </head>
   <body>
@@ -369,6 +394,18 @@
         <div id="monitor-list"></div>
         <button id="stream-btn" type="button">Streamen</button>
       </div>
+    </div>
+
+    <div
+      id="pause-banner"
+      role="status"
+      aria-live="polite"
+      aria-label="Steuerung pausiert"
+    >
+      <svg class="pause-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path d="M2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8Zm6-1.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 1 0V7a.5.5 0 0 0-.5-.5Zm0-2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
+      </svg>
+      Steuerung pausiert — Ctrl+Alt+Pause zum Fortsetzen
     </div>
 
     <script type="module" src="/src/main.ts"></script>

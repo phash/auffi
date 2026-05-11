@@ -27,6 +27,7 @@ const monitorSelectEl = document.getElementById("monitor-select")!;
 const monitorListEl = document.getElementById("monitor-list")!;
 const streamBtn = document.getElementById("stream-btn")! as HTMLButtonElement;
 const copyBtn = document.getElementById("copy-btn")! as HTMLButtonElement;
+const pauseBannerEl = document.getElementById("pause-banner")!;
 
 copyBtn.addEventListener("click", () => {
   const code = codeEl.textContent?.trim() ?? "";
@@ -127,6 +128,14 @@ streamBtn.addEventListener("click", () => {
       streamBtn.disabled = false;
       monitorSelectEl.classList.add("visible");
     });
+});
+
+listen<{ paused: boolean }>("input-paused-changed", (e) => {
+  if (e.payload.paused) {
+    pauseBannerEl.classList.add("visible");
+  } else {
+    pauseBannerEl.classList.remove("visible");
+  }
 });
 
 invoke("start_signaling");

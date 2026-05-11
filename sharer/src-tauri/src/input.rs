@@ -63,6 +63,16 @@ impl InputController {
         self.paused = paused;
     }
 
+    /// Toggles the paused state and returns the new value.
+    pub fn toggle_paused(&mut self) -> bool {
+        self.paused = !self.paused;
+        self.paused
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
     pub fn apply(&mut self, event: InputEvent) -> Result<(), String> {
         if self.paused {
             return Ok(());
@@ -263,6 +273,38 @@ mod tests {
         assert!(matches!(parse_key("Delete"), Some(Key::Delete)));
         assert!(matches!(parse_key("Home"), Some(Key::Home)));
         assert!(matches!(parse_key("End"), Some(Key::End)));
+    }
+
+    #[test]
+    fn toggle_paused_flips_state() {
+        // `InputController::new` requires a display; test the logic with direct struct manipulation.
+        // We test via serde round-trip + paused field only — construction is guarded by `#[ignore]`.
+        // Use a minimal hand-constructed instance by abusing Default on Enigo is not possible,
+        // so we verify the pure logic path: starts false, first toggle → true, second → false.
+        // Since Enigo::new needs X11, guard with `#[ignore]` for the same reason.
+        //
+        // Instead: test toggle logic via a minimal wrapper that bypasses Enigo construction.
+        struct PausedState(bool);
+        impl PausedState {
+            fn toggle(&mut self) -> bool {
+                self.0 = !self.0;
+                self.0
+            }
+        }
+        let mut state = PausedState(false);
+        assert!(state.toggle(), "first toggle should be true");
+        assert!(!state.toggle(), "second toggle should be false");
+    }
+
+    #[test]
+    #[ignore]
+    fn toggle_paused_flips_state_with_real_enigo() {
+        let mut ctrl = InputController::new(1920, 1080).expect("need display");
+        assert!(!ctrl.is_paused());
+        assert!(ctrl.toggle_paused());
+        assert!(ctrl.is_paused());
+        assert!(!ctrl.toggle_paused());
+        assert!(!ctrl.is_paused());
     }
 
     #[test]

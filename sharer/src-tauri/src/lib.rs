@@ -1,5 +1,6 @@
 mod capture;
 mod encoder;
+mod hotkey;
 pub mod input;
 mod protocol;
 mod signaling;
@@ -66,6 +67,7 @@ fn list_monitors() -> Result<Vec<DisplayInfo>, String> {
 
 #[tauri::command]
 async fn start_streaming(
+    app: tauri::AppHandle,
     monitor_id: u32,
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
@@ -133,6 +135,8 @@ async fn start_streaming(
             }
         }
     });
+
+    hotkey::register_pause_hotkey(&app, Arc::clone(&input_state.0))?;
 
     let track = peer.track.clone();
     {
@@ -240,6 +244,7 @@ async fn receive_ice_candidate(
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(SignalingState(Mutex::new(None)))
         .manage(WebRtcState(tokio::sync::Mutex::new(None)))
         .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
