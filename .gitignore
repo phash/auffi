@@ -13,3 +13,6 @@ coverage/
 .vitest-cache/
 sharer/src-tauri/gen/
 ops/.env.deploy
+
+# Local act secrets — never commit credentials
+.secrets
