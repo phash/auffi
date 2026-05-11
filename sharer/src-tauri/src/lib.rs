@@ -2,6 +2,7 @@ mod capture;
 mod encoder;
 mod protocol;
 mod signaling;
+mod webrtc_peer;
 
 use std::sync::Mutex;
 use tauri::State;
