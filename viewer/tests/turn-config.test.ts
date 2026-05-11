@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("fetchIceServers", () => {
-  it("returns merged TURN + fallback STUN array when endpoint returns 200", async () => {
+  it("returns TURN servers when endpoint returns 200", async () => {
     const body = {
       urls: ["turn:turn.example.com:3478", "turns:turn.example.com:5349"],
       username: "12345:test-user",
@@ -23,11 +23,9 @@ describe("fetchIceServers", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(200, body)));
 
-    const result = await fetchIceServers("http://localhost:8080", {
-      fallbackStun: "stun:stun.example.com:3478",
-    });
+    const result = await fetchIceServers("http://localhost:8080");
 
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(2);
     const turnEntries = result.filter(
       (s): s is IceServer & { username: string; credential: string } =>
         s.username !== undefined,
@@ -37,50 +35,36 @@ describe("fetchIceServers", () => {
     expect(turnEntries[0].username).toBe("12345:test-user");
     expect(turnEntries[0].credential).toBe("abc123==");
     expect(turnEntries[1].urls).toBe("turns:turn.example.com:5349");
-
-    const stunEntry = result.at(-1);
-    expect(stunEntry?.urls).toBe("stun:stun.example.com:3478");
-    expect(stunEntry?.username).toBeUndefined();
   });
 
-  it("returns just fallback STUN on 4xx response", async () => {
+  it("returns empty array on 4xx response — no third-party STUN fallback", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(403, {})));
 
-    const result = await fetchIceServers("http://localhost:8080", {
-      fallbackStun: "stun:stun.example.com:3478",
-    });
+    const result = await fetchIceServers("http://localhost:8080");
 
-    expect(result).toHaveLength(1);
-    expect(result[0].urls).toBe("stun:stun.example.com:3478");
-    expect(result[0].username).toBeUndefined();
+    expect(result).toEqual([]);
   });
 
-  it("returns just fallback STUN on 5xx response", async () => {
+  it("returns empty array on 5xx response — no third-party STUN fallback", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(500, {})));
 
-    const result = await fetchIceServers("http://localhost:8080", {
-      fallbackStun: "stun:stun.example.com:3478",
-    });
+    const result = await fetchIceServers("http://localhost:8080");
 
-    expect(result).toHaveLength(1);
-    expect(result[0].urls).toBe("stun:stun.example.com:3478");
+    expect(result).toEqual([]);
   });
 
-  it("returns just fallback STUN on network error", async () => {
+  it("returns empty array on network error — no third-party STUN fallback", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
     );
 
-    const result = await fetchIceServers("http://localhost:8080", {
-      fallbackStun: "stun:stun.example.com:3478",
-    });
+    const result = await fetchIceServers("http://localhost:8080");
 
-    expect(result).toHaveLength(1);
-    expect(result[0].urls).toBe("stun:stun.example.com:3478");
+    expect(result).toEqual([]);
   });
 
-  it("returns just fallback STUN on AbortError (timeout)", async () => {
+  it("returns empty array on AbortError (timeout) — no third-party STUN fallback", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockRejectedValue(
@@ -88,23 +72,7 @@ describe("fetchIceServers", () => {
       ),
     );
 
-    const result = await fetchIceServers("http://localhost:8080", {
-      fallbackStun: "stun:stun.example.com:3478",
-    });
-
-    expect(result).toHaveLength(1);
-    expect(result[0].urls).toBe("stun:stun.example.com:3478");
-  });
-
-  it("returns empty array when fallback is unset and endpoint fails", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
-    );
-
-    const result = await fetchIceServers("http://localhost:8080", {
-      fallbackStun: undefined,
-    });
+    const result = await fetchIceServers("http://localhost:8080");
 
     expect(result).toEqual([]);
   });
@@ -125,7 +93,7 @@ describe("fetchIceServers", () => {
     );
   });
 
-  it("returns only TURN entries (no fallback) when fallback is unset and endpoint succeeds", async () => {
+  it("returns only TURN entries when endpoint succeeds", async () => {
     const body = {
       urls: ["turn:relay.example.com:3478"],
       username: "user",
@@ -133,9 +101,7 @@ describe("fetchIceServers", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(200, body)));
 
-    const result = await fetchIceServers("http://localhost:8080", {
-      fallbackStun: undefined,
-    });
+    const result = await fetchIceServers("http://localhost:8080");
 
     expect(result).toHaveLength(1);
     expect(result[0].urls).toBe("turn:relay.example.com:3478");

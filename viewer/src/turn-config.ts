@@ -6,18 +6,9 @@ type TurnCredentialsResponse = {
   credential: string;
 };
 
-function fallbackServers(fallbackStun: string | undefined): IceServer[] {
-  if (fallbackStun) return [{ urls: fallbackStun }];
-  return [];
-}
-
 export async function fetchIceServers(
   backendHttpUrl: string,
-  opts?: { fallbackStun?: string },
 ): Promise<IceServer[]> {
-  const fallbackStun = opts?.fallbackStun ?? import.meta.env.VITE_FALLBACK_STUN;
-  const fallback = fallbackServers(fallbackStun);
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3_000);
 
@@ -27,18 +18,16 @@ export async function fetchIceServers(
       signal: controller.signal,
     });
 
-    if (!res.ok) return fallback;
+    if (!res.ok) return [];
 
     const body = (await res.json()) as TurnCredentialsResponse;
-    const turnServers: IceServer[] = body.urls.map((url) => ({
+    return body.urls.map((url) => ({
       urls: url,
       username: body.username,
       credential: body.credential,
     }));
-
-    return [...turnServers, ...fallback];
   } catch {
-    return fallback;
+    return [];
   } finally {
     clearTimeout(timer);
   }

@@ -11,8 +11,6 @@ export type ViewerPeerOpts = {
   pcFactory?: (config: RTCConfiguration) => RTCPeerConnection;
 };
 
-const DEFAULT_ICE: IceServers = [{ urls: "stun:stun.l.google.com:19302" }];
-
 /**
  * Inspects a WebRTC stats report to determine whether the active ICE candidate
  * pair uses a TURN relay or a direct connection.
@@ -68,7 +66,7 @@ export class ViewerPeer {
 
   async start(): Promise<RTCSessionDescriptionInit> {
     const factory = this.opts.pcFactory ?? ((c) => new RTCPeerConnection(c));
-    const pc = factory({ iceServers: this.opts.iceServers ?? DEFAULT_ICE });
+    const pc = factory({ iceServers: this.opts.iceServers ?? [] });
     this.pc = pc;
 
     pc.ontrack = (ev) => {

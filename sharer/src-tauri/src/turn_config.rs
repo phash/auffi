@@ -9,49 +9,34 @@ pub struct TurnCredentials {
     pub ttl: u32,
 }
 
-/// Convert optional TURN credentials and an optional fallback STUN URL into a
-/// `Vec<RTCIceServer>`.
+/// Convert optional TURN credentials into a `Vec<RTCIceServer>`.
 ///
-/// TURN servers (with Password credential type) are prepended so they are tried
-/// first; the fallback STUN server is appended last.  When both are absent the
-/// returned vec is empty — the WebRTC stack's built-in candidates still work for
-/// direct connections.
-pub fn to_ice_servers(
-    creds: Option<TurnCredentials>,
-    fallback_stun: Option<&str>,
-) -> Vec<RTCIceServer> {
-    let mut servers: Vec<RTCIceServer> = Vec::new();
+/// When credentials are absent the returned vec is empty — direct connections
+/// still work via peer-reflexive candidates on most home NATs.
+/// Third-party STUN servers are intentionally not used (DSGVO compliance).
+pub fn to_ice_servers(creds: Option<TurnCredentials>) -> Vec<RTCIceServer> {
+    let Some(c) = creds else {
+        return Vec::new();
+    };
 
-    if let Some(c) = creds {
-        for url in c.urls {
-            servers.push(RTCIceServer {
-                urls: vec![url],
-                username: c.username.clone(),
-                credential: c.credential.clone(),
-                credential_type: RTCIceCredentialType::Password,
-            });
-        }
-    }
-
-    if let Some(stun) = fallback_stun {
-        servers.push(RTCIceServer {
-            urls: vec![stun.to_string()],
-            ..Default::default()
-        });
-    }
-
-    servers
+    c.urls
+        .into_iter()
+        .map(|url| RTCIceServer {
+            urls: vec![url],
+            username: c.username.clone(),
+            credential: c.credential.clone(),
+            credential_type: RTCIceCredentialType::Password,
+        })
+        .collect()
 }
 
 /// Fetch ephemeral TURN credentials from the backend and return a ready-to-use
 /// `Vec<RTCIceServer>`.
 ///
-/// On any failure (network error, non-200 response, parse failure, timeout) the
-/// function falls back gracefully — it never propagates errors to the caller.
+/// On any failure (network error, non-200 response, parse failure, timeout)
+/// returns an empty list — the caller proceeds with no STUN/TURN servers.
+/// Third-party STUN fallbacks are intentionally omitted (DSGVO compliance).
 pub async fn fetch_ice_servers(backend_http_url: &str) -> Vec<RTCIceServer> {
-    let fallback_stun = std::env::var("SCREENIE_FALLBACK_STUN").ok();
-    let fallback_ref = fallback_stun.as_deref();
-
     let url = format!("{backend_http_url}/turn-credentials");
 
     let client = match reqwest::Client::builder()
@@ -61,7 +46,7 @@ pub async fn fetch_ice_servers(backend_http_url: &str) -> Vec<RTCIceServer> {
         Ok(c) => c,
         Err(e) => {
             log::warn!("TURN fetch: failed to build HTTP client: {e}");
-            return to_ice_servers(None, fallback_ref);
+            return Vec::new();
         }
     };
 
@@ -69,25 +54,25 @@ pub async fn fetch_ice_servers(backend_http_url: &str) -> Vec<RTCIceServer> {
         Ok(r) => r,
         Err(e) => {
             log::warn!("TURN fetch: request to {url} failed: {e}");
-            return to_ice_servers(None, fallback_ref);
+            return Vec::new();
         }
     };
 
     if !resp.status().is_success() {
         log::warn!("TURN fetch: server returned {}", resp.status());
-        return to_ice_servers(None, fallback_ref);
+        return Vec::new();
     }
 
     let creds: TurnCredentials = match resp.json().await {
         Ok(c) => c,
         Err(e) => {
             log::warn!("TURN fetch: failed to parse response: {e}");
-            return to_ice_servers(None, fallback_ref);
+            return Vec::new();
         }
     };
 
     log::debug!("TURN fetch: credentials valid for {} seconds", creds.ttl);
-    to_ice_servers(Some(creds), fallback_ref)
+    to_ice_servers(Some(creds))
 }
 
 /// Derive an HTTP/HTTPS base URL from the WebSocket signaling URL by:
@@ -141,7 +126,7 @@ mod tests {
             ttl: 3600,
         };
 
-        let servers = to_ice_servers(Some(creds), None);
+        let servers = to_ice_servers(Some(creds));
 
         assert_eq!(servers.len(), 2);
         assert_eq!(servers[0].urls, vec!["turn:turn.example.com:3478"]);
@@ -157,17 +142,8 @@ mod tests {
     }
 
     #[test]
-    fn fallback_only_when_no_credentials() {
-        let servers = to_ice_servers(None, Some("stun:stun.example.com:3478"));
-        assert_eq!(servers.len(), 1);
-        assert_eq!(servers[0].urls, vec!["stun:stun.example.com:3478"]);
-        assert_eq!(servers[0].username, "");
-        assert_eq!(servers[0].credential, "");
-    }
-
-    #[test]
-    fn empty_when_neither_credentials_nor_fallback() {
-        let servers = to_ice_servers(None, None);
+    fn empty_when_no_credentials() {
+        let servers = to_ice_servers(None);
         assert!(servers.is_empty());
     }
 
