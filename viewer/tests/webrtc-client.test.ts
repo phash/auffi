@@ -4,7 +4,7 @@ import { ViewerPeer } from "../src/webrtc-client.js";
 class MockRTCPeerConnection {
   static instances: MockRTCPeerConnection[] = [];
   localDescription: RTCSessionDescription | null = null;
-  ontrack: ((e: { streams: MediaStream[] }) => void) | null = null;
+  ontrack: ((e: { streams: MediaStream[]; track: MediaStreamTrack }) => void) | null = null;
   onicecandidate: ((e: { candidate: RTCIceCandidate | null }) => void) | null = null;
   oniceconnectionstatechange: (() => void) | null = null;
   iceConnectionState: RTCIceConnectionState = "new";
@@ -43,7 +43,8 @@ describe("ViewerPeer", () => {
     await peer.start();
     const pc = MockRTCPeerConnection.instances.at(-1)!;
     const stream = { id: "s1" } as unknown as MediaStream;
-    pc.ontrack?.({ streams: [stream] });
+    const track = {} as unknown as MediaStreamTrack;
+    pc.ontrack?.({ streams: [stream], track });
     expect(handler).toHaveBeenCalledWith(stream);
   });
 
@@ -128,7 +129,16 @@ describe("ViewerPeer", () => {
     expect(handler).toHaveBeenCalledWith("connected");
   });
 
-  it("does not emit onTrack when track event has no streams", async () => {
+  it("emits onTrack with a synthetic stream when track event has no streams", async () => {
+    const track = {} as unknown as MediaStreamTrack;
+    const capturedArgs: MediaStreamTrack[][] = [];
+    class FakeMediaStream {
+      constructor(tracks: MediaStreamTrack[]) {
+        capturedArgs.push(tracks);
+      }
+    }
+    vi.stubGlobal("MediaStream", FakeMediaStream);
+
     const peer = new ViewerPeer({
       pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
     });
@@ -136,7 +146,10 @@ describe("ViewerPeer", () => {
     peer.onTrack(handler);
     await peer.start();
     const pc = MockRTCPeerConnection.instances.at(-1)!;
-    pc.ontrack?.({ streams: [] });
-    expect(handler).not.toHaveBeenCalled();
+    pc.ontrack?.({ streams: [], track });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(capturedArgs).toEqual([[track]]);
+
+    vi.unstubAllGlobals();
   });
 });

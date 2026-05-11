@@ -21,8 +21,8 @@ export class ViewerPeer {
     this.pc = pc;
 
     pc.ontrack = (ev) => {
-      const stream = ev.streams[0];
-      if (stream) for (const h of this.trackHandlers) h(stream);
+      const stream = ev.streams[0] ?? new MediaStream([ev.track]);
+      for (const h of this.trackHandlers) h(stream);
     };
     pc.onicecandidate = (ev) => {
       const c: RTCIceCandidateInit | null = ev.candidate

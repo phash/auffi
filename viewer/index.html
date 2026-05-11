@@ -14,7 +14,9 @@
       #status.ok { background: #e6ffe6; }
       #status.err { background: #ffe6e6; }
       #status.info { background: #e6f0ff; }
+      #remote-video { display: none; }
       #remote-video.active { display: block; }
+      #disconnect { display: none; }
       #disconnect.active { display: inline-block; }
     </style>
     <main id="app">
@@ -23,8 +25,8 @@
       <input id="code" maxlength="11" placeholder="284-915-073" />
       <button id="connect">Verbinden</button>
       <div id="status"></div>
-      <video id="remote-video" autoplay playsinline muted style="width: 100%; max-width: 1280px; display: none; margin-top: 1rem; background: #000;"></video>
-      <button id="disconnect" style="display: none; margin-top: 0.5rem;">Trennen</button>
+      <video id="remote-video" autoplay playsinline muted style="width: 100%; max-width: 1280px; margin-top: 1rem; background: #000;"></video>
+      <button id="disconnect" style="margin-top: 0.5rem;">Trennen</button>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
