@@ -133,7 +133,7 @@ BACKEND_HOST=0.0.0.0
 VITE_BACKEND_WS=ws://localhost:8080/signal
 
 # Sharer (Tauri dev)
-SCREENSHARE_BACKEND_WS=ws://localhost:8080/signal
+SCREENIE_BACKEND_WS=ws://localhost:8080/signal
 ```
 
 - [x] **Step 4: Create docker-compose.yml (root)**
@@ -2166,7 +2166,7 @@ struct SignalingState(Mutex<Option<Signaling>>);
 
 #[tauri::command]
 async fn start_signaling(app: tauri::AppHandle, state: State<'_, SignalingState>) -> Result<(), String> {
-    let url = std::env::var("SCREENSHARE_BACKEND_WS")
+    let url = std::env::var("SCREENIE_BACKEND_WS")
         .unwrap_or_else(|_| "ws://localhost:8080/signal".to_string());
     let sig = signaling::run(app, url).await;
     *state.0.lock().unwrap() = Some(sig);
