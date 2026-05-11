@@ -11,6 +11,26 @@ export type RateLimitEntry = { count: number; resetAt: number };
 
 export type RateLimitConfig = { windowMs: number; max: number };
 
+export type PerPeerRateLimitConfig = { windowMs: number; max: number };
+
+function checkPerPeerLimit(
+  entry: RateLimitEntry,
+  cfg: PerPeerRateLimitConfig
+): boolean {
+  const now = Date.now();
+  if (now > entry.resetAt) {
+    entry.count = 1;
+    entry.resetAt = now + cfg.windowMs;
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= cfg.max;
+}
+
+function newPerPeerEntry(cfg: PerPeerRateLimitConfig): RateLimitEntry {
+  return { count: 0, resetAt: Date.now() + cfg.windowMs };
+}
+
 function stripIpv4Mapped(ip: string): string {
   return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
 }
@@ -31,11 +51,14 @@ function checkRateLimit(
   return entry.count <= cfg.max;
 }
 
+const DEFAULT_PER_PEER_LIMIT: PerPeerRateLimitConfig = { windowMs: 10_000, max: 50 };
+
 export function registerSignaling(
   app: FastifyInstance,
   store: SessionStore,
   rateLimitCfg: RateLimitConfig = { windowMs: 60_000, max: 5 },
-  attemptCounts: Map<string, RateLimitEntry> = new Map()
+  attemptCounts: Map<string, RateLimitEntry> = new Map(),
+  perPeerCfg: PerPeerRateLimitConfig = DEFAULT_PER_PEER_LIMIT
 ): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
@@ -51,8 +74,15 @@ export function registerSignaling(
   app.get("/signal", { websocket: true }, (socket, req) => {
     const peer = socket;
     let role: "sharer" | "viewer" | null = null;
+    const peerMsgEntry = newPerPeerEntry(perPeerCfg);
 
     peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
+      if (!checkPerPeerLimit(peerMsgEntry, perPeerCfg)) {
+        send(peer, { type: "error", code: "rate-limit", message: "message rate exceeded" });
+        peer.close();
+        return;
+      }
+
       let msg: IncomingMessage;
       try {
         msg = JSON.parse(raw.toString());

@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { FastifyInstance } from "fastify";
+import Fastify, { FastifyInstance } from "fastify";
 import WebSocket from "ws";
+import websocketPlugin from "@fastify/websocket";
 import { createServer } from "../src/server.js";
+import { registerSignaling } from "../src/signaling.js";
+import { SessionStore } from "../src/codes.js";
 
 let app: FastifyInstance;
 let url: string;
@@ -269,5 +272,67 @@ describe("signaling handshake", () => {
 
     sharer.close();
     viewer.close();
+  });
+});
+
+describe("per-peer message rate limit", () => {
+  let rlApp: FastifyInstance;
+  let rlUrl: string;
+
+  beforeAll(async () => {
+    rlApp = Fastify({ logger: false });
+    await rlApp.register(websocketPlugin, {
+      options: {
+        maxPayload: 65_536,
+        verifyClient(_info: unknown, cb: (result: boolean) => void) {
+          cb(true);
+        },
+      },
+    });
+    const store = new SessionStore({ ttlMs: 60_000, maxAttempts: 5 });
+    registerSignaling(
+      rlApp,
+      store,
+      { windowMs: 60_000, max: 5 },
+      new Map(),
+      { windowMs: 10_000, max: 3 }
+    );
+    await rlApp.listen({ port: 0, host: "127.0.0.1" });
+    const addr = rlApp.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    rlUrl = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await rlApp.close();
+  });
+
+  it("connection is closed after exceeding per-peer message rate limit", async () => {
+    const ws = new WebSocket(rlUrl);
+    await new Promise((r) => ws.once("open", r));
+
+    const messages: unknown[] = [];
+    ws.on("message", (data) => messages.push(JSON.parse(data.toString())));
+
+    // Send 4 messages — 4th exceeds the limit of 3 and triggers close
+    for (let i = 0; i < 4; i++) {
+      ws.send(JSON.stringify({ type: "register", role: "sharer" }));
+    }
+
+    await new Promise<void>((resolve) => {
+      if (ws.readyState === WebSocket.CLOSED) return resolve();
+      ws.once("close", () => resolve());
+    });
+
+    expect(ws.readyState).toBe(WebSocket.CLOSED);
+
+    const rateError = messages.find(
+      (m) =>
+        m !== null &&
+        typeof m === "object" &&
+        (m as Record<string, unknown>).type === "error" &&
+        (m as Record<string, unknown>).code === "rate-limit"
+    );
+    expect(rateError).toBeDefined();
   });
 });
