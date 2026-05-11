@@ -1347,7 +1347,7 @@ git commit -m "feat(backend): signaling handler with full handshake"
 - Modify: `backend/src/server.ts`
 - Create: `backend/tests/rate-limit.test.ts`
 
-- [ ] **Step 1: Write test for join-attempt rate limit**
+- [x] **Step 1: Write test for join-attempt rate limit**
 
 `backend/tests/rate-limit.test.ts`:
 
@@ -1390,7 +1390,7 @@ it("rate-limits more than 5 invalid joins per minute from same IP", async () => 
 });
 ```
 
-- [ ] **Step 2: Run test — verify it fails**
+- [x] **Step 2: Run test — verify it fails**
 
 ```bash
 cd backend && npm test rate-limit
@@ -1398,7 +1398,7 @@ cd backend && npm test rate-limit
 
 Expected: 6th attempt still returns "invalid-code", not "rate-limit".
 
-- [ ] **Step 3: Add per-IP rate-limit in signaling.ts**
+- [x] **Step 3: Add per-IP rate-limit in signaling.ts**
 
 In `backend/src/signaling.ts`, add at the top:
 
@@ -1430,13 +1430,13 @@ if (msg.type === "join" && msg.role === "viewer" && role === null) {
 }
 ```
 
-- [ ] **Step 4: Run tests — verify pass**
+- [x] **Step 4: Run tests — verify pass**
 
 ```bash
 cd backend && npm test
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/signaling.ts backend/tests/rate-limit.test.ts

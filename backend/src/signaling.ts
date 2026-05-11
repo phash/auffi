@@ -6,9 +6,28 @@ import type {
   OutgoingMessage,
 } from "./protocol.js";
 
+type RateLimitEntry = { count: number; resetAt: number };
+
+// Entries stay in the Map after expiry and are reset on next access — acceptable
+// for MVP since the key space is bounded to active IPs hitting the endpoint.
+function checkRateLimit(
+  ip: string,
+  counts: Map<string, RateLimitEntry>
+): boolean {
+  const now = Date.now();
+  const entry = counts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    counts.set(ip, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= 5;
+}
+
 export function registerSignaling(
   app: FastifyInstance,
-  store: SessionStore
+  store: SessionStore,
+  attemptCounts: Map<string, RateLimitEntry> = new Map()
 ): void {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
@@ -45,6 +64,11 @@ export function registerSignaling(
       if (msg.type === "join" && msg.role === "viewer" && role === null) {
         const session = store.getSession(msg.code);
         if (!session) {
+          if (!checkRateLimit(req.ip ?? "unknown", attemptCounts)) {
+            send(peer, { type: "error", code: "rate-limit", message: "too many attempts" });
+            peer.close();
+            return;
+          }
           const burned = store.recordFailedAttempt(msg.code);
           send(peer, {
             type: "error",
