@@ -11,6 +11,11 @@ lifetime=600
 no-multicast-peers
 no-tlsv1
 no-tlsv1_1
+# Explicit cipher list: TLS 1.3 AEADs first, then TLS 1.2 AEAD suites.
+# TLS 1.2 is kept for client compatibility; TLS 1.3-only would break
+# some WebRTC stacks that negotiate DTLS 1.2 (RFC 8827 requires at
+# least DTLS 1.2; DTLS 1.3 is not yet universally supported).
+cipher-list="TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-RSA-AES128-GCM-SHA256"
 # Cert files staged by entrypoint from the Caddy data volume.
 # If files are missing (cert not yet issued), coturn refuses to start the
 # TLS listener but plain UDP/TCP TURN on 3478 continues to work.
