@@ -1,0 +1,183 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (Node 22)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      - name: Build
+        run: npm run build
+
+  viewer:
+    name: Viewer (Node 22)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: viewer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      - name: Build
+        run: npm run build
+
+  sharer:
+    name: Sharer (Rust + Tauri, Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libvpx-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libxtst-dev \
+            libx11-dev \
+            libxrandr-dev
+
+      - name: Install Rust stable toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          cache-workspaces: sharer/src-tauri
+
+      - name: Check formatting
+        working-directory: sharer/src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy (deny warnings)
+        working-directory: sharer/src-tauri
+        run: cargo clippy --no-deps -- -D warnings
+
+      - name: Run unit tests
+        working-directory: sharer/src-tauri
+        run: cargo test --lib
+
+      - name: Compile check (release profile)
+        working-directory: sharer/src-tauri
+        run: cargo check --release
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-24.04
+    needs: [backend, viewer]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install viewer dependencies
+        working-directory: viewer
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: viewer
+        run: npx playwright install --with-deps chromium
+
+      - name: Start backend
+        working-directory: backend
+        run: npm run dev &
+        env:
+          PORT: 8080
+          HOST: 127.0.0.1
+          SESSION_TTL_MS: "600000"
+          MAX_FAILED_ATTEMPTS: "5"
+          RATE_LIMIT_WINDOW_MS: "60000"
+          RATE_LIMIT_MAX: "5"
+          ALLOWED_ORIGINS: "http://localhost:5173"
+          NODE_ENV: test
+
+      - name: Wait for backend to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz > /dev/null 2>&1; then
+              echo "Backend ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Start viewer dev server
+        working-directory: viewer
+        run: npm run dev &
+        env:
+          VITE_WS_URL: ws://127.0.0.1:8080/signal
+
+      - name: Wait for viewer dev server to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:5173/ > /dev/null 2>&1; then
+              echo "Viewer ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run Playwright E2E tests
+        working-directory: viewer
+        run: npm run test:e2e
+        env:
+          VIEWER_URL: http://localhost:5173
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: viewer/test-results/
+          retention-days: 7
