@@ -1,6 +1,8 @@
 import { SignalingClient } from "./signaling-client.js";
 import { ViewerPeer } from "./webrtc-client.js";
 import { InputCapture } from "./input-capture.js";
+import { FileTransferManager } from "./file-transfer.js";
+import type { FileOffer } from "./file-transfer.js";
 
 function setStatus(text: string, kind: "ok" | "err" | "info"): void {
   const el = document.getElementById("status")!;
@@ -49,9 +51,20 @@ export function bindUI(backendWsUrl: string): void {
   const disconnectBtn = document.getElementById("disconnect") as HTMLButtonElement;
   const inputToggleBtn = document.getElementById("input-toggle") as HTMLButtonElement;
 
+  const fileSendBtn = document.getElementById("file-send-btn") as HTMLButtonElement;
+  const fileInput = document.getElementById("file-input") as HTMLInputElement;
+  const fileOfferToast = document.getElementById("file-offer-toast")!;
+  const fileOfferBody = document.getElementById("file-offer-body")!;
+  const fileOfferAccept = document.getElementById("file-offer-accept") as HTMLButtonElement;
+  const fileOfferReject = document.getElementById("file-offer-reject") as HTMLButtonElement;
+  const videoWrapper = document.getElementById("video-wrapper")!;
+
   let signaling: SignalingClient | null = null;
   let peer: ViewerPeer | null = null;
   let capture: InputCapture | null = null;
+  let fileManager: FileTransferManager | null = null;
+
+  let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
 
   const escapeHandler = (e: KeyboardEvent): void => {
     if (e.key === "Escape" && inputToggleBtn.getAttribute("aria-pressed") === "true") {
@@ -71,6 +84,11 @@ export function bindUI(backendWsUrl: string): void {
   function teardown(reason: string, kind: "ok" | "err" | "info" = "info"): void {
     capture?.disable();
     capture = null;
+    fileManager?.cancelAll();
+    fileManager = null;
+    pendingOfferResolve?.(false);
+    pendingOfferResolve = null;
+    fileOfferToast.classList.remove("active");
     setInputTogglePressed(inputToggleBtn, false);
     peer?.close();
     signaling?.close();
@@ -82,6 +100,54 @@ export function bindUI(backendWsUrl: string): void {
   }
 
   disconnectBtn.addEventListener("click", () => teardown("Getrennt.", "info"));
+
+  fileOfferAccept.addEventListener("click", () => {
+    pendingOfferResolve?.(true);
+    pendingOfferResolve = null;
+    fileOfferToast.classList.remove("active");
+  });
+
+  fileOfferReject.addEventListener("click", () => {
+    pendingOfferResolve?.(false);
+    pendingOfferResolve = null;
+    fileOfferToast.classList.remove("active");
+  });
+
+  fileSendBtn.addEventListener("click", () => {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file && fileManager) {
+      fileManager.send(file).catch(() => {
+        // Transfer was rejected or failed; no user-visible error needed here
+      });
+    }
+    fileInput.value = "";
+  });
+
+  videoWrapper.addEventListener("dragover", (e) => {
+    if (!fileManager) return;
+    e.preventDefault();
+    videoWrapper.classList.add("drop-over");
+  });
+
+  videoWrapper.addEventListener("dragleave", () => {
+    videoWrapper.classList.remove("drop-over");
+  });
+
+  videoWrapper.addEventListener("drop", (e) => {
+    videoWrapper.classList.remove("drop-over");
+    if (!fileManager) return;
+    e.preventDefault();
+    const file = e.dataTransfer?.files[0];
+    if (file) {
+      fileManager.send(file).catch(() => {
+        // Transfer was rejected or failed; no user-visible error needed here
+      });
+    }
+  });
 
   inputToggleBtn.addEventListener("click", () => {
     if (inputToggleBtn.getAttribute("aria-pressed") === "true") {
@@ -116,6 +182,37 @@ export function bindUI(backendWsUrl: string): void {
       const hub = peer!.getDataHub();
       hub.ready().then(() => {
         capture = new InputCapture(videoEl, (ev) => hub.sendInput(ev));
+
+        fileManager = new FileTransferManager(
+          (ev) => hub.sendFile(ev),
+          (buf) => hub.sendFileChunk(buf),
+          () => hub.filesBufferedAmount(),
+          (threshold) => hub.awaitFilesBufferedLow(threshold),
+        );
+
+        fileManager.onIncomingOffer((offer: FileOffer) => {
+          return new Promise<boolean>((resolve) => {
+            pendingOfferResolve = resolve;
+            const sizeMb = (offer.size / (1024 * 1024)).toFixed(2);
+            fileOfferBody.textContent = `"${offer.name}" (${sizeMb} MB)`;
+            fileOfferToast.classList.add("active");
+          });
+        });
+
+        fileManager.onIncomingComplete((file: File) => {
+          const url = URL.createObjectURL(file);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.name;
+          a.style.display = "none";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        });
+
+        hub.onFile((ev) => fileManager?.handle(ev));
+        hub.onFileChunk((buf) => fileManager?.handleChunk(buf));
       }).catch(() => {
         // DataChannel setup failed; input control unavailable
       });

@@ -10,10 +10,13 @@ class MockDataChannel {
   ordered: boolean;
   maxRetransmits: number | null;
   readyState: RTCDataChannelState = "connecting";
+  bufferedAmount = 0;
+  bufferedAmountLowThreshold = 0;
   onopen: OpenHandler | null = null;
   onmessage: MessageHandler | null = null;
 
   private sent: Array<string | ArrayBuffer> = [];
+  private listeners: Map<string, EventListener[]> = new Map();
 
   constructor(label: string, init?: RTCDataChannelInit) {
     this.label = label;
@@ -27,6 +30,22 @@ class MockDataChannel {
 
   getSent(): Array<string | ArrayBuffer> {
     return this.sent;
+  }
+
+  addEventListener(type: string, handler: EventListener): void {
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type)!.push(handler);
+  }
+
+  removeEventListener(type: string, handler: EventListener): void {
+    const list = this.listeners.get(type) ?? [];
+    this.listeners.set(type, list.filter((h) => h !== handler));
+  }
+
+  simulateEvent(type: string): void {
+    for (const handler of this.listeners.get(type) ?? []) {
+      handler(new Event(type));
+    }
   }
 
   simulateOpen(): void {
@@ -172,6 +191,28 @@ describe("DataChannelHub — caller role", () => {
       expect(ch.readyState).toBe("closed");
     }
   });
+
+  it("filesBufferedAmount returns the files channel bufferedAmount", () => {
+    const files = pc.channels.find((c) => c.label === "files")!;
+    files.bufferedAmount = 512;
+    expect(hub.filesBufferedAmount()).toBe(512);
+  });
+
+  it("awaitFilesBufferedLow resolves immediately when bufferedAmount is within threshold", async () => {
+    const files = pc.channels.find((c) => c.label === "files")!;
+    files.bufferedAmount = 100;
+    await expect(hub.awaitFilesBufferedLow(1024)).resolves.toBeUndefined();
+  });
+
+  it("awaitFilesBufferedLow resolves on bufferedamountlow event when above threshold", async () => {
+    const files = pc.channels.find((c) => c.label === "files")!;
+    files.bufferedAmount = 2 * 1024 * 1024;
+
+    const promise = hub.awaitFilesBufferedLow(1024 * 1024);
+    files.simulateEvent("bufferedamountlow");
+
+    await expect(promise).resolves.toBeUndefined();
+  });
 });
 
 describe("DataChannelHub — callee role", () => {
@@ -221,5 +262,13 @@ describe("DataChannelHub — callee role", () => {
     filesCh.simulateOpen();
 
     await expect(promise).resolves.toBeUndefined();
+  });
+
+  it("filesBufferedAmount returns 0 when files channel is not yet available", () => {
+    expect(hub.filesBufferedAmount()).toBe(0);
+  });
+
+  it("awaitFilesBufferedLow resolves immediately when no files channel exists", async () => {
+    await expect(hub.awaitFilesBufferedLow(1024)).resolves.toBeUndefined();
   });
 });

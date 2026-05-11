@@ -86,6 +86,23 @@ export class DataChannelHub {
     this.fileChunkHandlers.push(handler);
   }
 
+  filesBufferedAmount(): number {
+    return this.filesChannel?.bufferedAmount ?? 0;
+  }
+
+  awaitFilesBufferedLow(threshold: number): Promise<void> {
+    const ch = this.filesChannel;
+    if (!ch || ch.bufferedAmount <= threshold) return Promise.resolve();
+    return new Promise((resolve) => {
+      ch.bufferedAmountLowThreshold = threshold;
+      const onLow = (): void => {
+        ch.removeEventListener("bufferedamountlow", onLow);
+        resolve();
+      };
+      ch.addEventListener("bufferedamountlow", onLow);
+    });
+  }
+
   ready(): Promise<void> {
     if (this.inputReady && this.filesReady) return Promise.resolve();
     return new Promise((resolve) => {
