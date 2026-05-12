@@ -4,10 +4,11 @@ use webrtc::interceptor::registry::Registry;
 use tokio::sync::mpsc;
 use webrtc::{
     api::{
-        interceptor_registry::register_default_interceptors, media_engine::MediaEngine, APIBuilder,
+        interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
+        setting_engine::SettingEngine, APIBuilder,
     },
     data_channel::RTCDataChannel,
-    ice::candidate::CandidateType,
+    ice::{candidate::CandidateType, mdns::MulticastDnsMode},
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
         ice_connection_state::RTCIceConnectionState,
@@ -98,9 +99,22 @@ impl SharerPeer {
         let mut registry = Registry::new();
         registry = register_default_interceptors(registry, &mut media_engine)?;
 
+        // Use QueryAndGather so the sharer ALSO publishes mDNS-anonymized
+        // candidates for its own host addresses. Without this the sharer
+        // advertises ~25 raw private IPs (every Docker bridge on the host)
+        // and the Chrome viewer publishes only mDNS .local hostnames —
+        // none of the candidate pairs can connect-check, so ICE falls
+        // back to the TURN relay even when both peers sit on the same
+        // LAN. With mDNS on both ends the local responder (avahi /
+        // systemd-resolved) bridges the two and direct LAN p2p works.
+        // Spec: draft-ietf-rtcweb-mdns-ice-candidates.
+        let mut setting_engine = SettingEngine::default();
+        setting_engine.set_ice_multicast_dns_mode(MulticastDnsMode::QueryAndGather);
+
         let api = APIBuilder::new()
             .with_media_engine(media_engine)
             .with_interceptor_registry(registry)
+            .with_setting_engine(setting_engine)
             .build();
 
         let config = RTCConfiguration {
