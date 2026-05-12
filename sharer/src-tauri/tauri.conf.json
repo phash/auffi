@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Screenie",
+  "productName": "Auffi",
   "version": "0.1.0",
-  "identifier": "de.mr-development.screenie",
+  "identifier": "app.auffi.desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5174",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Screenie — Sharer",
+        "title": "Auffi — Sharer",
         "width": 540,
         "height": 660,
         "minWidth": 480,
@@ -21,7 +21,7 @@
       },
       {
         "label": "border",
-        "title": "screenie-active",
+        "title": "auffi-active",
         "url": "border.html",
         "transparent": true,
         "decorations": false,

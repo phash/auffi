@@ -87,7 +87,7 @@ let pendingIce: IcePayload[] = [];
 // ── Persistent store ────────────────────────────────────────────────────────
 
 async function getStore() {
-  return load("screenie-settings.json", { autoSave: true });
+  return load("auffi-settings.json", { autoSave: true });
 }
 
 async function loadTrustedPeers(): Promise<TrustedPeer[]> {

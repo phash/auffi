@@ -13,9 +13,9 @@ pub struct Signaling {
 /// production backend's `verifyClient` rejects connections whose Origin is
 /// not in `ALLOWED_ORIGINS`; native clients have no Origin by default, so we
 /// supply the matching origin explicitly. `wss://host/path` → `https://host`,
-/// `ws://host/path` → `http://host`. Override with `SCREENIE_SHARER_ORIGIN`.
+/// `ws://host/path` → `http://host`. Override with `AUFFI_SHARER_ORIGIN`.
 fn derive_origin(ws_url: &str) -> String {
-    if let Ok(custom) = std::env::var("SCREENIE_SHARER_ORIGIN") {
+    if let Ok(custom) = std::env::var("AUFFI_SHARER_ORIGIN") {
         return custom;
     }
     if let Some(rest) = ws_url.strip_prefix("wss://") {
