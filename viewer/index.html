@@ -426,6 +426,92 @@
         outline-offset: 2px;
       }
 
+      /* Zoom + fullscreen controls (bottom-right of the video) */
+      #video-controls {
+        position: absolute;
+        bottom: 0.625rem;
+        right: 0.625rem;
+        display: none;
+        gap: 0.25rem;
+        background: rgba(0,0,0,0.55);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 8px;
+        padding: 0.25rem;
+        backdrop-filter: blur(4px);
+        z-index: 10;
+      }
+
+      #video-controls.active {
+        display: flex;
+        align-items: center;
+      }
+
+      #video-controls button {
+        font-family: var(--font);
+        background: transparent;
+        color: rgba(255,255,255,0.85);
+        border: none;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        min-width: 32px;
+        min-height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-appearance: none;
+        outline: none;
+        transition: background 120ms ease, color 120ms ease;
+      }
+
+      #video-controls button:hover {
+        background: rgba(255,255,255,0.15);
+        color: #fff;
+      }
+
+      #video-controls button:focus-visible {
+        outline: 2px solid rgba(255,255,255,0.6);
+        outline-offset: 1px;
+      }
+
+      #video-controls button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      #video-controls button:disabled:hover {
+        background: transparent;
+        color: rgba(255,255,255,0.85);
+      }
+
+      #zoom-reset {
+        font-variant-numeric: tabular-nums;
+        min-width: 56px;
+      }
+
+      #fullscreen-btn[aria-pressed="true"] {
+        background: rgba(31,111,235,0.75);
+        color: #fff;
+      }
+
+      #fullscreen-btn svg {
+        display: block;
+      }
+
+      /* Apply user-selected zoom to the remote video. transform-origin keeps
+         the zoom centred so a non-technical viewer can simply press + to
+         enlarge the middle of the picture. overflow:hidden on .video-wrapper
+         clips the edges that fall off-screen at higher zoom levels. The
+         opacity transition declared further up the file is preserved by
+         using the shorthand transition with both properties here. */
+      #remote-video {
+        transform: scale(var(--zoom, 1));
+        transform-origin: center center;
+        transition: opacity 400ms ease, transform 180ms ease;
+      }
+
       /* Connection-type badge */
       #connection-type {
         position: absolute;
@@ -758,6 +844,26 @@
         </div>
         <button id="disconnect" aria-label="Sitzung beenden">Beenden</button>
         <div id="connection-type" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
+        <div id="video-controls" role="toolbar" aria-label="Zoom und Vollbild">
+          <button id="zoom-out" type="button" aria-label="Verkleinern" title="Verkleinern">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M3 8a1 1 0 0 1 1-1h8a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1z"/>
+            </svg>
+          </button>
+          <button id="zoom-reset" type="button" aria-label="Originalgröße (100 %)" title="Originalgröße">
+            <span id="zoom-level">100 %</span>
+          </button>
+          <button id="zoom-in" type="button" aria-label="Vergrößern" title="Vergrößern">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 3a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H9v3a1 1 0 1 1-2 0V9H4a1 1 0 0 1 0-2h3V4a1 1 0 0 1 1-1z"/>
+            </svg>
+          </button>
+          <button id="fullscreen-btn" type="button" aria-pressed="false" aria-label="Vollbild" title="Vollbild">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M1.5 1h4a.5.5 0 0 1 0 1H2v3.5a.5.5 0 0 1-1 0v-4A.5.5 0 0 1 1.5 1zm9 0h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V2h-3.5a.5.5 0 0 1 0-1zM1 10.5a.5.5 0 0 1 1 0V14h3.5a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5v-4zm14 0a.5.5 0 0 1 0 1V15h-3.5a.5.5 0 0 1 0-1H14v-3.5a.5.5 0 0 1 1 0z"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </main>
 
