@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Db } from "../db.js";
 import { hashPassword, verifyPasswordTimingSafe } from "./argon.js";
 import { newToken, hashToken } from "./tokens.js";
+import { maybePromoteToAdmin } from "../admin/bootstrap.js";
 import {
   createSession,
   clearSessionCookie,
@@ -103,6 +104,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       )
       .run(email, passwordHash, now);
     const accountId = Number(insert.lastInsertRowid);
+
+    // INITIAL_ADMIN_EMAIL bootstrap (gh #42): promote on the spot if the
+    // env var matches this email. No-op when the env is unset, so the
+    // default deploy stays closed.
+    maybePromoteToAdmin(db, email);
 
     const verifyToken = newToken();
     db.prepare(
