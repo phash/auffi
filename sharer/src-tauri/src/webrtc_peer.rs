@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use interceptor::registry::Registry;
+use webrtc::interceptor::registry::Registry;
 use tokio::sync::mpsc;
 use webrtc::{
     api::{
