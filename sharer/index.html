@@ -139,19 +139,29 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
       }
 
       #code {
         font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
-        font-size: 2.25rem;
+        font-size: 1.875rem;
         font-weight: 600;
-        letter-spacing: 0.15em;
+        letter-spacing: 0.12em;
         color: var(--text);
         user-select: all;
-        flex: 1;
+        flex: 1 1 auto;
         line-height: 1.2;
         min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: clip;
+      }
+
+      .code-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
       }
 
       #code.placeholder {
@@ -626,6 +636,8 @@
         <div class="code-row">
           <div id="code" class="placeholder" aria-label="Verbindungscode">— — —</div>
           <button id="copy-btn" type="button" aria-label="Code kopieren">Kopieren</button>
+        </div>
+        <div class="code-actions">
           <button id="new-code-btn" type="button" aria-label="Neuen Code generieren">
             <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M13.5 8a5.5 5.5 0 1 1-1.325-3.566L14 3v4h-4l1.698-1.698A4 4 0 1 0 12 8h1.5z"/>

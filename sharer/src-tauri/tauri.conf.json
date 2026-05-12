@@ -14,8 +14,10 @@
       {
         "label": "main",
         "title": "Screenie — Sharer",
-        "width": 480,
-        "height": 600
+        "width": 540,
+        "height": 660,
+        "minWidth": 480,
+        "minHeight": 600
       },
       {
         "label": "border",

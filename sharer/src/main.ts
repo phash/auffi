@@ -71,6 +71,19 @@ let currentCode: string | null = null;
 let isStreaming = false;
 let signalingActive = false;
 
+// SDP+ICE arrive immediately after `peer-confirmed` but the WebRTC peer is
+// only constructed when start_streaming runs (after the user picks a monitor).
+// Buffer them until the peer exists, then replay in order.
+let streamingReady = false;
+let pendingOffer: string | null = null;
+type IcePayload = {
+  candidate: string;
+  sdpMid: string | null;
+  sdpMlineIndex: number | null;
+  usernameFragment: string | null;
+};
+let pendingIce: IcePayload[] = [];
+
 // ── Persistent store ────────────────────────────────────────────────────────
 
 async function getStore() {
@@ -195,6 +208,10 @@ function showStreamingActions(): void {
 function hideStreamingActions(): void {
   streamingActionsEl.classList.remove("visible");
   isStreaming = false;
+  // Clear buffered SDP/ICE — the next session starts fresh
+  streamingReady = false;
+  pendingOffer = null;
+  pendingIce = [];
 }
 
 // ── Tab navigation ───────────────────────────────────────────────────────────
@@ -314,7 +331,23 @@ streamBtn.addEventListener("click", () => {
   setStatus("Stream wird gestartet…", "waiting");
 
   invoke("start_streaming", { monitorId })
-    .then(() => {
+    .then(async () => {
+      streamingReady = true;
+      // Replay anything the viewer sent while we were waiting for the user to
+      // pick a monitor. Offer first (must precede ICE candidates per WebRTC).
+      if (pendingOffer) {
+        const sdp = pendingOffer;
+        pendingOffer = null;
+        await invoke("receive_offer", { sdp }).catch((err: unknown) => {
+          setStatus(`SDP-Fehler: ${String(err)}`, "error");
+        });
+      }
+      const ice = pendingIce.splice(0);
+      for (const c of ice) {
+        await invoke("receive_ice_candidate", c).catch(() => {
+          /* benign: candidate may be stale */
+        });
+      }
       setStatus("Streaming läuft.", "success");
       showStreamingActions();
     })
@@ -410,17 +443,26 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
 listen<{ payload: RelayPayload }>("relay", (e) => {
   const p = e.payload.payload;
   if (p.kind === "sdp" && p.sdp) {
+    if (!streamingReady) {
+      pendingOffer = p.sdp.sdp;
+      return;
+    }
     invoke("receive_offer", { sdp: p.sdp.sdp }).catch((err: unknown) => {
       setStatus(`SDP-Fehler: ${String(err)}`, "error");
     });
   } else if (p.kind === "ice" && p.candidate) {
-    invoke("receive_ice_candidate", {
-      candidate: p.candidate.candidate,
-      sdpMid: p.candidate.sdpMid,
-      sdpMlineIndex: p.candidate.sdpMLineIndex,
-      usernameFragment: p.candidate.usernameFragment,
-    }).catch(() => {
-      // Benign: ICE candidate may arrive before remote description is set.
+    const ice: IcePayload = {
+      candidate: p.candidate.candidate ?? "",
+      sdpMid: p.candidate.sdpMid ?? null,
+      sdpMlineIndex: p.candidate.sdpMLineIndex ?? null,
+      usernameFragment: p.candidate.usernameFragment ?? null,
+    };
+    if (!streamingReady) {
+      pendingIce.push(ice);
+      return;
+    }
+    invoke("receive_ice_candidate", ice).catch(() => {
+      // Benign: candidate may be stale (e.g. remote description not yet set).
     });
   }
 });
