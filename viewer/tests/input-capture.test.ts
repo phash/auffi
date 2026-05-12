@@ -11,7 +11,7 @@ function makeVideo(width = 1920, height = 1080): HTMLVideoElement {
 }
 
 describe("InputCapture", () => {
-  it("emits normalized mouse-move on pointermove when enabled", () => {
+  it("emits normalized mouse-move on pointermove when enabled (rAF-throttled)", async () => {
     const video = makeVideo();
     document.body.appendChild(video);
     const emit = vi.fn();
@@ -19,15 +19,37 @@ describe("InputCapture", () => {
     cap.enable();
     video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 540, right: 960, bottom: 540, x: 0, y: 0, toJSON: () => ({}) });
     video.dispatchEvent(new PointerEvent("pointermove", { clientX: 480, clientY: 270 }));
+    // Coalesced — flushed on next animation frame.
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
     expect(emit).toHaveBeenCalledWith({ kind: "mouse-move", x: 0.5, y: 0.5 });
     document.body.removeChild(video);
   });
 
-  it("ignores events when disabled", () => {
+  it("coalesces a burst of pointermoves into one emit per frame", async () => {
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
+    // Five rapid moves — the rAF-throttle should only emit the LAST one.
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 10, clientY: 10 }));
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 20, clientY: 20 }));
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 30, clientY: 30 }));
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 40, clientY: 40 }));
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 50, clientY: 50 }));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith({ kind: "mouse-move", x: 0.5, y: 0.5 });
+    document.body.removeChild(video);
+  });
+
+  it("ignores events when disabled", async () => {
     const video = makeVideo();
     const emit = vi.fn();
     const cap = new InputCapture(video, emit);
     video.dispatchEvent(new PointerEvent("pointermove", { clientX: 100, clientY: 100 }));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
     expect(emit).not.toHaveBeenCalled();
   });
 

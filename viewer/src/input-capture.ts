@@ -24,12 +24,33 @@ export class InputCapture {
     this.enabled = true;
     this.video.tabIndex = 0;
 
+    // requestAnimationFrame throttle for pointermove. Without this, a
+    // 1000 Hz mouse floods the input data channel with JSON-serialized
+    // mouse-move events; the unreliable SCTP stream serializes them and
+    // the sharer's enigo apply-loop becomes the bottleneck. Coalescing
+    // to one emit per animation frame (~60 Hz) keeps the cursor visibly
+    // smooth while cutting the message rate 16x. Buttons/keys/wheel
+    // stay immediate — they're rare and non-coalescable.
+    let pendingMove: { x: number; y: number } | null = null;
+    let movePending = false;
+    const flushMove = (): void => {
+      movePending = false;
+      if (pendingMove === null) return;
+      const { x, y } = pendingMove;
+      pendingMove = null;
+      this.emit({ kind: "mouse-move", x, y });
+    };
     const onMove = (e: Event): void => {
       const ev = e as PointerEvent;
       const rect = this.video.getBoundingClientRect();
-      const x = (ev.clientX - rect.left) / rect.width;
-      const y = (ev.clientY - rect.top) / rect.height;
-      this.emit({ kind: "mouse-move", x, y });
+      pendingMove = {
+        x: (ev.clientX - rect.left) / rect.width,
+        y: (ev.clientY - rect.top) / rect.height,
+      };
+      if (!movePending) {
+        movePending = true;
+        requestAnimationFrame(flushMove);
+      }
     };
 
     const onDown = (e: Event): void => {
