@@ -1,0 +1,45 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`email templates > reset template snapshot 1`] = `
+{
+  "subject": "Auffi: Passwort zurücksetzen",
+  "text": "Hallo,
+
+du hast eine Zurücksetzung deines Auffi-Passworts angefordert. Setze ein
+neues Passwort über diesen Link:
+
+    https://auffi.app/dashboard/reset/XYZ987
+
+Der Link ist 1 Stunde gültig. Sobald du dein Passwort änderst, werden
+alle bestehenden Sitzungen (z. B. anderer Browser, Auffi-Sharer im
+Unattended-Modus) abgemeldet.
+
+Falls du den Reset nicht angefordert hast, ignoriere diese E-Mail —
+dein Passwort bleibt unverändert.
+
+— Auffi
+https://auffi.app
+",
+}
+`;
+
+exports[`email templates > verify template snapshot 1`] = `
+{
+  "subject": "Bestätige deine Auffi-E-Mail-Adresse",
+  "text": "Hallo,
+
+du (oder jemand mit deiner E-Mail-Adresse) hat soeben einen Auffi-Account
+angelegt. Damit du dich anmelden kannst, bestätige bitte deine E-Mail-Adresse
+über diesen Link:
+
+    https://auffi.app/dashboard/verify/ABC123
+
+Der Link ist 24 Stunden gültig. Falls du dich nicht registriert hast,
+kannst du diese E-Mail ignorieren — ohne Bestätigung wird der Account
+automatisch verworfen.
+
+— Auffi
+https://auffi.app
+",
+}
+`;
