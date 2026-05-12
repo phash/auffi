@@ -4,6 +4,7 @@ mod files;
 mod free_tier_timer;
 mod hotkey;
 pub mod input;
+mod nat_traversal;
 mod protocol;
 mod signaling;
 mod turn_config;

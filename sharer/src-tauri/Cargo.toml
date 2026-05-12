@@ -35,6 +35,11 @@ rustls = { version = "=0.23.31", default-features = false, features = ["ring"] }
 uuid = { version = "=1.23.1", features = ["v4"] }
 tauri-plugin-store = "=2.4.3"
 tauri-plugin-shell = "=2.3.5"
+# UPnP IGD client for discovering the home router's external IP without
+# round-tripping our STUN server. See `nat_traversal.rs` and issue #89.
+# The `aio_tokio` feature drives the SSDP/SOAP traffic on our existing
+# tokio runtime instead of spawning a blocking thread.
+igd-next = { version = "=0.17.0", default-features = false, features = ["aio_tokio"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "=0.13.2", features = ["randr", "render", "shm", "image"] }

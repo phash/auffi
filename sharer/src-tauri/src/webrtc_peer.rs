@@ -11,6 +11,7 @@ use webrtc::{
     ice::{candidate::CandidateType, mdns::MulticastDnsMode},
     ice_transport::{
         ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
+        ice_candidate_type::RTCIceCandidateType,
         ice_connection_state::RTCIceConnectionState,
         ice_server::RTCIceServer,
     },
@@ -110,6 +111,26 @@ impl SharerPeer {
         // Spec: draft-ietf-rtcweb-mdns-ice-candidates.
         let mut setting_engine = SettingEngine::default();
         setting_engine.set_ice_multicast_dns_mode(MulticastDnsMode::QueryAndGather);
+
+        // Best-effort UPnP-IGD discovery of our home router's public
+        // IPv4. If the router answers, declare the public address as a
+        // `Srflx` candidate so peers behind STUN-hostile networks
+        // (corporate firewalls that block 3478) still see our public
+        // endpoint. `Host` would replace local IPs entirely and conflict
+        // with the mDNS gathering above (webrtc-rs forbids host+mDNS
+        // combos). The cache returns instantly on subsequent calls.
+        // See issue #89 — phase 2 will also pre-bind the UDP socket and
+        // request a same-port mapping so the srflx candidate's port is
+        // known to be reachable, not just probable.
+        if let Some(ep) = crate::nat_traversal::cached_external_endpoint().await {
+            crate::dbg_log(&format!(
+                "[nat_traversal] declaring upnp-discovered public ip {} as srflx candidate",
+                ep.ip
+            ));
+            setting_engine.set_nat_1to1_ips(vec![ep.ip.to_string()], RTCIceCandidateType::Srflx);
+        } else {
+            crate::dbg_log("[nat_traversal] no upnp public ip available — relying on stun/turn");
+        }
 
         let api = APIBuilder::new()
             .with_media_engine(media_engine)
