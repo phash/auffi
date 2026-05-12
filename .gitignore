@@ -16,3 +16,6 @@ ops/.env.deploy
 
 # Local act secrets — never commit credentials
 .secrets
+
+# Locally-staged release artefacts (binaries, not source)
+release-bin/
