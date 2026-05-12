@@ -10,10 +10,11 @@ Der **Viewer** (Helfer-Seite) benötigt keine Installation — einfach Browser �
 ## Schnell-Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
+curl -fsSL https://auffi.app/download/install-linux.sh | bash
 ```
 
-Das Skript erkennt die Distribution, installiert Abhängigkeiten und richtet Auffi ein.
+Das Skript erkennt die Distribution, installiert Abhängigkeiten, holt die
+neueste Version aus `https://auffi.app/download/latest.txt` und richtet Auffi ein.
 
 ---
 
@@ -63,10 +64,13 @@ sudo dnf install -y webkit2gtk4.1 libvpx pipewire xdg-desktop-portal \
 
 ## Download
 
-Die neueste Version herunterladen:
-**[GitHub Releases — phash/auffi](https://github.com/phash/auffi/releases)**
+Alle Binaries werden direkt von `https://auffi.app/download/` gehostet — kein
+GitHub-Account, keine Drittanbieter. Verzeichnis-Listing:
 
-Verfügbare Formate: `.AppImage`, `.deb`, `.rpm`
+**[https://auffi.app/download/](https://auffi.app/download/)**
+
+Verfügbare Formate: `.AppImage`, `.deb`, `.rpm` (Linux), `.msi`, `.exe` (Windows).
+Aktuelle Version steht in `https://auffi.app/download/latest.txt`.
 
 ---
 
@@ -74,7 +78,7 @@ Verfügbare Formate: `.AppImage`, `.deb`, `.rpm`
 
 ```bash
 # Datei herunterladen (Version anpassen)
-wget https://github.com/phash/auffi/releases/latest/download/auffi_0.2.0_amd64.deb
+wget https://auffi.app/download/auffi_0.2.0_amd64.deb
 
 # Installieren
 sudo dpkg -i auffi_0.2.0_amd64.deb
@@ -91,7 +95,7 @@ Starten: `auffi` oder über das Anwendungsmenü.
 
 ```bash
 # Datei herunterladen
-wget https://github.com/phash/auffi/releases/latest/download/auffi-0.2.0-1.x86_64.rpm
+wget https://auffi.app/download/auffi-0.2.0-1.x86_64.rpm
 
 # Installieren
 sudo rpm -i auffi-0.2.0-1.x86_64.rpm
@@ -105,7 +109,7 @@ sudo dnf localinstall auffi-0.2.0-1.x86_64.rpm
 
 ```bash
 # AppImage herunterladen
-wget https://github.com/phash/auffi/releases/latest/download/auffi_0.2.0_amd64.AppImage
+wget https://auffi.app/download/auffi_0.2.0_amd64.AppImage
 
 # Ausführbar machen
 chmod +x auffi_0.2.0_amd64.AppImage
@@ -223,7 +227,7 @@ rm -f auffi_*.AppImage
 ### Via install-linux.sh
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash -s -- --uninstall
+curl -fsSL https://auffi.app/download/install-linux.sh | bash -s -- --uninstall
 ```
 
 ---

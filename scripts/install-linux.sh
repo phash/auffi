@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # install-linux.sh — End-user installer for Auffi (Linux)
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
+#   curl -fsSL https://auffi.app/download/install-linux.sh | bash
 #   bash install-linux.sh --uninstall
+#
+# Binaries are hosted on auffi.app/download/ (not on GitHub Releases).
+# The script reads /download/latest.txt to discover the current version,
+# then fetches the matching .deb / .rpm / .AppImage asset.
 #
 # Supports: Debian/Ubuntu (.deb), Fedora/RHEL (.rpm), Arch (AppImage), others (AppImage)
 
 set -euo pipefail
 
-GITHUB_REPO="phash/auffi"
+DOWNLOAD_BASE_URL="${AUFFI_DOWNLOAD_BASE:-https://auffi.app/download}"
 APP_NAME="auffi"
 INSTALL_BIN="/usr/local/bin/$APP_NAME"
 DESKTOP_FILE="/usr/share/applications/$APP_NAME.desktop"
@@ -79,24 +83,26 @@ install_deps() {
 
 # ── Fetch latest release info ──────────────────────────────────────────────────
 
+# Custom UA so the cluster Caddy bot-filter does not block these requests
+# (default `curl/X.Y` matches the scraper regex).
+INSTALLER_UA="auffi-installer/0.2.0"
+
+# Reads /download/latest.txt from the auffi.app server. Returns "v<semver>".
 get_latest_version() {
-  if command -v gh &>/dev/null; then
-    gh release view --repo "$GITHUB_REPO" --json tagName -q .tagName 2>/dev/null || echo "v0.1.0"
-  else
-    curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" \
-      2>/dev/null | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/' || echo "v0.1.0"
+  local v
+  v="$(curl -fsSL -A "$INSTALLER_UA" "$DOWNLOAD_BASE_URL/latest.txt" 2>/dev/null | tr -d '\r\n[:space:]')"
+  if [[ -z "$v" ]]; then
+    err "Could not read latest version from $DOWNLOAD_BASE_URL/latest.txt"
   fi
+  # Normalise to v-prefixed for downstream `${VERSION#v}` stripping.
+  [[ "$v" =~ ^v ]] && echo "$v" || echo "v$v"
 }
 
 download_asset() {
   local asset_name="$1"
   local dest="$2"
-  info "Downloading $asset_name..."
-  if command -v gh &>/dev/null; then
-    gh release download --repo "$GITHUB_REPO" --pattern "$asset_name" --output "$dest" 2>/dev/null && return 0
-  fi
-  local url="https://github.com/$GITHUB_REPO/releases/download/$VERSION/$asset_name"
-  curl -fsSL -o "$dest" "$url" || return 1
+  info "Downloading $asset_name from $DOWNLOAD_BASE_URL ..."
+  curl -fsSL -A "$INSTALLER_UA" -o "$dest" "$DOWNLOAD_BASE_URL/$asset_name" || return 1
   return 0
 }
 

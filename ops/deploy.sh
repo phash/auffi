@@ -186,7 +186,8 @@ maybe_run "rsync viewer/dist → viewer-dist/" \
   rsync_to \
     "${REPO_ROOT}/viewer/dist/" \
     "${DEPLOY_PATH}/viewer-dist/" \
-    --delete
+    --delete \
+    --exclude=/download/
 
 # ---------------------------------------------------------------------------
 # Step 7: Populate the viewer-static Docker volume from the synced dist
