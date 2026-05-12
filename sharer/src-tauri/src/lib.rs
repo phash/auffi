@@ -457,8 +457,29 @@ async fn streaming_loop(
     enc: &mut encoder::Vp8Encoder,
     track: std::sync::Arc<TrackLocalStaticSample>,
 ) {
+    dbg_log("[streaming_loop] entered");
     let mut write_failures = 0u64;
-    while let Ok(frame) = capturer.next_frame() {
+    let mut frame_count = 0u64;
+    let mut sample_count = 0u64;
+    let mut last_log_at = std::time::Instant::now();
+    loop {
+        let frame = match capturer.next_frame() {
+            Ok(f) => f,
+            Err(e) => {
+                dbg_log(&format!(
+                    "[streaming_loop] next_frame Err after {frame_count} frames / {sample_count} samples: {e}"
+                ));
+                return;
+            }
+        };
+        frame_count += 1;
+        if frame_count == 1 {
+            dbg_log(&format!(
+                "[streaming_loop] FIRST FRAME received: {} bytes, pts={}",
+                frame.data.len(),
+                frame.pts_us
+            ));
+        }
         let packets = match enc.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,
             Err(e) => {
@@ -466,19 +487,41 @@ async fn streaming_loop(
                 continue;
             }
         };
+        if frame_count == 1 {
+            dbg_log(&format!(
+                "[streaming_loop] first encode -> {} packets",
+                packets.len()
+            ));
+        }
         for pkt in packets {
             let sample = webrtc::media::Sample {
                 data: pkt.data.into(),
                 duration: Duration::from_millis(33),
                 ..Default::default()
             };
-            if track.write_sample(&sample).await.is_err() {
-                write_failures += 1;
-                if write_failures > 30 {
-                    log::warn!("[streaming_loop] write_sample failing repeatedly; exiting");
-                    return;
+            match track.write_sample(&sample).await {
+                Ok(_) => sample_count += 1,
+                Err(e) => {
+                    write_failures += 1;
+                    if write_failures <= 3 || write_failures % 10 == 0 {
+                        dbg_log(&format!(
+                            "[streaming_loop] write_sample err #{write_failures}: {e}"
+                        ));
+                    }
+                    if write_failures > 30 {
+                        dbg_log("[streaming_loop] write_sample failing repeatedly; exiting");
+                        return;
+                    }
                 }
             }
+        }
+        // Periodic heartbeat once per second so we know the loop is alive
+        // even when frames flow silently.
+        if last_log_at.elapsed() >= std::time::Duration::from_secs(2) {
+            dbg_log(&format!(
+                "[streaming_loop] alive: frames={frame_count} samples={sample_count} write_failures={write_failures}"
+            ));
+            last_log_at = std::time::Instant::now();
         }
     }
 }
