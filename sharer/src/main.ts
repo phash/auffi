@@ -5,6 +5,7 @@ import { load } from "@tauri-apps/plugin-store";
 import type { TrustedPeer } from "./trusted-peers.js";
 import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted-peers.js";
 import { friendlyMonitorLabel } from "./monitor-display.js";
+import { setupTabs } from "./tabs.js";
 
 interface FileOfferPayload {
   id: string;
@@ -273,22 +274,11 @@ function hideStreamingActions(): void {
 
 // ── Tab navigation ───────────────────────────────────────────────────────────
 
-document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach((b) => {
-      b.classList.remove("active");
-      b.setAttribute("aria-selected", "false");
-    });
-    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    btn.classList.add("active");
-    btn.setAttribute("aria-selected", "true");
-    const panelId = `panel-${btn.dataset.panel}`;
-    document.getElementById(panelId)?.classList.add("active");
-
-    if (btn.dataset.panel === "settings") {
-      renderTrustedPeers().catch(() => {});
-    }
-  });
+setupTabs({
+  tabs: Array.from(document.querySelectorAll<HTMLButtonElement>(".tab-btn")),
+  onActivate: (panelKey) => {
+    if (panelKey === "settings") renderTrustedPeers().catch(() => {});
+  },
 });
 
 // ── Copy code ────────────────────────────────────────────────────────────────
