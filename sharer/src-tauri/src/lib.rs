@@ -68,6 +68,19 @@ struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManage
 /// cutoff sleeps from a prior session would fire against a new one. (gh #63)
 struct FreeTierTimerState(Arc<Mutex<Option<free_tier_timer::TimerHandles>>>);
 
+/// Command channel into the live streaming loop. The `switch_monitor`
+/// command builds a fresh capturer + encoder and ships them through the
+/// sender; the loop swaps them in between frames so the active WebRTC
+/// track is preserved (no SDP renegotiation, no viewer reconnect).
+struct SwitchState(Mutex<Option<mpsc::Sender<SwitchMsg>>>);
+
+struct SwitchMsg {
+    capturer: capture::ScreenCapturer,
+    encoder: encoder::Vp8Encoder,
+    width: u32,
+    height: u32,
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn start_signaling(
@@ -242,6 +255,7 @@ async fn start_streaming(
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
+    switch_state: State<'_, SwitchState>,
 ) -> Result<(), String> {
     dbg_log(&format!(
         "[start_streaming] enter monitor_id={} session_code=***",
@@ -337,7 +351,7 @@ async fn start_streaming(
     });
 
     dbg_log("[start_streaming] before ScreenCapturer::start");
-    let mut capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| {
+    let capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| {
         dbg_log(&format!("[start_streaming] ScreenCapturer::start FAILED: {e}"));
         e.to_string()
     })?;
@@ -435,12 +449,79 @@ async fn start_streaming(
     let _ = (&monitor, &ip_prefix);
     // show_border_window(&app, &monitor, &ip_prefix);
 
-    let mut enc = encoder::Vp8Encoder::new(width, height, 2000)?;
+    let enc = encoder::Vp8Encoder::new(width, height, 2000)?;
+
+    // Install the switch-monitor command channel. The runtime command
+    // builds a fresh capturer + encoder and pushes them through this
+    // channel; streaming_loop swaps them in between frames.
+    let (switch_tx, switch_rx) = mpsc::channel::<SwitchMsg>(1);
+    if let Ok(mut g) = switch_state.0.lock() {
+        *g = Some(switch_tx);
+    }
+    let controller_arc_for_loop = Arc::clone(&input_state.0);
 
     tauri::async_runtime::spawn(async move {
-        streaming_loop(&mut capturer, &mut enc, track).await;
+        streaming_loop(capturer, enc, track, switch_rx, controller_arc_for_loop).await;
     });
 
+    Ok(())
+}
+
+/// Swap the active capture source mid-stream.
+///
+/// The WebRTC track and peer connection are preserved — only the
+/// upstream capturer + encoder are replaced, plus the InputController so
+/// remote pointer coords map to the new resolution. On Wayland the
+/// cached portal restore_token is dropped first so the portal dialog
+/// re-prompts the user for a fresh source.
+///
+/// `monitor_id` is the X11 / Windows monitor index. Ignored on Wayland
+/// (the portal owns selection there) — the UI should pass 0 in that
+/// case.
+#[tauri::command]
+async fn switch_monitor(
+    monitor_id: u32,
+    switch_state: State<'_, SwitchState>,
+) -> Result<(), String> {
+    dbg_log(&format!("[switch_monitor] requested monitor_id={monitor_id}"));
+    let tx = {
+        let guard = switch_state
+            .0
+            .lock()
+            .map_err(|e| format!("switch state lock poisoned: {e}"))?;
+        guard.clone()
+    };
+    let Some(tx) = tx else {
+        return Err("kein aktiver Stream — start_streaming zuerst aufrufen".to_string());
+    };
+
+    // Wayland: drop the cached restore_token so the portal re-prompts.
+    // X11 / Windows: no-op (the helper compiles to () on non-Linux and to
+    // the gst_portal cache reset on Linux).
+    #[cfg(target_os = "linux")]
+    if matches!(capture::select_backend(), capture::Backend::Portal) {
+        capture::delete_restore_token();
+    }
+
+    let new_capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| {
+        dbg_log(&format!("[switch_monitor] capturer start failed: {e}"));
+        e.to_string()
+    })?;
+    let w = new_capturer.width();
+    let h = new_capturer.height();
+    let new_enc = encoder::Vp8Encoder::new(w, h, 2000).map_err(|e| e.to_string())?;
+    dbg_log(&format!(
+        "[switch_monitor] new capturer ready {w}x{h}, queueing swap"
+    ));
+
+    tx.send(SwitchMsg {
+        capturer: new_capturer,
+        encoder: new_enc,
+        width: w,
+        height: h,
+    })
+    .await
+    .map_err(|e| format!("switch channel closed: {e}"))?;
     Ok(())
 }
 
@@ -458,6 +539,7 @@ async fn disconnect_streaming(
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
+    switch_state: State<'_, SwitchState>,
 ) -> Result<(), String> {
     // Tell the viewer we're ending the session, BEFORE we tear down the peer.
     // Otherwise the viewer only sees an ICE disconnect (which looks like a
@@ -519,6 +601,13 @@ async fn disconnect_streaming(
         *guard = None;
     }
 
+    // Drop the switch-monitor channel sender so the streaming_loop's
+    // try_recv sees the channel close. A stale sender from a prior session
+    // would make the next switch_monitor talk to a long-dead loop.
+    if let Ok(mut guard) = switch_state.0.lock() {
+        *guard = None;
+    }
+
     hide_border_window(&app);
 
     // Notify the main window so it can reset its UI state.
@@ -528,9 +617,11 @@ async fn disconnect_streaming(
 }
 
 async fn streaming_loop(
-    capturer: &mut capture::ScreenCapturer,
-    enc: &mut encoder::Vp8Encoder,
+    mut capturer: capture::ScreenCapturer,
+    mut enc: encoder::Vp8Encoder,
     track: std::sync::Arc<TrackLocalStaticSample>,
+    mut switch_rx: mpsc::Receiver<SwitchMsg>,
+    controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
 ) {
     dbg_log("[streaming_loop] entered");
     let mut write_failures = 0u64;
@@ -538,6 +629,27 @@ async fn streaming_loop(
     let mut sample_count = 0u64;
     let mut last_log_at = std::time::Instant::now();
     loop {
+        // Pick up any pending monitor-switch request between frames. The
+        // active track stays alive — only the source capturer + encoder
+        // (and the InputController, since it maps to the new resolution)
+        // get swapped, so the viewer sees a brief frame skip but no SDP
+        // renegotiation or peer reconnect.
+        if let Ok(msg) = switch_rx.try_recv() {
+            dbg_log(&format!(
+                "[streaming_loop] swap capturer -> {}x{}",
+                msg.width, msg.height
+            ));
+            capturer = msg.capturer;
+            enc = msg.encoder;
+            match InputController::new(msg.width, msg.height) {
+                Ok(c) => {
+                    let mut g = controller_arc.lock().await;
+                    *g = Some(c);
+                }
+                Err(e) => log::warn!("[streaming_loop] InputController re-init failed: {e}"),
+            }
+        }
+
         let frame = match capturer.next_frame() {
             Ok(f) => f,
             Err(e) => {
@@ -760,6 +872,7 @@ pub fn run() {
         .manage(PeerIpState(Mutex::new(None)))
         .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
+        .manage(SwitchState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             start_signaling,
             confirm_peer,
@@ -769,6 +882,7 @@ pub fn run() {
             receive_offer,
             receive_ice_candidate,
             disconnect_streaming,
+            switch_monitor,
             accept_file,
             reject_file,
             pick_and_send_file,

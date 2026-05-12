@@ -55,6 +55,12 @@ fn restore_token_path() -> Option<PathBuf> {
 }
 
 fn read_restore_token() -> Option<String> {
+    // Always-prompt policy: until unattended-access (gh #20-#27) lands and
+    // gives us a code path that explicitly wants to pre-grant a source,
+    // we always show the portal dialog so the user picks the monitor each
+    // session. The on-disk token is still written by write_restore_token
+    // (cheap and forward-compatible) but never read here.
+    std::env::var_os("AUFFI_ENABLE_RESTORE_TOKEN")?;
     let p = restore_token_path()?;
     let t = std::fs::read_to_string(p).ok()?;
     let t = t.trim();
@@ -68,6 +74,15 @@ fn write_restore_token(token: &str) {
     }
     let _ = std::fs::write(&p, token);
     dbg_log(&format!("[gst-portal] saved restore_token to {p:?}"));
+}
+
+/// Delete the cached restore_token. Used by the runtime monitor-switch
+/// command so the next `open_portal()` re-prompts the user for a source
+/// instead of silently restoring the previously-selected monitor.
+pub fn delete_restore_token() {
+    let Some(p) = restore_token_path() else { return };
+    let _ = std::fs::remove_file(&p);
+    dbg_log(&format!("[gst-portal] deleted restore_token {p:?}"));
 }
 
 /// Run the ashpd ScreenCast handshake.  Blocks until the user clicks "Teilen"

@@ -416,6 +416,11 @@ document.getElementById("decline")!.addEventListener("click", () => {
 
 // ── Start streaming ──────────────────────────────────────────────────────────
 
+// The monitor-pick modal serves two flows: initial start, and runtime switch
+// during an active session. The mode is set right before the modal opens and
+// reset to "start" on close.
+let monitorSelectMode: "start" | "switch" = "start";
+
 streamBtn.addEventListener("click", () => {
   const checked = monitorListEl.querySelector<HTMLInputElement>(
     'input[name="monitor"]:checked',
@@ -427,6 +432,23 @@ streamBtn.addEventListener("click", () => {
   const monitorId = parseInt(checked.value, 10);
   monitorSelectEl.classList.remove("visible");
   streamBtn.disabled = true;
+
+  if (monitorSelectMode === "switch") {
+    setStatus("Bildschirm wird gewechselt…", "waiting");
+    invoke("switch_monitor", { monitorId })
+      .then(() => {
+        setStatus("Streaming läuft.", "success");
+        streamBtn.disabled = false;
+        monitorSelectMode = "start";
+      })
+      .catch((err: unknown) => {
+        showFriendlyError("Bildschirm-Wechsel fehlgeschlagen. Bitte erneut versuchen.", err);
+        streamBtn.disabled = false;
+        monitorSelectMode = "start";
+      });
+    return;
+  }
+
   setStatus("Stream wird gestartet…", "waiting");
 
   invoke("start_streaming", { monitorId, sessionCode: currentCode ?? "" })
@@ -455,6 +477,32 @@ streamBtn.addEventListener("click", () => {
       streamBtn.disabled = false;
       monitorSelectEl.classList.add("visible");
     });
+});
+
+// Runtime monitor-switch. On Wayland the portal owns selection so we
+// invoke directly and let the system dialog handle it; on X11 we re-show
+// the local picker in "switch" mode.
+const switchMonitorBtn = document.getElementById("switch-monitor-btn") as HTMLButtonElement | null;
+switchMonitorBtn?.addEventListener("click", async () => {
+  switchMonitorBtn.disabled = true;
+  try {
+    const usesPortal = await invoke<boolean>("capture_backend_uses_portal");
+    if (usesPortal) {
+      setStatus("Bildschirm wechseln — wähle im System-Dialog…", "waiting");
+      await invoke("switch_monitor", { monitorId: 0 });
+      setStatus("Streaming läuft.", "success");
+      return;
+    }
+    const monitors = await invoke<DisplayInfo[]>("list_monitors");
+    monitorSelectMode = "switch";
+    renderMonitorChoices(monitors);
+    monitorSelectEl.classList.add("visible");
+    streamBtn.disabled = false;
+  } catch (err) {
+    showFriendlyError("Bildschirm-Wechsel fehlgeschlagen. Bitte erneut versuchen.", err);
+  } finally {
+    switchMonitorBtn.disabled = false;
+  }
 });
 
 // ── Stop streaming ───────────────────────────────────────────────────────────
