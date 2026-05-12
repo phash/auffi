@@ -173,7 +173,7 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
 
       const devices = db
         .prepare<
-          [number],
+          [number, number],
           {
             id: string;
             alias: string;

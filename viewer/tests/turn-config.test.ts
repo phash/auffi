@@ -23,7 +23,7 @@ describe("fetchIceServers", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(200, body)));
 
-    const result = await fetchIceServers("http://localhost:8080");
+    const result = await fetchIceServers("http://localhost:8080", "123-456-789");
 
     expect(result).toHaveLength(2);
     const turnEntries = result.filter(
@@ -40,7 +40,7 @@ describe("fetchIceServers", () => {
   it("returns empty array on 4xx response — no third-party STUN fallback", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(403, {})));
 
-    const result = await fetchIceServers("http://localhost:8080");
+    const result = await fetchIceServers("http://localhost:8080", "123-456-789");
 
     expect(result).toEqual([]);
   });
@@ -48,7 +48,7 @@ describe("fetchIceServers", () => {
   it("returns empty array on 5xx response — no third-party STUN fallback", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(500, {})));
 
-    const result = await fetchIceServers("http://localhost:8080");
+    const result = await fetchIceServers("http://localhost:8080", "123-456-789");
 
     expect(result).toEqual([]);
   });
@@ -59,7 +59,7 @@ describe("fetchIceServers", () => {
       vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
     );
 
-    const result = await fetchIceServers("http://localhost:8080");
+    const result = await fetchIceServers("http://localhost:8080", "123-456-789");
 
     expect(result).toEqual([]);
   });
@@ -72,7 +72,7 @@ describe("fetchIceServers", () => {
       ),
     );
 
-    const result = await fetchIceServers("http://localhost:8080");
+    const result = await fetchIceServers("http://localhost:8080", "123-456-789");
 
     expect(result).toEqual([]);
   });
@@ -85,12 +85,17 @@ describe("fetchIceServers", () => {
     }));
     vi.stubGlobal("fetch", mockFetch);
 
-    await fetchIceServers("https://api.example.com");
+    await fetchIceServers("https://api.example.com", "123-456-789");
 
     expect(mockFetch).toHaveBeenCalledWith(
       "https://api.example.com/turn-credentials",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      }),
     );
+    const calledOpts = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(calledOpts.body)).toEqual({ code: "123-456-789" });
   });
 
   it("returns only TURN entries when endpoint succeeds", async () => {
@@ -101,7 +106,7 @@ describe("fetchIceServers", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeFetchResponse(200, body)));
 
-    const result = await fetchIceServers("http://localhost:8080");
+    const result = await fetchIceServers("http://localhost:8080", "123-456-789");
 
     expect(result).toHaveLength(1);
     expect(result[0].urls).toBe("turn:relay.example.com:3478");

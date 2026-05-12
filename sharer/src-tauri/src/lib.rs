@@ -568,7 +568,7 @@ async fn streaming_loop(
                 Ok(_) => sample_count += 1,
                 Err(e) => {
                     write_failures += 1;
-                    if write_failures <= 3 || write_failures % 10 == 0 {
+                    if write_failures <= 3 || write_failures.is_multiple_of(10) {
                         dbg_log(&format!(
                             "[streaming_loop] write_sample err #{write_failures}: {e}"
                         ));
