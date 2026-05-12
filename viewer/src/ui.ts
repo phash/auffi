@@ -349,7 +349,7 @@ export function bindUI(backendWsUrl: string): void {
 
     const backendHttpUrl = wsUrlToHttpUrl(backendWsUrl);
 
-    void fetchIceServers(backendHttpUrl).then((iceServers) => {
+    void fetchIceServers(backendHttpUrl, code).then((iceServers) => {
       signaling = new SignalingClient(backendWsUrl);
       peer = new ViewerPeer({ iceServers });
 

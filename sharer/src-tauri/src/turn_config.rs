@@ -35,7 +35,7 @@ pub fn to_ice_servers(creds: Option<TurnCredentials>) -> Vec<RTCIceServer> {
 /// On any failure (network error, non-200 response, parse failure, timeout)
 /// returns an empty list — the caller proceeds with no STUN/TURN servers.
 /// Third-party STUN fallbacks are intentionally omitted (DSGVO compliance).
-pub async fn fetch_ice_servers(backend_http_url: &str) -> Vec<RTCIceServer> {
+pub async fn fetch_ice_servers(backend_http_url: &str, session_code: &str) -> Vec<RTCIceServer> {
     let url = format!("{backend_http_url}/turn-credentials");
 
     // Backend enforces an Origin allow-list on /turn-credentials. reqwest
@@ -56,7 +56,16 @@ pub async fn fetch_ice_servers(backend_http_url: &str) -> Vec<RTCIceServer> {
         }
     };
 
-    let resp = match client.post(&url).header("Origin", &origin).send().await {
+    // Backend gates issuance on a live signaling session — the request
+    // body must include the assigned 9-digit code (gh #60).
+    let body = serde_json::json!({ "code": session_code });
+    let resp = match client
+        .post(&url)
+        .header("Origin", &origin)
+        .json(&body)
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
             log::warn!("TURN fetch: request to {url} failed: {e}");

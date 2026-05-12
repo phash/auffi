@@ -235,6 +235,7 @@ fn hide_border_window(app: &tauri::AppHandle) {
 async fn start_streaming(
     app: tauri::AppHandle,
     monitor_id: u32,
+    session_code: String,
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
@@ -242,7 +243,10 @@ async fn start_streaming(
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
 ) -> Result<(), String> {
-    dbg_log(&format!("[start_streaming] enter monitor_id={}", monitor_id));
+    dbg_log(&format!(
+        "[start_streaming] enter monitor_id={} session_code=***",
+        monitor_id
+    ));
     let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
         std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
             .unwrap_or("wss://auffi.app/signal")
@@ -250,7 +254,7 @@ async fn start_streaming(
     });
     let backend_http_url = turn_config::ws_url_to_http(&ws_url);
     dbg_log(&format!("[start_streaming] backend_http_url={}", backend_http_url));
-    let ice_servers = turn_config::fetch_ice_servers(&backend_http_url).await;
+    let ice_servers = turn_config::fetch_ice_servers(&backend_http_url, &session_code).await;
     dbg_log(&format!("[start_streaming] ice_servers count={}", ice_servers.len()));
 
     let peer = webrtc_peer::SharerPeer::new(ice_servers)

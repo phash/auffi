@@ -291,7 +291,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
       if (usesPortal) {
         setStatus("Wähle den Bildschirm im System-Dialog…", "waiting");
         streamBtn.disabled = true;
-        invoke("start_streaming", { monitorId: 0 })
+        invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" })
           .then(async () => {
             streamingReady = true;
             if (pendingOffer) {
@@ -383,7 +383,7 @@ streamBtn.addEventListener("click", () => {
   streamBtn.disabled = true;
   setStatus("Stream wird gestartet…", "waiting");
 
-  invoke("start_streaming", { monitorId })
+  invoke("start_streaming", { monitorId, sessionCode: currentCode ?? "" })
     .then(async () => {
       streamingReady = true;
       // Replay anything the viewer sent while we were waiting for the user to
@@ -475,7 +475,7 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
         if (usesPortal) {
           setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — wähle den Bildschirm im System-Dialog…`, "waiting");
           streamBtn.disabled = true;
-          invoke("start_streaming", { monitorId: 0 })
+          invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" })
             .then(async () => {
               streamingReady = true;
               if (pendingOffer) {

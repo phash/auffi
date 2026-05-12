@@ -140,6 +140,7 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
       urls: turnHosts,
       ttlSec: turnTtlSec,
       allowedOrigins: ALLOWED_ORIGINS,
+      sessionStore: store,
     });
   }
 
