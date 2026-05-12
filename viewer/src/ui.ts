@@ -125,6 +125,14 @@ export function bindUI(backendWsUrl: string): void {
     codeInput.value = parts.join("-");
   });
 
+  // Pressing Enter in the code input is the same as clicking Verbinden.
+  codeInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !connectBtn.disabled) {
+      e.preventDefault();
+      connectBtn.click();
+    }
+  });
+
   function showReconnect(): void {
     if (reconnectWrap) reconnectWrap.style.display = "block";
   }

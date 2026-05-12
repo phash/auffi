@@ -121,14 +121,23 @@ impl PortalCapturer {
     /// Open the ScreenCast portal, show the compositor's monitor-picker, then
     /// start streaming frames into the returned capturer.
     pub fn start() -> Result<Self, String> {
-        // Run the async portal negotiation on a fresh single-threaded tokio runtime.
-        // We cannot reuse the Tauri async runtime here because ashpd needs its own
-        // zbus connection that must be driven to completion before we proceed.
-        let streams = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| format!("tokio runtime build failed: {e}"))?
-            .block_on(open_portal())?;
+        // Run the async portal negotiation on a fresh single-threaded tokio
+        // runtime — INSIDE a dedicated OS thread. Calling block_on() directly
+        // here would panic because start() is invoked from a tokio worker
+        // (the Tauri async-runtime), and tokio refuses to start a new runtime
+        // from within an active one. The OS thread sidesteps that detection.
+        let streams = std::thread::Builder::new()
+            .name("screenie-portal-init".to_string())
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|e| format!("tokio runtime build failed: {e}"))?
+                    .block_on(open_portal())
+            })
+            .map_err(|e| format!("portal init thread spawn failed: {e}"))?
+            .join()
+            .map_err(|_| "portal init thread panicked".to_string())??;
 
         let (frame_tx, rx) = mpsc::sync_channel::<BgraFrame>(4);
         let (pw_stop_tx, pw_stop_rx) = pw::channel::channel::<()>();
