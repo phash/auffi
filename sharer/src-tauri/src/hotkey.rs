@@ -16,11 +16,24 @@ struct PausedChangedPayload {
 /// without a Pause key).  On each press, the controller's paused state is
 /// toggled and an `input-paused-changed` event is emitted to the webview so
 /// the UI can update accordingly.
+///
+/// Idempotent: any previous registration of these two shortcuts is removed
+/// before the new one is installed.  Without this, restarting streaming
+/// after a disconnect would fail with "HotKey already registered".
 pub fn register_pause_hotkey<R: Runtime>(
     app: &AppHandle<R>,
     controller: Arc<Mutex<Option<InputController>>>,
 ) -> Result<(), String> {
     let ctrl_alt = Modifiers::CONTROL | Modifiers::ALT;
+
+    let pause_shortcut = tauri_plugin_global_shortcut::Shortcut::new(Some(ctrl_alt), Code::Pause);
+    let p_shortcut = tauri_plugin_global_shortcut::Shortcut::new(Some(ctrl_alt), Code::KeyP);
+
+    // Best-effort unregister of any previous handler — ignore errors because
+    // on the first invocation the shortcuts are not yet registered and the
+    // plugin returns NotRegistered, which is not actionable here.
+    let _ = app.global_shortcut().unregister(pause_shortcut);
+    let _ = app.global_shortcut().unregister(p_shortcut);
 
     let controller_pause = Arc::clone(&controller);
     let app_pause = app.clone();
@@ -30,7 +43,7 @@ pub fn register_pause_hotkey<R: Runtime>(
 
     app.global_shortcut()
         .on_shortcut(
-            tauri_plugin_global_shortcut::Shortcut::new(Some(ctrl_alt), Code::Pause),
+            pause_shortcut,
             move |_app, _shortcut, event| {
                 if event.state() == ShortcutState::Pressed {
                     let controller_clone = Arc::clone(&controller_pause);
@@ -51,7 +64,7 @@ pub fn register_pause_hotkey<R: Runtime>(
 
     app.global_shortcut()
         .on_shortcut(
-            tauri_plugin_global_shortcut::Shortcut::new(Some(ctrl_alt), Code::KeyP),
+            p_shortcut,
             move |_app, _shortcut, event| {
                 if event.state() == ShortcutState::Pressed {
                     let controller_clone = Arc::clone(&controller_p);

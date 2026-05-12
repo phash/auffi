@@ -535,6 +535,13 @@ listen("streaming-stopped", () => {
   connTypeInfoEl.className = "";
   hideStreamingActions();
   newCodeBtn.classList.add("visible");
+  // Reset the WebRTC handshake buffers so the next session can register
+  // its own offer + ICE candidates. Without this reset, a stale
+  // streamingReady=true from the previous session causes the relay
+  // handler to invoke receive_offer on a peer that hasn't been built yet.
+  streamingReady = false;
+  pendingOffer = null;
+  pendingIce.length = 0;
 });
 
 listen<string>("connection-type", (e) => {

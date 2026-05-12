@@ -384,6 +384,8 @@ async fn disconnect_streaming(
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
+    ip_state: State<'_, PeerIpState>,
+    file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
     // Tell the viewer we're ending the session, BEFORE we tear down the peer.
     // Otherwise the viewer only sees an ICE disconnect (which looks like a
@@ -413,6 +415,17 @@ async fn disconnect_streaming(
     // Drop the input controller.
     {
         let mut guard = input_state.0.lock().await;
+        *guard = None;
+    }
+
+    // Drop the file transfer manager.
+    {
+        let mut guard = file_state.0.lock().await;
+        *guard = None;
+    }
+
+    // Clear the cached peer IP so the next session starts clean.
+    if let Ok(mut guard) = ip_state.0.lock() {
         *guard = None;
     }
 
