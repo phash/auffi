@@ -292,7 +292,8 @@
       }
 
       #code::placeholder {
-        color: var(--border);
+        color: var(--text-secondary);
+        opacity: 0.6;
         letter-spacing: 0.08em;
       }
 

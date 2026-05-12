@@ -54,6 +54,15 @@ const sendFileBtn = document.getElementById("send-file-btn")! as HTMLButtonEleme
 const reconnectBtnWrap = document.getElementById("reconnect-btn-wrap")!;
 const reconnectBtn = document.getElementById("reconnect-btn")! as HTMLButtonElement;
 const connTypeInfoEl = document.getElementById("connection-type-info")!;
+const fileOfferDialog = document.getElementById("file-offer-dialog")!;
+const fileOfferText = document.getElementById("file-offer-text")!;
+const fileOfferAcceptBtn = document.getElementById("file-offer-accept")! as HTMLButtonElement;
+const fileOfferRejectBtn = document.getElementById("file-offer-reject")! as HTMLButtonElement;
+const stopConfirmDialog = document.getElementById("stop-confirm")!;
+const stopConfirmYesBtn = document.getElementById("stop-confirm-yes")! as HTMLButtonElement;
+const stopConfirmNoBtn = document.getElementById("stop-confirm-no")! as HTMLButtonElement;
+const acceptBtn = document.getElementById("accept")! as HTMLButtonElement;
+const declineBtn = document.getElementById("decline")! as HTMLButtonElement;
 
 // Settings
 const trustedPeersList = document.getElementById("trusted-peers-list")!;
@@ -180,6 +189,19 @@ function setStatus(text: string, kind: "idle" | "waiting" | "success" | "error")
   statusEl.className = kind;
 }
 
+/**
+ * Friendly user-facing message for a failed operation. The underlying error
+ * object is logged to the console for diagnostics but is not displayed in the
+ * UI — most viewer-side errors are protocol-level (SDP, ICE, DataChannel)
+ * which a non-technical sharer cannot act on, so showing the raw text only
+ * adds noise.
+ */
+function showFriendlyError(message: string, err: unknown): void {
+  // eslint-disable-next-line no-console
+  console.warn(`${message} — detail:`, err);
+  setStatus(message, "error");
+}
+
 function showCode(code: string): void {
   codeEl.textContent = code;
   codeEl.classList.remove("placeholder");
@@ -298,7 +320,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
               const sdp = pendingOffer;
               pendingOffer = null;
               await invoke("receive_offer", { sdp }).catch((err: unknown) => {
-                setStatus(`SDP-Fehler: ${String(err)}`, "error");
+                showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
               });
             }
             const ice = pendingIce.splice(0);
@@ -309,7 +331,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
             showStreamingActions();
           })
           .catch((err: unknown) => {
-            setStatus(`Stream-Fehler: ${String(err)}`, "error");
+            showFriendlyError("Streamen konnte nicht gestartet werden. Bitte erneut versuchen.", err);
             streamBtn.disabled = false;
           });
         return;
@@ -392,7 +414,7 @@ streamBtn.addEventListener("click", () => {
         const sdp = pendingOffer;
         pendingOffer = null;
         await invoke("receive_offer", { sdp }).catch((err: unknown) => {
-          setStatus(`SDP-Fehler: ${String(err)}`, "error");
+          showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
         });
       }
       const ice = pendingIce.splice(0);
@@ -405,7 +427,7 @@ streamBtn.addEventListener("click", () => {
       showStreamingActions();
     })
     .catch((err: unknown) => {
-      setStatus(`Stream-Fehler: ${String(err)}`, "error");
+      showFriendlyError("Streamen konnte nicht gestartet werden. Bitte erneut versuchen.", err);
       streamBtn.disabled = false;
       monitorSelectEl.classList.add("visible");
     });
@@ -414,17 +436,58 @@ streamBtn.addEventListener("click", () => {
 // ── Stop streaming ───────────────────────────────────────────────────────────
 
 stopStreamingBtn.addEventListener("click", () => {
+  // Two-step confirm: one accidental click should not tear down the helper's
+  // session. The styled dialog matches the rest of the in-app dialogs and
+  // closes on Escape via the global focus-trap handler below. Focus the
+  // safer "Abbrechen" choice so a habit-pressed Enter does not actually
+  // end the stream.
+  stopConfirmDialog.classList.add("visible");
+  stopConfirmNoBtn.focus();
+});
+
+stopConfirmYesBtn.addEventListener("click", () => {
+  stopConfirmDialog.classList.remove("visible");
   invoke("disconnect_streaming").catch(() => {});
   hideStreamingActions();
-  setStatus("Stream beendet. Warte auf neue Verbindung…", "waiting");
+  setStatus(
+    "Stream beendet. Du kannst den Code erneut weitergeben oder einen neuen erzeugen.",
+    "idle",
+  );
   newCodeBtn.classList.add("visible");
+});
+
+stopConfirmNoBtn.addEventListener("click", () => {
+  stopConfirmDialog.classList.remove("visible");
+  stopStreamingBtn.focus();
+});
+
+// Global Escape-key handler for in-app dialogs. Each dialog escapes to its
+// safer choice: connection-confirm → Ablehnen, file-offer → Ablehnen,
+// stop-confirm → Abbrechen. This is the standard keyboard expectation and
+// prevents users from getting stuck in a modal they don't know how to close.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (confirmEl.classList.contains("visible")) {
+    e.preventDefault();
+    declineBtn.click();
+    return;
+  }
+  if (fileOfferDialog.classList.contains("visible")) {
+    e.preventDefault();
+    fileOfferRejectBtn.click();
+    return;
+  }
+  if (stopConfirmDialog.classList.contains("visible")) {
+    e.preventDefault();
+    stopConfirmNoBtn.click();
+  }
 });
 
 // ── Send file ────────────────────────────────────────────────────────────────
 
 sendFileBtn.addEventListener("click", () => {
   invoke("pick_and_send_file").catch((err: unknown) => {
-    setStatus(`Datei-Fehler: ${String(err)}`, "error");
+    showFriendlyError("Datei konnte nicht gesendet werden.", err);
   });
 });
 
@@ -482,7 +545,7 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
                 const sdp = pendingOffer;
                 pendingOffer = null;
                 await invoke("receive_offer", { sdp }).catch((err: unknown) => {
-                  setStatus(`SDP-Fehler: ${String(err)}`, "error");
+                  showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
                 });
               }
               const ice = pendingIce.splice(0);
@@ -493,7 +556,7 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
               showStreamingActions();
             })
             .catch((err: unknown) => {
-              setStatus(`Stream-Fehler: ${String(err)}`, "error");
+              showFriendlyError("Streamen konnte nicht gestartet werden. Bitte erneut versuchen.", err);
               streamBtn.disabled = false;
             });
           return;
@@ -520,7 +583,7 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
       return;
     }
     invoke("receive_offer", { sdp: p.sdp.sdp }).catch((err: unknown) => {
-      setStatus(`SDP-Fehler: ${String(err)}`, "error");
+      showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
     });
   } else if (p.kind === "ice" && p.candidate) {
     const ice: IcePayload = {
@@ -587,21 +650,49 @@ listen<string>("connection-type", (e) => {
   }
 });
 
+let pendingFileOfferId: string | null = null;
+
+function showFileOfferDialog(id: string, name: string, size: number): void {
+  pendingFileOfferId = id;
+  const human = formatBytes(size);
+  fileOfferText.textContent = `Der Helfer möchte dir „${name}" (${human}) senden.`;
+  fileOfferDialog.classList.add("visible");
+  fileOfferAcceptBtn.focus();
+}
+
+function hideFileOfferDialog(): void {
+  pendingFileOfferId = null;
+  fileOfferDialog.classList.remove("visible");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+fileOfferAcceptBtn.addEventListener("click", () => {
+  const id = pendingFileOfferId;
+  hideFileOfferDialog();
+  if (id === null) return;
+  invoke("accept_file", { id }).catch(() => {
+    setStatus("Datei konnte nicht angenommen werden.", "error");
+  });
+});
+
+fileOfferRejectBtn.addEventListener("click", () => {
+  const id = pendingFileOfferId;
+  hideFileOfferDialog();
+  if (id === null) return;
+  invoke("reject_file", { id }).catch(() => {
+    /* benign: viewer side already cleans up on its end */
+  });
+});
+
 listen<FileOfferPayload>("file-offer", (e) => {
   const { id, name, size } = e.payload;
-  const sizeKb = (size / 1024).toFixed(1);
-  const confirmed = window.confirm(
-    `Helfer möchte „${name}" (${sizeKb} KB) senden — annehmen?`,
-  );
-  if (confirmed) {
-    invoke("accept_file", { id }).catch((err: unknown) => {
-      setStatus(`Annehmen fehlgeschlagen: ${String(err)}`, "error");
-    });
-  } else {
-    invoke("reject_file", { id }).catch((err: unknown) => {
-      setStatus(`Ablehnen fehlgeschlagen: ${String(err)}`, "error");
-    });
-  }
+  showFileOfferDialog(id, name, size);
 });
 
 listen<FileReceivedPayload>("file-received", (e) => {
