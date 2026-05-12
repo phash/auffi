@@ -115,6 +115,16 @@ Container names (`auffi-backend`, `auffi-caddy`, `auffi-coturn`, etc.), image na
 
 `println!` / `eprintln!` from inside Tauri command handlers are **swallowed by `tauri-cli` pipe buffering** — you will see nothing on stdout. Use the `dbg_log()` helper in `sharer/src-tauri/src/lib.rs` instead; it appends to `auffi-debug.log` in the OS temp dir (`/tmp/auffi-debug.log` on Linux/macOS, `%TEMP%\auffi-debug.log` on Windows) with an explicit flush. Tail that file while running `tauri:dev`.
 
+### WebRTC Connectivity Footguns
+
+Three load-bearing settings that took the 2026-05-13 connectivity chain to find. Don't undo them without a stronger reason than "the defaults look fine."
+
+- **`MulticastDnsMode::QueryAndGather` on the sharer's `SettingEngine`** (`sharer/src-tauri/src/webrtc_peer.rs`). The webrtc-rs default is `QueryOnly` — accepts inbound mDNS but emits raw private IPs of every interface. Chrome's viewer publishes ONLY `.local` mDNS hostnames; with raw-IP-vs-mDNS the candidate pairs never match and ICE silently falls back to TURN relay, even on the same LAN. `QueryAndGather` makes the sharer also publish `.local` names; avahi/Bonjour on the host bridges them. Bonus: stops leaking the 25 Docker-bridge IPs in SDP.
+- **coturn `listening-ip` + `external-ip` pinned to the public IPv4** (`coturn/turnserver.conf.tmpl`, env-driven from `TURN_LISTENING_IP`/`TURN_EXTERNAL_IP`). The IONOS VPS binds its public IPv4 `/32` to `ens6` but coturn's libc-interface autodetect skipped it. Auto-detect is only safe on home-server topologies. On cloud deployments always pin both env vars in `.env.prod`.
+- **rAF-throttle for `pointermove`** (`viewer/src/input-capture.ts`). A 1000 Hz gaming mouse generates 17× more events than the display can render; the unreliable input DataChannel + sharer's enigo apply-loop becomes the bottleneck and the cursor visibly lags. `requestAnimationFrame` coalescing brings the rate down to ~60 Hz with only the latest x/y per frame. Buttons/keys/wheel stay immediate.
+
+UFW on the prod host is configured to allow `3478/tcp`, `3478/udp`, `5349/tcp`, `5349/udp`, and `49152-65535/udp` (TURN relay-port range). This isn't tracked in the repo — UFW state is host-local. If a fresh host gets provisioned, replay the `ufw allow …` commands listed in `docs/postmortem-2026-05-13-connectivity.md`.
+
 ### Sharer Teardown Has Multiple Intents
 
 `disconnect_streaming` looks like one function but is called from three distinct intents and each wants a different subset of state torn down:
