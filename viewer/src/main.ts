@@ -1,3 +1,4 @@
+import "./styles.css";
 import { bindUI } from "./ui.js";
 
 function deriveBackendWsUrl(): string {

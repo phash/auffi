@@ -22,7 +22,8 @@ function buildTestDOM(): void {
 
   const reconnectWrap = document.createElement("div");
   reconnectWrap.id = "reconnect-wrap";
-  reconnectWrap.style.display = "none";
+  // CSS .reconnect-wrap is display:none by default; .active toggles visible.
+  reconnectWrap.classList.add("reconnect-wrap");
   const reconnectBtn = document.createElement("button");
   reconnectBtn.id = "reconnect-btn";
   reconnectWrap.appendChild(reconnectBtn);
@@ -89,7 +90,9 @@ describe("Viewer reconnect button", () => {
 
   it("reconnect-wrap is hidden on initial load", () => {
     const wrap = document.getElementById("reconnect-wrap") as HTMLElement;
-    expect(wrap.style.display).toBe("none");
+    // The .reconnect-wrap class defines display:none by default; visibility
+    // is toggled via the .active modifier (not inline style).
+    expect(wrap.classList.contains("active")).toBe(false);
   });
 
   it("refresh button clears the code input and hides reconnect-wrap", async () => {
@@ -98,7 +101,7 @@ describe("Viewer reconnect button", () => {
     const reconnectWrap = document.getElementById("reconnect-wrap") as HTMLElement;
 
     codeInput.value = "123-456-789";
-    reconnectWrap.style.display = "block";
+    reconnectWrap.classList.add("active");
 
     const fakeFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({}) });
     vi.stubGlobal("fetch", fakeFetch);
@@ -109,7 +112,7 @@ describe("Viewer reconnect button", () => {
     refreshBtn.click();
 
     expect(codeInput.value).toBe("");
-    expect(reconnectWrap.style.display).toBe("none");
+    expect(reconnectWrap.classList.contains("active")).toBe(false);
 
     vi.unstubAllGlobals();
   });
