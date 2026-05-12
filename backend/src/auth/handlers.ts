@@ -71,7 +71,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   const { db, mailer } = deps;
 
   // ── Signup ──────────────────────────────────────────────────────────
-  app.post("/api/auth/signup", async (req: FastifyRequest, reply: FastifyReply) => {
+  app.post(
+    "/api/auth/signup",
+    {
+      // 3 signups per hour per IP — generous for legitimate users, hard
+      // ceiling against abuse / mailbomb attacks. Spec §9.
+      config: { rateLimit: { max: 3, timeWindow: "1 hour" } },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
     const body = (req.body ?? {}) as SignupBody;
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body.password === "string" ? body.password : "";
@@ -110,13 +117,21 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
     });
 
     return reply.status(202).send({ ok: true });
-  });
+  },
+  );
 
   // ── Verify ──────────────────────────────────────────────────────────
   // GET because the link is followed by a click in a mail client; the
   // handler atomically marks the token used + the account verified +
   // issues the session cookie (so the user lands logged in).
-  app.get("/api/auth/verify/:token", async (req: FastifyRequest, reply: FastifyReply) => {
+  app.get(
+    "/api/auth/verify/:token",
+    {
+      // 10 verification clicks per hour per IP — abuse-bound on the
+      // token-guess path while leaving room for the user retrying.
+      config: { rateLimit: { max: 10, timeWindow: "1 hour" } },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
     const { token } = req.params as { token: string };
     if (!token) return bad(reply, 400, "bad-token", "missing token");
     const row = db
@@ -140,7 +155,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
 
     createSession(db, reply, row.account_id, req.headers["user-agent"]);
     return reply.status(200).send({ ok: true });
-  });
+  },
+  );
 
   // ── Login ───────────────────────────────────────────────────────────
   app.post(
@@ -195,7 +211,9 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   app.post(
     "/api/auth/forgot",
     {
-      config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+      // 3/h/IP per spec §9 — same ceiling as signup (both queue an
+      // outbound email so the rate-limit also protects SMTP volume).
+      config: { rateLimit: { max: 3, timeWindow: "1 hour" } },
     },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const body = (req.body ?? {}) as ForgotBody;
@@ -229,7 +247,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   );
 
   // ── Reset password ──────────────────────────────────────────────────
-  app.post("/api/auth/reset/:token", async (req: FastifyRequest, reply: FastifyReply) => {
+  app.post(
+    "/api/auth/reset/:token",
+    {
+      // 5/h/IP per spec §9 — leaves room for the user retrying after a
+      // typo while still blunting token-guess attempts.
+      config: { rateLimit: { max: 5, timeWindow: "1 hour" } },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
     const { token } = req.params as { token: string };
     const body = (req.body ?? {}) as ResetBody;
     const password = typeof body.password === "string" ? body.password : "";
@@ -262,7 +287,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
     tx();
 
     return reply.status(200).send({ ok: true });
-  });
+  },
+  );
 }
 
 /**
