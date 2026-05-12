@@ -161,13 +161,15 @@ if [[ -n "${CLUSTER_PROXY:-}" ]]; then
       "${REPO_ROOT}/nginx/" \
       "${DEPLOY_PATH}/nginx/" \
       --delete
+  # In cluster mode the shared /opt/caddyserver Caddy owns reverse-proxy duties,
+  # so we don't ship our own caddy/ to /opt/screenie/caddy.
+else
+  maybe_run "rsync caddy/" \
+    rsync_to \
+      "${REPO_ROOT}/caddy/" \
+      "${DEPLOY_PATH}/caddy/" \
+      --delete
 fi
-
-maybe_run "rsync caddy/" \
-  rsync_to \
-    "${REPO_ROOT}/caddy/" \
-    "${DEPLOY_PATH}/caddy/" \
-    --delete
 
 maybe_run "rsync coturn/" \
   rsync_to \
