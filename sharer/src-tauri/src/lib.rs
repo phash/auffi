@@ -9,6 +9,27 @@ mod signaling;
 mod turn_config;
 mod webrtc_peer;
 
+/// Append a diagnostic line to `/tmp/screenie-debug.log` with explicit
+/// flush. Stdio buffering eats println!/eprintln! when the tauri-cli pipes
+/// our streams, so for ad-hoc live diagnostics this writes to a known path
+/// that can be `tail -F`'d. Errors are silently dropped — diagnostics must
+/// never crash the app.
+///
+/// Production code paths should prefer `log::info!`/`log::warn!`; this
+/// helper is for quick interactive debugging only.
+#[allow(dead_code)]
+pub(crate) fn dbg_log(msg: &str) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/screenie-debug.log")
+    {
+        let _ = writeln!(f, "{}", msg);
+        let _ = f.flush();
+    }
+}
+
 use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
 
 use tauri::{Emitter, Manager, State};
@@ -104,6 +125,14 @@ async fn confirm_peer(
 #[tauri::command]
 fn list_monitors() -> Result<Vec<DisplayInfo>, String> {
     Ok(capture::list_displays())
+}
+
+/// Returns true on Wayland sessions where the compositor portal handles
+/// monitor picking — in that case the webview skips its own monitor-select
+/// step and goes straight to start_streaming.
+#[tauri::command]
+fn capture_backend_uses_portal() -> bool {
+    matches!(capture::select_backend(), capture::Backend::Portal)
 }
 
 /// Show the border overlay window on the monitor being streamed, emit
@@ -234,6 +263,11 @@ async fn start_streaming(
     });
 
     let mut capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| e.to_string())?;
+    log::info!(
+        "[start_streaming] capturer ready {}x{}",
+        capturer.width(),
+        capturer.height()
+    );
     let width = capturer.width();
     let height = capturer.height();
 
@@ -367,61 +401,30 @@ async fn streaming_loop(
     enc: &mut encoder::Vp8Encoder,
     track: std::sync::Arc<TrackLocalStaticSample>,
 ) {
-    let mut frames = 0u64;
-    let mut packets_total = 0u64;
-    let mut packets_written = 0u64;
-    let mut encode_failures = 0u64;
     let mut write_failures = 0u64;
-    let start = std::time::Instant::now();
     while let Ok(frame) = capturer.next_frame() {
-        frames += 1;
         let packets = match enc.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,
             Err(e) => {
-                encode_failures += 1;
-                if encode_failures <= 3 || encode_failures.is_multiple_of(30) {
-                    eprintln!(
-                        "[streaming_loop] encode error (#{encode_failures}, frame bytes={} pts={}): {e}",
-                        frame.data.len(),
-                        frame.pts_us,
-                    );
-                }
+                log::warn!("[streaming_loop] vp8 encode error: {e}");
                 continue;
             }
         };
-        packets_total += packets.len() as u64;
-
         for pkt in packets {
             let sample = webrtc::media::Sample {
                 data: pkt.data.into(),
                 duration: Duration::from_millis(33),
                 ..Default::default()
             };
-            match track.write_sample(&sample).await {
-                Ok(_) => packets_written += 1,
-                Err(e) => {
-                    write_failures += 1;
-                    if write_failures <= 3 {
-                        eprintln!("[streaming_loop] write_sample error: {e}");
-                    }
-                    if write_failures > 30 {
-                        eprintln!("[streaming_loop] write_sample failing repeatedly; exiting");
-                        return;
-                    }
+            if track.write_sample(&sample).await.is_err() {
+                write_failures += 1;
+                if write_failures > 30 {
+                    log::warn!("[streaming_loop] write_sample failing repeatedly; exiting");
+                    return;
                 }
             }
         }
-
-        if frames.is_multiple_of(30) {
-            eprintln!(
-                "[streaming_loop] {:.1}s: frames={frames} packets={packets_total} written={packets_written} enc_fail={encode_failures} write_fail={write_failures}",
-                start.elapsed().as_secs_f32()
-            );
-        }
     }
-    eprintln!(
-        "[streaming_loop] capturer ended after {frames} frames, {packets_written}/{packets_total} packets written"
-    );
 }
 
 /// Called by the webview when a relay with kind="sdp" (offer) is received.
@@ -577,6 +580,7 @@ pub fn run() {
             start_signaling,
             confirm_peer,
             list_monitors,
+            capture_backend_uses_portal,
             start_streaming,
             receive_offer,
             receive_ice_candidate,

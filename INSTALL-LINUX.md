@@ -23,6 +23,7 @@ Das Skript erkennt die Distribution, installiert Abhängigkeiten und richtet Scr
 |---|---|
 | `webkit2gtk-4.1` | WebView-Engine (Tauri) |
 | `libvpx` | VP8/VP9 Video-Codec für WebRTC |
+| `gstreamer` + `gst-plugins-base` + `gst-plugin-pipewire` | Wayland-Capture-Pipeline |
 | X11 oder Wayland + PipeWire | Bildschirmerfassung |
 
 **Wayland-Hinweis:** Screenie unterstützt native Wayland-Capture über
@@ -36,20 +37,26 @@ Für PipeWire-Support sind folgende Pakete erforderlich:
 
 ### Distro-spezifische Abhängigkeiten
 
-**Arch Linux / Manjaro:**
+**Arch Linux / Manjaro / CachyOS:**
 ```bash
-sudo pacman -S webkit2gtk-4.1 libvpx pipewire xdg-desktop-portal
+sudo pacman -S webkit2gtk-4.1 libvpx pipewire xdg-desktop-portal \
+    gstreamer gst-plugins-base gst-plugin-pipewire
 ```
 
 **Debian / Ubuntu (22.04+):**
 ```bash
 sudo apt-get update
-sudo apt-get install -y libwebkit2gtk-4.1-0 libvpx-dev libpipewire-0.3-dev xdg-desktop-portal
+sudo apt-get install -y libwebkit2gtk-4.1-0 libvpx-dev libpipewire-0.3-dev \
+    xdg-desktop-portal libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+    libgstreamer-plugins-good1.0-0 gstreamer1.0-pipewire \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 ```
 
 **Fedora / RHEL / CentOS:**
 ```bash
-sudo dnf install -y webkit2gtk4.1 libvpx pipewire xdg-desktop-portal
+sudo dnf install -y webkit2gtk4.1 libvpx pipewire xdg-desktop-portal \
+    gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good \
+    pipewire-gstreamer
 ```
 
 ---

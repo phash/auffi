@@ -278,13 +278,43 @@ document.getElementById("accept")!.addEventListener("click", () => {
   invoke("confirm_peer", { accepted: true, ipPrefix: ip })
     .then(async () => {
       confirmEl.classList.remove("visible");
-      setStatus("Verbindung akzeptiert — Monitor auswählen…", "waiting");
 
       if (rememberIt && ip) {
         await addTrustedPeer(ip, "Helfer");
       }
       rememberPeerCheckbox.checked = false;
 
+      // On Wayland the compositor's portal dialog handles monitor selection;
+      // our own monitor-list step is redundant and confusing. Skip it.
+      const usesPortal = await invoke<boolean>("capture_backend_uses_portal");
+      if (usesPortal) {
+        setStatus("Wähle den Bildschirm im System-Dialog…", "waiting");
+        streamBtn.disabled = true;
+        invoke("start_streaming", { monitorId: 0 })
+          .then(async () => {
+            streamingReady = true;
+            if (pendingOffer) {
+              const sdp = pendingOffer;
+              pendingOffer = null;
+              await invoke("receive_offer", { sdp }).catch((err: unknown) => {
+                setStatus(`SDP-Fehler: ${String(err)}`, "error");
+              });
+            }
+            const ice = pendingIce.splice(0);
+            for (const c of ice) {
+              await invoke("receive_ice_candidate", c).catch(() => {});
+            }
+            setStatus("Streaming läuft.", "success");
+            showStreamingActions();
+          })
+          .catch((err: unknown) => {
+            setStatus(`Stream-Fehler: ${String(err)}`, "error");
+            streamBtn.disabled = false;
+          });
+        return;
+      }
+
+      setStatus("Verbindung akzeptiert — Monitor auswählen…", "waiting");
       const monitors = await invoke<DisplayInfo[]>("list_monitors");
       const nodes: Node[] = monitors.map((m, idx) => {
         const label = document.createElement("label");
