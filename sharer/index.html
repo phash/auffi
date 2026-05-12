@@ -165,8 +165,15 @@
       }
 
       #code.placeholder {
-        color: var(--border);
+        color: var(--text-secondary);
         letter-spacing: 0.1em;
+      }
+
+      .code-hint {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin-top: 0.5rem;
+        line-height: 1.45;
       }
 
       #copy-btn {
@@ -180,16 +187,8 @@
         border: 1px solid var(--border);
         border-radius: 6px;
         cursor: pointer;
-        transition: background 150ms ease, color 150ms ease, opacity 150ms ease;
+        transition: background 150ms ease, color 150ms ease;
         flex-shrink: 0;
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      .code-row:hover #copy-btn,
-      #copy-btn:focus-visible {
-        opacity: 1;
-        pointer-events: auto;
       }
 
       #copy-btn:hover { background: var(--border); color: var(--text); }
@@ -264,11 +263,45 @@
       }
 
       /* ── Confirm dialog ── */
-      #confirm { display: none; flex-direction: column; gap: 1rem; }
-      #confirm.visible { display: flex; }
+      #confirm,
+      #file-offer-dialog,
+      #stop-confirm { display: none; flex-direction: column; gap: 1rem; }
+      #confirm.visible,
+      #file-offer-dialog.visible,
+      #stop-confirm.visible { display: flex; }
 
       .confirm-header { font-size: 0.875rem; font-weight: 500; color: var(--text); }
-      #confirm-text { font-size: 0.875rem; color: var(--text-secondary); }
+      #confirm-text,
+      #file-offer-text { font-size: 0.875rem; color: var(--text-secondary); word-break: break-word; }
+
+      .confirm-safety-note {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.625rem 0.75rem;
+        line-height: 1.5;
+      }
+
+      .streaming-hint {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-align: center;
+        padding: 0.375rem 0;
+      }
+
+      .streaming-hint kbd {
+        display: inline-block;
+        font-family: "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace;
+        font-size: 0.6875rem;
+        padding: 0.0625rem 0.3125rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        color: var(--text);
+        margin: 0 0.0625rem;
+      }
 
       .confirm-actions { display: flex; gap: 0.5rem; flex-direction: column; }
 
@@ -643,9 +676,9 @@
         <span class="brand-name">Auffi</span>
       </div>
       <nav class="tabs" role="tablist" aria-label="Navigation">
-        <button class="tab-btn active" role="tab" aria-selected="true" data-panel="main" id="tab-main">Teilen</button>
-        <button class="tab-btn" role="tab" aria-selected="false" data-panel="settings" id="tab-settings">Einstellungen</button>
-        <button class="tab-btn" role="tab" aria-selected="false" data-panel="about" id="tab-about">Info</button>
+        <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="panel-main" data-panel="main" id="tab-main">Teilen</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-settings" data-panel="settings" id="tab-settings">Einstellungen</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-about" data-panel="about" id="tab-about">Info</button>
       </nav>
     </div>
 
@@ -657,6 +690,9 @@
           <div id="code" class="placeholder" aria-label="Verbindungscode">— — —</div>
           <button id="copy-btn" type="button" aria-label="Code kopieren">Kopieren</button>
         </div>
+        <p class="code-hint" id="code-hint">
+          Gib diesen Code dem Helfer am Telefon weiter. Er verfällt nach 10 Minuten.
+        </p>
         <div class="code-actions">
           <button id="new-code-btn" type="button" aria-label="Neuen Code generieren">
             <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -668,14 +704,18 @@
 
         <div class="divider" style="margin-top: 1.25rem; margin-bottom: 1.25rem;"></div>
 
-        <div id="status" class="idle" role="status" aria-live="polite">Verbinde mit Backend…</div>
+        <div id="status" class="idle" role="status" aria-live="polite">Wird gestartet…</div>
         <div id="connection-type-info" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
 
         <!-- Confirm dialog -->
-        <div id="confirm" aria-live="polite">
+        <div id="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-header" aria-live="polite">
           <div class="divider" style="margin: 0 -1.5rem;"></div>
-          <p class="confirm-header">Verbindungsanfrage</p>
+          <p class="confirm-header" id="confirm-header">Verbindungsanfrage</p>
           <p id="confirm-text"></p>
+          <p class="confirm-safety-note">
+            Nur erlauben, wenn du die Person kennst und gerade um Hilfe gebeten hast.
+            Der Helfer kann danach deinen Bildschirm sehen — und auf Wunsch auch Maus und Tastatur steuern.
+          </p>
           <div class="confirm-actions">
             <label class="confirm-remember">
               <input type="checkbox" id="remember-peer" />
@@ -685,6 +725,30 @@
               <button id="accept" type="button" class="btn btn-primary">Verbinden zulassen</button>
               <button id="decline" type="button" class="btn btn-secondary">Ablehnen</button>
             </div>
+          </div>
+        </div>
+
+        <!-- File-offer dialog (replaces native window.confirm so it stays in-app
+             and consistently styled) -->
+        <div id="file-offer-dialog" role="dialog" aria-modal="true" aria-labelledby="file-offer-header" aria-live="polite">
+          <div class="divider" style="margin: 0 -1.5rem;"></div>
+          <p class="confirm-header" id="file-offer-header">Dateiübertragung</p>
+          <p id="file-offer-text"></p>
+          <div class="btn-row">
+            <button id="file-offer-accept" type="button" class="btn btn-primary">Annehmen</button>
+            <button id="file-offer-reject" type="button" class="btn btn-secondary">Ablehnen</button>
+          </div>
+        </div>
+
+        <!-- Confirm-stop dialog: an extra click to prevent accidentally
+             ending an active session with a single click. -->
+        <div id="stop-confirm" role="dialog" aria-modal="true" aria-labelledby="stop-confirm-header" aria-live="polite">
+          <div class="divider" style="margin: 0 -1.5rem;"></div>
+          <p class="confirm-header" id="stop-confirm-header">Stream wirklich beenden?</p>
+          <p class="confirm-safety-note">Der Helfer verliert dadurch die Verbindung zu deinem Bildschirm.</p>
+          <div class="btn-row">
+            <button id="stop-confirm-yes" type="button" class="btn btn-danger">Ja, beenden</button>
+            <button id="stop-confirm-no" type="button" class="btn btn-secondary">Abbrechen</button>
           </div>
         </div>
 
@@ -699,6 +763,9 @@
         <!-- Streaming actions (while streaming) -->
         <div id="streaming-actions">
           <div class="divider" style="margin: 0 -1.5rem; margin-bottom: 0;"></div>
+          <p class="streaming-hint">
+            <kbd>Strg</kbd>+<kbd>Alt</kbd>+<kbd>Pause</kbd> sperrt die Eingabe des Helfers.
+          </p>
           <button id="stop-streaming-btn" type="button" class="btn btn-danger">Beenden</button>
           <button id="send-file-btn" type="button" class="btn btn-secondary">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
