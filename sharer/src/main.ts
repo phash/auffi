@@ -4,6 +4,7 @@ import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { load } from "@tauri-apps/plugin-store";
 import type { TrustedPeer } from "./trusted-peers.js";
 import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted-peers.js";
+import { friendlyMonitorLabel } from "./monitor-display.js";
 
 interface FileOfferPayload {
   id: string;
@@ -314,26 +315,48 @@ document.getElementById("accept")!.addEventListener("click", () => {
         return;
       }
 
-      setStatus("Verbindung akzeptiert — Monitor auswählen…", "waiting");
+      setStatus("Verbindung akzeptiert — Bildschirm auswählen…", "waiting");
       const monitors = await invoke<DisplayInfo[]>("list_monitors");
-      const nodes: Node[] = monitors.map((m, idx) => {
-        const label = document.createElement("label");
-        const radio = document.createElement("input");
-        radio.type = "radio";
-        radio.name = "monitor";
-        radio.value = String(m.id);
-        if (idx === 0) radio.checked = true;
-        label.appendChild(radio);
-        label.appendChild(document.createTextNode(` ${m.title} (${m.width}×${m.height})`));
-        return label;
-      });
-      monitorListEl.replaceChildren(...nodes);
+      renderMonitorChoices(monitors);
       monitorSelectEl.classList.add("visible");
     })
     .catch((err: unknown) => {
       setStatus(`Fehler: ${String(err)}`, "error");
     });
 });
+
+function renderMonitorChoices(monitors: DisplayInfo[]): void {
+  const nodes: Node[] = monitors.map((m, idx) => {
+    const label = document.createElement("label");
+    label.className = "monitor-card";
+
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "monitor";
+    radio.value = String(m.id);
+    if (idx === 0) radio.checked = true;
+    label.appendChild(radio);
+
+    const meta = friendlyMonitorLabel(idx, monitors.length, m.width, m.height);
+
+    const text = document.createElement("div");
+    text.className = "monitor-card-text";
+
+    const primary = document.createElement("span");
+    primary.className = "monitor-card-primary";
+    primary.textContent = meta.primary;
+    text.appendChild(primary);
+
+    const secondary = document.createElement("span");
+    secondary.className = "monitor-card-secondary";
+    secondary.textContent = meta.secondary;
+    text.appendChild(secondary);
+
+    label.appendChild(text);
+    return label;
+  });
+  monitorListEl.replaceChildren(...nodes);
+}
 
 document.getElementById("decline")!.addEventListener("click", () => {
   invoke("confirm_peer", { accepted: false });
@@ -443,22 +466,11 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
 
   const trusted = await isTrustedPeer(e.payload.ipPrefix);
   if (trusted) {
-    setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — Monitor auswählen…`, "waiting");
+    setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — Bildschirm auswählen…`, "waiting");
     invoke("confirm_peer", { accepted: true, ipPrefix: currentIpPrefix })
       .then(async () => {
         const monitors = await invoke<DisplayInfo[]>("list_monitors");
-        const nodes: Node[] = monitors.map((m, idx) => {
-          const label = document.createElement("label");
-          const radio = document.createElement("input");
-          radio.type = "radio";
-          radio.name = "monitor";
-          radio.value = String(m.id);
-          if (idx === 0) radio.checked = true;
-          label.appendChild(radio);
-          label.appendChild(document.createTextNode(` ${m.title} (${m.width}×${m.height})`));
-          return label;
-        });
-        monitorListEl.replaceChildren(...nodes);
+        renderMonitorChoices(monitors);
         monitorSelectEl.classList.add("visible");
       })
       .catch((err: unknown) => {
