@@ -274,7 +274,7 @@ newCodeBtn.addEventListener("click", () => {
   newCodeBtn.classList.remove("visible");
   resetCode();
   setStatus("Neuer Code wird angefragt…", "waiting");
-  startSignaling().catch((e: unknown) => {
+  restartSignaling().catch((e: unknown) => {
     setStatus(`Fehler: ${String(e)}`, "error");
     showReconnect();
   });
@@ -286,7 +286,7 @@ reconnectBtn.addEventListener("click", () => {
   hideReconnect();
   resetCode();
   setStatus("Verbinde neu…", "waiting");
-  startSignaling().catch((e: unknown) => {
+  restartSignaling().catch((e: unknown) => {
     setStatus(`Fehler: ${String(e)}`, "error");
     showReconnect();
   });
@@ -707,6 +707,22 @@ aboutVersionEl.textContent = `Version ${appVersion}`;
 // ── Start ────────────────────────────────────────────────────────────────────
 
 async function startSignaling(): Promise<void> {
+  await invoke("start_signaling");
+}
+
+/**
+ * Tear down any in-flight session before requesting a fresh signaling
+ * channel. The backend guard (gh #64) rejects start_signaling while
+ * SignalingState / WebRtcState / InputControllerState / FileTransferState
+ * are still populated — call this from Neuer-Code and Reconnect, where
+ * the user explicitly wants a clean restart.
+ */
+async function restartSignaling(): Promise<void> {
+  await invoke("disconnect_streaming").catch(() => {});
+  streamingReady = false;
+  pendingOffer = null;
+  pendingIce = [];
+  signalingActive = false;
   await invoke("start_signaling");
 }
 
