@@ -356,7 +356,6 @@ dependencies = [
  "gstreamer-video",
  "igd-next",
  "log",
- "pipewire",
  "reqwest",
  "rustls",
  "serde",

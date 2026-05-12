@@ -43,7 +43,6 @@ mod gst_portal;
 pub use gst_portal::delete_restore_token;
 
 #[cfg(target_os = "linux")]
-mod portal;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "linux")]
@@ -208,63 +207,36 @@ impl ScreenCapturer {
 
     #[cfg(target_os = "linux")]
     async fn start_portal() -> Result<Self, String> {
-        // Try the GStreamer-based capture first. `pipewiresrc` handles the
-        // DMA-BUF / SHM / VideoModifier negotiation that direct pipewire-rs
-        // makes us hand-craft (and that broke on KDE Plasma 6's DMA-BUF-only
-        // output). Fall back to the legacy SHM-only PipeWire path if the
-        // GStreamer crate or runtime is missing.
-        let (frame_width, frame_height, bridge_rx, stop_box): (u32, u32, _, Box<dyn Send>) =
-            match gst_portal::GstPortalCapturer::start().await {
-                Ok(mut cap) => {
-                    let w = cap.frame_width;
-                    let h = cap.frame_height;
-                    let src_rx = cap
-                        .take_rx()
-                        .ok_or_else(|| "gst capturer rx already taken".to_string())?;
-                    let (bridge_tx, bridge_rx) = mpsc::sync_channel::<BgraFrame>(4);
-                    std::thread::Builder::new()
-                        .name("capture-relay-gst".to_string())
-                        .spawn(move || {
-                            for frame in src_rx {
-                                if bridge_tx.send(frame).is_err() {
-                                    break;
-                                }
-                            }
-                        })
-                        .map_err(|e| e.to_string())?;
-                    // Keep the GstPortalCapturer alive — its Drop tears down
-                    // the pipeline. Box it as the StopHandle inner.
-                    (w, h, bridge_rx, Box::new(cap))
+        // GStreamer pipewiresrc handles all the DMA-BUF / SHM / modifier
+        // negotiation a direct pipewire-rs SHM path can't ergonomically
+        // express (and that broke on Plasma 6's DMA-BUF-only output). The
+        // legacy direct-pipewire fallback was kept "in case" for a while
+        // but stalls in the same place gst-portal handles cleanly, so it
+        // is gone — if gst-portal fails today we want a fast, loud error,
+        // not silent fallback to a known-broken code path.
+        let mut cap = gst_portal::GstPortalCapturer::start().await?;
+        let w = cap.frame_width;
+        let h = cap.frame_height;
+        let src_rx = cap
+            .take_rx()
+            .ok_or_else(|| "gst capturer rx already taken".to_string())?;
+        let (bridge_tx, bridge_rx) = mpsc::sync_channel::<BgraFrame>(4);
+        std::thread::Builder::new()
+            .name("capture-relay-gst".to_string())
+            .spawn(move || {
+                for frame in src_rx {
+                    if bridge_tx.send(frame).is_err() {
+                        break;
+                    }
                 }
-                Err(e) => {
-                    crate::dbg_log(&format!(
-                        "[capture] gst-portal backend failed ({e}); falling back to pipewire-rs SHM path"
-                    ));
-                    let cap = portal::PortalCapturer::start()?;
-                    let w = cap.frame_width;
-                    let h = cap.frame_height;
-                    let (bridge_tx, bridge_rx) = mpsc::sync_channel::<BgraFrame>(4);
-                    let src_rx = cap.rx;
-                    let stop_tx = cap._stop_tx;
-                    std::thread::Builder::new()
-                        .name("capture-relay-pw".to_string())
-                        .spawn(move || {
-                            for frame in src_rx {
-                                if bridge_tx.send(frame).is_err() {
-                                    break;
-                                }
-                            }
-                        })
-                        .map_err(|e| e.to_string())?;
-                    (w, h, bridge_rx, Box::new(stop_tx))
-                }
-            };
+            })
+            .map_err(|e| e.to_string())?;
 
         Ok(Self {
             rx: bridge_rx,
-            _stop: StopHandle(stop_box),
-            frame_width,
-            frame_height,
+            _stop: StopHandle(Box::new(cap)),
+            frame_width: w,
+            frame_height: h,
         })
     }
 
