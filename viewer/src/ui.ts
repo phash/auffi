@@ -39,6 +39,7 @@ function setVideoStream(stream: MediaStream | null): void {
   const toolbar = document.getElementById("video-toolbar")!;
   const inputGroup = document.querySelector<HTMLElement>(".input-group")!;
   const instruction = document.querySelector<HTMLElement>(".instruction")!;
+  const app = document.getElementById("app")!;
 
   if (stream) {
     video.srcObject = stream;
@@ -48,6 +49,11 @@ function setVideoStream(stream: MediaStream | null): void {
     toolbar.classList.add("active");
     inputGroup.style.display = "none";
     instruction.style.display = "none";
+    app.classList.add("streaming");
+    // Prevent any user-initiated PiP from auto-detaching the video.
+    if ("disablePictureInPicture" in video) {
+      (video as HTMLVideoElement & { disablePictureInPicture: boolean }).disablePictureInPicture = true;
+    }
   } else {
     video.srcObject = null;
     video.classList.remove("active");
@@ -56,6 +62,7 @@ function setVideoStream(stream: MediaStream | null): void {
     toolbar.classList.remove("active");
     inputGroup.style.display = "";
     instruction.style.display = "";
+    app.classList.remove("streaming");
   }
 }
 

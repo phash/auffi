@@ -167,6 +167,18 @@
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
+        transition: max-width 250ms ease;
+      }
+
+      /* When a stream is active, expand the card to make the remote
+         video legible. Set programmatically alongside #remote-video.active. */
+      #app.streaming {
+        max-width: min(96vw, 1280px);
+      }
+
+      #app.streaming .video-wrapper {
+        aspect-ratio: 16 / 9;
+        width: 100%;
       }
 
       .brand {
@@ -675,7 +687,14 @@
       </div>
 
       <div class="video-wrapper" id="video-wrapper">
-        <video id="remote-video" autoplay playsinline muted></video>
+        <video
+          id="remote-video"
+          autoplay
+          playsinline
+          muted
+          disablepictureinpicture
+          controlslist="nodownload noplaybackrate nofullscreen"
+        ></video>
         <div id="video-toolbar">
           <button id="input-toggle" aria-pressed="false">
             <span class="indicator-dot" aria-hidden="true"></span>
