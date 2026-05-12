@@ -210,6 +210,15 @@ export function bindUI(backendWsUrl: string): void {
   let fileManager: FileTransferManager | null = null;
   let freeTierTimer: FreeTierTimer | null = null;
   let lastCode: string | null = null;
+  let manualDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  const MANUAL_DISCONNECT_RECONNECT_WINDOW_MS = 30_000;
+
+  function clearManualDisconnectTimer(): void {
+    if (manualDisconnectTimer !== null) {
+      clearTimeout(manualDisconnectTimer);
+      manualDisconnectTimer = null;
+    }
+  }
 
   let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
 
@@ -276,12 +285,26 @@ export function bindUI(backendWsUrl: string): void {
   }
 
   disconnectBtn.addEventListener("click", () => {
-    lastCode = null;
-    hideReconnect();
-    teardown("Getrennt.", "info");
+    // Keep lastCode for a short window so a misclick on Beenden is recoverable.
+    const hadCode = lastCode !== null;
+    teardown(
+      hadCode
+        ? "Verbindung beendet. Möchtest du doch nochmal verbinden?"
+        : "Getrennt.",
+      "info",
+      hadCode,
+    );
+    if (!hadCode) return;
+    clearManualDisconnectTimer();
+    manualDisconnectTimer = setTimeout(() => {
+      lastCode = null;
+      hideReconnect();
+      manualDisconnectTimer = null;
+    }, MANUAL_DISCONNECT_RECONNECT_WINDOW_MS);
   });
 
   refreshBtn?.addEventListener("click", () => {
+    clearManualDisconnectTimer();
     lastCode = null;
     hideReconnect();
     codeInput.value = "";
@@ -352,6 +375,7 @@ export function bindUI(backendWsUrl: string): void {
   document.addEventListener("keydown", escapeHandler);
 
   function doConnect(code: string): void {
+    clearManualDisconnectTimer();
     lastCode = code;
     hideReconnect();
     setStatus("Warte auf Bestätigung durch den Sharer…", "info");
