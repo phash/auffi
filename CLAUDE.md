@@ -49,7 +49,6 @@ The project was rebranded from Screenie to Auffi in 2026-05. Most identifiers ar
 
 - Server path `/opt/screenie` — kept; renaming would require stopping the stack and `mv`-ing the directory.
 - Docker Compose project name on prod = `screenie` (auto-derived from `/opt/screenie`). Volume prefixes are `screenie_*` (e.g. `screenie_caddy-data`, `screenie_viewer-static`). Renaming would break Let's Encrypt cert persistence and trigger new-volume creation.
-- GitHub repo URLs in install scripts, README badges, and viewer download links still point at `phash/screenie` — GitHub's automatic redirect handles the rename. To be cleaned up in a follow-up `chore(repo): update repo URLs` commit after the GitHub rename.
 - `/var/log/screenie-health.log` cron-example path — existing cron entries continue logging to the same file.
 
 Container names (`auffi-backend`, `auffi-caddy`, `auffi-coturn`, etc.), image names, env-var names (`AUFFI_BACKEND_WS` etc.), and TURN realm (`turn.auffi.app`) all use the new branding.

@@ -2,9 +2,9 @@
 
 **Sicheres, einfaches Screen-Sharing mit Fernsteuerung — wie TeamViewer, nur offen.**
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/phash/screenie/actions)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/phash/auffi/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/phash/screenie)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/phash/auffi)
 
 ---
 
@@ -45,10 +45,10 @@ Auffi-App herunterladen und starten:
 
 ```bash
 # Schnell-Installation (Linux):
-curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install-linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
 ```
 
-Oder manuell aus den [Releases](https://github.com/phash/screenie/releases) herunterladen —
+Oder manuell aus den [Releases](https://github.com/phash/auffi/releases) herunterladen —
 detaillierte Anleitung: [INSTALL-LINUX.md](INSTALL-LINUX.md)
 
 ---
@@ -90,10 +90,10 @@ Vollständige Anleitung: **[INSTALL-LINUX.md](INSTALL-LINUX.md)**
 Schnell-Installation:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install-linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
 ```
 
-Für `.deb`, `.rpm` und AppImage: siehe [Releases](https://github.com/phash/screenie/releases).
+Für `.deb`, `.rpm` und AppImage: siehe [Releases](https://github.com/phash/auffi/releases).
 
 ---
 
@@ -115,8 +115,8 @@ docker compose -f docker-compose.prod.yml up -d
 ## Entwicklung
 
 ```bash
-git clone https://github.com/phash/screenie.git   # auto-redirects to phash/auffi after rename
-cd screenie
+git clone https://github.com/phash/auffi.git
+cd auffi
 cp .env.example .env
 ```
 

@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 # install-linux.sh — End-user installer for Auffi (Linux)
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install-linux.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
 #   bash install-linux.sh --uninstall
-#
-# Note: GITHUB_REPO temporarily points at phash/screenie — GitHub's automatic
-# redirects keep this working after the upstream repo is renamed to phash/auffi.
 #
 # Supports: Debian/Ubuntu (.deb), Fedora/RHEL (.rpm), Arch (AppImage), others (AppImage)
 
 set -euo pipefail
 
-GITHUB_REPO="phash/screenie"
+GITHUB_REPO="phash/auffi"
 APP_NAME="auffi"
 INSTALL_BIN="/usr/local/bin/$APP_NAME"
 DESKTOP_FILE="/usr/share/applications/$APP_NAME.desktop"

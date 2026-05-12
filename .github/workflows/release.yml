@@ -41,8 +41,8 @@ jobs:
           file: backend/Dockerfile
           push: true
           tags: |
-            ghcr.io/phash/screenie-backend:${{ steps.tag.outputs.tag }}
-            ghcr.io/phash/screenie-backend:latest
+            ghcr.io/phash/auffi-backend:${{ steps.tag.outputs.tag }}
+            ghcr.io/phash/auffi-backend:latest
 
   release:
     name: Create GitHub Release
@@ -89,7 +89,7 @@ jobs:
             ## Docker Image
 
             ```
-            docker pull ghcr.io/phash/screenie-backend:${{ steps.tag.outputs.tag }}
+            docker pull ghcr.io/phash/auffi-backend:${{ steps.tag.outputs.tag }}
             ```
 
             ## Sharer Installers

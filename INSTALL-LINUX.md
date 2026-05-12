@@ -10,7 +10,7 @@ Der **Viewer** (Helfer-Seite) benötigt keine Installation — einfach Browser �
 ## Schnell-Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install-linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
 ```
 
 Das Skript erkennt die Distribution, installiert Abhängigkeiten und richtet Auffi ein.
@@ -64,7 +64,7 @@ sudo dnf install -y webkit2gtk4.1 libvpx pipewire xdg-desktop-portal \
 ## Download
 
 Die neueste Version herunterladen:
-**[GitHub Releases — phash/screenie](https://github.com/phash/screenie/releases)**
+**[GitHub Releases — phash/auffi](https://github.com/phash/auffi/releases)**
 
 Verfügbare Formate: `.AppImage`, `.deb`, `.rpm`
 
@@ -74,7 +74,7 @@ Verfügbare Formate: `.AppImage`, `.deb`, `.rpm`
 
 ```bash
 # Datei herunterladen (Version anpassen)
-wget https://github.com/phash/screenie/releases/latest/download/auffi_0.2.0_amd64.deb
+wget https://github.com/phash/auffi/releases/latest/download/auffi_0.2.0_amd64.deb
 
 # Installieren
 sudo dpkg -i auffi_0.2.0_amd64.deb
@@ -91,7 +91,7 @@ Starten: `auffi` oder über das Anwendungsmenü.
 
 ```bash
 # Datei herunterladen
-wget https://github.com/phash/screenie/releases/latest/download/auffi-0.2.0-1.x86_64.rpm
+wget https://github.com/phash/auffi/releases/latest/download/auffi-0.2.0-1.x86_64.rpm
 
 # Installieren
 sudo rpm -i auffi-0.2.0-1.x86_64.rpm
@@ -105,7 +105,7 @@ sudo dnf localinstall auffi-0.2.0-1.x86_64.rpm
 
 ```bash
 # AppImage herunterladen
-wget https://github.com/phash/screenie/releases/latest/download/auffi_0.2.0_amd64.AppImage
+wget https://github.com/phash/auffi/releases/latest/download/auffi_0.2.0_amd64.AppImage
 
 # Ausführbar machen
 chmod +x auffi_0.2.0_amd64.AppImage
@@ -223,13 +223,13 @@ rm -f auffi_*.AppImage
 ### Via install-linux.sh
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install-linux.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash -s -- --uninstall
 ```
 
 ---
 
 ## Probleme & Hilfe
 
-- **Issues:** [github.com/phash/screenie/issues](https://github.com/phash/screenie/issues)
+- **Issues:** [github.com/phash/auffi/issues](https://github.com/phash/auffi/issues)
 - **Schwarzer Bildschirm auf Wayland:** Screen-Capture-Portal-Dialog bestätigen; PipeWire und xdg-desktop-portal installiert?
 - **Verbindung schlägt fehl:** TURN-Fallback ist aktiviert; Firewall auf UDP-Ports 3478/5349 prüfen

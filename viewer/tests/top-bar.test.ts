@@ -22,7 +22,7 @@ describe("Viewer top bar", () => {
   it("download button exists with correct href and target=_blank", () => {
     const btn = doc.getElementById("topbar-download") as HTMLAnchorElement | null;
     expect(btn).not.toBeNull();
-    expect(btn!.href).toBe("https://github.com/phash/screenie/releases/latest");
+    expect(btn!.href).toBe("https://github.com/phash/auffi/releases/latest");
     expect(btn!.target).toBe("_blank");
     expect(btn!.rel).toContain("noopener");
     expect(btn!.rel).toContain("noreferrer");
