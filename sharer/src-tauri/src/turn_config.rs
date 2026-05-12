@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use webrtc::ice_transport::{ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer};
+use webrtc::ice_transport::ice_server::RTCIceServer;
 
 #[derive(Deserialize)]
 pub struct TurnCredentials {
@@ -25,7 +25,6 @@ pub fn to_ice_servers(creds: Option<TurnCredentials>) -> Vec<RTCIceServer> {
             urls: vec![url],
             username: c.username.clone(),
             credential: c.credential.clone(),
-            credential_type: RTCIceCredentialType::Password,
         })
         .collect()
 }
@@ -139,10 +138,6 @@ mod tests {
         assert_eq!(servers[0].urls, vec!["turn:turn.example.com:3478"]);
         assert_eq!(servers[0].username, "user123");
         assert_eq!(servers[0].credential, "cred456");
-        assert!(matches!(
-            servers[0].credential_type,
-            RTCIceCredentialType::Password
-        ));
         assert_eq!(servers[1].urls, vec!["turns:turn.example.com:5349"]);
         assert_eq!(servers[1].username, "user123");
         assert_eq!(servers[1].credential, "cred456");
