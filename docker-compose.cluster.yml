@@ -1,20 +1,20 @@
 # Cluster-mode overlay — apply alongside docker-compose.prod.yml when this
 # deployment shares a host with a multi-tenant Caddy reverse proxy that
-# already terminates TLS for screenie.mr-development.de.
+# already terminates TLS for auffi.app.
 #
 # Effect vs. standalone docker-compose.prod.yml:
 #   * Drops our own caddy service (the cluster proxy owns 80/443).
 #   * Attaches the backend container to the external `caddy-proxy` network
-#     so the cluster proxy can resolve `screenie-backend:8080`.
+#     so the cluster proxy can resolve `auffi-backend:8080`.
 #   * coturn stays unchanged — it owns its own TURN ports (3478/5349) and
 #     does not collide with HTTP/HTTPS.
 #
 # Cluster prerequisites (one-time, outside this compose):
 #   1. An external Docker network exists, default named `caddy-proxy`.
-#   2. The cluster Caddyfile has a site block for screenie.mr-development.de
+#   2. The cluster Caddyfile has a site block for auffi.app
 #      reverse-proxying /signal, /turn-credentials, /healthz, /readyz to
-#      screenie-backend:8080, and serving the viewer SPA from the mounted
-#      /opt/screenie/viewer-dist directory.
+#      auffi-backend:8080, and serving the viewer SPA from the mounted
+#      /opt/screenie/viewer-dist directory (path retained for volume continuity).
 #
 # Activate via deploy script: set CLUSTER_PROXY=caddy-proxy in ops/.env.deploy.
 
@@ -29,11 +29,11 @@ services:
 
   viewer:
     image: nginx:1.29-alpine
-    container_name: screenie-viewer
+    container_name: auffi-viewer
     restart: unless-stopped
     volumes:
       - ./viewer-dist:/usr/share/nginx/html:ro
-      - ./nginx/screenie-viewer.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/auffi-viewer.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/"]
       interval: 15s
@@ -52,14 +52,14 @@ services:
   # TURN on 3478.
   turn-cert-stage:
     image: alpine:3.20
-    container_name: screenie-turn-cert-stage
+    container_name: auffi-turn-cert-stage
     restart: "no"
     user: "0:0"
     volumes:
       - caddy-data:/caddy-data:ro
       - turn-certs-staged:/staged
     environment:
-      TURN_REALM: ${TURN_REALM:-turn.screenie.mr-development.de}
+      TURN_REALM: ${TURN_REALM:-turn.auffi.app}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
