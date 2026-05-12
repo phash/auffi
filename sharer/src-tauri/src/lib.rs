@@ -738,6 +738,15 @@ async fn pick_and_send_file(
 }
 
 pub fn run() {
+    // rustls 0.23+ refuses to pick a default CryptoProvider when both
+    // 'ring' and 'aws-lc-rs' are present in the dep graph (we have both,
+    // pulled in transitively by webrtc-rs and rustls-platform-verifier).
+    // Install ring explicitly before any TLS use (signaling WSS,
+    // /turn-credentials reqwest) so the first connection doesn't panic.
+    // Failure here means a process-default was already installed —
+    // harmless, swallow it.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
