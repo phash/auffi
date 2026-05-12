@@ -654,24 +654,35 @@ async fn streaming_loop(
     let mut sample_count = 0u64;
     let mut last_log_at = std::time::Instant::now();
     loop {
-        // Pick up any pending monitor-switch request between frames. The
-        // active track stays alive — only the source capturer + encoder
-        // (and the InputController, since it maps to the new resolution)
-        // get swapped, so the viewer sees a brief frame skip but no SDP
-        // renegotiation or peer reconnect.
-        if let Ok(msg) = switch_rx.try_recv() {
-            dbg_log(&format!(
-                "[streaming_loop] swap capturer -> {}x{}",
-                msg.width, msg.height
-            ));
-            capturer = msg.capturer;
-            enc = msg.encoder;
-            match InputController::new(msg.width, msg.height) {
-                Ok(c) => {
-                    let mut g = controller_arc.lock().await;
-                    *g = Some(c);
+        // Pick up any pending monitor-switch request OR detect that
+        // disconnect_streaming dropped the sender. Channel close is the
+        // canonical shutdown signal — without it the old GStreamer pipeline
+        // keeps running on the previous portal source even after the
+        // WebRTC peer is dropped, and on Plasma two concurrent portal
+        // pipelines confuse the compositor enough that the *new* session's
+        // media never reaches the viewer.
+        match switch_rx.try_recv() {
+            Ok(msg) => {
+                dbg_log(&format!(
+                    "[streaming_loop] swap capturer -> {}x{}",
+                    msg.width, msg.height
+                ));
+                capturer = msg.capturer;
+                enc = msg.encoder;
+                match InputController::new(msg.width, msg.height) {
+                    Ok(c) => {
+                        let mut g = controller_arc.lock().await;
+                        *g = Some(c);
+                    }
+                    Err(e) => log::warn!("[streaming_loop] InputController re-init failed: {e}"),
                 }
-                Err(e) => log::warn!("[streaming_loop] InputController re-init failed: {e}"),
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                dbg_log(
+                    "[streaming_loop] switch channel closed (disconnect_streaming); exiting",
+                );
+                return;
             }
         }
 
