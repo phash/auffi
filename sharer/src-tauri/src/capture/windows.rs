@@ -146,7 +146,8 @@ mod tests {
 
     #[test]
     fn list_displays_inner_returns_at_least_one() {
-        let displays = list_displays_inner().expect("xcap monitor enumeration must succeed on this host");
+        let displays =
+            list_displays_inner().expect("xcap monitor enumeration must succeed on this host");
         assert!(!displays.is_empty(), "expected at least one monitor");
     }
 }

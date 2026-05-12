@@ -42,45 +42,39 @@ pub fn register_pause_hotkey<R: Runtime>(
     let app_p = app.clone();
 
     app.global_shortcut()
-        .on_shortcut(
-            pause_shortcut,
-            move |_app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    let controller_clone = Arc::clone(&controller_pause);
-                    let app_clone = app_pause.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let mut guard = controller_clone.lock().await;
-                        if let Some(ctrl) = guard.as_mut() {
-                            let paused = ctrl.toggle_paused();
-                            log::info!("input paused: {paused} (Ctrl+Alt+Pause)");
-                            let _ = app_clone
-                                .emit("input-paused-changed", PausedChangedPayload { paused });
-                        }
-                    });
-                }
-            },
-        )
+        .on_shortcut(pause_shortcut, move |_app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                let controller_clone = Arc::clone(&controller_pause);
+                let app_clone = app_pause.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut guard = controller_clone.lock().await;
+                    if let Some(ctrl) = guard.as_mut() {
+                        let paused = ctrl.toggle_paused();
+                        log::info!("input paused: {paused} (Ctrl+Alt+Pause)");
+                        let _ =
+                            app_clone.emit("input-paused-changed", PausedChangedPayload { paused });
+                    }
+                });
+            }
+        })
         .map_err(|e| format!("failed to register Ctrl+Alt+Pause: {e}"))?;
 
     app.global_shortcut()
-        .on_shortcut(
-            p_shortcut,
-            move |_app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    let controller_clone = Arc::clone(&controller_p);
-                    let app_clone = app_p.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let mut guard = controller_clone.lock().await;
-                        if let Some(ctrl) = guard.as_mut() {
-                            let paused = ctrl.toggle_paused();
-                            log::info!("input paused: {paused} (Ctrl+Alt+P)");
-                            let _ = app_clone
-                                .emit("input-paused-changed", PausedChangedPayload { paused });
-                        }
-                    });
-                }
-            },
-        )
+        .on_shortcut(p_shortcut, move |_app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                let controller_clone = Arc::clone(&controller_p);
+                let app_clone = app_p.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut guard = controller_clone.lock().await;
+                    if let Some(ctrl) = guard.as_mut() {
+                        let paused = ctrl.toggle_paused();
+                        log::info!("input paused: {paused} (Ctrl+Alt+P)");
+                        let _ =
+                            app_clone.emit("input-paused-changed", PausedChangedPayload { paused });
+                    }
+                });
+            }
+        })
         .map_err(|e| format!("failed to register Ctrl+Alt+P: {e}"))?;
 
     Ok(())

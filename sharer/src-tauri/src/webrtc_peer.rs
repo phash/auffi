@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use webrtc::interceptor::registry::Registry;
 use tokio::sync::mpsc;
+use webrtc::interceptor::registry::Registry;
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors, media_engine::MediaEngine,

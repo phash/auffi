@@ -88,14 +88,8 @@ impl InputController {
         }
         match event {
             InputEvent::MouseMove { x, y } => {
-                let (px, py) = compute_abs_coords(
-                    x,
-                    y,
-                    self.x_offset,
-                    self.y_offset,
-                    self.width,
-                    self.height,
-                );
+                let (px, py) =
+                    compute_abs_coords(x, y, self.x_offset, self.y_offset, self.width, self.height);
                 self.enigo
                     .move_mouse(px, py, Coordinate::Abs)
                     .map_err(|e| e.to_string())?;
@@ -153,8 +147,16 @@ pub(crate) fn compute_abs_coords(
     width: u32,
     height: u32,
 ) -> (i32, i32) {
-    let x = if x_norm.is_nan() { 0.0 } else { x_norm.clamp(0.0, 1.0) };
-    let y = if y_norm.is_nan() { 0.0 } else { y_norm.clamp(0.0, 1.0) };
+    let x = if x_norm.is_nan() {
+        0.0
+    } else {
+        x_norm.clamp(0.0, 1.0)
+    };
+    let y = if y_norm.is_nan() {
+        0.0
+    } else {
+        y_norm.clamp(0.0, 1.0)
+    };
     let px = (x * f64::from(width)) as i32 + x_offset;
     let py = (y * f64::from(height)) as i32 + y_offset;
     (px, py)
@@ -388,7 +390,11 @@ mod tests {
         // — otherwise a hostile viewer sending x=2.0 could reach the
         // primary monitor on the right of a (2560,0) offset display.
         let (px, _) = compute_abs_coords(2.0, 0.5, 2560, 0, 2560, 1440);
-        assert_eq!(px, 2560 + 2560, "clamped x must hit the captured monitor's right edge, not bleed past");
+        assert_eq!(
+            px,
+            2560 + 2560,
+            "clamped x must hit the captured monitor's right edge, not bleed past"
+        );
     }
 
     #[test]

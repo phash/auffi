@@ -6,9 +6,9 @@ fn main() {
 
     #[cfg(windows)]
     {
-        let vpx = vcpkg::Config::new()
-            .find_package("libvpx")
-            .expect("libvpx not found via vcpkg — install libvpx:x64-windows-static-md and set VCPKG_ROOT");
+        let vpx = vcpkg::Config::new().find_package("libvpx").expect(
+            "libvpx not found via vcpkg — install libvpx:x64-windows-static-md and set VCPKG_ROOT",
+        );
         for inc in &vpx.include_paths {
             build.include(inc);
         }

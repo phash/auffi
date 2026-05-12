@@ -105,6 +105,8 @@ fn main() {
     if fps_b >= 25.0 {
         println!("→ video_recorder() meets the issue-#88 acceptance threshold (≥25 fps).");
     } else {
-        println!("→ video_recorder() still below 25 fps — bottleneck is NOT just capture-session setup.");
+        println!(
+            "→ video_recorder() still below 25 fps — bottleneck is NOT just capture-session setup."
+        );
     }
 }

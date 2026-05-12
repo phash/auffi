@@ -131,12 +131,7 @@ async fn start_signaling(
     // attacker-controlled remote-input session alive after the UI thinks
     // it has been replaced. The UI must call `disconnect_streaming` first.
     // (gh #64)
-    if state
-        .0
-        .lock()
-        .map(|g| g.is_some())
-        .unwrap_or(false)
-    {
+    if state.0.lock().map(|g| g.is_some()).unwrap_or(false) {
         return Err("signaling already running — call disconnect_streaming first".to_string());
     }
     if rtc_state.0.lock().await.is_some() {
@@ -301,9 +296,7 @@ async fn start_streaming(
     // silently leak a streaming_loop and queue up a second portal dialog
     // that the compositor may refuse to display.
     if rtc_state.0.lock().await.is_some() {
-        return Err(
-            "ein Stream läuft bereits — disconnect_streaming zuerst aufrufen".to_string(),
-        );
+        return Err("ein Stream läuft bereits — disconnect_streaming zuerst aufrufen".to_string());
     }
     let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
         std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
@@ -311,9 +304,15 @@ async fn start_streaming(
             .to_string()
     });
     let backend_http_url = turn_config::ws_url_to_http(&ws_url);
-    dbg_log(&format!("[start_streaming] backend_http_url={}", backend_http_url));
+    dbg_log(&format!(
+        "[start_streaming] backend_http_url={}",
+        backend_http_url
+    ));
     let ice_servers = turn_config::fetch_ice_servers(&backend_http_url, &session_code).await;
-    dbg_log(&format!("[start_streaming] ice_servers count={}", ice_servers.len()));
+    dbg_log(&format!(
+        "[start_streaming] ice_servers count={}",
+        ice_servers.len()
+    ));
 
     let peer = webrtc_peer::SharerPeer::new(ice_servers)
         .await
@@ -404,10 +403,14 @@ async fn start_streaming(
     });
 
     dbg_log("[start_streaming] before ScreenCapturer::start");
-    let capturer = capture::ScreenCapturer::start(monitor_id).await.map_err(|e| {
-        dbg_log(&format!("[start_streaming] ScreenCapturer::start FAILED: {e}"));
-        e.to_string()
-    })?;
+    let capturer = capture::ScreenCapturer::start(monitor_id)
+        .await
+        .map_err(|e| {
+            dbg_log(&format!(
+                "[start_streaming] ScreenCapturer::start FAILED: {e}"
+            ));
+            e.to_string()
+        })?;
     dbg_log(&format!(
         "[start_streaming] capturer ready {}x{}",
         capturer.width(),
@@ -530,7 +533,14 @@ async fn start_streaming(
     let controller_arc_for_loop = Arc::clone(&input_state.0);
 
     tauri::async_runtime::spawn(async move {
-        streaming_loop(Some(capturer), Some(enc), track, switch_rx, controller_arc_for_loop).await;
+        streaming_loop(
+            Some(capturer),
+            Some(enc),
+            track,
+            switch_rx,
+            controller_arc_for_loop,
+        )
+        .await;
     });
 
     Ok(())
@@ -552,12 +562,11 @@ async fn switch_monitor(
     monitor_id: u32,
     switch_state: State<'_, SwitchState>,
 ) -> Result<(), String> {
-    dbg_log(&format!("[switch_monitor] requested monitor_id={monitor_id}"));
+    dbg_log(&format!(
+        "[switch_monitor] requested monitor_id={monitor_id}"
+    ));
     let tx = {
-        let guard = switch_state
-            .0
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let guard = switch_state.0.lock().unwrap_or_else(|p| p.into_inner());
         guard.clone()
     };
     let Some(tx) = tx else {
@@ -587,10 +596,12 @@ async fn switch_monitor(
 
     // Phase 2: now that the old pipeline is gone, open the portal dialog
     // / pick the next monitor and build the fresh capturer + encoder.
-    let new_capturer = capture::ScreenCapturer::start(monitor_id).await.map_err(|e| {
-        dbg_log(&format!("[switch_monitor] capturer start failed: {e}"));
-        e.to_string()
-    })?;
+    let new_capturer = capture::ScreenCapturer::start(monitor_id)
+        .await
+        .map_err(|e| {
+            dbg_log(&format!("[switch_monitor] capturer start failed: {e}"));
+            e.to_string()
+        })?;
     let w = new_capturer.width();
     let h = new_capturer.height();
     let new_enc = encoder::Vp8Encoder::new(w, h, 2000).map_err(|e| e.to_string())?;
@@ -657,10 +668,7 @@ async fn disconnect_streaming(
     let bye_tx = if keep_signaling {
         None
     } else {
-        let guard = sig_state
-            .0
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
         guard.as_ref().map(|s| s.tx.clone())
     };
     if let Some(tx) = bye_tx {
@@ -821,9 +829,7 @@ async fn streaming_loop(
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                dbg_log(
-                    "[streaming_loop] switch channel closed (disconnect_streaming); exiting",
-                );
+                dbg_log("[streaming_loop] switch channel closed (disconnect_streaming); exiting");
                 return;
             }
         }
@@ -831,7 +837,9 @@ async fn streaming_loop(
         // Safety: `capturer.is_none()` was checked above and the only path
         // that nulls it again is `Stop` which `continue`s back to the idle
         // branch.
-        let cap = capturer.as_mut().expect("capturer present in active branch");
+        let cap = capturer
+            .as_mut()
+            .expect("capturer present in active branch");
         let encoder = enc.as_mut().expect("encoder present in active branch");
 
         let frame = match cap.next_frame() {
@@ -916,20 +924,20 @@ async fn receive_offer(
             e.to_string()
         })?
     };
-    dbg_log(&format!("[receive_offer] answer_sdp_len={}", answer_sdp.len()));
+    dbg_log(&format!(
+        "[receive_offer] answer_sdp_len={}",
+        answer_sdp.len()
+    ));
 
     let tx = {
         let guard = sig_state
             .0
             .lock()
             .map_err(|e| format!("signaling state lock poisoned: {e}"))?;
-        guard
-            .as_ref()
-            .map(|s| s.tx.clone())
-            .ok_or_else(|| {
-                dbg_log("[receive_offer] FAILED: signaling not started");
-                "signaling not started".to_string()
-            })?
+        guard.as_ref().map(|s| s.tx.clone()).ok_or_else(|| {
+            dbg_log("[receive_offer] FAILED: signaling not started");
+            "signaling not started".to_string()
+        })?
     };
 
     let payload = serde_json::json!({
@@ -1097,7 +1105,10 @@ mod tests {
     #[test]
     fn dbg_log_path_lives_inside_os_temp_dir_and_is_named_auffi_debug_log() {
         let path = super::dbg_log_path();
-        assert!(path.is_absolute(), "dbg_log path must be absolute: {path:?}");
+        assert!(
+            path.is_absolute(),
+            "dbg_log path must be absolute: {path:?}"
+        );
         assert_eq!(
             path.file_name().and_then(|n| n.to_str()),
             Some("auffi-debug.log"),

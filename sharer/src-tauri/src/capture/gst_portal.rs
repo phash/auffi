@@ -71,11 +71,17 @@ fn read_restore_token() -> Option<String> {
     let p = restore_token_path()?;
     let t = std::fs::read_to_string(p).ok()?;
     let t = t.trim();
-    if t.is_empty() { None } else { Some(t.to_string()) }
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
 }
 
 fn write_restore_token(token: &str) {
-    let Some(p) = restore_token_path() else { return };
+    let Some(p) = restore_token_path() else {
+        return;
+    };
     if let Some(dir) = p.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -87,7 +93,9 @@ fn write_restore_token(token: &str) {
 /// command so the next `open_portal()` re-prompts the user for a source
 /// instead of silently restoring the previously-selected monitor.
 pub fn delete_restore_token() {
-    let Some(p) = restore_token_path() else { return };
+    let Some(p) = restore_token_path() else {
+        return;
+    };
     let _ = std::fs::remove_file(&p);
     dbg_log(&format!("[gst-portal] deleted restore_token {p:?}"));
 }
@@ -118,8 +126,8 @@ async fn open_portal() -> Result<PortalStreams, String> {
             &session,
             CursorMode::Embedded,
             SourceType::Monitor.into(),
-            true,                         // multiple monitors allowed
-            saved_token.as_deref(),       // re-attach previously-granted source
+            true,                           // multiple monitors allowed
+            saved_token.as_deref(),         // re-attach previously-granted source
             PersistMode::ExplicitlyRevoked, // keep until user revokes in settings
         )
         .await

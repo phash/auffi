@@ -44,10 +44,10 @@ pub use gst_portal::delete_restore_token;
 
 #[cfg(target_os = "linux")]
 mod portal;
-#[cfg(target_os = "linux")]
-mod x11;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "linux")]
+mod x11;
 
 use std::sync::mpsc;
 
@@ -198,9 +198,11 @@ impl ScreenCapturer {
                 .await
                 .map_err(|e| format!("x11 capture spawn join failed: {e}"))?,
             #[cfg(target_os = "windows")]
-            Backend::Windows => tokio::task::spawn_blocking(move || Self::start_windows(display_id))
-                .await
-                .map_err(|e| format!("windows capture spawn join failed: {e}"))?,
+            Backend::Windows => {
+                tokio::task::spawn_blocking(move || Self::start_windows(display_id))
+                    .await
+                    .map_err(|e| format!("windows capture spawn join failed: {e}"))?
+            }
         }
     }
 

@@ -43,7 +43,8 @@ pub async fn fetch_ice_servers(backend_http_url: &str, session_code: &str) -> Ve
     // sharer must supply one explicitly. Fall back to backend_http_url
     // itself (already in https://host form) unless AUFFI_SHARER_ORIGIN
     // overrides — same override logic as signaling.rs::derive_origin.
-    let origin = std::env::var("AUFFI_SHARER_ORIGIN").unwrap_or_else(|_| backend_http_url.to_string());
+    let origin =
+        std::env::var("AUFFI_SHARER_ORIGIN").unwrap_or_else(|_| backend_http_url.to_string());
 
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
