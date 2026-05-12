@@ -4,9 +4,9 @@ import { createServer } from "../src/server.js";
 
 function setTurnEnv(): void {
   process.env.TURN_SHARED_SECRET = "test-secret-32-chars-minimum";
-  process.env.TURN_REALM = "turn.screenie.local";
+  process.env.TURN_REALM = "turn.auffi.local";
   process.env.TURN_HOSTS =
-    "turn:turn.screenie.local:3478,turns:turn.screenie.local:5349";
+    "turn:turn.auffi.local:3478,turns:turn.auffi.local:5349";
   process.env.ALLOWED_ORIGINS = "http://localhost:5173";
 }
 
@@ -51,7 +51,7 @@ describe("POST /turn-credentials — credentials", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as TurnBody;
-    expect(body.urls).toContain("turn:turn.screenie.local:3478");
+    expect(body.urls).toContain("turn:turn.auffi.local:3478");
     expect(body.username).toMatch(/^\d+:[a-z0-9-]+$/);
     expect(body.credential).toMatch(/^[A-Za-z0-9+/=]+$/);
     expect(body.ttl).toBeGreaterThan(60);
