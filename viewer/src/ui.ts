@@ -7,6 +7,7 @@ import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
 import { DEFAULT_ZOOM, ZOOM_STEPS, formatZoom, nextZoomLevel } from "./zoom.js";
+import { createIceStateHandler } from "./ice-state-handler.js";
 
 function setStatus(text: string, kind: "ok" | "err" | "info"): void {
   const el = document.getElementById("status")!;
@@ -220,6 +221,13 @@ export function bindUI(backendWsUrl: string): void {
     }
   }
 
+  // Detached, unit-testable handler for ICE-state events (see #74).
+  const iceState = createIceStateHandler({
+    teardown: (reason, kind, canReconnect) => teardown(reason, kind, canReconnect),
+    setStatus,
+  });
+  const clearIceGraceTimer = (): void => iceState.clear();
+
   let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
 
   const escapeHandler = (e: KeyboardEvent): void => {
@@ -254,6 +262,7 @@ export function bindUI(backendWsUrl: string): void {
   }
 
   function teardown(reason: string, kind: "ok" | "err" | "info" = "info", canReconnect = false): void {
+    clearIceGraceTimer();
     freeTierTimer?.stop();
     freeTierTimer = null;
     hideFreeTierWarning();
@@ -432,11 +441,7 @@ export function bindUI(backendWsUrl: string): void {
       peer.onIceCandidate((candidate) => {
         if (candidate) signaling?.sendRelay({ kind: "ice", candidate });
       });
-      peer.onIceState((state) => {
-        if (state === "failed" || state === "disconnected") {
-          teardown("Verbindung verloren.", "err", true);
-        }
-      });
+      peer.onIceState((state) => iceState.handle(state));
       peer.onConnectionType((type) => {
         setConnectionType(type);
         if (type === "relay") {
