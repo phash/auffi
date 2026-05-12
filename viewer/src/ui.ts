@@ -427,6 +427,8 @@ export function bindUI(backendWsUrl: string): void {
           peer?.addRemoteIceCandidate(payload.candidate).catch(() => {
             teardown("ICE-Fehler.", "err");
           });
+        } else if (payload.kind === "bye") {
+          teardown("Der Sharer hat den Stream beendet.", "info", true);
         }
       });
 

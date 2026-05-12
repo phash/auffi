@@ -35,7 +35,11 @@ export type ViewerJoin = { type: "join"; role: "viewer"; code: string };
 export type RelaySdp = { kind: "sdp"; sdp: RTCSessionDescriptionInit };
 export type RelayIce = { kind: "ice"; candidate: RTCIceCandidateInit };
 export type RelayHello = { kind: "hello"; ts: number };
-export type RelayPayload = RelaySdp | RelayIce | RelayHello;
+/** Sent by the sharer when the user explicitly ends the stream, so the
+ *  viewer can tear down its UI immediately with a friendly message rather
+ *  than waiting for ICE to time out into a "Verbindung verloren" state. */
+export type RelayBye = { kind: "bye" };
+export type RelayPayload = RelaySdp | RelayIce | RelayHello | RelayBye;
 
 export type RelayMsg = { type: "relay"; payload: RelayPayload };
 

@@ -381,9 +381,29 @@ async fn start_streaming(
 #[tauri::command]
 async fn disconnect_streaming(
     app: tauri::AppHandle,
+    sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
 ) -> Result<(), String> {
+    // Tell the viewer we're ending the session, BEFORE we tear down the peer.
+    // Otherwise the viewer only sees an ICE disconnect (which looks like a
+    // network problem) and shows a "Verbindung verloren" error instead of
+    // a friendly "Stream beendet" message.
+    let bye_tx = {
+        let guard = sig_state
+            .0
+            .lock()
+            .map_err(|e| format!("signaling state lock poisoned: {e}"))?;
+        guard.as_ref().map(|s| s.tx.clone())
+    };
+    if let Some(tx) = bye_tx {
+        let payload = serde_json::json!({ "kind": "bye" });
+        let _ = tx.send(protocol::Outgoing::Relay { payload }).await;
+        // Give the message a brief moment to flush before we tear down the
+        // signaling-adjacent state.
+        tokio::time::sleep(Duration::from_millis(80)).await;
+    }
+
     // Drop the peer — this closes all ICE/DTLS transports.
     {
         let mut guard = rtc_state.0.lock().await;
