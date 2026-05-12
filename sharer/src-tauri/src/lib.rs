@@ -4,6 +4,7 @@ mod files;
 mod free_tier_timer;
 mod hotkey;
 pub mod input;
+mod ip_redact;
 mod nat_traversal;
 mod protocol;
 mod signaling;
@@ -296,7 +297,9 @@ async fn start_streaming(
             if let Ok(init) = c.to_json() {
                 dbg_log(&format!(
                     "[local-ice] candidate='{}' mid={:?} mline={:?}",
-                    init.candidate, init.sdp_mid, init.sdp_mline_index
+                    ip_redact::redact_ips_in_text(&init.candidate),
+                    init.sdp_mid,
+                    init.sdp_mline_index
                 ));
                 let payload = serde_json::json!({
                     "kind": "ice",
@@ -896,7 +899,9 @@ async fn receive_ice_candidate(
 ) -> Result<(), String> {
     dbg_log(&format!(
         "[remote-ice] candidate='{}' mid={:?} mline={:?}",
-        candidate, sdp_mid, sdp_mline_index
+        ip_redact::redact_ips_in_text(&candidate),
+        sdp_mid,
+        sdp_mline_index
     ));
     let init = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
         candidate,

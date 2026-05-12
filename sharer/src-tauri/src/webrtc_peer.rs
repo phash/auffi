@@ -125,7 +125,7 @@ impl SharerPeer {
         if let Some(ep) = crate::nat_traversal::cached_external_endpoint().await {
             crate::dbg_log(&format!(
                 "[nat_traversal] declaring upnp-discovered public ip {} as srflx candidate",
-                ep.ip
+                crate::ip_redact::redact_ip_addr(&ep.ip)
             ));
             setting_engine.set_nat_1to1_ips(vec![ep.ip.to_string()], RTCIceCandidateType::Srflx);
         } else {
