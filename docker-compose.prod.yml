@@ -72,6 +72,13 @@ services:
     environment:
       TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
       TURN_REALM: ${TURN_REALM:-turn.auffi.app}
+      # Optional — pin coturn's bind interface and the public IP it
+      # advertises in relay candidates. Both default to coturn's
+      # interface auto-detection when unset. On the IONOS VPS the
+      # public IPv4 is bound /32 to ens6 but coturn's auto-detect
+      # skipped it; set both in .env.prod for that host.
+      TURN_LISTENING_IP: ${TURN_LISTENING_IP:-}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:-}
 
 networks:
   internal:

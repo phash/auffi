@@ -1,5 +1,15 @@
 listening-port=3478
 tls-listening-port=5349
+# Bind explicitly. coturn's auto-detection picked only some Docker
+# bridges on the IONOS VPS and skipped the public IPv4 directly bound
+# to ens6 — which left STUN/TURN unreachable from the outside despite
+# `network_mode: host`. Setting `listening-ip` forces the bind; setting
+# `external-ip` also tells coturn the public address to advertise in
+# relay candidates (matters for 1:1-NAT cloud topologies — harmless
+# when the public IP is directly bound).
+# Lines are stripped at entrypoint time when the env vars are unset.
+listening-ip=${TURN_LISTENING_IP}
+external-ip=${TURN_EXTERNAL_IP}
 fingerprint
 use-auth-secret
 static-auth-secret=${TURN_SHARED_SECRET}

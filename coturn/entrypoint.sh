@@ -20,6 +20,21 @@ sed \
   /etc/coturn/turnserver.conf.tmpl \
   > "${CONF_OUT}"
 
+# Optional binding overrides. When set, substitute the value; when unset,
+# strip the line so coturn falls back to its auto-detection.
+if [ -n "${TURN_LISTENING_IP:-}" ]; then
+  listen_escaped="$(printf '%s' "${TURN_LISTENING_IP}" | sed 's/[&/\\]/\\&/g')"
+  sed -i -e "s/\${TURN_LISTENING_IP}/${listen_escaped}/g" "${CONF_OUT}"
+else
+  sed -i -e '/^listening-ip=/d' "${CONF_OUT}"
+fi
+if [ -n "${TURN_EXTERNAL_IP:-}" ]; then
+  ext_escaped="$(printf '%s' "${TURN_EXTERNAL_IP}" | sed 's/[&/\\]/\\&/g')"
+  sed -i -e "s/\${TURN_EXTERNAL_IP}/${ext_escaped}/g" "${CONF_OUT}"
+else
+  sed -i -e '/^external-ip=/d' "${CONF_OUT}"
+fi
+
 # If the cert pair the sidecar should have staged is missing (cert not yet
 # issued by Caddy, or cluster sidecar disabled), strip the TLS lines so
 # coturn still serves plain UDP/TCP TURN on 3478. The TLS listener will be
