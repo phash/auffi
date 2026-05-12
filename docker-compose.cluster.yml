@@ -54,7 +54,22 @@ services:
     image: alpine:3.20
     container_name: auffi-turn-cert-stage
     restart: "no"
+    # Caddy writes certificates as root:root mode 0600 inside its own data
+    # volume. A non-root sidecar can only read them with CAP_DAC_READ_SEARCH
+    # (a small but real capability grant) AND only if the staged-volume
+    # ownership is pre-fixed. The cluster Caddy is shared — we don't control
+    # its file ownership policy. So the sidecar still runs as UID 0, but is
+    # neutered with all caps dropped, a read-only root filesystem, and
+    # no-new-privileges. Effective attack surface for this 6-line cp script
+    # is minimal. (gh #66)
     user: "0:0"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m
     volumes:
       - caddy-data:/caddy-data:ro
       - turn-certs-staged:/staged
