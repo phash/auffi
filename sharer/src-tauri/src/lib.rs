@@ -15,8 +15,10 @@ mod webrtc_peer;
 /// that can be `tail -F`'d. Errors are silently dropped — diagnostics must
 /// never crash the app.
 ///
-/// Production code paths should prefer `log::info!`/`log::warn!`; this
-/// helper is for quick interactive debugging only.
+/// Debug-only: in release builds the function compiles to a no-op so the
+/// world-writable `/tmp` path is not exposed (TOCTOU symlink risk on Linux).
+/// Production code paths should prefer `log::info!`/`log::warn!`.
+#[cfg(debug_assertions)]
 #[allow(dead_code)]
 pub(crate) fn dbg_log(msg: &str) {
     use std::io::Write;
@@ -29,6 +31,10 @@ pub(crate) fn dbg_log(msg: &str) {
         let _ = f.flush();
     }
 }
+
+#[cfg(not(debug_assertions))]
+#[allow(dead_code)]
+pub(crate) fn dbg_log(_msg: &str) {}
 
 use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
 

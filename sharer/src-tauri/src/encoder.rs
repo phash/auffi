@@ -108,11 +108,26 @@ unsafe extern "C" fn collect_packet(
     packets.push(EncodedPacket { data: bytes });
 }
 
+/// Maximum supported frame dimension on either axis.
+///
+/// 16384 covers all real consumer monitors (8K is 7680, dual-8K is 15360) and
+/// keeps the worst-case I420 allocation at ~600 MB, well below an OOM risk.
+/// Anything beyond this is treated as malicious or buggy input.
+const MAX_FRAME_DIM: u32 = 16384;
+
 /// Convert packed BGRA to planar I420 (YUV 4:2:0, BT.601 limited-range).
 fn bgra_to_i420(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+    if width == 0 || height == 0 || width > MAX_FRAME_DIM || height > MAX_FRAME_DIM {
+        return Err(format!(
+            "unreasonable frame dimensions {width}x{height} (max {MAX_FRAME_DIM} per axis)"
+        ));
+    }
     let w = width as usize;
     let h = height as usize;
-    let expected = w * h * 4;
+    let expected = w
+        .checked_mul(h)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| format!("dimension overflow at {width}x{height}"))?;
     if bgra.len() < expected {
         return Err(format!(
             "BGRA buffer too small: expected {expected}, got {}",
@@ -190,6 +205,19 @@ mod tests {
         let i420 = bgra_to_i420(&bgra, w, h).expect("conversion");
         let expected = (w * h + 2 * (w / 2) * (h / 2)) as usize;
         assert_eq!(i420.len(), expected);
+    }
+
+    #[test]
+    fn bgra_to_i420_rejects_zero_dimension() {
+        assert!(bgra_to_i420(&[], 0, 1080).is_err());
+        assert!(bgra_to_i420(&[], 1920, 0).is_err());
+    }
+
+    #[test]
+    fn bgra_to_i420_rejects_oversize_dimension() {
+        // Anything beyond MAX_FRAME_DIM is treated as malicious/buggy input.
+        assert!(bgra_to_i420(&[], MAX_FRAME_DIM + 1, 1080).is_err());
+        assert!(bgra_to_i420(&[], 1920, MAX_FRAME_DIM + 1).is_err());
     }
 
     #[test]
