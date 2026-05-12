@@ -79,13 +79,24 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
   const turnTtlSec = envNumber("TURN_TTL_SEC", 3600);
   const app = Fastify({
     logger: buildLoggerOptions(process.env.NODE_ENV),
+    // We run behind the cluster's Caddy reverse-proxy (which sets
+    // X-Forwarded-For). Without this, req.ip resolves to the proxy's
+    // address for every request and the per-IP rate limiters
+    // (signaling joins, /turn-credentials, auth endpoints) collapse to
+    // a single bucket. The backend port is not exposed outside the
+    // internal docker network so the trust is safe.
+    trustProxy: true,
   });
 
   await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
 
   await app.register(corsPlugin, {
     origin: ALLOWED_ORIGINS,
-    methods: ["POST"],
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+    // The dashboard sends credentials (auffi_session cookie) on every
+    // authenticated request. Without this the browser strips the
+    // cookie on cross-origin requests in dev mode.
+    credentials: true,
   });
 
   await app.register(websocketPlugin, {
