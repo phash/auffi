@@ -609,7 +609,11 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
   // status because the compositor refuses to surface a second portal
   // dialog while the first source is active.
   if (streamingReady || pendingOffer || pendingIce.length > 0) {
-    await invoke("disconnect_streaming").catch(() => {});
+    // Tear down ONLY the streaming state. The signaling channel that
+    // delivered this peer-joined must stay alive — without it the
+    // confirm_peer / receive_offer calls below would fail with
+    // "signaling not started" and the new helper would get stranded.
+    await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
     streamingReady = false;
     pendingOffer = null;
     pendingIce = [];

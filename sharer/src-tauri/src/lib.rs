@@ -540,6 +540,14 @@ async fn switch_monitor(
 ///
 /// Invocable both from the main window (future use) and from the border
 /// overlay's "Trennen" button.
+///
+/// `keep_signaling` controls whether the underlying WS task to the
+/// backend is preserved. Defaults to `false` (full teardown — used on
+/// bootstrap F5 + on the user-clicked Beenden flow where we want the
+/// next start_signaling to register a fresh code). Pass `true` when a
+/// new viewer just joined the same code and we only want to swap the
+/// streaming state without losing the WS registration that the new
+/// viewer's `join` arrived on.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn disconnect_streaming(
@@ -551,7 +559,9 @@ async fn disconnect_streaming(
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
+    keep_signaling: Option<bool>,
 ) -> Result<(), String> {
+    let keep_signaling = keep_signaling.unwrap_or(false);
     // Tell the viewer we're ending the session, BEFORE we tear down the peer.
     // Otherwise the viewer only sees an ICE disconnect (which looks like a
     // network problem) and shows a "Verbindung verloren" error instead of
@@ -576,9 +586,13 @@ async fn disconnect_streaming(
     // subsequent restart because the slot is still populated even after
     // we sent `bye`. Dropping the handle ends the WS task, which in turn
     // emits the "code-assigned" listener teardown — the next start_signaling
-    // gets a fresh code-channel.
-    if let Ok(mut guard) = sig_state.0.lock() {
-        *guard = None;
+    // gets a fresh code-channel. Skip this when `keep_signaling` is true:
+    // a new viewer just joined the same code and we want to preserve the
+    // WS task that delivered the join — replacing the streaming state only.
+    if !keep_signaling {
+        if let Ok(mut guard) = sig_state.0.lock() {
+            *guard = None;
+        }
     }
 
     // Drop the peer — this closes all ICE/DTLS transports.
