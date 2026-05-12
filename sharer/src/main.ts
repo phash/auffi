@@ -61,6 +61,10 @@ const fileOfferRejectBtn = document.getElementById("file-offer-reject")! as HTML
 const stopConfirmDialog = document.getElementById("stop-confirm")!;
 const stopConfirmYesBtn = document.getElementById("stop-confirm-yes")! as HTMLButtonElement;
 const stopConfirmNoBtn = document.getElementById("stop-confirm-no")! as HTMLButtonElement;
+const peerRemoveConfirmDialog = document.getElementById("peer-remove-confirm")!;
+const peerRemoveConfirmText = document.getElementById("peer-remove-confirm-text")!;
+const peerRemoveConfirmYesBtn = document.getElementById("peer-remove-confirm-yes")! as HTMLButtonElement;
+const peerRemoveConfirmNoBtn = document.getElementById("peer-remove-confirm-no")! as HTMLButtonElement;
 const acceptBtn = document.getElementById("accept")! as HTMLButtonElement;
 const declineBtn = document.getElementById("decline")! as HTMLButtonElement;
 
@@ -144,36 +148,40 @@ function applyLargeCode(enabled: boolean): void {
 
 async function renderTrustedPeers(): Promise<void> {
   const peers = await loadTrustedPeers();
+  trustedPeersList.innerHTML = "";
   if (peers.length === 0) {
-    trustedPeersList.innerHTML = '<p class="trusted-empty">Keine bekannten Helfer gespeichert.</p>';
+    const empty = document.createElement("li");
+    empty.className = "trusted-empty";
+    empty.textContent = "Keine bekannten Helfer gespeichert.";
+    trustedPeersList.appendChild(empty);
     return;
   }
-  trustedPeersList.innerHTML = "";
   for (const peer of peers) {
-    const item = document.createElement("div");
+    const item = document.createElement("li");
     item.className = "trusted-peer-item";
 
     const label = document.createElement("div");
     label.className = "trusted-peer-label";
 
+    const aliasText = peer.label || "Unbekannt";
+    const alias = document.createElement("span");
+    alias.className = "trusted-peer-alias";
+    alias.textContent = aliasText;
+
     const ip = document.createElement("span");
     ip.className = "trusted-peer-ip";
     ip.textContent = peer.ipPrefix;
 
-    const alias = document.createElement("span");
-    alias.className = "trusted-peer-alias";
-    alias.textContent = peer.label || "Unbekannt";
-
-    label.appendChild(ip);
     label.appendChild(alias);
+    label.appendChild(ip);
 
     const removeBtn = document.createElement("button");
     removeBtn.className = "btn-remove-peer";
     removeBtn.textContent = "Entfernen";
     removeBtn.type = "button";
-    removeBtn.setAttribute("aria-label", `${peer.ipPrefix} entfernen`);
+    removeBtn.setAttribute("aria-label", `${aliasText} (${peer.ipPrefix}) entfernen`);
     removeBtn.addEventListener("click", () => {
-      removeTrustedPeer(peer.ipPrefix).catch(() => {});
+      askRemovePeer(peer.ipPrefix, aliasText);
     });
 
     item.appendChild(label);
@@ -181,6 +189,32 @@ async function renderTrustedPeers(): Promise<void> {
     trustedPeersList.appendChild(item);
   }
 }
+
+let pendingPeerRemoval: { ipPrefix: string; trigger: HTMLElement | null } | null = null;
+
+function askRemovePeer(ipPrefix: string, aliasText: string): void {
+  pendingPeerRemoval = { ipPrefix, trigger: document.activeElement as HTMLElement | null };
+  peerRemoveConfirmText.textContent = `${aliasText} (${ipPrefix}) wird aus der Liste der bekannten Helfer entfernt. Beim nächsten Verbindungsversuch musst du wieder manuell zustimmen.`;
+  peerRemoveConfirmDialog.classList.add("visible");
+  peerRemoveConfirmNoBtn.focus();
+}
+
+function closePeerRemoveConfirm(): void {
+  peerRemoveConfirmDialog.classList.remove("visible");
+  const trigger = pendingPeerRemoval?.trigger;
+  pendingPeerRemoval = null;
+  if (trigger && document.contains(trigger)) trigger.focus();
+}
+
+peerRemoveConfirmYesBtn.addEventListener("click", () => {
+  const ipPrefix = pendingPeerRemoval?.ipPrefix;
+  closePeerRemoveConfirm();
+  if (ipPrefix) removeTrustedPeer(ipPrefix).catch(() => {});
+});
+
+peerRemoveConfirmNoBtn.addEventListener("click", () => {
+  closePeerRemoveConfirm();
+});
 
 // ── UI helpers ───────────────────────────────────────────────────────────────
 
@@ -480,6 +514,11 @@ document.addEventListener("keydown", (e) => {
   if (stopConfirmDialog.classList.contains("visible")) {
     e.preventDefault();
     stopConfirmNoBtn.click();
+    return;
+  }
+  if (peerRemoveConfirmDialog.classList.contains("visible")) {
+    e.preventDefault();
+    peerRemoveConfirmNoBtn.click();
   }
 });
 
