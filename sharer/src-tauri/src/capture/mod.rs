@@ -325,11 +325,20 @@ impl ScreenCapturer {
 mod tests {
     use super::*;
 
+    // XDG_SESSION_TYPE is process-global and read at the same instant by
+    // every backend-selection test. `cargo test` runs tests in parallel by
+    // default — without a serializing lock the three tests below race and
+    // the test that reads after another wrote a different value flakes.
+    // This affected cargo-tarpaulin in particular (cargo test happened to
+    // not race in our local runs, but tarpaulin's instrumentation changes
+    // the timing). Use a single Mutex shared by all env-mutating tests.
+    #[cfg(target_os = "linux")]
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[cfg(target_os = "linux")]
     #[test]
     fn capture_backend_selection_prefers_portal_on_wayland() {
-        // Safety: test-only env mutation. Tests within this module run serially
-        // when invoked with `cargo test --lib` (single-threaded by default per test).
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         std::env::set_var("XDG_SESSION_TYPE", "wayland");
         assert_eq!(select_backend(), Backend::Portal);
     }
@@ -337,6 +346,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn capture_backend_selection_falls_back_to_x11_on_xorg() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         std::env::set_var("XDG_SESSION_TYPE", "x11");
         assert_eq!(select_backend(), Backend::X11);
     }
@@ -344,6 +354,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn backend_unknown_session_maps_to_x11() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         std::env::set_var("XDG_SESSION_TYPE", "mir");
         assert_eq!(select_backend(), Backend::X11);
     }
