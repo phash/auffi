@@ -188,22 +188,16 @@ impl GstPortalCapturer {
 }
 
 impl GstPortalCapturer {
-    pub fn start() -> Result<Self, String> {
-        // The portal call is async; drive it on a fresh single-threaded tokio
-        // runtime INSIDE a dedicated OS thread. Calling block_on() directly
-        // would panic because start() runs on a Tauri tokio worker.
-        let streams = std::thread::Builder::new()
-            .name("auffi-gst-portal-init".to_string())
-            .spawn(|| {
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .map_err(|e| format!("tokio runtime build failed: {e}"))?
-                    .block_on(open_portal())
-            })
-            .map_err(|e| format!("portal init thread spawn failed: {e}"))?
-            .join()
-            .map_err(|_| "portal init thread panicked".to_string())??;
+    /// Async because the portal handshake is async — and because ashpd
+    /// caches its `zbus::Connection` in a process-wide static. The cached
+    /// connection is bound to the first tokio runtime that called into
+    /// ashpd; if that runtime dies (e.g. a per-call short-lived runtime)
+    /// the cached connection becomes a zombie and subsequent
+    /// `create_session()` calls hang forever. Running the portal handshake
+    /// on the long-lived Tauri runtime keeps the cached connection alive
+    /// across switch_monitor reinvocations.
+    pub async fn start() -> Result<Self, String> {
+        let streams = open_portal().await?;
 
         log::info!(
             "[gst-capture] portal ready: node_id={} size={}x{}",

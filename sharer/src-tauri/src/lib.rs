@@ -378,7 +378,7 @@ async fn start_streaming(
     });
 
     dbg_log("[start_streaming] before ScreenCapturer::start");
-    let capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| {
+    let capturer = capture::ScreenCapturer::start(monitor_id).await.map_err(|e| {
         dbg_log(&format!("[start_streaming] ScreenCapturer::start FAILED: {e}"));
         e.to_string()
     })?;
@@ -549,7 +549,7 @@ async fn switch_monitor(
 
     // Phase 2: now that the old pipeline is gone, open the portal dialog
     // / pick the next monitor and build the fresh capturer + encoder.
-    let new_capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| {
+    let new_capturer = capture::ScreenCapturer::start(monitor_id).await.map_err(|e| {
         dbg_log(&format!("[switch_monitor] capturer start failed: {e}"));
         e.to_string()
     })?;

@@ -186,26 +186,34 @@ impl ScreenCapturer {
     ///
     /// On X11 `display_id` selects the RandR monitor index.
     /// On Windows `display_id` selects the xcap monitor index.
-    pub fn start(display_id: u32) -> Result<Self, String> {
+    /// Async so the portal handshake can run on the caller's long-lived
+    /// tokio runtime. See `gst_portal::GstPortalCapturer::start` for why.
+    /// The X11 / Windows arms remain synchronous internally but get
+    /// wrapped in `spawn_blocking` here so the async signature is uniform.
+    pub async fn start(display_id: u32) -> Result<Self, String> {
         match select_backend() {
             #[cfg(target_os = "linux")]
-            Backend::Portal => Self::start_portal(),
+            Backend::Portal => Self::start_portal().await,
             #[cfg(target_os = "linux")]
-            Backend::X11 => Self::start_x11(display_id),
+            Backend::X11 => tokio::task::spawn_blocking(move || Self::start_x11(display_id))
+                .await
+                .map_err(|e| format!("x11 capture spawn join failed: {e}"))?,
             #[cfg(target_os = "windows")]
-            Backend::Windows => Self::start_windows(display_id),
+            Backend::Windows => tokio::task::spawn_blocking(move || Self::start_windows(display_id))
+                .await
+                .map_err(|e| format!("windows capture spawn join failed: {e}"))?,
         }
     }
 
     #[cfg(target_os = "linux")]
-    fn start_portal() -> Result<Self, String> {
+    async fn start_portal() -> Result<Self, String> {
         // Try the GStreamer-based capture first. `pipewiresrc` handles the
         // DMA-BUF / SHM / VideoModifier negotiation that direct pipewire-rs
         // makes us hand-craft (and that broke on KDE Plasma 6's DMA-BUF-only
         // output). Fall back to the legacy SHM-only PipeWire path if the
         // GStreamer crate or runtime is missing.
         let (frame_width, frame_height, bridge_rx, stop_box): (u32, u32, _, Box<dyn Send>) =
-            match gst_portal::GstPortalCapturer::start() {
+            match gst_portal::GstPortalCapturer::start().await {
                 Ok(mut cap) => {
                     let w = cap.frame_width;
                     let h = cap.frame_height;
