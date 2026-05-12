@@ -22,4 +22,7 @@ cipher-list="TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM
 cert=/var/lib/turn/cert.pem
 pkey=/var/lib/turn/key.pem
 log-file=stdout
-verbose
+# DSGVO Art. 5(1)(e): `verbose` logs full client IPs to stdout, which Docker
+# routes into a journal kept for 30+ days. A 10-minute TURN session does not
+# justify that retention. Keep coturn at the default log level (no `verbose`)
+# so we only get error + allocation summary events, no per-packet IP dumps.
