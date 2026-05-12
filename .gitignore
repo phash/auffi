@@ -19,3 +19,6 @@ ops/.env.deploy
 
 # Locally-staged release artefacts (binaries, not source)
 release-bin/
+
+# Local screenshots — manuel's personal capture dir
+screens/
