@@ -150,6 +150,77 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
     },
   );
 
+  // ── PATCH /api/devices/:id ──────────────────────────────────────────
+  // Owner-auth: 403 on cross-account access (NOT 404 — 404 reveals
+  // existence per spec acceptance for #15). Validates alias length and
+  // auto_accept type.
+  app.patch(
+    "/api/devices/:id",
+    { preHandler: app.requireSession },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const body = (req.body ?? {}) as { alias?: unknown; auto_accept?: unknown };
+
+      const dev = db
+        .prepare<[string], { owner_account_id: number }>(
+          "SELECT owner_account_id FROM devices WHERE id = ?",
+        )
+        .get(id);
+      if (!dev || dev.owner_account_id !== req.account!.id) {
+        return bad(reply, 403, "forbidden", "not your device");
+      }
+
+      const updates: string[] = [];
+      const params: (string | number)[] = [];
+      if (body.alias !== undefined) {
+        const alias = typeof body.alias === "string" ? body.alias.trim() : "";
+        if (alias.length < 1 || alias.length > 80) {
+          return bad(reply, 400, "bad-alias", "alias must be 1-80 characters");
+        }
+        updates.push("alias = ?");
+        params.push(alias);
+      }
+      if (body.auto_accept !== undefined) {
+        if (typeof body.auto_accept !== "boolean") {
+          return bad(reply, 400, "bad-auto-accept", "auto_accept must be a boolean");
+        }
+        updates.push("auto_accept = ?");
+        params.push(body.auto_accept ? 1 : 0);
+      }
+      if (updates.length === 0) {
+        return bad(reply, 400, "no-changes", "specify alias and/or auto_accept");
+      }
+
+      params.push(id);
+      db.prepare(`UPDATE devices SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+      return reply.status(200).send({ ok: true });
+    },
+  );
+
+  // ── DELETE /api/devices/:id ─────────────────────────────────────────
+  // Hard-deletes the row; FK cascade removes connection_log entries.
+  // If a sharer is currently WSS-connected with this device's bearer
+  // token, its next heartbeat will fail the auth lookup and the
+  // connection will close — the registry-based eager-evict comes in
+  // a follow-up once gh #16 wires the bearer-auth WSS path.
+  app.delete(
+    "/api/devices/:id",
+    { preHandler: app.requireSession },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const dev = db
+        .prepare<[string], { owner_account_id: number }>(
+          "SELECT owner_account_id FROM devices WHERE id = ?",
+        )
+        .get(id);
+      if (!dev || dev.owner_account_id !== req.account!.id) {
+        return bad(reply, 403, "forbidden", "not your device");
+      }
+      db.prepare("DELETE FROM devices WHERE id = ?").run(id);
+      return reply.status(204).send();
+    },
+  );
+
   // ── GET /api/devices ────────────────────────────────────────────────
   // Lists this account's devices with a computed online flag (true if
   // last_seen_at is within ONLINE_WINDOW_MS of now). Spec §9.

@@ -305,3 +305,226 @@ describe("GET /api/devices", () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe("PATCH /api/devices/:id", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  let cookie: string;
+  let deviceId: string;
+  beforeEach(async () => {
+    h = await build();
+    cookie = await h.cookie();
+    const code = (
+      await h.app.inject({
+        method: "POST",
+        url: "/api/devices/pairing-code",
+        headers: { cookie: `auffi_session=${cookie}` },
+      })
+    ).json().code;
+    deviceId = (
+      await h.app.inject({
+        method: "POST",
+        url: "/api/devices/redeem",
+        payload: { code, alias: "original-alias" },
+      })
+    ).json().deviceId;
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("updates alias", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { alias: "renamed" },
+    });
+    expect(res.statusCode).toBe(200);
+    const row = h.db.prepare("SELECT alias FROM devices WHERE id = ?").get(deviceId) as {
+      alias: string;
+    };
+    expect(row.alias).toBe("renamed");
+  });
+
+  it("updates auto_accept", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { auto_accept: false },
+    });
+    expect(res.statusCode).toBe(200);
+    const row = h.db.prepare("SELECT auto_accept FROM devices WHERE id = ?").get(deviceId) as {
+      auto_accept: number;
+    };
+    expect(row.auto_accept).toBe(0);
+  });
+
+  it("rejects empty alias with 400", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { alias: "   " },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects 81-character alias with 400", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { alias: "x".repeat(81) },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects non-bool auto_accept with 400", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { auto_accept: "no" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects with 400 when no changes are specified", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 403 (NOT 404) when the device belongs to another account", async () => {
+    // Mint a second account + device
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "rival@example.com", password: "rival-account-pw" },
+    });
+    const rivalLogin = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "rival@example.com", password: "rival-account-pw" },
+    });
+    const sc = rivalLogin.headers["set-cookie"] as string | string[] | undefined;
+    const rivalCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${rivalCookie}` },
+      payload: { alias: "stolen" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns 403 (not 404) when the device id does not exist", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: "/api/devices/999-999-999",
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { alias: "ghost" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns 401 when anonymous", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      payload: { alias: "anon" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("DELETE /api/devices/:id", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  let cookie: string;
+  let deviceId: string;
+  beforeEach(async () => {
+    h = await build();
+    cookie = await h.cookie();
+    const code = (
+      await h.app.inject({
+        method: "POST",
+        url: "/api/devices/pairing-code",
+        headers: { cookie: `auffi_session=${cookie}` },
+      })
+    ).json().code;
+    deviceId = (
+      await h.app.inject({
+        method: "POST",
+        url: "/api/devices/redeem",
+        payload: { code, alias: "to-delete" },
+      })
+    ).json().deviceId;
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("hard-deletes the device and cascades connection_log", async () => {
+    // Plant a connection_log row to verify cascade.
+    h.db
+      .prepare(
+        `INSERT INTO connection_log (device_id, started_at, viewer_ip_prefix, connection_type)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(deviceId, Date.now(), "84.xxx", "p2p");
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${cookie}` },
+    });
+    expect(res.statusCode).toBe(204);
+
+    const dev = h.db.prepare("SELECT COUNT(*) AS c FROM devices WHERE id = ?").get(deviceId) as {
+      c: number;
+    };
+    expect(dev.c).toBe(0);
+    const log = h.db
+      .prepare("SELECT COUNT(*) AS c FROM connection_log WHERE device_id = ?")
+      .get(deviceId) as { c: number };
+    expect(log.c).toBe(0);
+  });
+
+  it("returns 403 on cross-account access (NOT 404)", async () => {
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "thief@example.com", password: "thief-account-pw" },
+    });
+    const tl = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "thief@example.com", password: "thief-account-pw" },
+    });
+    const sc = tl.headers["set-cookie"] as string | string[] | undefined;
+    const thiefCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${thiefCookie}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns 401 when anonymous", async () => {
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/devices/${deviceId}`,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
