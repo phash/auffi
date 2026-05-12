@@ -601,6 +601,20 @@ listen<{ code: string }>("code-assigned", (e) => {
 });
 
 listen<{ ipPrefix: string }>("peer-joined", async (e) => {
+  // If a previous helper was still attached when this new join arrived
+  // (e.g., the prior viewer dropped the WS without us being notified)
+  // tear down before accepting the new session. Otherwise start_streaming
+  // below stacks a second WebRTC peer + portal dialog on top of the
+  // live one, which on Plasma manifests as a hung "wähle Bildschirm…"
+  // status because the compositor refuses to surface a second portal
+  // dialog while the first source is active.
+  if (streamingReady || pendingOffer || pendingIce.length > 0) {
+    await invoke("disconnect_streaming").catch(() => {});
+    streamingReady = false;
+    pendingOffer = null;
+    pendingIce = [];
+    hideStreamingActions();
+  }
   currentIpPrefix = e.payload.ipPrefix;
   newCodeBtn.classList.remove("visible");
 

@@ -261,6 +261,17 @@ async fn start_streaming(
         "[start_streaming] enter monitor_id={} session_code=***",
         monitor_id
     ));
+
+    // Defensive guard: refuse to stack a second WebRTC peer on top of a
+    // live one. The JS-side peer-joined handler is supposed to call
+    // disconnect_streaming first, but a missing call would otherwise
+    // silently leak a streaming_loop and queue up a second portal dialog
+    // that the compositor may refuse to display.
+    if rtc_state.0.lock().await.is_some() {
+        return Err(
+            "ein Stream läuft bereits — disconnect_streaming zuerst aufrufen".to_string(),
+        );
+    }
     let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
         std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
             .unwrap_or("wss://auffi.app/signal")
