@@ -1,5 +1,15 @@
 # Auffi — Project Conventions
 
+## Product Goals
+
+Three non-negotiable goals that **every** engineering decision should serve. When a design choice trades off, fall on the side of these.
+
+1. **Einfache Steuerung** — A non-technical helper opens a URL, types a 9-digit code, clicks Verbinden. Done. The sharer-user clicks Akzeptieren, picks a monitor. Done. No accounts, no installs (for ad-hoc), no jargon in the UI, no settings the helper has to discover. German first.
+
+2. **Verlässliche Verbindung** — The connection survives Wi-Fi blips (10 s ICE-disconnected grace), reuses the same session on reconnect within 30 s, falls back to TURN when P2P is blocked, and tears down predictably when something genuinely failed. The user should never see a stuck "Verbindung wird hergestellt…" without a path forward. Logs use `dbg_log()` so failures are diagnosable post-hoc.
+
+3. **Sichere Kommunikation** — TLS everywhere (Let's Encrypt via Caddy). WebRTC media uses DTLS-SRTP, mandatory. Session codes are server-burned after 5 wrong attempts and TTL-capped at 10 minutes. Sharer always confirms incoming peers (except in the future unattended mode where the device-token + per-device password gate access). TURN credentials are HMAC-ephemeral. No PII in logs, no third-party trackers, argon2id for passwords, SHA-256 for at-rest token hashes. See `docs/security-review-2026-05.md` for the audit.
+
 ## Project Overview
 
 TeamViewer-style screen-sharing tool. Live at `https://auffi.app`. Three components in one monorepo:
@@ -104,6 +114,18 @@ Container names (`auffi-backend`, `auffi-caddy`, `auffi-coturn`, etc.), image na
 ### Sharer Debug Logging
 
 `println!` / `eprintln!` from inside Tauri command handlers are **swallowed by `tauri-cli` pipe buffering** — you will see nothing on stdout. Use the `dbg_log()` helper in `sharer/src-tauri/src/lib.rs` instead; it appends to `/tmp/auffi-debug.log` with an explicit flush. Tail that file while running `tauri:dev`.
+
+### Sharer Teardown Has Multiple Intents
+
+`disconnect_streaming` looks like one function but is called from three distinct intents and each wants a different subset of state torn down:
+
+1. **End the session** (user clicked Beenden, or bootstrap on F5) — drop everything including `SignalingState`.
+2. **Swap viewers on the same code** (new `peer-joined` arrived while the previous viewer is gone) — keep `SignalingState` (the WS task that just delivered the `peer-joined` is the same one the next `confirm_peer` / `receive_offer` will go through), drop the rest.
+3. **Re-bootstrap after webview F5** — full teardown so `start_signaling` doesn't trip the `#64` guard.
+
+Today this is gated by an optional `keep_signaling: bool` parameter. If you refactor in this area, audit which lifetimes each caller wants to end before changing behaviour. See `docs/postmortem-2026-05-12-monitor-switch.md` for the bug chain that led to the current shape.
+
+Plasma's `org.freedesktop.portal.ScreenCast` will **not** surface a second dialog while the first source is alive, and routes media unpredictably if two GStreamer/portal pipelines overlap. Tear down the previous `streaming_loop` (and its capturer) before starting a new one — the mpsc switch-channel's close is the canonical shutdown signal for the loop.
 
 ## Docker Conventions
 
