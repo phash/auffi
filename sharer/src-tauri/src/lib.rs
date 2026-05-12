@@ -103,6 +103,12 @@ enum SwitchMsg {
     Replace {
         capturer: capture::ScreenCapturer,
         encoder: encoder::Vp8Encoder,
+        /// Top-left of the new monitor in the OS virtual-desktop coordinate
+        /// space; needed so the rebuilt InputController routes absolute
+        /// pointer events to the just-selected display instead of the
+        /// primary monitor.
+        x: i32,
+        y: i32,
         width: u32,
         height: u32,
     },
@@ -410,11 +416,23 @@ async fn start_streaming(
     let width = capturer.width();
     let height = capturer.height();
 
+    // Resolve the chosen monitor's top-left in virtual-desktop coordinates so
+    // the InputController can offset absolute pointer events onto the right
+    // display. Falls back to (0,0) when the lookup can't find the id —
+    // e.g. on Wayland where list_displays returns a single placeholder —
+    // which matches the historical primary-only behaviour.
+    let monitor_origin: (i32, i32) = capture::list_displays()
+        .into_iter()
+        .find(|m| m.id == monitor_id)
+        .map(|m| (m.x, m.y))
+        .unwrap_or((0, 0));
+
     let (input_tx, mut input_rx) = mpsc::channel::<InputEvent>(256);
     let (files_msg_tx, mut files_msg_rx) = mpsc::channel::<FileMessage>(256);
     peer.on_data_channels(input_tx, files_msg_tx);
 
-    let controller = InputController::new(width, height).map_err(|e| e.to_string())?;
+    let controller = InputController::new(monitor_origin.0, monitor_origin.1, width, height)
+        .map_err(|e| e.to_string())?;
     {
         let mut guard = input_state.0.lock().await;
         *guard = Some(controller);
@@ -576,13 +594,20 @@ async fn switch_monitor(
     let w = new_capturer.width();
     let h = new_capturer.height();
     let new_enc = encoder::Vp8Encoder::new(w, h, 2000).map_err(|e| e.to_string())?;
+    let (new_x, new_y) = capture::list_displays()
+        .into_iter()
+        .find(|m| m.id == monitor_id)
+        .map(|m| (m.x, m.y))
+        .unwrap_or((0, 0));
     dbg_log(&format!(
-        "[switch_monitor] new capturer ready {w}x{h}, queueing swap"
+        "[switch_monitor] new capturer ready {w}x{h} @ ({new_x},{new_y}), queueing swap"
     ));
 
     tx.send(SwitchMsg::Replace {
         capturer: new_capturer,
         encoder: new_enc,
+        x: new_x,
+        y: new_y,
         width: w,
         height: h,
     })
@@ -750,16 +775,18 @@ async fn streaming_loop(
             SwitchMsg::Replace {
                 capturer: c,
                 encoder: e,
+                x,
+                y,
                 width,
                 height,
             } => {
                 dbg_log(&format!(
-                    "[streaming_loop] replace -> {}x{}",
-                    width, height
+                    "[streaming_loop] replace -> {}x{} @ ({},{})",
+                    width, height, x, y
                 ));
                 *capturer = Some(c);
                 *enc = Some(e);
-                match InputController::new(width, height) {
+                match InputController::new(x, y, width, height) {
                     Ok(ic) => {
                         let mut g = controller_arc.lock().await;
                         *g = Some(ic);

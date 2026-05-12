@@ -43,16 +43,25 @@ pub struct Modifiers {
 
 pub struct InputController {
     enigo: Enigo,
+    /// Top-left of the captured monitor in the OS virtual-desktop coordinate
+    /// space. Required so multi-monitor setups route absolute pointer events
+    /// to the monitor that's actually being streamed; with the offset
+    /// defaulted to 0 the cursor lands on the primary monitor regardless of
+    /// which display is shared (gh: Windows multi-monitor input bug).
+    x_offset: i32,
+    y_offset: i32,
     width: u32,
     height: u32,
     paused: bool,
 }
 
 impl InputController {
-    pub fn new(width: u32, height: u32) -> Result<Self, String> {
+    pub fn new(x_offset: i32, y_offset: i32, width: u32, height: u32) -> Result<Self, String> {
         let enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
         Ok(Self {
             enigo,
+            x_offset,
+            y_offset,
             width,
             height,
             paused: false,
@@ -79,15 +88,14 @@ impl InputController {
         }
         match event {
             InputEvent::MouseMove { x, y } => {
-                // Clamp the viewer-supplied normalised coordinates to [0,1] so a
-                // malicious or buggy viewer cannot move the mouse outside the
-                // shared monitor's rectangle (e.g. to attack OS chrome on a
-                // multi-monitor setup, or to trigger UB by feeding NaN/±Inf
-                // into the silent `as i32` cast). NaN clamps to the low end.
-                let x = if x.is_nan() { 0.0 } else { x.clamp(0.0, 1.0) };
-                let y = if y.is_nan() { 0.0 } else { y.clamp(0.0, 1.0) };
-                let px = (x * f64::from(self.width)) as i32;
-                let py = (y * f64::from(self.height)) as i32;
+                let (px, py) = compute_abs_coords(
+                    x,
+                    y,
+                    self.x_offset,
+                    self.y_offset,
+                    self.width,
+                    self.height,
+                );
                 self.enigo
                     .move_mouse(px, py, Coordinate::Abs)
                     .map_err(|e| e.to_string())?;
@@ -125,6 +133,31 @@ impl InputController {
         }
         Ok(())
     }
+}
+
+/// Translate the viewer's normalised pointer position into the OS virtual-
+/// desktop coordinate the absolute-mouse-move syscall expects.
+///
+/// Clamps `x_norm`/`y_norm` to `[0,1]` (and maps NaN to 0.0) so a malicious
+/// or buggy viewer cannot drive the cursor outside the shared monitor's
+/// rectangle — important on multi-monitor systems where the OS would
+/// otherwise let us hit another display's chrome — and then offsets by the
+/// captured monitor's top-left in the virtual-desktop. The offset is
+/// signed: Windows places non-primary monitors at negative coordinates
+/// when they sit above or left of the primary.
+pub(crate) fn compute_abs_coords(
+    x_norm: f64,
+    y_norm: f64,
+    x_offset: i32,
+    y_offset: i32,
+    width: u32,
+    height: u32,
+) -> (i32, i32) {
+    let x = if x_norm.is_nan() { 0.0 } else { x_norm.clamp(0.0, 1.0) };
+    let y = if y_norm.is_nan() { 0.0 } else { y_norm.clamp(0.0, 1.0) };
+    let px = (x * f64::from(width)) as i32 + x_offset;
+    let py = (y * f64::from(height)) as i32 + y_offset;
+    (px, py)
 }
 
 fn map_button(button: Button) -> EnigoButton {
@@ -306,7 +339,7 @@ mod tests {
     #[test]
     #[ignore]
     fn toggle_paused_flips_state_with_real_enigo() {
-        let mut ctrl = InputController::new(1920, 1080).expect("need display");
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
         assert!(!ctrl.is_paused());
         assert!(ctrl.toggle_paused());
         assert!(ctrl.is_paused());
@@ -317,9 +350,50 @@ mod tests {
     #[test]
     #[ignore]
     fn set_paused_no_op_with_real_enigo() {
-        let mut ctrl = InputController::new(1920, 1080).expect("need display");
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
         ctrl.set_paused(true);
         let result = ctrl.apply(InputEvent::MouseMove { x: 0.5, y: 0.5 });
         assert!(result.is_ok(), "paused apply should return Ok");
+    }
+
+    #[test]
+    fn compute_abs_coords_zero_offset_matches_pre_offset_behaviour() {
+        assert_eq!(compute_abs_coords(0.0, 0.0, 0, 0, 1920, 1080), (0, 0));
+        assert_eq!(compute_abs_coords(1.0, 1.0, 0, 0, 1920, 1080), (1920, 1080));
+        assert_eq!(compute_abs_coords(0.5, 0.5, 0, 0, 1920, 1080), (960, 540));
+    }
+
+    #[test]
+    fn compute_abs_coords_applies_positive_offset() {
+        // Monitor placed at x=2560 (typical right-of-primary on 2560-wide
+        // primary): centre of that monitor in viewer-coords (0.5,0.5) must
+        // land at (2560 + width/2, y_offset + height/2).
+        let (px, py) = compute_abs_coords(0.5, 0.5, 2560, 0, 2560, 1440);
+        assert_eq!((px, py), (2560 + 1280, 720));
+    }
+
+    #[test]
+    fn compute_abs_coords_applies_negative_offset() {
+        // Monitor placed at y=-707 (top-of-primary scenario): viewer-coord
+        // (0,0) must land at the monitor's logical top-left, not at desktop
+        // origin (0,0). That's how the Windows DISPLAY2 layout breaks
+        // without offset handling.
+        let (px, py) = compute_abs_coords(0.0, 0.0, 2560, -707, 2560, 1440);
+        assert_eq!((px, py), (2560, -707));
+    }
+
+    #[test]
+    fn compute_abs_coords_clamps_then_offsets() {
+        // Out-of-range normalised values clamp BEFORE the offset is added
+        // — otherwise a hostile viewer sending x=2.0 could reach the
+        // primary monitor on the right of a (2560,0) offset display.
+        let (px, _) = compute_abs_coords(2.0, 0.5, 2560, 0, 2560, 1440);
+        assert_eq!(px, 2560 + 2560, "clamped x must hit the captured monitor's right edge, not bleed past");
+    }
+
+    #[test]
+    fn compute_abs_coords_nan_clamps_to_low_end() {
+        let (px, py) = compute_abs_coords(f64::NAN, f64::NAN, 2560, -707, 2560, 1440);
+        assert_eq!((px, py), (2560, -707));
     }
 }
