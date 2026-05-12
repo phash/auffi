@@ -87,6 +87,13 @@ pub async fn fetch_ice_servers(backend_http_url: &str, session_code: &str) -> Ve
     };
 
     log::debug!("TURN fetch: credentials valid for {} seconds", creds.ttl);
+    crate::dbg_log(&format!(
+        "[turn-fetch] urls={:?} username_len={} credential_len={} ttl={}",
+        creds.urls,
+        creds.username.len(),
+        creds.credential.len(),
+        creds.ttl
+    ));
     to_ice_servers(Some(creds))
 }
 
