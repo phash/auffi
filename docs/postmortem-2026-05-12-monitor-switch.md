@@ -59,3 +59,19 @@ Before adding a second caller to a teardown function, list what each caller want
 c190c3c  fix(sharer): disconnect_streaming preserves signaling on viewer-swap
 f894be3  fix(sharer): streaming_loop exits when disconnect drops switch channel
 ```
+
+## Addendum — second-pass review (commit `ae8d8d6`)
+
+After the chain settled, an independent review of the resulting state surfaced one more critical bug plus four important issues, all caused by the same too-fast-to-think incremental delivery the first chain warned against. Each one is a clean instance of "I shipped before I traced what the existing primitives actually do."
+
+| Severity | Issue | Fix |
+|---|---|---|
+| Critical | `disconnect_streaming({keep_signaling:true})` was still sending the `{"kind":"bye"}` relay as its first step. By the time that runs in the viewer-swap path, the backend has already moved `session.viewer` to the **new** viewer (`backend/src/codes.ts:detachViewer` does not reset `session.confirmed`), so the bye reaches the brand-new viewer and tears their session down before any offer is exchanged. | Skip the bye emission entirely when `keep_signaling = true`. |
+| Important | `switch_monitor` constructed the **new** `ScreenCapturer` (which opens a fresh portal/GStreamer pipeline) **before** the old one was dropped. The old capturer only dropped on the streaming_loop's next iteration — so for the seconds the portal dialog was open, two concurrent pipelines ran. Same Plasma-misroute symptom the original chain was fighting. | Two-phase Stop/Replace protocol via the existing mpsc channel plus a oneshot ack: switch_monitor sends `Stop`, awaits the loop's ack (loop drops capturer and acks here), only THEN opens the new portal and sends `Replace`. The streaming_loop's capturer/encoder become `Option<>`; in the stopped state the loop blocks on the next message instead of looping at frame rate. |
+| Important | JS `peer-joined` cleanup did `await disconnect_streaming(...)` **before** resetting `streamingReady`/`pendingOffer`/`pendingIce`. While the await was in flight, the kept-alive WS could already deliver a relay/sdp from the new viewer; the relay handler dispatched on `streamingReady` (still true) and called `receive_offer` against a just-cleared rtc_state, losing the offer silently. | Clear the flags **before** the await. |
+| Important | Several lock-acquisition sites on cleanup paths used `if let Ok(mut g) = ...lock()` which silently no-ops on a poisoned mutex. Most-cited: `start_streaming`'s switch_tx install — a poisoned lock would strand the sender, and every subsequent `switch_monitor` would reply "no active stream" against a live session. | Use `lock().unwrap_or_else(\|p\| p.into_inner())` on cleanup paths so a poisoned-but-readable state still flows. |
+| Nit | `AUFFI_ENABLE_RESTORE_TOKEN` was checked with `var_os(...)?` — short-circuits on missing but treats any value (including empty string) as enabled. Setting the env var to `""` to disable would have re-enabled it. | Only `"1"` and `"true"` enable. |
+
+Cosmetic: `stopConfirmYesBtn`'s status text promised the user could "den Code erneut weitergeben" after Beenden. With the existing full-teardown semantics that's false (the WS closes, backend drops the session). Status text updated to point at the "Neuer Code" button instead. Keeping the policy ambiguity (Beenden = end-everything vs Beenden = end-current-helper-keep-code-alive) as an explicit decision the user can make later — the agent's review surfaced the trade-off, not the answer.
+
+The takeaway from the addendum reinforces the original lesson: when a function is wired into a second caller with different intent, do the API split first. The `bye` emission, the order of capturer creation, the order of state resets, the lock-acquisition style — all assumed a single-intent contract.

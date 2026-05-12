@@ -521,8 +521,10 @@ stopConfirmYesBtn.addEventListener("click", () => {
   stopConfirmDialog.classList.remove("visible");
   invoke("disconnect_streaming").catch(() => {});
   hideStreamingActions();
+  // Full teardown closes the signaling WS, so the backend drops the
+  // session — the old code is no longer valid. Tell the user the truth.
   setStatus(
-    "Stream beendet. Du kannst den Code erneut weitergeben oder einen neuen erzeugen.",
+    'Stream beendet. Klicke „Neuer Code“, um eine neue Sitzung zu starten.',
     "idle",
   );
   newCodeBtn.classList.add("visible");
