@@ -1,0 +1,281 @@
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import type { Db } from "../db.js";
+import { hashPassword, verifyPasswordTimingSafe } from "./argon.js";
+import { newToken, hashToken } from "./tokens.js";
+import {
+  createSession,
+  clearSessionCookie,
+  readSessionCookie,
+  findSession,
+  deleteSession,
+  deleteAllSessionsForAccount,
+} from "./sessions.js";
+
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // 24h per spec §4.1
+const RESET_TTL_MS = 60 * 60 * 1000;        // 1h per spec §4.5
+
+/**
+ * Pluggable SMTP sender. The real implementation (gh #11) plugs in via
+ * dependency injection; tests pass a recording stub. The address-only
+ * payload is intentional — the mail body is the responsibility of the
+ * adapter and might include the per-recipient base URL, branding etc.
+ */
+export interface AuthMailer {
+  sendVerifyEmail(email: string, verifyToken: string): Promise<void>;
+  sendResetEmail(email: string, resetToken: string): Promise<void>;
+}
+
+export interface AuthDeps {
+  db: Db;
+  mailer: AuthMailer;
+}
+
+interface SignupBody {
+  email?: unknown;
+  password?: unknown;
+}
+
+interface LoginBody extends SignupBody {}
+
+interface ResetBody {
+  password?: unknown;
+}
+
+interface ForgotBody {
+  email?: unknown;
+}
+
+/**
+ * Cheap email shape check. We trust the SMTP layer to reject unrouteable
+ * addresses on send; here we only filter out obviously malformed inputs
+ * before paying the cost of an argon2 hash.
+ */
+function isPlausibleEmail(s: string): boolean {
+  // Local part, exactly one @, domain part with at least one dot. Caps at
+  // 254 chars per RFC 5321 envelope limit.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 254;
+}
+
+function isAcceptablePassword(s: string): boolean {
+  // 8-byte minimum because below that argon2 effectively becomes a CPU
+  // exercise rather than a guess-resistance layer; cap at 256 to bound
+  // hashing time for adversarial input.
+  return s.length >= 8 && s.length <= 256;
+}
+
+function bad(reply: FastifyReply, status: number, code: string, message: string) {
+  return reply.status(status).send({ error: code, message });
+}
+
+export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
+  const { db, mailer } = deps;
+
+  // ── Signup ──────────────────────────────────────────────────────────
+  app.post("/api/auth/signup", async (req: FastifyRequest, reply: FastifyReply) => {
+    const body = (req.body ?? {}) as SignupBody;
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!isPlausibleEmail(email)) return bad(reply, 400, "bad-email", "email format invalid");
+    if (!isAcceptablePassword(password))
+      return bad(reply, 400, "bad-password", "password must be 8-256 characters");
+
+    // Duplicate-email check. A second signup for an existing email returns
+    // 409 — we accept the small enumeration risk because the user will see
+    // the same answer on the login screen (try-forgot-password) anyway.
+    const existing = db
+      .prepare<[string], { id: number }>("SELECT id FROM accounts WHERE email = ? AND deleted_at IS NULL")
+      .get(email);
+    if (existing) return bad(reply, 409, "email-taken", "email already registered");
+
+    const passwordHash = await hashPassword(password);
+    const now = Date.now();
+    const insert = db
+      .prepare(
+        `INSERT INTO accounts (email, password_hash, email_verified_at, created_at, deleted_at)
+         VALUES (?, ?, NULL, ?, NULL)`,
+      )
+      .run(email, passwordHash, now);
+    const accountId = Number(insert.lastInsertRowid);
+
+    const verifyToken = newToken();
+    db.prepare(
+      `INSERT INTO email_verifications (token_hash, account_id, expires_at, used_at)
+       VALUES (?, ?, ?, NULL)`,
+    ).run(hashToken(verifyToken), accountId, now + VERIFY_TTL_MS);
+
+    // Fire-and-forget mail; the user sees a generic success no matter what
+    // happens at the SMTP layer (cannot leak deliverability).
+    void mailer.sendVerifyEmail(email, verifyToken).catch((e) => {
+      req.log.warn({ err: e }, "verify-email send failed");
+    });
+
+    return reply.status(202).send({ ok: true });
+  });
+
+  // ── Verify ──────────────────────────────────────────────────────────
+  // GET because the link is followed by a click in a mail client; the
+  // handler atomically marks the token used + the account verified +
+  // issues the session cookie (so the user lands logged in).
+  app.get("/api/auth/verify/:token", async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as { token: string };
+    if (!token) return bad(reply, 400, "bad-token", "missing token");
+    const row = db
+      .prepare<[string, number], { account_id: number; used_at: number | null }>(
+        `SELECT account_id, used_at FROM email_verifications
+          WHERE token_hash = ? AND expires_at > ?`,
+      )
+      .get(hashToken(token), Date.now());
+    if (!row) return bad(reply, 410, "token-invalid", "verification link expired or unknown");
+    if (row.used_at !== null) return bad(reply, 410, "token-used", "verification link already used");
+
+    const now = Date.now();
+    const tx = db.transaction(() => {
+      db.prepare("UPDATE email_verifications SET used_at = ? WHERE token_hash = ?").run(
+        now,
+        hashToken(token),
+      );
+      db.prepare("UPDATE accounts SET email_verified_at = ? WHERE id = ?").run(now, row.account_id);
+    });
+    tx();
+
+    createSession(db, reply, row.account_id, req.headers["user-agent"]);
+    return reply.status(200).send({ ok: true });
+  });
+
+  // ── Login ───────────────────────────────────────────────────────────
+  app.post(
+    "/api/auth/login",
+    {
+      // 5 attempts per minute per IP — bot brute-force ceiling.
+      config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const body = (req.body ?? {}) as LoginBody;
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+
+      // Email shape check is cheap; do it BEFORE argon2 to avoid wasting
+      // ~250 ms on obviously-bogus input.
+      if (!isPlausibleEmail(email) || !password) {
+        // Even here, pay the argon2 cost so timing is uniform. Only emit
+        // a 400 when the *body* is entirely missing fields — that's a
+        // protocol error, not a credential test.
+        await verifyPasswordTimingSafe(null, password || "x");
+        return bad(reply, 401, "bad-credentials", "email or password incorrect");
+      }
+
+      const account = db
+        .prepare<[string], { id: number; password_hash: string }>(
+          "SELECT id, password_hash FROM accounts WHERE email = ? AND deleted_at IS NULL",
+        )
+        .get(email);
+
+      const ok = await verifyPasswordTimingSafe(account?.password_hash, password);
+      if (!ok || !account) {
+        return bad(reply, 401, "bad-credentials", "email or password incorrect");
+      }
+
+      createSession(db, reply, account.id, req.headers["user-agent"]);
+      return reply.status(200).send({ ok: true });
+    },
+  );
+
+  // ── Logout ──────────────────────────────────────────────────────────
+  app.post("/api/auth/logout", async (req: FastifyRequest, reply: FastifyReply) => {
+    const cookie = readSessionCookie(req);
+    if (cookie) {
+      const sess = findSession(db, cookie);
+      if (sess) deleteSession(db, sess.id);
+    }
+    clearSessionCookie(reply);
+    return reply.status(200).send({ ok: true });
+  });
+
+  // ── Forgot password ─────────────────────────────────────────────────
+  app.post(
+    "/api/auth/forgot",
+    {
+      config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+    },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const body = (req.body ?? {}) as ForgotBody;
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+
+      // Always 200 — leaking account existence here defeats the purpose.
+      // Even on bad email shape, we return ok so the response is constant
+      // from the attacker's viewpoint.
+      if (!isPlausibleEmail(email)) return reply.status(200).send({ ok: true });
+
+      const account = db
+        .prepare<[string], { id: number }>(
+          "SELECT id FROM accounts WHERE email = ? AND deleted_at IS NULL",
+        )
+        .get(email);
+
+      if (account) {
+        const token = newToken();
+        db.prepare(
+          `INSERT INTO password_resets (token_hash, account_id, expires_at, used_at)
+           VALUES (?, ?, ?, NULL)`,
+        ).run(hashToken(token), account.id, Date.now() + RESET_TTL_MS);
+
+        void mailer.sendResetEmail(email, token).catch((e) => {
+          req.log.warn({ err: e }, "reset-email send failed");
+        });
+      }
+
+      return reply.status(200).send({ ok: true });
+    },
+  );
+
+  // ── Reset password ──────────────────────────────────────────────────
+  app.post("/api/auth/reset/:token", async (req: FastifyRequest, reply: FastifyReply) => {
+    const { token } = req.params as { token: string };
+    const body = (req.body ?? {}) as ResetBody;
+    const password = typeof body.password === "string" ? body.password : "";
+
+    if (!token) return bad(reply, 400, "bad-token", "missing token");
+    if (!isAcceptablePassword(password))
+      return bad(reply, 400, "bad-password", "password must be 8-256 characters");
+
+    const row = db
+      .prepare<[string, number], { account_id: number; used_at: number | null }>(
+        `SELECT account_id, used_at FROM password_resets
+          WHERE token_hash = ? AND expires_at > ?`,
+      )
+      .get(hashToken(token), Date.now());
+    if (!row) return bad(reply, 410, "token-invalid", "reset link expired or unknown");
+    if (row.used_at !== null) return bad(reply, 410, "token-used", "reset link already used");
+
+    const newHash = await hashPassword(password);
+    const now = Date.now();
+    const tx = db.transaction(() => {
+      db.prepare("UPDATE password_resets SET used_at = ? WHERE token_hash = ?").run(
+        now,
+        hashToken(token),
+      );
+      db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(newHash, row.account_id);
+      // Spec §4.5 step 3: a successful reset invalidates every other
+      // session of the account — log everyone else out.
+      deleteAllSessionsForAccount(db, row.account_id);
+    });
+    tx();
+
+    return reply.status(200).send({ ok: true });
+  });
+}
+
+/**
+ * Default no-op mailer used when SMTP isn't configured. The signup /
+ * forgot flows complete locally but no mail ever reaches the user — this
+ * is fine for tests and for development before #11 lands. Production
+ * always replaces this with the real SMTP adapter.
+ */
+export const noopMailer: AuthMailer = {
+  async sendVerifyEmail() {
+    /* no-op */
+  },
+  async sendResetEmail() {
+    /* no-op */
+  },
+};
