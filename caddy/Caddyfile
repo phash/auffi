@@ -15,7 +15,7 @@ auffi.app {
         X-Frame-Options "DENY"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "no-referrer"
-        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
     }
 
     # Bot prevention: known scraper UAs get 403.

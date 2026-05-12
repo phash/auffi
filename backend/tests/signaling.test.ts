@@ -31,6 +31,31 @@ function recv(ws: WebSocket): Promise<any> {
   });
 }
 
+/**
+ * Connect a sharer + viewer pair, complete code-assigned → join →
+ * peer-joined → confirm → peer-confirmed, and return the open sockets.
+ *
+ * Backend silently drops relay messages from a peer that is not yet
+ * confirmed (no error response) — tests that exercise relay-validation
+ * need a fully-confirmed pair before they can observe the validation
+ * behaviour.
+ */
+async function establishConfirmedPair(target: string): Promise<{ sharer: WebSocket; viewer: WebSocket }> {
+  const sharer = openWs(target);
+  await new Promise((r) => sharer.once("open", r));
+  sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+  const { code } = await recv(sharer);
+
+  const viewer = openWs(target);
+  await new Promise((r) => viewer.once("open", r));
+  viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+  await recv(sharer); // peer-joined
+
+  sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+  await recv(viewer); // peer-confirmed
+  return { sharer, viewer };
+}
+
 describe("signaling handshake", () => {
   it("sharer registers and gets a code", async () => {
     const sharer = openWs(url);
@@ -215,6 +240,56 @@ describe("signaling handshake", () => {
     expect(err.code).toBe("bad-message");
 
     sharer.close();
+  });
+
+  it("relay payload with invalid kind → bad-message error, not forwarded", async () => {
+    const { sharer, viewer } = await establishConfirmedPair(url);
+
+    // Inject an unexpected kind that the backend must reject (defence in
+    // depth — protocol only allows sdp/ice/hello/bye). The viewer must not
+    // receive the message.
+    let viewerReceivedRelay = false;
+    viewer.on("message", (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.type === "relay") viewerReceivedRelay = true;
+    });
+
+    sharer.send(JSON.stringify({ type: "relay", payload: { kind: "exec", cmd: "rm -rf /" } }));
+    const err = await recv(sharer);
+    expect(err.type).toBe("error");
+    expect(err.code).toBe("bad-message");
+    expect(err.message).toContain("relay");
+
+    // Give any (forbidden) forwarded message a moment to arrive
+    await new Promise((r) => setTimeout(r, 100));
+    expect(viewerReceivedRelay).toBe(false);
+
+    sharer.close();
+    viewer.close();
+  });
+
+  it("relay payload missing kind → bad-message error", async () => {
+    const { sharer, viewer } = await establishConfirmedPair(url);
+
+    sharer.send(JSON.stringify({ type: "relay", payload: { foo: "bar" } }));
+    const err = await recv(sharer);
+    expect(err.type).toBe("error");
+    expect(err.code).toBe("bad-message");
+
+    sharer.close();
+    viewer.close();
+  });
+
+  it("relay with payload that is not an object → bad-message error", async () => {
+    const { sharer, viewer } = await establishConfirmedPair(url);
+
+    sharer.send(JSON.stringify({ type: "relay", payload: "string-not-object" }));
+    const err = await recv(sharer);
+    expect(err.type).toBe("error");
+    expect(err.code).toBe("bad-message");
+
+    sharer.close();
+    viewer.close();
   });
 
   it("viewer joins with un-dashed code and matches canonical session", async () => {

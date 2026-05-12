@@ -58,8 +58,8 @@ function setVideoStream(stream: MediaStream | null): void {
     disconnect.classList.add("active");
     toolbar.classList.add("active");
     controls?.classList.add("active");
-    inputGroup.style.display = "none";
-    instruction.style.display = "none";
+    inputGroup.classList.add("hidden");
+    instruction.classList.add("hidden");
     app.classList.add("streaming");
     // Prevent any user-initiated PiP from auto-detaching the video.
     if ("disablePictureInPicture" in video) {
@@ -87,8 +87,8 @@ function setVideoStream(stream: MediaStream | null): void {
     disconnect.classList.remove("active");
     toolbar.classList.remove("active");
     controls?.classList.remove("active");
-    inputGroup.style.display = "";
-    instruction.style.display = "";
+    inputGroup.classList.remove("hidden");
+    instruction.classList.remove("hidden");
     app.classList.remove("streaming");
   }
 }
@@ -227,11 +227,11 @@ export function bindUI(backendWsUrl: string): void {
   });
 
   function showReconnect(): void {
-    if (reconnectWrap) reconnectWrap.style.display = "block";
+    if (reconnectWrap) reconnectWrap.classList.add("active");
   }
 
   function hideReconnect(): void {
-    if (reconnectWrap) reconnectWrap.style.display = "none";
+    if (reconnectWrap) reconnectWrap.classList.remove("active");
   }
 
   function teardown(reason: string, kind: "ok" | "err" | "info" = "info", canReconnect = false): void {

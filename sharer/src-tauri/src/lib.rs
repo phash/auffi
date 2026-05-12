@@ -63,12 +63,46 @@ struct PeerIpState(Mutex<Option<String>>);
 /// Shared access to the active `FileTransferManager`.
 struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManager>>>);
 
+/// Holds the abort handles of the currently-running free-tier relay timer
+/// so `disconnect_streaming` can cancel them. Without this the warning /
+/// cutoff sleeps from a prior session would fire against a new one. (gh #63)
+struct FreeTierTimerState(Arc<Mutex<Option<free_tier_timer::TimerHandles>>>);
+
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn start_signaling(
     app: tauri::AppHandle,
     state: State<'_, SignalingState>,
     ip_state: State<'_, PeerIpState>,
+    rtc_state: State<'_, WebRtcState>,
+    input_state: State<'_, InputControllerState>,
+    file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
+    // Refuse to start a fresh signaling session while the previous one's
+    // resources are still allocated. Overwriting `SignalingState` while the
+    // WebRTC peer / input controller / file-transfer manager from a prior
+    // session are still live would leak running tasks and silently keep an
+    // attacker-controlled remote-input session alive after the UI thinks
+    // it has been replaced. The UI must call `disconnect_streaming` first.
+    // (gh #64)
+    if state
+        .0
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+    {
+        return Err("signaling already running — call disconnect_streaming first".to_string());
+    }
+    if rtc_state.0.lock().await.is_some() {
+        return Err("webrtc peer still alive — call disconnect_streaming first".to_string());
+    }
+    if input_state.0.lock().await.is_some() {
+        return Err("input controller still alive — call disconnect_streaming first".to_string());
+    }
+    if file_state.0.lock().await.is_some() {
+        return Err("file transfer still alive — call disconnect_streaming first".to_string());
+    }
+
     // Clear any stale peer IP from a previous session.
     if let Ok(mut guard) = ip_state.0.lock() {
         *guard = None;
@@ -206,6 +240,7 @@ async fn start_streaming(
     input_state: State<'_, InputControllerState>,
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
+    timer_state: State<'_, FreeTierTimerState>,
 ) -> Result<(), String> {
     dbg_log(&format!("[start_streaming] enter monitor_id={}", monitor_id));
     let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
@@ -258,6 +293,7 @@ async fn start_streaming(
     });
 
     let app_for_conn_type = app.clone();
+    let timer_state_for_cb = Arc::clone(&timer_state.0);
     peer.on_connection_type(move |conn_type| {
         use webrtc_peer::ConnectionType;
         let value = match conn_type {
@@ -271,7 +307,7 @@ async fn start_streaming(
         if conn_type == ConnectionType::Relay {
             let app_warn = app_for_conn_type.clone();
             let app_cut = app_for_conn_type.clone();
-            free_tier_timer::start(
+            let handles = free_tier_timer::start(
                 free_tier_timer::TimerConfig::default(),
                 move || {
                     if let Err(e) = app_warn.emit("free-tier-warning", serde_json::json!({})) {
@@ -284,6 +320,15 @@ async fn start_streaming(
                     }
                 },
             );
+            // Park the abort handles in shared state so disconnect_streaming
+            // can cancel them. Drops any pre-existing handles first (defensive
+            // — should never happen since disconnect always clears).
+            if let Ok(mut guard) = timer_state_for_cb.lock() {
+                if let Some(prev) = guard.take() {
+                    prev.cancel();
+                }
+                *guard = Some(handles);
+            }
         }
     });
 
@@ -400,6 +445,7 @@ async fn start_streaming(
 /// Invocable both from the main window (future use) and from the border
 /// overlay's "Trennen" button.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn disconnect_streaming(
     app: tauri::AppHandle,
     sig_state: State<'_, SignalingState>,
@@ -407,6 +453,7 @@ async fn disconnect_streaming(
     input_state: State<'_, InputControllerState>,
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
+    timer_state: State<'_, FreeTierTimerState>,
 ) -> Result<(), String> {
     // Tell the viewer we're ending the session, BEFORE we tear down the peer.
     // Otherwise the viewer only sees an ICE disconnect (which looks like a
@@ -445,6 +492,14 @@ async fn disconnect_streaming(
         *guard = None;
     }
 
+    // Cancel any pending free-tier warning / cutoff timer so it cannot fire
+    // against a subsequent session (gh #63).
+    if let Ok(mut guard) = timer_state.0.lock() {
+        if let Some(handles) = guard.take() {
+            handles.cancel();
+        }
+    }
+
     // Clear the cached peer IP so the next session starts clean.
     if let Ok(mut guard) = ip_state.0.lock() {
         *guard = None;
@@ -463,8 +518,29 @@ async fn streaming_loop(
     enc: &mut encoder::Vp8Encoder,
     track: std::sync::Arc<TrackLocalStaticSample>,
 ) {
+    dbg_log("[streaming_loop] entered");
     let mut write_failures = 0u64;
-    while let Ok(frame) = capturer.next_frame() {
+    let mut frame_count = 0u64;
+    let mut sample_count = 0u64;
+    let mut last_log_at = std::time::Instant::now();
+    loop {
+        let frame = match capturer.next_frame() {
+            Ok(f) => f,
+            Err(e) => {
+                dbg_log(&format!(
+                    "[streaming_loop] next_frame Err after {frame_count} frames / {sample_count} samples: {e}"
+                ));
+                return;
+            }
+        };
+        frame_count += 1;
+        if frame_count == 1 {
+            dbg_log(&format!(
+                "[streaming_loop] FIRST FRAME received: {} bytes, pts={}",
+                frame.data.len(),
+                frame.pts_us
+            ));
+        }
         let packets = match enc.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,
             Err(e) => {
@@ -472,19 +548,41 @@ async fn streaming_loop(
                 continue;
             }
         };
+        if frame_count == 1 {
+            dbg_log(&format!(
+                "[streaming_loop] first encode -> {} packets",
+                packets.len()
+            ));
+        }
         for pkt in packets {
             let sample = webrtc::media::Sample {
                 data: pkt.data.into(),
                 duration: Duration::from_millis(33),
                 ..Default::default()
             };
-            if track.write_sample(&sample).await.is_err() {
-                write_failures += 1;
-                if write_failures > 30 {
-                    log::warn!("[streaming_loop] write_sample failing repeatedly; exiting");
-                    return;
+            match track.write_sample(&sample).await {
+                Ok(_) => sample_count += 1,
+                Err(e) => {
+                    write_failures += 1;
+                    if write_failures <= 3 || write_failures % 10 == 0 {
+                        dbg_log(&format!(
+                            "[streaming_loop] write_sample err #{write_failures}: {e}"
+                        ));
+                    }
+                    if write_failures > 30 {
+                        dbg_log("[streaming_loop] write_sample failing repeatedly; exiting");
+                        return;
+                    }
                 }
             }
+        }
+        // Periodic heartbeat once per second so we know the loop is alive
+        // even when frames flow silently.
+        if last_log_at.elapsed() >= std::time::Duration::from_secs(2) {
+            dbg_log(&format!(
+                "[streaming_loop] alive: frames={frame_count} samples={sample_count} write_failures={write_failures}"
+            ));
+            last_log_at = std::time::Instant::now();
         }
     }
 }
@@ -638,6 +736,7 @@ pub fn run() {
         ))))
         .manage(PeerIpState(Mutex::new(None)))
         .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
+        .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .invoke_handler(tauri::generate_handler![
             start_signaling,
             confirm_peer,
