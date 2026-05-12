@@ -728,7 +728,11 @@ async function restartSignaling(): Promise<void> {
 
 loadSettings().catch(() => {});
 renderTrustedPeers().catch(() => {});
-startSignaling().catch((e: unknown) => {
+// Use restartSignaling on bootstrap too: a webview reload (e.g. dev
+// hot-reload, or user F5) does not restart the Rust process, so any
+// prior session's SignalingState still sits in Rust-side state and
+// would trip the #64 guard. disconnect_streaming is idempotent.
+restartSignaling().catch((e: unknown) => {
   setStatus(`Backend nicht erreichbar: ${String(e)}`, "error");
   showReconnect();
 });
