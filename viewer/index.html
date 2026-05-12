@@ -79,6 +79,33 @@
         </button>
       </div>
 
+      <section
+        id="session-summary"
+        class="session-summary"
+        role="region"
+        aria-label="Zusammenfassung der letzten Sitzung"
+        hidden
+      >
+        <h2 class="session-summary-title">Sitzung beendet</h2>
+        <dl class="session-summary-list">
+          <div>
+            <dt>Dauer</dt>
+            <dd id="session-summary-duration"></dd>
+          </div>
+          <div>
+            <dt>Verbindung</dt>
+            <dd id="session-summary-conn"></dd>
+          </div>
+          <div id="session-summary-files-wrap" hidden>
+            <dt>Dateien empfangen</dt>
+            <dd id="session-summary-files"></dd>
+          </div>
+        </dl>
+        <button id="session-summary-close" type="button" class="session-summary-close" aria-label="Zusammenfassung schließen">
+          Schließen
+        </button>
+      </section>
+
       <div class="video-wrapper" id="video-wrapper">
         <video
           id="remote-video"

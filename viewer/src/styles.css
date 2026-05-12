@@ -853,6 +853,69 @@
   filter: brightness(1.1);
 }
 
+/* Session-summary card (gh #73) — appears after a stream ended live. */
+.session-summary {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg, var(--surface, #1c1d22));
+  color: var(--text-primary, var(--text, #fff));
+  text-align: left;
+  font-size: 0.9375rem;
+}
+.session-summary[hidden] { display: none; }
+.session-summary-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.session-summary-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+.session-summary-list > div {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.session-summary-list dt {
+  font-weight: 500;
+  color: var(--text-secondary, #aaa);
+  margin: 0;
+}
+.session-summary-list dd { margin: 0; }
+.session-summary-files-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.session-summary-files-list li {
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+}
+.session-summary-close {
+  margin-top: 0.875rem;
+  padding: 0.5rem 0.875rem;
+  background: transparent;
+  color: var(--text-secondary, #aaa);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 0.875rem;
+}
+.session-summary-close:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary, var(--text, #fff));
+}
+.session-summary-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 
 /* Generic visibility helper used in place of inline display:none. */
 .hidden {

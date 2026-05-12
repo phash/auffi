@@ -8,6 +8,12 @@ import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
 import { DEFAULT_ZOOM, ZOOM_STEPS, formatZoom, nextZoomLevel } from "./zoom.js";
 import { createIceStateHandler } from "./ice-state-handler.js";
+import {
+  SessionTracker,
+  formatConnectionType,
+  formatDuration,
+  formatFileSize,
+} from "./session-summary.js";
 
 function setStatus(text: string, kind: "ok" | "err" | "info"): void {
   const el = document.getElementById("status")!;
@@ -38,7 +44,7 @@ type VideoElementWithFrameCallback = HTMLVideoElement & {
   requestVideoFrameCallback?: (cb: () => void) => number;
 };
 
-function setVideoStream(stream: MediaStream | null): void {
+function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): void {
   const video = document.getElementById("remote-video") as VideoElementWithFrameCallback;
   const wrapper = document.getElementById("video-wrapper")!;
   const disconnect = document.getElementById("disconnect")!;
@@ -73,6 +79,7 @@ function setVideoStream(stream: MediaStream | null): void {
       // Until then the page reads "Verbunden — empfange Stream…" in info
       // (blue) so the spinner overlay and status colour agree.
       setStatus("Stream läuft.", "ok");
+      onFirstFrame?.();
     };
 
     // Prefer requestVideoFrameCallback — fires exactly when the first
@@ -241,6 +248,64 @@ export function bindUI(backendWsUrl: string): void {
     }
   }
 
+  // Session-summary tracker (gh #73). Reset whenever a new session begins.
+  let sessionTracker = new SessionTracker();
+  let sessionSummaryDismissTimer: ReturnType<typeof setTimeout> | null = null;
+  const SESSION_SUMMARY_AUTO_DISMISS_MS = 30_000;
+
+  function clearSessionSummaryTimer(): void {
+    if (sessionSummaryDismissTimer !== null) {
+      clearTimeout(sessionSummaryDismissTimer);
+      sessionSummaryDismissTimer = null;
+    }
+  }
+
+  const sessionSummaryEl = document.getElementById("session-summary") as HTMLElement | null;
+  const sessionSummaryDurationEl = document.getElementById("session-summary-duration");
+  const sessionSummaryConnEl = document.getElementById("session-summary-conn");
+  const sessionSummaryFilesWrap = document.getElementById("session-summary-files-wrap");
+  const sessionSummaryFilesEl = document.getElementById("session-summary-files");
+  const sessionSummaryCloseBtn = document.getElementById("session-summary-close") as HTMLButtonElement | null;
+
+  function hideSessionSummary(): void {
+    clearSessionSummaryTimer();
+    if (sessionSummaryEl) sessionSummaryEl.hidden = true;
+  }
+
+  function renderSessionSummary(): void {
+    if (!sessionSummaryEl) return;
+    const summary = sessionTracker.summary();
+    if (!summary) return;
+    if (sessionSummaryDurationEl) {
+      sessionSummaryDurationEl.textContent = formatDuration(summary.durationMs);
+    }
+    if (sessionSummaryConnEl) {
+      sessionSummaryConnEl.textContent = formatConnectionType(summary.connectionType);
+    }
+    if (sessionSummaryFilesWrap && sessionSummaryFilesEl) {
+      if (summary.receivedFiles.length === 0) {
+        sessionSummaryFilesWrap.hidden = true;
+      } else {
+        sessionSummaryFilesWrap.hidden = false;
+        const ul = document.createElement("ul");
+        ul.className = "session-summary-files-list";
+        for (const f of summary.receivedFiles) {
+          const li = document.createElement("li");
+          li.textContent = `${f.name} — ${formatFileSize(f.size)}`;
+          ul.appendChild(li);
+        }
+        sessionSummaryFilesEl.replaceChildren(ul);
+      }
+    }
+    sessionSummaryEl.hidden = false;
+    clearSessionSummaryTimer();
+    sessionSummaryDismissTimer = setTimeout(() => {
+      hideSessionSummary();
+    }, SESSION_SUMMARY_AUTO_DISMISS_MS);
+  }
+
+  sessionSummaryCloseBtn?.addEventListener("click", () => hideSessionSummary());
+
   // Detached, unit-testable handler for ICE-state events (see #74).
   const iceState = createIceStateHandler({
     teardown: (reason, kind, canReconnect) => teardown(reason, kind, canReconnect),
@@ -311,6 +376,13 @@ export function bindUI(backendWsUrl: string): void {
     if (canReconnect && lastCode) {
       showReconnect();
     }
+    // Only show the summary if the session actually went live (>=1 frame
+    // received). Failed handshakes leave the tracker empty and we render
+    // nothing — there's no information worth showing.
+    sessionTracker.markEnded();
+    if (sessionTracker.isLive()) {
+      renderSessionSummary();
+    }
   }
 
   disconnectBtn.addEventListener("click", () => {
@@ -334,6 +406,7 @@ export function bindUI(backendWsUrl: string): void {
 
   refreshBtn?.addEventListener("click", () => {
     clearManualDisconnectTimer();
+    hideSessionSummary();
     lastCode = null;
     hideReconnect();
     codeInput.value = "";
@@ -405,6 +478,8 @@ export function bindUI(backendWsUrl: string): void {
 
   function doConnect(code: string): void {
     clearManualDisconnectTimer();
+    hideSessionSummary();
+    sessionTracker = new SessionTracker();
     lastCode = code;
     hideReconnect();
     setStatus("Warte auf Bestätigung durch den Sharer…", "info");
@@ -419,7 +494,7 @@ export function bindUI(backendWsUrl: string): void {
       const videoEl = document.getElementById("remote-video") as HTMLVideoElement;
 
       peer.onTrack((stream) => {
-        setVideoStream(stream);
+        setVideoStream(stream, () => sessionTracker.markStreamStarted());
         const hub = peer!.getDataHub();
         hub.ready().then(() => {
           capture = new InputCapture(videoEl, (ev) => hub.sendInput(ev));
@@ -441,6 +516,7 @@ export function bindUI(backendWsUrl: string): void {
           });
 
           fileManager.onIncomingComplete((file: File) => {
+            sessionTracker.recordReceivedFile({ name: file.name, size: file.size });
             const url = URL.createObjectURL(file);
             const a = document.createElement("a");
             a.href = url;
@@ -464,6 +540,7 @@ export function bindUI(backendWsUrl: string): void {
       peer.onIceState((state) => iceState.handle(state));
       peer.onConnectionType((type) => {
         setConnectionType(type);
+        sessionTracker.setConnectionType(type);
         if (type === "relay") {
           freeTierTimer = new FreeTierTimer();
           freeTierTimer.start({
