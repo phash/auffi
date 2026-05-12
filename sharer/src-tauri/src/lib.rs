@@ -63,6 +63,11 @@ struct PeerIpState(Mutex<Option<String>>);
 /// Shared access to the active `FileTransferManager`.
 struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManager>>>);
 
+/// Holds the abort handles of the currently-running free-tier relay timer
+/// so `disconnect_streaming` can cancel them. Without this the warning /
+/// cutoff sleeps from a prior session would fire against a new one. (gh #63)
+struct FreeTierTimerState(Arc<Mutex<Option<free_tier_timer::TimerHandles>>>);
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn start_signaling(
@@ -235,6 +240,7 @@ async fn start_streaming(
     input_state: State<'_, InputControllerState>,
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
+    timer_state: State<'_, FreeTierTimerState>,
 ) -> Result<(), String> {
     dbg_log(&format!("[start_streaming] enter monitor_id={}", monitor_id));
     let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
@@ -287,6 +293,7 @@ async fn start_streaming(
     });
 
     let app_for_conn_type = app.clone();
+    let timer_state_for_cb = Arc::clone(&timer_state.0);
     peer.on_connection_type(move |conn_type| {
         use webrtc_peer::ConnectionType;
         let value = match conn_type {
@@ -300,7 +307,7 @@ async fn start_streaming(
         if conn_type == ConnectionType::Relay {
             let app_warn = app_for_conn_type.clone();
             let app_cut = app_for_conn_type.clone();
-            free_tier_timer::start(
+            let handles = free_tier_timer::start(
                 free_tier_timer::TimerConfig::default(),
                 move || {
                     if let Err(e) = app_warn.emit("free-tier-warning", serde_json::json!({})) {
@@ -313,6 +320,15 @@ async fn start_streaming(
                     }
                 },
             );
+            // Park the abort handles in shared state so disconnect_streaming
+            // can cancel them. Drops any pre-existing handles first (defensive
+            // — should never happen since disconnect always clears).
+            if let Ok(mut guard) = timer_state_for_cb.lock() {
+                if let Some(prev) = guard.take() {
+                    prev.cancel();
+                }
+                *guard = Some(handles);
+            }
         }
     });
 
@@ -429,6 +445,7 @@ async fn start_streaming(
 /// Invocable both from the main window (future use) and from the border
 /// overlay's "Trennen" button.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn disconnect_streaming(
     app: tauri::AppHandle,
     sig_state: State<'_, SignalingState>,
@@ -436,6 +453,7 @@ async fn disconnect_streaming(
     input_state: State<'_, InputControllerState>,
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
+    timer_state: State<'_, FreeTierTimerState>,
 ) -> Result<(), String> {
     // Tell the viewer we're ending the session, BEFORE we tear down the peer.
     // Otherwise the viewer only sees an ICE disconnect (which looks like a
@@ -472,6 +490,14 @@ async fn disconnect_streaming(
     {
         let mut guard = file_state.0.lock().await;
         *guard = None;
+    }
+
+    // Cancel any pending free-tier warning / cutoff timer so it cannot fire
+    // against a subsequent session (gh #63).
+    if let Ok(mut guard) = timer_state.0.lock() {
+        if let Some(handles) = guard.take() {
+            handles.cancel();
+        }
     }
 
     // Clear the cached peer IP so the next session starts clean.
@@ -710,6 +736,7 @@ pub fn run() {
         ))))
         .manage(PeerIpState(Mutex::new(None)))
         .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
+        .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .invoke_handler(tauri::generate_handler![
             start_signaling,
             confirm_peer,
