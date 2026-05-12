@@ -127,7 +127,7 @@ impl PortalCapturer {
         // (the Tauri async-runtime), and tokio refuses to start a new runtime
         // from within an active one. The OS thread sidesteps that detection.
         let streams = std::thread::Builder::new()
-            .name("screenie-portal-init".to_string())
+            .name("auffi-portal-init".to_string())
             .spawn(|| {
                 tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -196,7 +196,7 @@ fn run_pipewire_loop(
 
     let stream = pw::stream::StreamBox::new(
         &core,
-        "screenie-capture",
+        "auffi-capture",
         properties! {
             *pw::keys::MEDIA_TYPE => "Video",
             *pw::keys::MEDIA_CATEGORY => "Capture",

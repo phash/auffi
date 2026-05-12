@@ -189,7 +189,7 @@ test.beforeAll(async () => {
   // collecting all subsequent lines into sharerOutputLines for test assertions.
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error("Timed out waiting for SCREENIE_CODE")),
+      () => reject(new Error("Timed out waiting for AUFFI_CODE")),
       15_000,
     );
 
@@ -205,7 +205,7 @@ test.beforeAll(async () => {
         sharerOutputLines.push(trimmed);
 
         if (!sharerCode) {
-          const m = trimmed.match(/SCREENIE_CODE=(\d{3}-\d{3}-\d{3})/);
+          const m = trimmed.match(/AUFFI_CODE=(\d{3}-\d{3}-\d{3})/);
           if (m) {
             sharerCode = m[1];
             clearTimeout(timer);

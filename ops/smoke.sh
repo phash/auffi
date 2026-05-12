@@ -127,9 +127,9 @@ fi
 # ---------- 2. Build backend image ----------
 if [[ "${NO_BUILD}" == "false" ]]; then
   section "Build backend image"
-  echo "Building screenie-backend:smoke ..."
-  docker build -t screenie-backend:smoke "${REPO_ROOT}/backend" --quiet
-  echo "Image built: screenie-backend:smoke"
+  echo "Building auffi-backend:smoke ..."
+  docker build -t auffi-backend:smoke "${REPO_ROOT}/backend" --quiet
+  echo "Image built: auffi-backend:smoke"
 fi
 
 # ---------- 3. Start the stack ----------
@@ -173,7 +173,7 @@ BACKEND_HEALTHY=false
 
 echo -n "Waiting for backend health-check"
 while [[ ${ELAPSED} -lt ${MAX_WAIT} ]]; do
-  STATUS="$(docker inspect --format='{{.State.Health.Status}}' screenie-backend 2>/dev/null || echo "missing")"
+  STATUS="$(docker inspect --format='{{.State.Health.Status}}' auffi-backend 2>/dev/null || echo "missing")"
   if [[ "${STATUS}" == "healthy" ]]; then
     BACKEND_HEALTHY=true
     break
@@ -187,10 +187,10 @@ echo ""
 if [[ "${BACKEND_HEALTHY}" == "true" ]]; then
   pass "backend container healthy"
 else
-  STATUS="$(docker inspect --format='{{.State.Health.Status}}' screenie-backend 2>/dev/null || echo "missing")"
+  STATUS="$(docker inspect --format='{{.State.Health.Status}}' auffi-backend 2>/dev/null || echo "missing")"
   fail "backend container healthy" "status=${STATUS}"
   echo "--- backend logs (last 30 lines) ---"
-  docker logs screenie-backend --tail 30 2>&1 || true
+  docker logs auffi-backend --tail 30 2>&1 || true
 fi
 
 # ---------- 5. Wait for Caddy ----------
@@ -217,7 +217,7 @@ if [[ "${CADDY_READY}" == "true" ]]; then
 else
   fail "Caddy HTTPS reachable (port ${SMOKE_HTTPS_PORT})" "last HTTP status=${HTTP_CODE:-timeout}"
   echo "--- caddy logs (last 30 lines) ---"
-  docker logs screenie-caddy --tail 30 2>&1 || true
+  docker logs auffi-caddy --tail 30 2>&1 || true
 fi
 
 # ---------- 6. Endpoint tests ----------
@@ -283,13 +283,13 @@ fi
 section "coturn smoke test"
 
 # Check that coturn is up and listening on port 3478.
-COTURN_STATUS="$(docker inspect --format='{{.State.Status}}' screenie-coturn 2>/dev/null || echo "missing")"
+COTURN_STATUS="$(docker inspect --format='{{.State.Status}}' auffi-coturn 2>/dev/null || echo "missing")"
 if [[ "${COTURN_STATUS}" == "running" ]]; then
   pass "coturn container running"
 else
   fail "coturn container running" "status=${COTURN_STATUS}"
   echo "--- coturn logs (last 20 lines) ---"
-  docker logs screenie-coturn --tail 20 2>&1 || true
+  docker logs auffi-coturn --tail 20 2>&1 || true
 fi
 
 # Try connecting to the TURN port with nc (available on virtually every Linux box).

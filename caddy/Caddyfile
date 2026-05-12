@@ -3,7 +3,11 @@
     order rate_limit before basicauth
 }
 
-screenie.mr-development.de {
+www.auffi.app {
+    redir https://auffi.app{uri} permanent
+}
+
+auffi.app {
     encode zstd gzip
 
     header {
@@ -11,7 +15,7 @@ screenie.mr-development.de {
         X-Frame-Options "DENY"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "no-referrer"
-        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://screenie.mr-development.de wss://turn.screenie.mr-development.de:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
     }
 
     # Bot prevention: known scraper UAs get 403.
@@ -30,7 +34,7 @@ screenie.mr-development.de {
     # and app-level per-peer message limits apply inside the backend.
     # /turn-credentials has its own tighter zone (10 req/min, enforced by backend too).
     rate_limit {
-        zone screenie_general {
+        zone auffi_general {
             match {
                 not path /signal
                 not path /turn-credentials
@@ -39,7 +43,7 @@ screenie.mr-development.de {
             events 300
             window 1m
         }
-        zone screenie_turn {
+        zone auffi_turn {
             match {
                 path /turn-credentials
             }

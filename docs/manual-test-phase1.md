@@ -1,4 +1,4 @@
-# Phase 1 Manual Smoke Test — Screenie
+# Phase 1 Manual Smoke Test — Auffi (formerly Screenie)
 
 ## Setup
 

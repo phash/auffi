@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROD_VIEWER = "https://screenie.mr-development.de";
-const PROD_SIGNAL = "wss://screenie.mr-development.de/signal";
+const PROD_VIEWER = "https://auffi.app";
+const PROD_SIGNAL = "wss://auffi.app/signal";
 
 let sharer: ChildProcess;
 let code = "";
@@ -21,7 +21,7 @@ test.beforeAll(async () => {
   const codePromise = new Promise<string>((resolveP) => {
     rl.on("line", (line) => {
       sharerLines.push(line);
-      const m = line.match(/^SCREENIE_CODE=(.+)$/);
+      const m = line.match(/^AUFFI_CODE=(.+)$/);
       if (m) resolveP(m[1]);
     });
   });
@@ -42,7 +42,7 @@ test.afterAll(async () => {
   sharer?.kill("SIGTERM");
 });
 
-test("production viewer connects to mock-sharer via screenie.mr-development.de", async ({ page }) => {
+test("production viewer connects to mock-sharer via auffi.app", async ({ page }) => {
   // Capture browser console for diagnostics
   page.on("console", (msg) => sharerLines.push(`[browser] ${msg.type()}: ${msg.text()}`));
   page.on("pageerror", (err) => sharerLines.push(`[browser] pageerror: ${err.message}`));

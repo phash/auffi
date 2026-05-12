@@ -56,7 +56,7 @@ if [[ -z "${VERSION}" ]]; then
 fi
 export APP_VERSION="${VERSION}"
 
-log_step "Deploying screenie ${APP_VERSION} → ${DEPLOY_SSH}:${DEPLOY_PATH}"
+log_step "Deploying auffi ${APP_VERSION} → ${DEPLOY_SSH}:${DEPLOY_PATH}"
 
 # ---------------------------------------------------------------------------
 # Step 1: Pre-flight checks
@@ -77,17 +77,17 @@ maybe_run "Verify Docker available on remote" \
 # ---------------------------------------------------------------------------
 # Step 2: Build backend image locally
 # ---------------------------------------------------------------------------
-log_step "Build backend image (screenie-backend:${APP_VERSION})"
+log_step "Build backend image (auffi-backend:${APP_VERSION})"
 
 maybe_run "docker build backend" \
   docker build \
-    --tag "screenie-backend:${APP_VERSION}" \
+    --tag "auffi-backend:${APP_VERSION}" \
     "${REPO_ROOT}/backend"
 
 # Keep the last 3 local build tags; prune older ones quietly
 # (failure here is non-fatal — just a cleanup step)
 maybe_run "Tag image as :latest locally" \
-  docker tag "screenie-backend:${APP_VERSION}" "screenie-backend:latest" || true
+  docker tag "auffi-backend:${APP_VERSION}" "auffi-backend:latest" || true
 
 # ---------------------------------------------------------------------------
 # Step 3: Build viewer
@@ -113,30 +113,30 @@ maybe_run "Create ${DEPLOY_PATH} on remote" \
 # ---------------------------------------------------------------------------
 log_step "Transfer backend image to remote"
 
-IMAGE_TAR="/tmp/screenie-backend-${APP_VERSION}.tar.gz"
+IMAGE_TAR="/tmp/auffi-backend-${APP_VERSION}.tar.gz"
 
 maybe_run "Save image to tarball" \
-  bash -c "docker save 'screenie-backend:${APP_VERSION}' | gzip > '${IMAGE_TAR}'"
+  bash -c "docker save 'auffi-backend:${APP_VERSION}' | gzip > '${IMAGE_TAR}'"
 
 maybe_run "rsync image tarball to remote" \
   rsync_to "${IMAGE_TAR}" "${DEPLOY_PATH}/"
 
 maybe_run "Load image on remote" \
-  remote "gunzip -c '${DEPLOY_PATH}/screenie-backend-${APP_VERSION}.tar.gz' | docker load"
+  remote "gunzip -c '${DEPLOY_PATH}/auffi-backend-${APP_VERSION}.tar.gz' | docker load"
 
 # Read APP_VERSION from .env.prod on the remote and retag the freshly-loaded
 # image to match — so docker compose can resolve ${APP_VERSION:-latest}.
 maybe_run "Tag loaded image to match remote APP_VERSION (and :latest)" \
   remote "ENV_APP_VERSION=\$(grep -E '^APP_VERSION=' '${DEPLOY_PATH}/.env.prod' 2>/dev/null | cut -d= -f2- | tr -d '\"'); \
-    docker tag 'screenie-backend:${APP_VERSION}' 'screenie-backend:latest'; \
+    docker tag 'auffi-backend:${APP_VERSION}' 'auffi-backend:latest'; \
     if [ -n \"\${ENV_APP_VERSION}\" ] && [ \"\${ENV_APP_VERSION}\" != '${APP_VERSION}' ]; then \
-      docker tag 'screenie-backend:${APP_VERSION}' \"screenie-backend:\${ENV_APP_VERSION}\"; \
-      echo \"[deploy] also tagged as screenie-backend:\${ENV_APP_VERSION}\"; \
+      docker tag 'auffi-backend:${APP_VERSION}' \"auffi-backend:\${ENV_APP_VERSION}\"; \
+      echo \"[deploy] also tagged as auffi-backend:\${ENV_APP_VERSION}\"; \
     fi"
 
 # Keep last 3 image tarballs on remote
 maybe_run "Prune old image tarballs (keep 3)" \
-  remote "ls -t '${DEPLOY_PATH}'/screenie-backend-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --" || true
+  remote "ls -t '${DEPLOY_PATH}'/auffi-backend-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --" || true
 
 # Clean up local tarball
 [[ "${DRY_RUN}" == "false" ]] && rm -f "${IMAGE_TAR}" || true
@@ -233,7 +233,7 @@ log_step "Deployment status"
 
 if [[ "${DRY_RUN}" == "false" ]]; then
   remote_compose "ps"
-  log_ok "Deployment of screenie ${APP_VERSION} complete."
+  log_ok "Deployment of auffi ${APP_VERSION} complete."
 else
   log_dry "-- deploy complete (dry run, no remote commands were executed) --"
 fi

@@ -56,18 +56,18 @@ load_deploy_env
 if [[ "${ROLLBACK}" == "true" ]]; then
   log_step "Rolling back to previous version"
 
-  PREV_TAG="$(remote "ls -t '${DEPLOY_PATH}'/screenie-backend-*.tar.gz 2>/dev/null \
-    | sed 's|.*screenie-backend-||;s|\.tar\.gz||' | sed -n '2p'")"
+  PREV_TAG="$(remote "ls -t '${DEPLOY_PATH}'/auffi-backend-*.tar.gz 2>/dev/null \
+    | sed 's|.*auffi-backend-||;s|\.tar\.gz||' | sed -n '2p'")"
 
   if [[ -z "${PREV_TAG}" ]]; then
     log_error "No previous image tarball found on remote — cannot roll back"
     exit 1
   fi
 
-  log_info "Rolling back to screenie-backend:${PREV_TAG}"
+  log_info "Rolling back to auffi-backend:${PREV_TAG}"
 
   maybe_run "Load previous image on remote" \
-    remote "gunzip -c '${DEPLOY_PATH}/screenie-backend-${PREV_TAG}.tar.gz' | docker load"
+    remote "gunzip -c '${DEPLOY_PATH}/auffi-backend-${PREV_TAG}.tar.gz' | docker load"
 
   maybe_run "Update APP_VERSION in .env.prod" \
     remote "sed -i 's|^APP_VERSION=.*|APP_VERSION=${PREV_TAG}|' '${DEPLOY_PATH}/.env.prod'"
@@ -90,7 +90,7 @@ if [[ -z "${VERSION}" ]]; then
 fi
 export APP_VERSION="${VERSION}"
 
-log_step "Incremental update screenie ${APP_VERSION} → ${DEPLOY_SSH}:${DEPLOY_PATH}"
+log_step "Incremental update auffi ${APP_VERSION} → ${DEPLOY_SSH}:${DEPLOY_PATH}"
 
 # Pre-flight
 maybe_run "Verify SSH reachable" ssh_check || {
@@ -99,10 +99,10 @@ maybe_run "Verify SSH reachable" ssh_check || {
 }
 
 # Build backend
-log_step "Build backend image (screenie-backend:${APP_VERSION})"
+log_step "Build backend image (auffi-backend:${APP_VERSION})"
 maybe_run "docker build backend" \
   docker build \
-    --tag "screenie-backend:${APP_VERSION}" \
+    --tag "auffi-backend:${APP_VERSION}" \
     "${REPO_ROOT}/backend"
 
 # Build viewer
@@ -113,15 +113,15 @@ maybe_run "viewer npm run build" \
   bash -c "cd '${REPO_ROOT}/viewer' && npm run build"
 
 # Transfer backend image
-IMAGE_TAR="/tmp/screenie-backend-${APP_VERSION}.tar.gz"
+IMAGE_TAR="/tmp/auffi-backend-${APP_VERSION}.tar.gz"
 maybe_run "Save image tarball" \
-  bash -c "docker save 'screenie-backend:${APP_VERSION}' | gzip > '${IMAGE_TAR}'"
+  bash -c "docker save 'auffi-backend:${APP_VERSION}' | gzip > '${IMAGE_TAR}'"
 maybe_run "rsync image tarball" \
   rsync_to "${IMAGE_TAR}" "${DEPLOY_PATH}/"
 maybe_run "Load image on remote" \
-  remote "gunzip -c '${DEPLOY_PATH}/screenie-backend-${APP_VERSION}.tar.gz' | docker load"
+  remote "gunzip -c '${DEPLOY_PATH}/auffi-backend-${APP_VERSION}.tar.gz' | docker load"
 maybe_run "Prune old image tarballs (keep 3)" \
-  remote "ls -t '${DEPLOY_PATH}'/screenie-backend-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --" || true
+  remote "ls -t '${DEPLOY_PATH}'/auffi-backend-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --" || true
 [[ "${DRY_RUN}" == "false" ]] && rm -f "${IMAGE_TAR}" || true
 
 # Transfer viewer dist
@@ -156,5 +156,5 @@ if [[ "${DRY_RUN}" == "false" ]]; then
 
   log_step "Service status"
   remote_compose "ps"
-  log_ok "Update to screenie ${APP_VERSION} complete."
+  log_ok "Update to auffi ${APP_VERSION} complete."
 fi

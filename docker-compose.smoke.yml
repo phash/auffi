@@ -7,7 +7,7 @@
 #   1. Backend — built locally from ./backend instead of using a pre-pushed image.
 #      Dummy env overrides replace the real .env.prod values where needed.
 #   2. Caddy — mounts caddy/Caddyfile.local (tls internal, localhost site) instead of
-#      the production Caddyfile that references screenie.mr-development.de.
+#      the production Caddyfile that references auffi.app.
 #      caddy-data volume is replaced by a fresh local volume so Caddy can store its
 #      local-CA material without touching any persistent caddy-data.
 #   3. coturn — runs without TLS certificates (no-tls flag), using a loopback listen
@@ -21,7 +21,7 @@
 services:
   backend:
     # Build locally instead of pulling a pre-tagged image.
-    image: screenie-backend:smoke
+    image: auffi-backend:smoke
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -79,7 +79,7 @@ services:
     # One-shot: copies the pre-built viewer/dist into the viewer-static volume so
     # Caddy can serve it.  Runs before any other service starts.
     image: busybox:1.36.1
-    container_name: screenie-viewer-build
+    container_name: auffi-viewer-build
     volumes:
       - ./viewer/dist:/src:ro
       - viewer-static:/dst

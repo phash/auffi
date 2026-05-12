@@ -158,8 +158,8 @@ mod tests {
     #[test]
     fn ws_url_to_http_converts_wss_scheme() {
         assert_eq!(
-            ws_url_to_http("wss://screenie.example.com/signal"),
-            "https://screenie.example.com"
+            ws_url_to_http("wss://auffi.example.com/signal"),
+            "https://auffi.example.com"
         );
     }
 

@@ -270,14 +270,14 @@ impl FileTransferManager {
     }
 }
 
-/// Returns the directory where received files are saved (`~/Downloads/Screenie/`).
+/// Returns the directory where received files are saved (`~/Downloads/Auffi/`).
 /// The directory is created lazily (by `open_output_file`) so this function
 /// itself does not perform I/O.
 pub fn output_dir() -> PathBuf {
     let base = dirs::download_dir()
         .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("Screenie")
+    base.join("Auffi")
 }
 
 /// FNV-1a 32-bit hash — identical algorithm to `fnv1a32` in

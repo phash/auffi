@@ -26,7 +26,7 @@ Subcommands:
   restart [service]       Restart one service (or all if omitted).
   down                    Stop all services (volumes are NOT removed). Requires confirmation.
   up                      Start all services.
-  backup-certs            Tar up the turn-certs volume to ~/screenie-backups/certs-<date>.tar.gz.
+  backup-certs            Tar up the turn-certs volume to ~/auffi-backups/certs-<date>.tar.gz.
   cert-info               Show TLS certificate expiry for main and TURN domains.
   secret-rotate           Rotate TURN_SHARED_SECRET: generate new, update .env.prod, restart affected services.
   shell <service>         Drop into a shell in a running container.
@@ -80,8 +80,8 @@ case "${SUBCOMMAND}" in
     ;;
 
   down)
-    log_warn "This will stop ALL screenie containers. Volumes are preserved."
-    confirm "Stop all screenie services on ${DEPLOY_SSH}?"
+    log_warn "This will stop ALL auffi containers. Volumes are preserved."
+    confirm "Stop all auffi services on ${DEPLOY_SSH}?"
     remote_compose "down --remove-orphans"
     log_ok "All services stopped"
     ;;
@@ -94,7 +94,7 @@ case "${SUBCOMMAND}" in
     ;;
 
   backup-certs)
-    BACKUP_DIR="~/screenie-backups"
+    BACKUP_DIR="~/auffi-backups"
     DATE="$(date +%Y-%m-%d)"
     BACKUP_FILE="${BACKUP_DIR}/certs-${DATE}.tar.gz"
     log_step "Backing up turn-certs volume to ${BACKUP_FILE}"

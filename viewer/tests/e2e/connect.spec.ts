@@ -155,10 +155,10 @@ test.beforeAll(async () => {
 
   const codeLine = await waitForLine(
     mockSharerProc,
-    /SCREENIE_CODE=\d{3}-\d{3}-\d{3}/,
+    /AUFFI_CODE=\d{3}-\d{3}-\d{3}/,
     15_000,
   );
-  sharerCode = codeLine.replace("SCREENIE_CODE=", "").trim();
+  sharerCode = codeLine.replace("AUFFI_CODE=", "").trim();
 
   mockSharerProc.stdout?.on("data", (chunk: Buffer) => {
     process.stdout.write(`[mock-sharer] ${chunk.toString()}`);

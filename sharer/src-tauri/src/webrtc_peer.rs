@@ -116,7 +116,7 @@ impl SharerPeer {
                 ..Default::default()
             },
             "video".to_string(),
-            "screenie".to_string(),
+            "auffi".to_string(),
         ));
 
         pc.add_track(track.clone() as Arc<dyn webrtc::track::track_local::TrackLocal + Send + Sync>)

@@ -125,7 +125,7 @@ impl GstPortalCapturer {
         // runtime INSIDE a dedicated OS thread. Calling block_on() directly
         // would panic because start() runs on a Tauri tokio worker.
         let streams = std::thread::Builder::new()
-            .name("screenie-gst-portal-init".to_string())
+            .name("auffi-gst-portal-init".to_string())
             .spawn(|| {
                 tokio::runtime::Builder::new_current_thread()
                     .enable_all()

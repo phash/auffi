@@ -9,7 +9,7 @@ mod signaling;
 mod turn_config;
 mod webrtc_peer;
 
-/// Append a diagnostic line to `/tmp/screenie-debug.log` with explicit
+/// Append a diagnostic line to `/tmp/auffi-debug.log` with explicit
 /// flush. Stdio buffering eats println!/eprintln! when the tauri-cli pipes
 /// our streams, so for ad-hoc live diagnostics this writes to a known path
 /// that can be `tail -F`'d. Errors are silently dropped — diagnostics must
@@ -23,7 +23,7 @@ pub(crate) fn dbg_log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/tmp/screenie-debug.log")
+        .open("/tmp/auffi-debug.log")
     {
         let _ = writeln!(f, "{}", msg);
         let _ = f.flush();
@@ -68,9 +68,9 @@ async fn start_signaling(
         *guard = None;
     }
 
-    let url = std::env::var("SCREENIE_BACKEND_WS").unwrap_or_else(|_| {
-        std::option_env!("SCREENIE_DEFAULT_BACKEND_WS")
-            .unwrap_or("wss://screenie.mr-development.de/signal")
+    let url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
+        std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
+            .unwrap_or("wss://auffi.app/signal")
             .to_string()
     });
 
@@ -188,9 +188,9 @@ async fn start_streaming(
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
-    let ws_url = std::env::var("SCREENIE_BACKEND_WS").unwrap_or_else(|_| {
-        std::option_env!("SCREENIE_DEFAULT_BACKEND_WS")
-            .unwrap_or("wss://screenie.mr-development.de/signal")
+    let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
+        std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
+            .unwrap_or("wss://auffi.app/signal")
             .to_string()
     });
     let backend_http_url = turn_config::ws_url_to_http(&ws_url);

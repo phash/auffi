@@ -1,5 +1,5 @@
 /**
- * Minimal WebSocket smoke test for the screenie signaling backend.
+ * Minimal WebSocket smoke test for the auffi signaling backend.
  *
  * Usage:
  *   node scripts/smoke-ws.mjs [ws-url]

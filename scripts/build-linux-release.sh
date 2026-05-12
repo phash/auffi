@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-linux-release.sh — Builds Screenie Sharer for Linux and collects artifacts
+# build-linux-release.sh — Builds Auffi Sharer for Linux and collects artifacts
 # Usage: ./scripts/build-linux-release.sh [--clean]
 # Idempotent: safe to run multiple times.
 

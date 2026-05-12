@@ -1,9 +1,9 @@
-# Screenie auf Linux installieren
+# Auffi auf Linux installieren
 
-Diese Anleitung beschreibt die Installation der **Screenie Sharer-App** auf dem Linux-Desktop.
+Diese Anleitung beschreibt die Installation der **Auffi Sharer-App** auf dem Linux-Desktop.
 
 Der **Viewer** (Helfer-Seite) benötigt keine Installation — einfach Browser öffnen und
-`https://screenie.mr-development.de` aufrufen.
+`https://auffi.app` aufrufen.
 
 ---
 
@@ -13,7 +13,7 @@ Der **Viewer** (Helfer-Seite) benötigt keine Installation — einfach Browser �
 curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install-linux.sh | bash
 ```
 
-Das Skript erkennt die Distribution, installiert Abhängigkeiten und richtet Screenie ein.
+Das Skript erkennt die Distribution, installiert Abhängigkeiten und richtet Auffi ein.
 
 ---
 
@@ -26,7 +26,7 @@ Das Skript erkennt die Distribution, installiert Abhängigkeiten und richtet Scr
 | `gstreamer` + `gst-plugins-base` + `gst-plugin-pipewire` | Wayland-Capture-Pipeline |
 | X11 oder Wayland + PipeWire | Bildschirmerfassung |
 
-**Wayland-Hinweis:** Screenie unterstützt native Wayland-Capture über
+**Wayland-Hinweis:** Auffi unterstützt native Wayland-Capture über
 `xdg-desktop-portal` (ScreenCast-Portal) und PipeWire. Beim Start erscheint ein
 Systemdialog ("Choose what to share"), den der User bei **jedem Start** bestätigen muss.
 Das ist das Sicherheitsmodell des Compositors — es gibt kein "Immer erlauben" für
@@ -74,16 +74,16 @@ Verfügbare Formate: `.AppImage`, `.deb`, `.rpm`
 
 ```bash
 # Datei herunterladen (Version anpassen)
-wget https://github.com/phash/screenie/releases/latest/download/screenie_0.1.0_amd64.deb
+wget https://github.com/phash/screenie/releases/latest/download/auffi_0.2.0_amd64.deb
 
 # Installieren
-sudo dpkg -i screenie_0.1.0_amd64.deb
+sudo dpkg -i auffi_0.2.0_amd64.deb
 
 # Falls Abhängigkeiten fehlen:
 sudo apt-get install -f
 ```
 
-Starten: `screenie` oder über das Anwendungsmenü.
+Starten: `auffi` oder über das Anwendungsmenü.
 
 ---
 
@@ -91,12 +91,12 @@ Starten: `screenie` oder über das Anwendungsmenü.
 
 ```bash
 # Datei herunterladen
-wget https://github.com/phash/screenie/releases/latest/download/screenie-0.1.0-1.x86_64.rpm
+wget https://github.com/phash/screenie/releases/latest/download/auffi-0.2.0-1.x86_64.rpm
 
 # Installieren
-sudo rpm -i screenie-0.1.0-1.x86_64.rpm
+sudo rpm -i auffi-0.2.0-1.x86_64.rpm
 # oder
-sudo dnf localinstall screenie-0.1.0-1.x86_64.rpm
+sudo dnf localinstall auffi-0.2.0-1.x86_64.rpm
 ```
 
 ---
@@ -105,16 +105,16 @@ sudo dnf localinstall screenie-0.1.0-1.x86_64.rpm
 
 ```bash
 # AppImage herunterladen
-wget https://github.com/phash/screenie/releases/latest/download/screenie_0.1.0_amd64.AppImage
+wget https://github.com/phash/screenie/releases/latest/download/auffi_0.2.0_amd64.AppImage
 
 # Ausführbar machen
-chmod +x screenie_0.1.0_amd64.AppImage
+chmod +x auffi_0.2.0_amd64.AppImage
 
 # Ausführen
-./screenie_0.1.0_amd64.AppImage
+./auffi_0.2.0_amd64.AppImage
 
 # Optional: Systemweit verfügbar machen
-sudo ln -sf "$(pwd)/screenie_0.1.0_amd64.AppImage" /usr/local/bin/screenie
+sudo ln -sf "$(pwd)/auffi_0.2.0_amd64.AppImage" /usr/local/bin/auffi
 ```
 
 AppImages benötigen keine Installation — einfach herunterladen und ausführen.
@@ -136,16 +136,16 @@ Falls du die einzelnen Dateien manuell installieren möchtest:
 
 ```bash
 # Tarball entpacken
-tar -xzf screenie-linux-x86_64.tar.gz
+tar -xzf auffi-linux-x86_64.tar.gz
 
 # Binary installieren
-sudo install -m 755 screenie /usr/local/bin/screenie
+sudo install -m 755 auffi /usr/local/bin/auffi
 
 # Desktop-Eintrag (optional)
-sudo install -m 644 screenie.desktop /usr/share/applications/screenie.desktop
+sudo install -m 644 auffi.desktop /usr/share/applications/auffi.desktop
 
 # Icon (optional)
-sudo install -m 644 screenie.png /usr/share/pixmaps/screenie.png
+sudo install -m 644 auffi.png /usr/share/pixmaps/auffi.png
 
 # Desktop-Datenbank aktualisieren
 sudo update-desktop-database /usr/share/applications/ 2>/dev/null || true
@@ -161,8 +161,8 @@ Sicherheitsmodell des Compositors; es gibt keine dauerhafte Freigabe für Screen
 
 Auf **X11** ist keine zusätzliche Berechtigung notwendig.
 
-Screenie startet und zeigt einen 9-stelligen Code an. Diesen Code gibst du dem Helfer,
-der ihn unter `https://screenie.mr-development.de` eingibt.
+Auffi startet und zeigt einen 9-stelligen Code an. Diesen Code gibst du dem Helfer,
+der ihn unter `https://auffi.app` eingibt.
 
 ---
 
@@ -175,10 +175,10 @@ Version automatisch.
 
 ```bash
 # .deb
-sudo dpkg -i screenie_NEUVERSION_amd64.deb
+sudo dpkg -i auffi_NEUVERSION_amd64.deb
 
 # .rpm
-sudo rpm -U screenie-NEUVERSION-1.x86_64.rpm
+sudo rpm -U auffi-NEUVERSION-1.x86_64.rpm
 ```
 
 ### Per AppImage
@@ -187,7 +187,7 @@ Alte AppImage löschen, neue herunterladen und ausführbar machen. Falls du eine
 angelegt hast, diesen aktualisieren:
 
 ```bash
-sudo ln -sf "$(pwd)/screenie_NEUVERSION_amd64.AppImage" /usr/local/bin/screenie
+sudo ln -sf "$(pwd)/auffi_NEUVERSION_amd64.AppImage" /usr/local/bin/auffi
 ```
 
 ---
@@ -197,27 +197,27 @@ sudo ln -sf "$(pwd)/screenie_NEUVERSION_amd64.AppImage" /usr/local/bin/screenie
 ### Per .deb
 
 ```bash
-sudo dpkg -r screenie
+sudo dpkg -r auffi
 # oder vollständig inkl. Konfiguration:
-sudo dpkg --purge screenie
+sudo dpkg --purge auffi
 ```
 
 ### Per .rpm
 
 ```bash
-sudo rpm -e screenie
+sudo rpm -e auffi
 # oder
-sudo dnf remove screenie
+sudo dnf remove auffi
 ```
 
 ### Per AppImage / Manuell
 
 ```bash
-sudo rm -f /usr/local/bin/screenie
-sudo rm -f /usr/share/applications/screenie.desktop
-sudo rm -f /usr/share/pixmaps/screenie.png
+sudo rm -f /usr/local/bin/auffi
+sudo rm -f /usr/share/applications/auffi.desktop
+sudo rm -f /usr/share/pixmaps/auffi.png
 # AppImage selbst löschen:
-rm -f screenie_*.AppImage
+rm -f auffi_*.AppImage
 ```
 
 ### Via install-linux.sh

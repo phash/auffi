@@ -4,7 +4,7 @@
  * Usage: node scripts/mock-sharer.mjs [ws://localhost:8080/signal]
  *
  * Connects to the backend as a sharer, prints the assigned code as
- * `SCREENIE_CODE=NNN-NNN-NNN` so test harnesses can grep for it,
+ * `AUFFI_CODE=NNN-NNN-NNN` so test harnesses can grep for it,
  * waits for a viewer to join, auto-confirms, negotiates WebRTC SDP/ICE,
  * and pushes a generated I420 video stream (moving colored rectangle at 30 fps).
  *
@@ -222,7 +222,7 @@ async function run() {
 
     if (msg.type === "code-assigned") {
       // Print in a format that test harnesses can grep.
-      process.stdout.write(`SCREENIE_CODE=${msg.code}\n`);
+      process.stdout.write(`AUFFI_CODE=${msg.code}\n`);
       return;
     }
 

@@ -1,4 +1,4 @@
-# Screenie
+# Auffi
 
 **Sicheres, einfaches Screen-Sharing mit Fernsteuerung — wie TeamViewer, nur offen.**
 
@@ -8,7 +8,7 @@
 
 ---
 
-Screenie ermöglicht spontane Bildschirmhilfe: Der Hilfesuchende startet eine kleine Desktop-App,
+Auffi ermöglicht spontane Bildschirmhilfe: Der Hilfesuchende startet eine kleine Desktop-App,
 erhält einen 9-stelligen Code und gibt ihn dem Helfer — der öffnet einfach den Browser. Keine
 Accounts, keine Cloud-Daten, keine Tracker. Die eigentliche Verbindung läuft Peer-to-Peer und ist
 Ende-zu-Ende DTLS-SRTP-verschlüsselt. Das Backend sieht zu keinem Zeitpunkt Bildschirminhalte,
@@ -34,14 +34,14 @@ Mausbewegungen oder Dateien — nur den initialen Handshake.
 Browser öffnen und zur Referenzinstanz navigieren:
 
 ```
-https://screenie.mr-development.de
+https://auffi.app
 ```
 
 Code eingeben, den der Hilfesuchende mitteilt — fertig.
 
 ### Als Hilfesuchender (Sharer)
 
-Screenie-App herunterladen und starten:
+Auffi-App herunterladen und starten:
 
 ```bash
 # Schnell-Installation (Linux):
@@ -101,7 +101,7 @@ Für `.deb`, `.rpm` und AppImage: siehe [Releases](https://github.com/phash/scre
 
 Deployment-Dokumentation: **[ops/README.md](ops/README.md)**
 
-Die Referenzinstanz `screenie.mr-development.de` läuft auf einem IONOS VPS via Docker Compose
+Die Referenzinstanz `auffi.app` läuft auf einem IONOS VPS via Docker Compose
 (Backend + coturn + Caddy als Reverse Proxy). Für eigene Instanzen:
 
 ```bash
@@ -115,7 +115,7 @@ docker compose -f docker-compose.prod.yml up -d
 ## Entwicklung
 
 ```bash
-git clone https://github.com/phash/screenie.git
+git clone https://github.com/phash/screenie.git   # auto-redirects to phash/auffi after rename
 cd screenie
 cp .env.example .env
 ```

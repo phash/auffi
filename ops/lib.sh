@@ -36,8 +36,8 @@ load_deploy_env() {
 
   DEPLOY_SSH="${DEPLOY_SSH:-musikersuche@musikersuche.org}"
   DEPLOY_PATH="${DEPLOY_PATH:-/opt/screenie}"
-  DEPLOY_DOMAIN="${DEPLOY_DOMAIN:-screenie.mr-development.de}"
-  DEPLOY_TURN_DOMAIN="${DEPLOY_TURN_DOMAIN:-turn.screenie.mr-development.de}"
+  DEPLOY_DOMAIN="${DEPLOY_DOMAIN:-auffi.app}"
+  DEPLOY_TURN_DOMAIN="${DEPLOY_TURN_DOMAIN:-turn.auffi.app}"
 }
 
 # ---------------------------------------------------------------------------
