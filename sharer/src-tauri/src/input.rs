@@ -79,6 +79,13 @@ impl InputController {
         }
         match event {
             InputEvent::MouseMove { x, y } => {
+                // Clamp the viewer-supplied normalised coordinates to [0,1] so a
+                // malicious or buggy viewer cannot move the mouse outside the
+                // shared monitor's rectangle (e.g. to attack OS chrome on a
+                // multi-monitor setup, or to trigger UB by feeding NaN/±Inf
+                // into the silent `as i32` cast). NaN clamps to the low end.
+                let x = if x.is_nan() { 0.0 } else { x.clamp(0.0, 1.0) };
+                let y = if y.is_nan() { 0.0 } else { y.clamp(0.0, 1.0) };
                 let px = (x * f64::from(self.width)) as i32;
                 let py = (y * f64::from(self.height)) as i32;
                 self.enigo

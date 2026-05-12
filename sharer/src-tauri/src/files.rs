@@ -11,6 +11,21 @@ use tauri::{AppHandle, Emitter, Runtime};
 /// Maximum simultaneous pending (unaccepted) + active (accepted) transfers.
 const MAX_CONCURRENT_TRANSFERS: usize = 5;
 
+/// Maximum file size (in bytes) the sharer will accept in a single transfer.
+/// Caps DoS via "offer 1 KB, stream 100 GB" path. 2 GiB is the largest file
+/// most consumer cloud-storage tiers accept, so any legitimate file fits.
+const MAX_FILE_SIZE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Tolerance for the final chunk overshooting `total_size` by a small amount
+/// because the wire protocol does not guarantee chunk-aligned sizes. Anything
+/// beyond this is a protocol violation and aborts the transfer.
+const SIZE_OVERRUN_TOLERANCE_BYTES: u64 = 64 * 1024;
+
+/// Maximum number of out-of-order chunks held in memory before the transfer is
+/// aborted. Without a cap, a malicious viewer could starve memory by streaming
+/// non-contiguous sequence numbers forever (each chunk is up to 16 KB).
+const MAX_PENDING_OUT_OF_ORDER_CHUNKS: usize = 256;
+
 /// A message received on the `files` DataChannel.
 ///
 /// The channel carries two kinds of data:
@@ -78,11 +93,17 @@ struct ReceiveState {
 }
 
 /// Manages incoming and outgoing file transfers on behalf of the sharer.
+///
+/// State is keyed by the viewer-supplied UUID string (122 random bits) rather
+/// than its FNV-1a-32 hash (32 bits, collidable by an attacker in ~4 billion
+/// operations). The 32-bit hash is still used to route binary chunk frames
+/// because the wire format commits to a 4-byte id field; lookup is O(N) with
+/// N ≤ MAX_CONCURRENT_TRANSFERS which is trivial.
 pub struct FileTransferManager {
     /// Offers waiting for user confirmation — no file on disk yet.
-    pending: HashMap<u32, PendingOffer>,
+    pending: HashMap<String, PendingOffer>,
     /// Active transfers where the user has accepted and the file is open.
-    active: HashMap<u32, ReceiveState>,
+    active: HashMap<String, ReceiveState>,
 }
 
 impl FileTransferManager {
@@ -120,11 +141,18 @@ impl FileTransferManager {
                     }];
                 }
 
-                let id_hash = fnv1a32(&id);
+                if size > MAX_FILE_SIZE_BYTES {
+                    log::warn!("offer size {size} exceeds cap; rejecting id={id}");
+                    return vec![FileEvent::FileError {
+                        id,
+                        message: "file-too-large".to_string(),
+                    }];
+                }
+
                 let sanitized = sanitize_filename(&name);
 
                 self.pending.insert(
-                    id_hash,
+                    id.clone(),
                     PendingOffer {
                         id: id.clone(),
                         sanitized_name: sanitized.clone(),
@@ -144,8 +172,7 @@ impl FileTransferManager {
                 vec![]
             }
             FileEvent::FileDone { id } => {
-                let id_hash = fnv1a32(&id);
-                if let Some(mut state) = self.active.remove(&id_hash) {
+                if let Some(mut state) = self.active.remove(&id) {
                     if let Err(e) = state.file.flush() {
                         log::warn!("flush failed for '{}': {e}", state.name);
                     }
@@ -158,9 +185,8 @@ impl FileTransferManager {
                 vec![]
             }
             FileEvent::FileError { id, message } => {
-                let id_hash = fnv1a32(&id);
-                self.pending.remove(&id_hash);
-                self.active.remove(&id_hash);
+                self.pending.remove(&id);
+                self.active.remove(&id);
                 log::warn!("file transfer error for id={id}: {message}");
                 vec![]
             }
@@ -175,8 +201,7 @@ impl FileTransferManager {
     /// `file-accept` event to send to the viewer, or an error event if the file
     /// cannot be created.
     pub fn accept(&mut self, id: &str) -> FileEvent {
-        let id_hash = fnv1a32(id);
-        let Some(offer) = self.pending.remove(&id_hash) else {
+        let Some(offer) = self.pending.remove(id) else {
             return FileEvent::FileError {
                 id: id.to_string(),
                 message: "no pending offer".to_string(),
@@ -194,7 +219,7 @@ impl FileTransferManager {
                     pending_chunks: BTreeMap::new(),
                     next_seq: 0,
                 };
-                self.active.insert(id_hash, state);
+                self.active.insert(offer.id, state);
                 FileEvent::FileAccept { id: id.to_string() }
             }
             Err(e) => {
@@ -209,9 +234,8 @@ impl FileTransferManager {
 
     /// Remove a pending offer and return the `file-reject` event to send back.
     pub fn reject(&mut self, id: &str) -> FileEvent {
-        let id_hash = fnv1a32(id);
-        self.pending.remove(&id_hash);
-        self.active.remove(&id_hash);
+        self.pending.remove(id);
+        self.active.remove(id);
         FileEvent::FileReject { id: id.to_string() }
     }
 
@@ -230,33 +254,64 @@ impl FileTransferManager {
         let seq = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
         let payload = &buf[8..];
 
-        let state = self
+        // The 32-bit hash in the chunk header is a network-routing identifier,
+        // not a security-sensitive key — resolve it to the canonical UUID by
+        // scanning the active map (≤ MAX_CONCURRENT_TRANSFERS entries).
+        let key = self
             .active
-            .get_mut(&id_hash)
+            .iter()
+            .find_map(|(k, _)| (fnv1a32(k) == id_hash).then(|| k.clone()))
             .ok_or_else(|| format!("no active transfer for id_hash=0x{id_hash:08x}"))?;
 
-        // Buffer out-of-order chunk.
-        if seq != state.next_seq {
-            state.pending_chunks.insert(seq, payload.to_vec());
-            return Ok(());
-        }
+        let chunk_len = payload.len() as u64;
+        let abort_reason = {
+            let state = self
+                .active
+                .get_mut(&key)
+                .expect("just resolved this key above");
 
-        // Write the in-order chunk.
-        state
-            .file
-            .write_all(payload)
-            .map_err(|e| format!("write failed: {e}"))?;
-        state.received_bytes += payload.len() as u64;
-        state.next_seq += 1;
+            let total_after = state.received_bytes.saturating_add(chunk_len);
+            let cap = state
+                .total_size
+                .saturating_add(SIZE_OVERRUN_TOLERANCE_BYTES);
+            if total_after > cap {
+                Some(format!(
+                    "transfer exceeded declared size: {total_after} > {} (limit {cap})",
+                    state.total_size
+                ))
+            } else if seq != state.next_seq {
+                if state.pending_chunks.len() >= MAX_PENDING_OUT_OF_ORDER_CHUNKS {
+                    Some(format!(
+                        "too many out-of-order chunks ({}); aborting transfer",
+                        state.pending_chunks.len()
+                    ))
+                } else {
+                    state.pending_chunks.insert(seq, payload.to_vec());
+                    None
+                }
+            } else {
+                state
+                    .file
+                    .write_all(payload)
+                    .map_err(|e| format!("write failed: {e}"))?;
+                state.received_bytes += chunk_len;
+                state.next_seq += 1;
 
-        // Drain any buffered chunks that are now contiguous.
-        while let Some(data) = state.pending_chunks.remove(&state.next_seq) {
-            state
-                .file
-                .write_all(&data)
-                .map_err(|e| format!("write (buffered) failed: {e}"))?;
-            state.received_bytes += data.len() as u64;
-            state.next_seq += 1;
+                while let Some(data) = state.pending_chunks.remove(&state.next_seq) {
+                    state
+                        .file
+                        .write_all(&data)
+                        .map_err(|e| format!("write (buffered) failed: {e}"))?;
+                    state.received_bytes += data.len() as u64;
+                    state.next_seq += 1;
+                }
+                None
+            }
+        };
+
+        if let Some(reason) = abort_reason {
+            self.active.remove(&key);
+            return Err(reason);
         }
 
         Ok(())
@@ -564,7 +619,7 @@ mod tests {
         let expected_path = output_dir().join(&sanitized);
 
         mgr.pending.insert(
-            fnv1a32(id),
+            id.to_string(),
             PendingOffer {
                 id: id.to_string(),
                 sanitized_name: sanitized,
@@ -583,7 +638,7 @@ mod tests {
         let expected_path = output_dir().join(&sanitized);
 
         mgr.pending.insert(
-            fnv1a32(id),
+            id.to_string(),
             PendingOffer {
                 id: id.to_string(),
                 sanitized_name: sanitized.clone(),
@@ -593,8 +648,8 @@ mod tests {
 
         let ev = mgr.accept(id);
         assert!(matches!(ev, FileEvent::FileAccept { .. }));
-        assert!(!mgr.pending.contains_key(&fnv1a32(id)));
-        assert!(mgr.active.contains_key(&fnv1a32(id)));
+        assert!(!mgr.pending.contains_key(id));
+        assert!(mgr.active.contains_key(id));
 
         // Clean up
         let _ = std::fs::remove_file(&expected_path);
@@ -608,7 +663,7 @@ mod tests {
         let expected_path = output_dir().join(&sanitized);
 
         mgr.pending.insert(
-            fnv1a32(id),
+            id.to_string(),
             PendingOffer {
                 id: id.to_string(),
                 sanitized_name: sanitized,
@@ -618,7 +673,7 @@ mod tests {
 
         let ev = mgr.reject(id);
         assert!(matches!(ev, FileEvent::FileReject { .. }));
-        assert!(!mgr.pending.contains_key(&fnv1a32(id)));
+        assert!(!mgr.pending.contains_key(id));
         assert!(!expected_path.exists(), "file must not exist after reject");
     }
 
@@ -628,7 +683,7 @@ mod tests {
 
         for i in 0..MAX_CONCURRENT_TRANSFERS {
             mgr.pending.insert(
-                i as u32,
+                format!("id-{i}"),
                 PendingOffer {
                     id: format!("id-{i}"),
                     sanitized_name: format!("file-{i}.txt"),
@@ -654,7 +709,7 @@ mod tests {
             }]
         } else {
             mgr.pending.insert(
-                fnv1a32("overflow-id"),
+                "overflow-id".to_string(),
                 PendingOffer {
                     id: "overflow-id".to_string(),
                     sanitized_name: "overflow.txt".to_string(),
@@ -692,9 +747,8 @@ mod tests {
             next_seq: 0,
         };
 
-        let id_hash = fnv1a32("oo-id");
         let mut mgr = FileTransferManager::new();
-        mgr.active.insert(id_hash, state);
+        mgr.active.insert("oo-id".to_string(), state);
 
         // Send seq=1 before seq=0 — must be buffered.
         let frame1 = build_chunk_frame("oo-id", 1, b"DEF");
@@ -704,10 +758,77 @@ mod tests {
         let frame0 = build_chunk_frame("oo-id", 0, b"ABC");
         mgr.handle_chunk(&frame0).expect("chunk 0");
 
-        let s = mgr.active.get(&id_hash).expect("state present");
+        let s = mgr.active.get("oo-id").expect("state present");
         // Both chunks written — pending_chunks empty, next_seq advanced.
         assert_eq!(s.next_seq, 2);
         assert!(s.pending_chunks.is_empty());
         assert_eq!(s.received_bytes, 6);
+    }
+
+    // ─── size-cap regression tests (F-01 from security review) ───────────────
+
+    fn make_active_state_with_size(id: &str, total_size: u64) -> ReceiveState {
+        use tempfile::NamedTempFile;
+        let tmp = NamedTempFile::new().expect("tempfile");
+        let file = tmp.reopen().expect("reopen");
+        // Leak the tempfile reference — the underlying file stays open via
+        // BufWriter, and the OS cleans the inode when the BufWriter drops.
+        std::mem::forget(tmp);
+        ReceiveState {
+            id: id.to_string(),
+            name: format!("{id}.bin"),
+            total_size,
+            received_bytes: 0,
+            file: BufWriter::new(file),
+            pending_chunks: BTreeMap::new(),
+            next_seq: 0,
+        }
+    }
+
+    #[test]
+    fn chunk_overrun_aborts_transfer() {
+        let mut mgr = FileTransferManager::new();
+        mgr.active
+            .insert("ov-id".to_string(), make_active_state_with_size("ov-id", 4));
+
+        // First in-order chunk pushes received_bytes well past total_size + tolerance.
+        let oversized: Vec<u8> = vec![0u8; (SIZE_OVERRUN_TOLERANCE_BYTES + 8) as usize];
+        let frame = build_chunk_frame("ov-id", 0, &oversized);
+        let result = mgr.handle_chunk(&frame);
+        assert!(result.is_err(), "oversize chunk must be rejected");
+        assert!(
+            !mgr.active.contains_key("ov-id"),
+            "aborted transfer must be removed from active map"
+        );
+    }
+
+    #[test]
+    fn too_many_out_of_order_chunks_aborts_transfer() {
+        let mut mgr = FileTransferManager::new();
+        let total = (MAX_PENDING_OUT_OF_ORDER_CHUNKS as u64 + 5) * 16;
+        mgr.active.insert(
+            "ooo-id".to_string(),
+            make_active_state_with_size("ooo-id", total),
+        );
+
+        // Stuff the pending_chunks buffer with non-contiguous sequence numbers
+        // (starting at seq=1, leaving seq=0 perpetually missing).
+        for seq in 1..=(MAX_PENDING_OUT_OF_ORDER_CHUNKS as u32) {
+            let frame = build_chunk_frame("ooo-id", seq, &[0u8; 8]);
+            mgr.handle_chunk(&frame).expect("buffered fine");
+        }
+
+        // The next out-of-order chunk pushes us over the cap → abort.
+        let frame = build_chunk_frame(
+            "ooo-id",
+            MAX_PENDING_OUT_OF_ORDER_CHUNKS as u32 + 1,
+            &[0u8; 8],
+        );
+        let result = mgr.handle_chunk(&frame);
+        assert!(result.is_err(), "buffer-cap overrun must be rejected");
+        assert!(
+            !mgr.active.contains_key("ooo-id"),
+            "aborted transfer must be removed from active map"
+        );
     }
 }

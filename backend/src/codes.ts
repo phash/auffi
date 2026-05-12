@@ -33,10 +33,20 @@ export class SessionStore {
   constructor(private cfg: StoreConfig) {}
 
   registerSharer(sharer: Peer): { code: string; session: Session } {
-    let code: string;
-    do {
-      code = generateCode();
-    } while (this.sessions.has(code));
+    // Iteration cap so a wedged CSPRNG (or a 10^9-saturated keyspace) raises
+    // an alarm instead of looping forever. 32 attempts at uniform random over
+    // 10^9 codes is astronomically unlikely to collide naturally.
+    let code: string | undefined;
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const candidate = generateCode();
+      if (!this.sessions.has(candidate)) {
+        code = candidate;
+        break;
+      }
+    }
+    if (code === undefined) {
+      throw new Error("code generation failed: keyspace exhausted or RNG fault");
+    }
     const session: Session = {
       code,
       sharer,
