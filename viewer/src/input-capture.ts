@@ -35,7 +35,13 @@ export class InputCapture {
     let movePending = false;
     const flushMove = (): void => {
       movePending = false;
-      if (pendingMove === null) return;
+      // Re-check enabled at flush time. A pointermove queued microseconds
+      // before disable() runs would otherwise still fire on the next rAF
+      // tick and leak a coordinate the user already cancelled.
+      if (!this.enabled || pendingMove === null) {
+        pendingMove = null;
+        return;
+      }
       const { x, y } = pendingMove;
       pendingMove = null;
       this.emit({ kind: "mouse-move", x, y });

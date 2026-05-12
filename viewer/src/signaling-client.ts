@@ -25,7 +25,17 @@ export class SignalingClient {
         ws.send(JSON.stringify({ type: "join", role: "viewer", code }));
       };
       ws.onmessage = (ev: MessageEvent) => {
-        const msg = JSON.parse(ev.data as string) as OutgoingMessage;
+        // Don't let a malformed frame throw out of the handler — that
+        // leaves the promise unsettled and the UI hangs forever. The
+        // signaling channel is TLS-protected so this would have to be a
+        // server bug or a hostile reverse-proxy mid-path, but neither
+        // case should silently brick the viewer.
+        let msg: OutgoingMessage;
+        try {
+          msg = JSON.parse(ev.data as string) as OutgoingMessage;
+        } catch {
+          return;
+        }
         if (msg.type === "peer-confirmed") {
           this.settled = true;
           resolve();

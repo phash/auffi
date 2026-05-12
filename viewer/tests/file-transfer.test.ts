@@ -1,6 +1,47 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FileTransferManager } from "../src/file-transfer.js";
+import { FileTransferManager, sanitizeFilename } from "../src/file-transfer.js";
 import type { FileEvent } from "../src/protocol.js";
+
+describe("sanitizeFilename", () => {
+  it("strips path-traversal on both unix and windows separators", () => {
+    expect(sanitizeFilename("../etc/passwd")).toBe("etc_passwd");
+    expect(sanitizeFilename("..\\windows\\system32")).toBe("windows_system32");
+    expect(sanitizeFilename("/absolute/path/file")).toBe("absolute_path_file");
+  });
+
+  it("replaces ASCII control chars with underscore", () => {
+    expect(sanitizeFilename("safe\x00name")).toBe("safe_name");
+    expect(sanitizeFilename("with\x1ftab")).toBe("with_tab");
+    expect(sanitizeFilename("del\x7fchar")).toBe("del_char");
+  });
+
+  it("strips Unicode bidi-override chars that mask file extensions", () => {
+    // U+202E (Right-to-Left Override) is the classic exe-as-txt trick.
+    expect(sanitizeFilename("safe‮txt.exe")).toBe("safe_txt.exe");
+    expect(sanitizeFilename("a⁦b⁩c")).toBe("a_b_c");
+  });
+
+  it("strips zero-width characters + BOM", () => {
+    expect(sanitizeFilename("a​b")).toBe("a_b");
+    expect(sanitizeFilename("﻿﻿bomstart")).toBe("__bomstart");
+  });
+
+  it("strips leading dots", () => {
+    expect(sanitizeFilename(".hidden")).toBe("hidden");
+    expect(sanitizeFilename("...still")).toBe("still");
+  });
+
+  it("falls back to 'untitled' for empty results", () => {
+    expect(sanitizeFilename("")).toBe("untitled");
+    expect(sanitizeFilename("/")).toBe("untitled");
+    expect(sanitizeFilename("..")).toBe("untitled");
+  });
+
+  it("truncates to 255 chars", () => {
+    const longName = "a".repeat(300) + ".txt";
+    expect(sanitizeFilename(longName).length).toBe(255);
+  });
+});
 
 // FNV-1a 32-bit hash of a UUID string (same algorithm used in file-transfer.ts)
 function fnv1a32(str: string): number {

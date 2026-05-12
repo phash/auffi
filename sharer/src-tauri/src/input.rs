@@ -104,7 +104,7 @@ impl InputController {
                 self.enigo.button(b, dir).map_err(|e| e.to_string())?;
             }
             InputEvent::Scroll { dy, .. } => {
-                let lines = (dy / 120.0) as i32;
+                let lines = clamp_scroll_lines(dy);
                 if lines != 0 {
                     self.enigo
                         .scroll(lines, Axis::Vertical)
@@ -127,6 +127,24 @@ impl InputController {
         }
         Ok(())
     }
+}
+
+/// Clamp a `wheel`-event delta into a sensible enigo scroll-line count.
+///
+/// The viewer sends `dy` straight from a browser `WheelEvent`, which is an
+/// f64 user-supplied value. A malicious or buggy viewer can drive `dy` to
+/// `f64::INFINITY` / `f64::MAX` / `NaN`; the naive `(dy/120.0) as i32`
+/// saturates to `i32::MAX` and most enigo backends loop the call once per
+/// line — pinning the sharer's CPU at 100 %. The input DataChannel bypasses
+/// the backend's signaling rate-limits, so this clamp is the only defence.
+///
+/// 100 lines ≈ 10 mouse-wheel notches per event, comfortably above any
+/// legitimate single-event delta a browser would produce.
+pub(crate) fn clamp_scroll_lines(dy: f64) -> i32 {
+    if !dy.is_finite() {
+        return 0;
+    }
+    ((dy / 120.0) as i32).clamp(-100, 100)
 }
 
 /// Translate the viewer's normalised pointer position into the OS virtual-
@@ -263,6 +281,33 @@ mod tests {
         } else {
             panic!("expected Scroll variant");
         }
+    }
+
+    #[test]
+    fn clamp_scroll_normal_values_pass_through() {
+        assert_eq!(clamp_scroll_lines(0.0), 0);
+        assert_eq!(clamp_scroll_lines(120.0), 1); // one notch
+        assert_eq!(clamp_scroll_lines(-120.0), -1);
+        assert_eq!(clamp_scroll_lines(360.0), 3); // three notches
+    }
+
+    #[test]
+    fn clamp_scroll_caps_huge_values() {
+        // A malicious viewer can ship arbitrarily large doubles. enigo
+        // loops once per line on most backends; without the cap this
+        // would pin the sharer's CPU.
+        assert_eq!(clamp_scroll_lines(f64::MAX), 100);
+        assert_eq!(clamp_scroll_lines(-f64::MAX), -100);
+        assert_eq!(clamp_scroll_lines(1.0e9), 100);
+    }
+
+    #[test]
+    fn clamp_scroll_rejects_non_finite() {
+        // NaN and infinities short-circuit to 0 so the scroll call is
+        // skipped entirely (the `lines != 0` branch in apply guards it).
+        assert_eq!(clamp_scroll_lines(f64::NAN), 0);
+        assert_eq!(clamp_scroll_lines(f64::INFINITY), 0);
+        assert_eq!(clamp_scroll_lines(f64::NEG_INFINITY), 0);
     }
 
     #[test]

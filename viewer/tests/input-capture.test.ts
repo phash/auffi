@@ -88,6 +88,25 @@ describe("InputCapture", () => {
     document.body.removeChild(video);
   });
 
+  it("does NOT flush a pointermove that was queued just before disable()", async () => {
+    // The rAF-throttle queues the latest pointermove and flushes it on
+    // the next animation frame. If disable() runs between enqueue and
+    // flush, the flushed event would otherwise leak a coordinate the
+    // user already cancelled.
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 50, clientY: 50 }));
+    // disable BEFORE the rAF tick fires:
+    cap.disable();
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    expect(emit).not.toHaveBeenCalled();
+    document.body.removeChild(video);
+  });
+
   it("stops emitting after disable is called", () => {
     const video = makeVideo();
     const emit = vi.fn();

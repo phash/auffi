@@ -130,6 +130,12 @@ export function registerSignaling(
           return;
         }
         if (session.viewer) {
+          // Count this attempt in the IP limiter even though the code
+          // *was* valid — otherwise an attacker can probe which 9-digit
+          // codes resolve to a live-but-full session without budget
+          // pressure. The same code from a legitimate retry-burst will
+          // be back below the limit by the next window.
+          checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg);
           send(peer, { type: "error", code: "invalid-code", message: "session full" });
           peer.close();
           return;
@@ -150,6 +156,12 @@ export function registerSignaling(
           store.markConfirmed(found.code);
           if (found.viewer) send(found.viewer as WebSocket, { type: "peer-confirmed" });
         } else {
+          // Ignore a `confirm:false` against an already-confirmed session:
+          // a sharer-side bug could otherwise tear down a live stream
+          // (and the new helper after viewer-swap) by reaching this branch
+          // unintentionally. The user-driven decline path runs before the
+          // session is ever confirmed, so the guard is invisible to it.
+          if (found.confirmed) return;
           if (found.viewer) {
             const viewerSocket = found.viewer as WebSocket;
             send(viewerSocket, { type: "peer-rejected", reason: "declined" });
