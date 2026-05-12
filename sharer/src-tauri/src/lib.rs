@@ -320,6 +320,10 @@ async fn start_streaming(
     peer.on_ice_candidate(move |candidate| {
         if let Some(c) = candidate {
             if let Ok(init) = c.to_json() {
+                dbg_log(&format!(
+                    "[local-ice] candidate='{}' mid={:?} mline={:?}",
+                    init.candidate, init.sdp_mid, init.sdp_mline_index
+                ));
                 let payload = serde_json::json!({
                     "kind": "ice",
                     "candidate": {
@@ -331,9 +335,13 @@ async fn start_streaming(
                 });
                 let tx = tx_ice.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = tx.send(protocol::Outgoing::Relay { payload }).await;
+                    if let Err(e) = tx.send(protocol::Outgoing::Relay { payload }).await {
+                        dbg_log(&format!("[local-ice] send err: {e}"));
+                    }
                 });
             }
+        } else {
+            dbg_log("[local-ice] end-of-candidates");
         }
     });
 
@@ -345,6 +353,7 @@ async fn start_streaming(
             ConnectionType::P2p => "p2p",
             ConnectionType::Relay => "relay",
         };
+        dbg_log(&format!("[ice-connected] type={value}"));
         if let Err(e) = app_for_conn_type.emit("connection-type", value) {
             log::warn!("connection-type emit failed: {e}");
         }
@@ -857,15 +866,19 @@ async fn receive_offer(
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
 ) -> Result<(), String> {
+    dbg_log(&format!("[receive_offer] enter sdp_len={}", sdp.len()));
     let answer_sdp = {
         let guard = rtc_state.0.lock().await;
-        let peer = guard
-            .as_ref()
-            .ok_or_else(|| "WebRTC peer not initialized; call start_streaming first".to_string())?;
-        peer.set_remote_offer(sdp)
-            .await
-            .map_err(|e| e.to_string())?
+        let peer = guard.as_ref().ok_or_else(|| {
+            dbg_log("[receive_offer] FAILED: no peer in rtc_state");
+            "WebRTC peer not initialized; call start_streaming first".to_string()
+        })?;
+        peer.set_remote_offer(sdp).await.map_err(|e| {
+            dbg_log(&format!("[receive_offer] set_remote_offer err: {e}"));
+            e.to_string()
+        })?
     };
+    dbg_log(&format!("[receive_offer] answer_sdp_len={}", answer_sdp.len()));
 
     let tx = {
         let guard = sig_state
@@ -875,7 +888,10 @@ async fn receive_offer(
         guard
             .as_ref()
             .map(|s| s.tx.clone())
-            .ok_or_else(|| "signaling not started".to_string())?
+            .ok_or_else(|| {
+                dbg_log("[receive_offer] FAILED: signaling not started");
+                "signaling not started".to_string()
+            })?
     };
 
     let payload = serde_json::json!({
@@ -884,7 +900,11 @@ async fn receive_offer(
     });
     tx.send(protocol::Outgoing::Relay { payload })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            dbg_log(&format!("[receive_offer] tx.send err: {e}"));
+            e.to_string()
+        })?;
+    dbg_log("[receive_offer] answer sent");
 
     Ok(())
 }
@@ -898,6 +918,10 @@ async fn receive_ice_candidate(
     username_fragment: Option<String>,
     rtc_state: State<'_, WebRtcState>,
 ) -> Result<(), String> {
+    dbg_log(&format!(
+        "[remote-ice] candidate='{}' mid={:?} mline={:?}",
+        candidate, sdp_mid, sdp_mline_index
+    ));
     let init = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
         candidate,
         sdp_mid,
@@ -906,13 +930,14 @@ async fn receive_ice_candidate(
     };
 
     let guard = rtc_state.0.lock().await;
-    let peer = guard
-        .as_ref()
-        .ok_or_else(|| "WebRTC peer not initialized".to_string())?;
-    peer.add_ice_candidate(init)
-        .await
-        .map_err(|e| e.to_string())?;
-
+    let peer = guard.as_ref().ok_or_else(|| {
+        dbg_log("[remote-ice] FAILED: no peer in rtc_state");
+        "WebRTC peer not initialized".to_string()
+    })?;
+    peer.add_ice_candidate(init).await.map_err(|e| {
+        dbg_log(&format!("[remote-ice] add_ice_candidate err: {e}"));
+        e.to_string()
+    })?;
     Ok(())
 }
 
