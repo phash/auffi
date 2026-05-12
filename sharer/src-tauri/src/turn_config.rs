@@ -39,6 +39,13 @@ pub fn to_ice_servers(creds: Option<TurnCredentials>) -> Vec<RTCIceServer> {
 pub async fn fetch_ice_servers(backend_http_url: &str) -> Vec<RTCIceServer> {
     let url = format!("{backend_http_url}/turn-credentials");
 
+    // Backend enforces an Origin allow-list on /turn-credentials. reqwest
+    // does not send Origin by default (it's a browser concept), so the
+    // sharer must supply one explicitly. Fall back to backend_http_url
+    // itself (already in https://host form) unless AUFFI_SHARER_ORIGIN
+    // overrides — same override logic as signaling.rs::derive_origin.
+    let origin = std::env::var("AUFFI_SHARER_ORIGIN").unwrap_or_else(|_| backend_http_url.to_string());
+
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
@@ -50,7 +57,7 @@ pub async fn fetch_ice_servers(backend_http_url: &str) -> Vec<RTCIceServer> {
         }
     };
 
-    let resp = match client.post(&url).send().await {
+    let resp = match client.post(&url).header("Origin", &origin).send().await {
         Ok(r) => r,
         Err(e) => {
             log::warn!("TURN fetch: request to {url} failed: {e}");
