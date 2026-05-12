@@ -153,10 +153,16 @@ async fn open_portal() -> Result<PortalStreams, String> {
         .ok_or_else(|| "portal returned no streams".to_string())?;
 
     let node_id = stream.pipe_wire_node_id();
+    // If the portal can't tell us a size, something is wrong upstream
+    // (mis-configured compositor, broken portal impl). Fall-back to a
+    // hardcoded 1920x1080 silently hides protocol misbehaviour and the
+    // VP8 encoder then scales/crops away pixels with no warning. Bail
+    // out instead — the user sees a clear error instead of a degraded
+    // stream.
     let (width, height) = stream
         .size()
         .map(|(w, h)| (w.max(0) as u32, h.max(0) as u32))
-        .unwrap_or((1920, 1080));
+        .ok_or_else(|| "portal returned stream without size".to_string())?;
     dbg_log(&format!(
         "[gst-portal] stream node_id={node_id} size={width}x{height}"
     ));

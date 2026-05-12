@@ -25,16 +25,22 @@ interface DisplayInfo {
   height: number;
 }
 
-interface RelayPayload {
-  kind: "sdp" | "ice" | string;
-  sdp?: { type: string; sdp: string };
-  candidate?: {
-    candidate: string;
-    sdpMid: string | null;
-    sdpMLineIndex: number | null;
-    usernameFragment: string | null;
-  };
-}
+// Mirrors the backend's RELAY_KINDS allow-list. Adding `| string` would
+// widen the type to all strings and the literal members become decorative
+// — keep the tagged union narrow so a typo in one branch fails to compile.
+type RelayPayload =
+  | { kind: "sdp"; sdp: { type: string; sdp: string } }
+  | {
+      kind: "ice";
+      candidate: {
+        candidate: string;
+        sdpMid: string | null;
+        sdpMLineIndex: number | null;
+        usernameFragment: string | null;
+      };
+    }
+  | { kind: "hello" }
+  | { kind: "bye" };
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 
@@ -369,7 +375,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
       setStatus("Verbindung akzeptiert — Bildschirm auswählen…", "waiting");
       const monitors = await invoke<DisplayInfo[]>("list_monitors");
       renderMonitorChoices(monitors);
-      monitorSelectEl.classList.add("visible");
+      openMonitorPicker("start");
     })
     .catch((err: unknown) => {
       setStatus(`Fehler: ${String(err)}`, "error");
@@ -422,9 +428,17 @@ document.getElementById("decline")!.addEventListener("click", () => {
 // ── Start streaming ──────────────────────────────────────────────────────────
 
 // The monitor-pick modal serves two flows: initial start, and runtime switch
-// during an active session. The mode is set right before the modal opens and
-// reset to "start" on close.
-let monitorSelectMode: "start" | "switch" = "start";
+// during an active session. The mode lives on the modal element's
+// dataset so an error path that forgets to reset it can't strand a future
+// "start" flow in "switch" semantics — closing the modal clears it.
+function openMonitorPicker(mode: "start" | "switch"): void {
+  monitorSelectEl.dataset.mode = mode;
+  monitorSelectEl.classList.add("visible");
+}
+function closeMonitorPicker(): void {
+  monitorSelectEl.classList.remove("visible");
+  delete monitorSelectEl.dataset.mode;
+}
 
 streamBtn.addEventListener("click", () => {
   const checked = monitorListEl.querySelector<HTMLInputElement>(
@@ -435,21 +449,20 @@ streamBtn.addEventListener("click", () => {
     return;
   }
   const monitorId = parseInt(checked.value, 10);
-  monitorSelectEl.classList.remove("visible");
+  const mode = monitorSelectEl.dataset.mode === "switch" ? "switch" : "start";
+  closeMonitorPicker();
   streamBtn.disabled = true;
 
-  if (monitorSelectMode === "switch") {
+  if (mode === "switch") {
     setStatus("Bildschirm wird gewechselt…", "waiting");
     invoke("switch_monitor", { monitorId })
       .then(() => {
         setStatus("Streaming läuft.", "success");
         streamBtn.disabled = false;
-        monitorSelectMode = "start";
       })
       .catch((err: unknown) => {
         showFriendlyError("Bildschirm-Wechsel fehlgeschlagen. Bitte erneut versuchen.", err);
         streamBtn.disabled = false;
-        monitorSelectMode = "start";
       });
     return;
   }
@@ -466,7 +479,7 @@ streamBtn.addEventListener("click", () => {
     .catch((err: unknown) => {
       showFriendlyError("Streamen konnte nicht gestartet werden. Bitte erneut versuchen.", err);
       streamBtn.disabled = false;
-      monitorSelectEl.classList.add("visible");
+      openMonitorPicker("start");
     });
 });
 
@@ -485,9 +498,8 @@ switchMonitorBtn?.addEventListener("click", async () => {
       return;
     }
     const monitors = await invoke<DisplayInfo[]>("list_monitors");
-    monitorSelectMode = "switch";
     renderMonitorChoices(monitors);
-    monitorSelectEl.classList.add("visible");
+    openMonitorPicker("switch");
     streamBtn.disabled = false;
   } catch (err) {
     showFriendlyError("Bildschirm-Wechsel fehlgeschlagen. Bitte erneut versuchen.", err);
@@ -647,7 +659,7 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
         setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — Bildschirm auswählen…`, "waiting");
         const monitors = await invoke<DisplayInfo[]>("list_monitors");
         renderMonitorChoices(monitors);
-        monitorSelectEl.classList.add("visible");
+        openMonitorPicker("start");
       })
       .catch((err: unknown) => {
         setStatus(`Fehler: ${String(err)}`, "error");
@@ -688,7 +700,7 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
 listen<{ reason: string }>("disconnected", (e) => {
   setStatus("Getrennt: " + e.payload.reason, "error");
   confirmEl.classList.remove("visible");
-  monitorSelectEl.classList.remove("visible");
+  closeMonitorPicker();
   hideStreamingActions();
   showReconnect();
 });
