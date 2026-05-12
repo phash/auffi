@@ -2,7 +2,7 @@
 //!
 //! # Backend selection
 //!
-//! At runtime the module inspects `XDG_SESSION_TYPE`:
+//! On Linux, the module inspects `XDG_SESSION_TYPE`:
 //!
 //! - `wayland` → portal backend (xdg-desktop-portal + PipeWire).
 //!   The compositor shows a "Choose what to share" dialog; the user's choice
@@ -12,6 +12,9 @@
 //!
 //! - `x11` / anything else → x11rb backend (XRandR enumeration + GetImage).
 //!   `list_displays` returns the full RandR monitor list.
+//!
+//! On Windows the xcap backend (Windows Graphics Capture under the hood) is
+//! always selected. `list_displays` returns all monitors enumerated by xcap.
 //!
 //! # Public interface (unchanged from the original single-file implementation)
 //!
@@ -28,8 +31,12 @@
 //! }
 //! ```
 
+#[cfg(target_os = "linux")]
 mod portal;
+#[cfg(target_os = "linux")]
 mod x11;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use std::sync::mpsc;
 
@@ -56,8 +63,12 @@ pub struct BgraFrame {
 /// The backend variant selected for this process invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
+    #[cfg(target_os = "linux")]
     Portal,
+    #[cfg(target_os = "linux")]
     X11,
+    #[cfg(target_os = "windows")]
+    Windows,
 }
 
 /// Decide which backend to use based on the session environment.
@@ -65,13 +76,20 @@ pub enum Backend {
 /// Extracted into a standalone function so it can be unit-tested without
 /// touching any OS resources.
 pub fn select_backend() -> Backend {
-    match std::env::var("XDG_SESSION_TYPE")
-        .unwrap_or_default()
-        .to_lowercase()
-        .as_str()
+    #[cfg(target_os = "linux")]
     {
-        "wayland" => Backend::Portal,
-        _ => Backend::X11,
+        match std::env::var("XDG_SESSION_TYPE")
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str()
+        {
+            "wayland" => Backend::Portal,
+            _ => Backend::X11,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Backend::Windows
     }
 }
 
@@ -85,8 +103,10 @@ pub fn select_backend() -> Backend {
 /// `ScreenCapturer::start` is called.
 ///
 /// On X11 the full RandR monitor list is returned.
+/// On Windows the full xcap monitor list is returned.
 pub fn list_displays() -> Vec<DisplayInfo> {
     match select_backend() {
+        #[cfg(target_os = "linux")]
         Backend::Portal => vec![DisplayInfo {
             id: 0,
             title: "Wähle Bildschirm…".to_string(),
@@ -95,7 +115,19 @@ pub fn list_displays() -> Vec<DisplayInfo> {
             width: 1920,
             height: 1080,
         }],
+        #[cfg(target_os = "linux")]
         Backend::X11 => x11::list_displays_inner().unwrap_or_else(|_| {
+            vec![DisplayInfo {
+                id: 0,
+                title: "Primary Display".to_string(),
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+            }]
+        }),
+        #[cfg(target_os = "windows")]
+        Backend::Windows => windows::list_displays_inner().unwrap_or_else(|_| {
             vec![DisplayInfo {
                 id: 0,
                 title: "Primary Display".to_string(),
@@ -112,9 +144,9 @@ pub fn list_displays() -> Vec<DisplayInfo> {
 
 /// Opaque stop handle whose Drop impl ends the capture session.
 ///
-/// For the X11 backend this is an `mpsc::SyncSender<()>`; for the portal
-/// backend it is a `pw::channel::Sender<()>`.  We box-erase the type so
-/// `ScreenCapturer` doesn't need to be generic.
+/// For the X11 and Windows backends this wraps an `mpsc::SyncSender<()>`; for
+/// the portal backend it is a `pw::channel::Sender<()>`. We box-erase the type
+/// so `ScreenCapturer` doesn't need to be generic.
 ///
 /// The inner value is intentionally never read — it exists solely so that the
 /// boxed sender is dropped together with `ScreenCapturer`, closing the channel
@@ -123,7 +155,7 @@ struct StopHandle(#[allow(dead_code)] Box<dyn Send>);
 
 /// An active screen capture session.
 ///
-/// Wraps either the X11 or the portal backend transparently.  Drop to stop.
+/// Wraps the active platform backend transparently. Drop to stop.
 pub struct ScreenCapturer {
     /// Unified frame receive endpoint.
     rx: mpsc::Receiver<BgraFrame>,
@@ -141,13 +173,19 @@ impl ScreenCapturer {
     /// monitor in the compositor dialog opened by the portal.
     ///
     /// On X11 `display_id` selects the RandR monitor index.
+    /// On Windows `display_id` selects the xcap monitor index.
     pub fn start(display_id: u32) -> Result<Self, String> {
         match select_backend() {
+            #[cfg(target_os = "linux")]
             Backend::Portal => Self::start_portal(),
+            #[cfg(target_os = "linux")]
             Backend::X11 => Self::start_x11(display_id),
+            #[cfg(target_os = "windows")]
+            Backend::Windows => Self::start_windows(display_id),
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn start_portal() -> Result<Self, String> {
         let cap = portal::PortalCapturer::start()?;
         let frame_width = cap.frame_width;
@@ -178,6 +216,7 @@ impl ScreenCapturer {
         })
     }
 
+    #[cfg(target_os = "linux")]
     fn start_x11(display_id: u32) -> Result<Self, String> {
         let cap = x11::X11Capturer::start(display_id)?;
         let frame_width = cap.frame_width;
@@ -189,6 +228,35 @@ impl ScreenCapturer {
 
         std::thread::Builder::new()
             .name("capture-relay-x11".to_string())
+            .spawn(move || {
+                for frame in src_rx {
+                    if bridge_tx.send(frame).is_err() {
+                        break;
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+
+        Ok(Self {
+            rx: bridge_rx,
+            _stop: StopHandle(Box::new(stop_tx)),
+            frame_width,
+            frame_height,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    fn start_windows(display_id: u32) -> Result<Self, String> {
+        let cap = windows::WindowsCapturer::start(display_id)?;
+        let frame_width = cap.frame_width;
+        let frame_height = cap.frame_height;
+
+        let (bridge_tx, bridge_rx) = mpsc::sync_channel::<BgraFrame>(4);
+        let src_rx = cap.rx;
+        let stop_tx = cap._stop_tx;
+
+        std::thread::Builder::new()
+            .name("capture-relay-win".to_string())
             .spawn(move || {
                 for frame in src_rx {
                     if bridge_tx.send(frame).is_err() {
@@ -224,24 +292,33 @@ impl ScreenCapturer {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn capture_backend_selection_prefers_portal_on_wayland() {
-        // Safety: test-only env mutation.  Tests within this module run serially
+        // Safety: test-only env mutation. Tests within this module run serially
         // when invoked with `cargo test --lib` (single-threaded by default per test).
         std::env::set_var("XDG_SESSION_TYPE", "wayland");
         assert_eq!(select_backend(), Backend::Portal);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn capture_backend_selection_falls_back_to_x11_on_xorg() {
         std::env::set_var("XDG_SESSION_TYPE", "x11");
         assert_eq!(select_backend(), Backend::X11);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn backend_unknown_session_maps_to_x11() {
         std::env::set_var("XDG_SESSION_TYPE", "mir");
         assert_eq!(select_backend(), Backend::X11);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn backend_on_windows_is_windows() {
+        assert_eq!(select_backend(), Backend::Windows);
     }
 
     #[test]
