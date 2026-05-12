@@ -478,6 +478,16 @@ async fn disconnect_streaming(
         tokio::time::sleep(Duration::from_millis(80)).await;
     }
 
+    // Drop the signaling handle so start_signaling can run again. Without
+    // this the #64 guard ("signaling already running") trips on every
+    // subsequent restart because the slot is still populated even after
+    // we sent `bye`. Dropping the handle ends the WS task, which in turn
+    // emits the "code-assigned" listener teardown — the next start_signaling
+    // gets a fresh code-channel.
+    if let Ok(mut guard) = sig_state.0.lock() {
+        *guard = None;
+    }
+
     // Drop the peer — this closes all ICE/DTLS transports.
     {
         let mut guard = rtc_state.0.lock().await;
