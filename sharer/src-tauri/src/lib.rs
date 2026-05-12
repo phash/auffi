@@ -129,10 +129,18 @@ fn list_monitors() -> Result<Vec<DisplayInfo>, String> {
 
 /// Returns true on Wayland sessions where the compositor portal handles
 /// monitor picking — in that case the webview skips its own monitor-select
-/// step and goes straight to start_streaming.
+/// step and goes straight to start_streaming. Always false on Windows
+/// (xcap exposes monitors directly, the webview handles the picker itself).
 #[tauri::command]
 fn capture_backend_uses_portal() -> bool {
-    matches!(capture::select_backend(), capture::Backend::Portal)
+    #[cfg(target_os = "linux")]
+    {
+        matches!(capture::select_backend(), capture::Backend::Portal)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 /// Show the border overlay window on the monitor being streamed, emit
