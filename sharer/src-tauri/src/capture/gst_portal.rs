@@ -23,6 +23,7 @@
 //! than queued.
 
 use std::os::fd::IntoRawFd;
+use std::path::PathBuf;
 use std::sync::mpsc;
 
 use gstreamer as gst;
@@ -35,6 +36,7 @@ use ashpd::desktop::{
 };
 
 use super::BgraFrame;
+use crate::dbg_log;
 
 /// Output of the async portal negotiation step.
 struct PortalStreams {
@@ -44,9 +46,35 @@ struct PortalStreams {
     height: u32,
 }
 
+/// Path where the restore_token returned by the portal is cached so the
+/// dialog does not re-prompt on subsequent shares (modeled on hoptodesk's
+/// `wayland-restore-token` config key).
+fn restore_token_path() -> Option<PathBuf> {
+    let base = dirs::data_local_dir()?.join("auffi");
+    Some(base.join("portal-restore-token"))
+}
+
+fn read_restore_token() -> Option<String> {
+    let p = restore_token_path()?;
+    let t = std::fs::read_to_string(p).ok()?;
+    let t = t.trim();
+    if t.is_empty() { None } else { Some(t.to_string()) }
+}
+
+fn write_restore_token(token: &str) {
+    let Some(p) = restore_token_path() else { return };
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&p, token);
+    dbg_log(&format!("[gst-portal] saved restore_token to {p:?}"));
+}
+
 /// Run the ashpd ScreenCast handshake.  Blocks until the user clicks "Teilen"
-/// in the compositor dialog.
+/// in the compositor dialog the first time; on subsequent runs the saved
+/// restore_token lets the portal grant the same source without prompting.
 async fn open_portal() -> Result<PortalStreams, String> {
+    dbg_log("[gst-portal] open_portal start");
     let proxy = Screencast::new()
         .await
         .map_err(|e| format!("screencast portal unavailable: {e}"))?;
@@ -55,18 +83,26 @@ async fn open_portal() -> Result<PortalStreams, String> {
         .create_session()
         .await
         .map_err(|e| format!("create_session failed: {e}"))?;
+    dbg_log("[gst-portal] session created");
+
+    let saved_token = read_restore_token();
+    dbg_log(&format!(
+        "[gst-portal] restore_token present={}",
+        saved_token.is_some()
+    ));
 
     proxy
         .select_sources(
             &session,
             CursorMode::Embedded,
             SourceType::Monitor.into(),
-            false,
-            None,
-            PersistMode::DoNot,
+            true,                         // multiple monitors allowed
+            saved_token.as_deref(),       // re-attach previously-granted source
+            PersistMode::ExplicitlyRevoked, // keep until user revokes in settings
         )
         .await
         .map_err(|e| format!("select_sources failed: {e}"))?;
+    dbg_log("[gst-portal] select_sources OK");
 
     let response = proxy
         .start(&session, None)
@@ -74,6 +110,12 @@ async fn open_portal() -> Result<PortalStreams, String> {
         .map_err(|e| format!("start failed: {e}"))?
         .response()
         .map_err(|e| format!("portal dialog cancelled or rejected: {e}"))?;
+    dbg_log("[gst-portal] start() returned");
+
+    // Persist the restore_token so the next launch skips the dialog.
+    if let Some(token) = response.restore_token() {
+        write_restore_token(token);
+    }
 
     let stream = response
         .streams()
@@ -85,11 +127,15 @@ async fn open_portal() -> Result<PortalStreams, String> {
         .size()
         .map(|(w, h)| (w.max(0) as u32, h.max(0) as u32))
         .unwrap_or((1920, 1080));
+    dbg_log(&format!(
+        "[gst-portal] stream node_id={node_id} size={width}x{height}"
+    ));
 
     let pw_fd = proxy
         .open_pipe_wire_remote(&session)
         .await
         .map_err(|e| format!("open_pipe_wire_remote failed: {e}"))?;
+    dbg_log("[gst-portal] open_pipe_wire_remote OK");
 
     Ok(PortalStreams {
         pw_fd,

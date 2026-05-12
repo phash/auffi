@@ -135,7 +135,12 @@ fn list_monitors() -> Result<Vec<DisplayInfo>, String> {
 fn capture_backend_uses_portal() -> bool {
     #[cfg(target_os = "linux")]
     {
-        matches!(capture::select_backend(), capture::Backend::Portal)
+        let xdg = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
+        let uses_portal = matches!(capture::select_backend(), capture::Backend::Portal);
+        dbg_log(&format!(
+            "[capture_backend_uses_portal] XDG_SESSION_TYPE={xdg:?} -> uses_portal={uses_portal}"
+        ));
+        uses_portal
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -196,17 +201,23 @@ async fn start_streaming(
     ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
+    dbg_log(&format!("[start_streaming] enter monitor_id={}", monitor_id));
     let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
         std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
             .unwrap_or("wss://auffi.app/signal")
             .to_string()
     });
     let backend_http_url = turn_config::ws_url_to_http(&ws_url);
+    dbg_log(&format!("[start_streaming] backend_http_url={}", backend_http_url));
     let ice_servers = turn_config::fetch_ice_servers(&backend_http_url).await;
+    dbg_log(&format!("[start_streaming] ice_servers count={}", ice_servers.len()));
 
     let peer = webrtc_peer::SharerPeer::new(ice_servers)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            dbg_log(&format!("[start_streaming] peer::new failed: {e}"));
+            e.to_string()
+        })?;
 
     let tx = {
         let guard = sig_state
@@ -270,12 +281,16 @@ async fn start_streaming(
         }
     });
 
-    let mut capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| e.to_string())?;
-    log::info!(
+    dbg_log("[start_streaming] before ScreenCapturer::start");
+    let mut capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| {
+        dbg_log(&format!("[start_streaming] ScreenCapturer::start FAILED: {e}"));
+        e.to_string()
+    })?;
+    dbg_log(&format!(
         "[start_streaming] capturer ready {}x{}",
         capturer.width(),
         capturer.height()
-    );
+    ));
     let width = capturer.width();
     let height = capturer.height();
 
