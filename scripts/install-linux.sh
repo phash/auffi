@@ -1,24 +1,27 @@
 #!/usr/bin/env bash
-# install-linux.sh — End-user installer for Screenie (Linux)
+# install-linux.sh — End-user installer for Auffi (Linux)
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/phash/screenie/main/scripts/install-linux.sh | bash
 #   bash install-linux.sh --uninstall
+#
+# Note: GITHUB_REPO temporarily points at phash/screenie — GitHub's automatic
+# redirects keep this working after the upstream repo is renamed to phash/auffi.
 #
 # Supports: Debian/Ubuntu (.deb), Fedora/RHEL (.rpm), Arch (AppImage), others (AppImage)
 
 set -euo pipefail
 
 GITHUB_REPO="phash/screenie"
-APP_NAME="screenie"
+APP_NAME="auffi"
 INSTALL_BIN="/usr/local/bin/$APP_NAME"
 DESKTOP_FILE="/usr/share/applications/$APP_NAME.desktop"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-info()    { echo "[screenie] $*"; }
-success() { echo "[screenie] ✓ $*"; }
-warn()    { echo "[screenie] ⚠ $*" >&2; }
-err()     { echo "[screenie] ✗ $*" >&2; exit 1; }
+info()    { echo "[auffi] $*"; }
+success() { echo "[auffi] ✓ $*"; }
+warn()    { echo "[auffi] ⚠ $*" >&2; }
+err()     { echo "[auffi] ✗ $*" >&2; exit 1; }
 
 need_sudo() {
   if [[ $EUID -ne 0 ]]; then
@@ -72,7 +75,7 @@ install_deps() {
     $SUDO pacman -Sy --noconfirm webkit2gtk-4.1 libvpx
   else
     warn "Unknown distro '$DISTRO_ID' — skipping automatic dependency install."
-    warn "Please install: webkit2gtk-4.1, libvpx manually before running Screenie."
+    warn "Please install: webkit2gtk-4.1, libvpx manually before running Auffi."
   fi
   success "Dependencies installed."
 }
@@ -105,21 +108,21 @@ download_asset() {
 install_deb() {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local deb_file="$tmpdir/screenie.deb"
+  local deb_file="$tmpdir/auffi.deb"
   # Try versioned name pattern; fall back to generic
-  local asset_name="screenie_${VERSION#v}_amd64.deb"
+  local asset_name="auffi_${VERSION#v}_amd64.deb"
   download_asset "$asset_name" "$deb_file" || err "Could not download $asset_name from GitHub release $VERSION."
   info "Installing .deb package..."
   $SUDO dpkg -i "$deb_file" || $SUDO apt-get install -f -y
   rm -rf "$tmpdir"
-  success "Screenie installed via .deb"
+  success "Auffi installed via .deb"
 }
 
 install_rpm() {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local rpm_file="$tmpdir/screenie.rpm"
-  local asset_name="screenie-${VERSION#v}-1.x86_64.rpm"
+  local rpm_file="$tmpdir/auffi.rpm"
+  local asset_name="auffi-${VERSION#v}-1.x86_64.rpm"
   download_asset "$asset_name" "$rpm_file" || err "Could not download $asset_name from GitHub release $VERSION."
   info "Installing .rpm package..."
   if command -v dnf &>/dev/null; then
@@ -128,26 +131,26 @@ install_rpm() {
     $SUDO rpm -U "$rpm_file"
   fi
   rm -rf "$tmpdir"
-  success "Screenie installed via .rpm"
+  success "Auffi installed via .rpm"
 }
 
 install_appimage() {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local appimage_file="$tmpdir/screenie.AppImage"
-  local asset_name="screenie_${VERSION#v}_amd64.AppImage"
+  local appimage_file="$tmpdir/auffi.AppImage"
+  local asset_name="auffi_${VERSION#v}_amd64.AppImage"
   download_asset "$asset_name" "$appimage_file" || err "Could not download $asset_name from GitHub release $VERSION."
   chmod +x "$appimage_file"
   $SUDO mv "$appimage_file" "$INSTALL_BIN"
-  success "Screenie installed as AppImage at $INSTALL_BIN"
+  success "Auffi installed as AppImage at $INSTALL_BIN"
 
   # Create a minimal .desktop entry
   $SUDO tee "$DESKTOP_FILE" > /dev/null <<EOF
 [Desktop Entry]
-Name=Screenie
+Name=Auffi
 Comment=Sicheres Screen-Sharing mit Fernsteuerung
 Exec=$INSTALL_BIN
-Icon=screenie
+Icon=auffi
 Terminal=false
 Type=Application
 Categories=Network;RemoteAccess;
@@ -158,21 +161,34 @@ EOF
 # ── Uninstall ──────────────────────────────────────────────────────────────────
 
 do_uninstall() {
-  info "Uninstalling Screenie..."
+  info "Uninstalling Auffi..."
   need_sudo
   detect_distro
 
-  if is_debian_based && dpkg -l screenie &>/dev/null 2>&1; then
-    $SUDO dpkg -r screenie && success "Removed .deb package." || true
-  elif is_fedora_based && rpm -q screenie &>/dev/null 2>&1; then
-    $SUDO rpm -e screenie && success "Removed .rpm package." || true
+  # Remove current package, plus any leftover screenie package from pre-rebrand installs.
+  if is_debian_based; then
+    for pkg in auffi screenie; do
+      if dpkg -l "$pkg" &>/dev/null 2>&1; then
+        $SUDO dpkg -r "$pkg" && success "Removed .deb package $pkg." || true
+      fi
+    done
+  elif is_fedora_based; then
+    for pkg in auffi screenie; do
+      if rpm -q "$pkg" &>/dev/null 2>&1; then
+        $SUDO rpm -e "$pkg" && success "Removed .rpm package $pkg." || true
+      fi
+    done
   fi
 
-  # Clean up AppImage / symlink / manual install
-  [[ -f "$INSTALL_BIN" ]]   && $SUDO rm -f "$INSTALL_BIN"   && success "Removed $INSTALL_BIN"
-  [[ -f "$DESKTOP_FILE" ]]  && $SUDO rm -f "$DESKTOP_FILE"  && success "Removed $DESKTOP_FILE"
+  # Clean up AppImage / symlink / manual install (current + legacy paths)
+  for bin in "$INSTALL_BIN" /usr/local/bin/screenie; do
+    [[ -f "$bin" ]] && $SUDO rm -f "$bin" && success "Removed $bin"
+  done
+  for desktop in "$DESKTOP_FILE" /usr/share/applications/screenie.desktop; do
+    [[ -f "$desktop" ]] && $SUDO rm -f "$desktop" && success "Removed $desktop"
+  done
   $SUDO update-desktop-database /usr/share/applications/ 2>/dev/null || true
-  success "Screenie uninstalled."
+  success "Auffi uninstalled."
 }
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -200,11 +216,11 @@ main() {
   fi
 
   info ""
-  info "Done! Launch Screenie:"
-  info "  → From your app menu: search for 'Screenie'"
-  info "  → Or run: screenie"
+  info "Done! Launch Auffi:"
+  info "  → From your app menu: search for 'Auffi'"
+  info "  → Or run: auffi"
   info ""
-  info "Viewer (Helfer-Seite): https://screenie.mr-development.de"
+  info "Viewer (Helfer-Seite): https://auffi.app"
 }
 
 main "$@"
