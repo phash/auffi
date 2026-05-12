@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-TeamViewer-style screen-sharing tool. Three components in one monorepo:
+TeamViewer-style screen-sharing tool. Live at `https://screenie.mr-development.de`. Three components in one monorepo:
 
 - `backend/` — Node.js + Fastify WebSocket signaling server. Dockerized.
 - `viewer/` — Browser-based viewer (Vite + TypeScript). Static build, served by reverse proxy.
@@ -10,7 +10,38 @@ TeamViewer-style screen-sharing tool. Three components in one monorepo:
 
 Target deployment: Linux VPS, **everything runs in Docker** (backend, coturn, reverse proxy, optional DB).
 
+**Wayland capture** goes through GStreamer (`pipewiresrc ! videoconvert ! BGRA ! appsink`) rather than direct `pipewire-rs` — the GStreamer element handles DMA-BUF / modifier negotiation that Plasma 6 rejects on the raw SHM path. See `sharer/src-tauri/src/capture/gst_portal.rs`.
+
+**Entry points:**
+- Backend: `backend/src/index.ts` → `server.ts` (Fastify) → `signaling.ts` (WS rooms)
+- Viewer: `viewer/src/main.ts` → `ui.ts` (UI wiring) → `webrtc-client.ts` (peer)
+- Sharer: `sharer/src-tauri/src/lib.rs` (Tauri commands) → `capture/mod.rs` (per-OS capture) → `webrtc_peer.rs` (encoder/peer)
+- Cross-component wire format: `docs/protocol.md` — both sides of every message reference this.
+
 Specs and plans live under `docs/superpowers/`.
+
+## Quick Commands
+
+```bash
+# Backend (Fastify signaling)
+cd backend && npm run dev          # tsx watch on :8080
+cd backend && npm test             # vitest
+
+# Viewer (browser SPA)
+cd viewer && npm run dev           # vite on :5173
+cd viewer && npm run build         # static dist/
+cd viewer && npm run test:e2e      # Playwright
+
+# Sharer (Tauri desktop app)
+cd sharer && npm run tauri:dev     # native window + DevTools
+cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
+
+# Local stack (backend + coturn behind dev Caddy)
+docker compose up --build
+
+# Production deploy (to musikersuche@musikersuche.org:/opt/screenie)
+./ops/deploy.sh                    # idempotent — builds, transfers, starts
+```
 
 ## Non-Negotiable Engineering Rules
 
@@ -60,6 +91,10 @@ Specs and plans live under `docs/superpowers/`.
 - **Backend is stateless across restarts where possible.** In-memory session state is acceptable for MVP, but the design must accommodate horizontal scaling later (e.g., Redis-backed store as a drop-in).
 - **No shared mutable state across module boundaries.** Pass dependencies in.
 
+### Sharer Debug Logging
+
+`println!` / `eprintln!` from inside Tauri command handlers are **swallowed by `tauri-cli` pipe buffering** — you will see nothing on stdout. Use the `dbg_log()` helper in `sharer/src-tauri/src/lib.rs` instead; it appends to `/tmp/screenie-debug.log` with an explicit flush. Tail that file while running `tauri:dev`.
+
 ## Docker Conventions
 
 - Each component that runs on a server has its own `Dockerfile` (multi-stage build).
@@ -69,12 +104,14 @@ Specs and plans live under `docs/superpowers/`.
 - Health checks defined for every long-running service.
 - No secrets in `Dockerfile` or images. Configuration via env vars from `.env` (gitignored).
 
-## Reverse Proxy Choice
+## Reverse Proxy
 
-Use **Caddy** as the reverse proxy (instead of Nginx) for production:
-- Automatic Let's Encrypt — no manual cert handling.
-- Simpler config (Caddyfile) than Nginx for this use case.
-- Native WebSocket support, no special config.
+**Caddy** for TLS + Let's Encrypt + native WebSocket support. Two production modes:
+
+- **Standalone** — `docker-compose.prod.yml` brings up our own Caddy on :80/:443.
+- **Cluster** (current prod) — `docker-compose.prod.yml` + `docker-compose.cluster.yml` overlay. Our Caddy is disabled; the cluster's shared Caddy at `/opt/caddyserver/Caddyfile` reverse-proxies `screenie.mr-development.de` to `screenie-backend:8080` via the external `caddy-proxy` network. The `viewer` runs as a small nginx-alpine sidecar serving the static dist.
+
+TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy cert volume to `turn-certs-staged`.
 
 ## Definition of "Done" per Task
 
