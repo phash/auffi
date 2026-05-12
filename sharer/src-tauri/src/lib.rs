@@ -64,11 +64,40 @@ struct PeerIpState(Mutex<Option<String>>);
 struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManager>>>);
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn start_signaling(
     app: tauri::AppHandle,
     state: State<'_, SignalingState>,
     ip_state: State<'_, PeerIpState>,
+    rtc_state: State<'_, WebRtcState>,
+    input_state: State<'_, InputControllerState>,
+    file_state: State<'_, FileTransferState>,
 ) -> Result<(), String> {
+    // Refuse to start a fresh signaling session while the previous one's
+    // resources are still allocated. Overwriting `SignalingState` while the
+    // WebRTC peer / input controller / file-transfer manager from a prior
+    // session are still live would leak running tasks and silently keep an
+    // attacker-controlled remote-input session alive after the UI thinks
+    // it has been replaced. The UI must call `disconnect_streaming` first.
+    // (gh #64)
+    if state
+        .0
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+    {
+        return Err("signaling already running — call disconnect_streaming first".to_string());
+    }
+    if rtc_state.0.lock().await.is_some() {
+        return Err("webrtc peer still alive — call disconnect_streaming first".to_string());
+    }
+    if input_state.0.lock().await.is_some() {
+        return Err("input controller still alive — call disconnect_streaming first".to_string());
+    }
+    if file_state.0.lock().await.is_some() {
+        return Err("file transfer still alive — call disconnect_streaming first".to_string());
+    }
+
     // Clear any stale peer IP from a previous session.
     if let Ok(mut guard) = ip_state.0.lock() {
         *guard = None;
