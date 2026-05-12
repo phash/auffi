@@ -113,7 +113,7 @@ Container names (`auffi-backend`, `auffi-caddy`, `auffi-coturn`, etc.), image na
 
 ### Sharer Debug Logging
 
-`println!` / `eprintln!` from inside Tauri command handlers are **swallowed by `tauri-cli` pipe buffering** — you will see nothing on stdout. Use the `dbg_log()` helper in `sharer/src-tauri/src/lib.rs` instead; it appends to `/tmp/auffi-debug.log` with an explicit flush. Tail that file while running `tauri:dev`.
+`println!` / `eprintln!` from inside Tauri command handlers are **swallowed by `tauri-cli` pipe buffering** — you will see nothing on stdout. Use the `dbg_log()` helper in `sharer/src-tauri/src/lib.rs` instead; it appends to `auffi-debug.log` in the OS temp dir (`/tmp/auffi-debug.log` on Linux/macOS, `%TEMP%\auffi-debug.log` on Windows) with an explicit flush. Tail that file while running `tauri:dev`.
 
 ### Sharer Teardown Has Multiple Intents
 

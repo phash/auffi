@@ -9,14 +9,25 @@ mod signaling;
 mod turn_config;
 mod webrtc_peer;
 
-/// Append a diagnostic line to `/tmp/auffi-debug.log` with explicit
-/// flush. Stdio buffering eats println!/eprintln! when the tauri-cli pipes
-/// our streams, so for ad-hoc live diagnostics this writes to a known path
-/// that can be `tail -F`'d. Errors are silently dropped — diagnostics must
-/// never crash the app.
+/// Resolve the destination path for `dbg_log()` writes.
+///
+/// Uses the OS-specific temp dir so the helper works on both Linux/macOS
+/// (`/tmp/auffi-debug.log`) and Windows (`%TEMP%\auffi-debug.log`).
+/// Hard-coding `/tmp/` would silently no-op on Windows because the path
+/// is not valid there.
+#[cfg(debug_assertions)]
+fn dbg_log_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("auffi-debug.log")
+}
+
+/// Append a diagnostic line to the dbg-log file (`auffi-debug.log` in the
+/// OS temp directory) with an explicit flush. Stdio buffering eats
+/// println!/eprintln! when the tauri-cli pipes our streams, so for ad-hoc
+/// live diagnostics this writes to a known path that can be tailed.
+/// Errors are silently dropped — diagnostics must never crash the app.
 ///
 /// Debug-only: in release builds the function compiles to a no-op so the
-/// world-writable `/tmp` path is not exposed (TOCTOU symlink risk on Linux).
+/// world-writable temp dir is not exposed (TOCTOU symlink risk on Linux).
 /// Production code paths should prefer `log::info!`/`log::warn!`.
 #[cfg(debug_assertions)]
 #[allow(dead_code)]
@@ -25,7 +36,7 @@ pub(crate) fn dbg_log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/tmp/auffi-debug.log")
+        .open(dbg_log_path())
     {
         let _ = writeln!(f, "{}", msg);
         let _ = f.flush();
@@ -1051,4 +1062,46 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error running tauri");
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(debug_assertions)]
+    #[test]
+    fn dbg_log_path_lives_inside_os_temp_dir_and_is_named_auffi_debug_log() {
+        let path = super::dbg_log_path();
+        assert!(path.is_absolute(), "dbg_log path must be absolute: {path:?}");
+        assert_eq!(
+            path.file_name().and_then(|n| n.to_str()),
+            Some("auffi-debug.log"),
+            "dbg_log filename must be auffi-debug.log: {path:?}"
+        );
+        assert!(
+            path.starts_with(std::env::temp_dir()),
+            "dbg_log path must be inside std::env::temp_dir(): got {path:?}, temp_dir is {:?}",
+            std::env::temp_dir()
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn dbg_log_appends_message_to_dbg_log_path() {
+        let marker = format!(
+            "dbg-log-test-marker-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        super::dbg_log(&marker);
+
+        let path = super::dbg_log_path();
+        let contents =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
+        assert!(
+            contents.contains(&marker),
+            "expected dbg_log to append marker {marker:?} to {path:?}"
+        );
+    }
 }
