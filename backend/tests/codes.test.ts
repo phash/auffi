@@ -34,6 +34,22 @@ describe("normalizeCode", () => {
     expect(result).toBeNull();
     expect(elapsed).toBeLessThan(5);
   });
+
+  // Defence-in-depth: a malformed JSON message (POJO from JSON.parse) might
+  // hand us a non-string. The TS type says "string" but at the network
+  // boundary that's not a guarantee. The runtime guard at line 11 of
+  // codes.ts catches this — these cases pin that guard so a regression
+  // can't silently drop it. (gh #84)
+  it("returns null for non-string input", () => {
+    // Each cast skips the compile-time check to mimic a network-boundary
+    // payload that smuggled in the wrong type.
+    expect(normalizeCode(null as unknown as string)).toBeNull();
+    expect(normalizeCode(undefined as unknown as string)).toBeNull();
+    expect(normalizeCode(123 as unknown as string)).toBeNull();
+    expect(normalizeCode([] as unknown as string)).toBeNull();
+    expect(normalizeCode({} as unknown as string)).toBeNull();
+    expect(normalizeCode(true as unknown as string)).toBeNull();
+  });
 });
 
 describe("SessionStore", () => {

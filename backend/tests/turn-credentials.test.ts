@@ -160,6 +160,36 @@ describe("POST /turn-credentials — credentials", () => {
   });
 });
 
+describe("POST /turn-credentials — TURN_SHARED_SECRET unset", () => {
+  // If the operator forgets to set TURN_SHARED_SECRET, server.ts logs a
+  // warning and intentionally does NOT register /turn-credentials — a
+  // safer default than serving credentials that resolve to "no secret".
+  // This test pins the "no route registered" outcome so a regression
+  // can't accidentally register the route with an empty secret. (gh #83)
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    setTurnEnv();
+    delete process.env.TURN_SHARED_SECRET; // explicit
+    app = await createServer({ port: 0, host: "127.0.0.1" });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+  });
+
+  afterAll(async () => {
+    await app.close();
+    clearTurnEnv();
+  });
+
+  it("returns 404 for POST /turn-credentials (route not registered)", async () => {
+    const res = await fetch(`${getBaseUrl(app)}/turn-credentials`, {
+      method: "POST",
+      headers: { Origin: "http://localhost:5173", "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "123-456-789" }),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("POST /turn-credentials — rate limiting", () => {
   let app: FastifyInstance;
 
