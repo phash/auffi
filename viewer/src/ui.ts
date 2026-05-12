@@ -33,8 +33,12 @@ function setConnectionType(type: ConnectionType | null): void {
   }
 }
 
+type VideoElementWithFrameCallback = HTMLVideoElement & {
+  requestVideoFrameCallback?: (cb: () => void) => number;
+};
+
 function setVideoStream(stream: MediaStream | null): void {
-  const video = document.getElementById("remote-video") as HTMLVideoElement;
+  const video = document.getElementById("remote-video") as VideoElementWithFrameCallback;
   const wrapper = document.getElementById("video-wrapper")!;
   const disconnect = document.getElementById("disconnect")!;
   const toolbar = document.getElementById("video-toolbar")!;
@@ -47,6 +51,10 @@ function setVideoStream(stream: MediaStream | null): void {
     video.srcObject = stream;
     video.classList.add("active");
     wrapper.classList.add("active");
+    // Show the "Verbindung wird hergestellt …" overlay until the first
+    // decoded frame arrives. WebRTC ICE/DTLS handshake completes before
+    // any media is actually decoded, so the gap can be a few seconds.
+    wrapper.classList.add("awaiting-frames");
     disconnect.classList.add("active");
     toolbar.classList.add("active");
     controls?.classList.add("active");
@@ -57,10 +65,25 @@ function setVideoStream(stream: MediaStream | null): void {
     if ("disablePictureInPicture" in video) {
       (video as HTMLVideoElement & { disablePictureInPicture: boolean }).disablePictureInPicture = true;
     }
+
+    const clearOverlay = (): void => {
+      wrapper.classList.remove("awaiting-frames");
+    };
+
+    // Prefer requestVideoFrameCallback — fires exactly when the first
+    // composited frame is ready. Falls back to `playing` for browsers
+    // without it (Firefox < 132). `playing` can fire before the very
+    // first frame is painted, but the gap is imperceptible.
+    if (typeof video.requestVideoFrameCallback === "function") {
+      video.requestVideoFrameCallback(() => clearOverlay());
+    } else {
+      video.addEventListener("playing", clearOverlay, { once: true });
+    }
   } else {
     video.srcObject = null;
     video.classList.remove("active");
     wrapper.classList.remove("active");
+    wrapper.classList.remove("awaiting-frames");
     disconnect.classList.remove("active");
     toolbar.classList.remove("active");
     controls?.classList.remove("active");

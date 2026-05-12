@@ -377,6 +377,54 @@
         display: block;
       }
 
+      /* Loading overlay shown until the first frame arrives. */
+      #video-loading-overlay {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 0.9rem;
+        background: #000;
+        color: rgba(255, 255, 255, 0.78);
+        font-family: var(--font);
+        font-size: 0.95rem;
+        z-index: 5;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 250ms ease;
+      }
+
+      /* While the wrapper is active we keep the overlay mounted (display:flex)
+         so the opacity fade-out animates instead of cutting on display:none. */
+      .video-wrapper.active #video-loading-overlay {
+        display: flex;
+      }
+
+      .video-wrapper.active.awaiting-frames #video-loading-overlay {
+        opacity: 1;
+      }
+
+      .video-loading-spinner {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 3px solid rgba(255, 255, 255, 0.18);
+        border-top-color: var(--accent);
+        animation: video-loading-spin 0.9s linear infinite;
+      }
+
+      @keyframes video-loading-spin {
+        to { transform: rotate(360deg); }
+      }
+
+      .video-loading-text {
+        text-align: center;
+        max-width: 28ch;
+        line-height: 1.4;
+      }
+
       #remote-video {
         display: block;
         width: 100%;
@@ -828,6 +876,10 @@
           disablepictureinpicture
           controlslist="nodownload noplaybackrate nofullscreen"
         ></video>
+        <div id="video-loading-overlay" role="status" aria-live="polite">
+          <div class="video-loading-spinner" aria-hidden="true"></div>
+          <div class="video-loading-text">Verbindung wird hergestellt …</div>
+        </div>
         <div id="video-toolbar">
           <button id="input-toggle" aria-pressed="false">
             <span class="indicator-dot" aria-hidden="true"></span>
