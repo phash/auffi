@@ -1,4 +1,13 @@
-# Screenie Security Review — 2026-05-11
+# Auffi Security Review — 2026-05-11
+
+> **Historical note:** This review was conducted while the project was still
+> named "Screenie". URLs and paths in the findings (`screenie.mr-development.de`,
+> `~/Downloads/Screenie/`, `nginx/screenie-viewer.conf`, rate-limit zones
+> `screenie_general`/`screenie_turn`) reflect the codebase at that point in
+> time. Post-rebrand equivalents: domain `auffi.app`, downloads dir
+> `~/Downloads/Auffi/`, nginx config `nginx/auffi-viewer.conf`, rate-limit
+> zones `auffi_*`. The actual security findings remain accurate — only the
+> identifiers have been renamed.
 
 ## Summary
 

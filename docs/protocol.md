@@ -1,4 +1,4 @@
-# Screenie Signaling Protocol
+# Auffi Signaling Protocol
 
 Transport: WebSocket Secure (WSS) to `/signal` on the backend.
 All messages are JSON. Each message has a `type` field.

@@ -1,7 +1,7 @@
-# Screenie — Konzept (MVP)
+# Auffi — Konzept (MVP, ursprünglich als "Screenie" spezifiziert)
 
 **Datum:** 2026-05-11
-**Status:** Draft, in Review
+**Status:** Umgesetzt; 2026-05-12 rebrand von Screenie → Auffi (siehe `docs/superpowers/plans/2026-05-12-auffi-rebrand.md`). Dieses Spec-Dokument enthält den ursprünglichen Produktnamen "Screenie" und alle daraus abgeleiteten Identifier — historisch korrekt, nicht aktualisieren.
 **Autor:** Manuel + Claude (Brainstorming-Session)
 
 ---

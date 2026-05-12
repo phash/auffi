@@ -1,8 +1,8 @@
-# Screenie — Project Conventions
+# Auffi — Project Conventions
 
 ## Project Overview
 
-TeamViewer-style screen-sharing tool. Live at `https://screenie.mr-development.de`. Three components in one monorepo:
+TeamViewer-style screen-sharing tool. Live at `https://auffi.app`. Three components in one monorepo:
 
 - `backend/` — Node.js + Fastify WebSocket signaling server. Dockerized.
 - `viewer/` — Browser-based viewer (Vite + TypeScript). Static build, served by reverse proxy.
@@ -42,6 +42,17 @@ docker compose up --build
 # Production deploy (to musikersuche@musikersuche.org:/opt/screenie)
 ./ops/deploy.sh                    # idempotent — builds, transfers, starts
 ```
+
+## Rebrand Naming Inconsistencies (Intentional)
+
+The project was rebranded from Screenie to Auffi in 2026-05. Most identifiers are now `auffi*`, but a few keep the old `screenie*` name to preserve persistent state on the production host. **Do not change these without a migration plan:**
+
+- Server path `/opt/screenie` — kept; renaming would require stopping the stack and `mv`-ing the directory.
+- Docker Compose project name on prod = `screenie` (auto-derived from `/opt/screenie`). Volume prefixes are `screenie_*` (e.g. `screenie_caddy-data`, `screenie_viewer-static`). Renaming would break Let's Encrypt cert persistence and trigger new-volume creation.
+- GitHub repo URLs in install scripts, README badges, and viewer download links still point at `phash/screenie` — GitHub's automatic redirect handles the rename. To be cleaned up in a follow-up `chore(repo): update repo URLs` commit after the GitHub rename.
+- `/var/log/screenie-health.log` cron-example path — existing cron entries continue logging to the same file.
+
+Container names (`auffi-backend`, `auffi-caddy`, `auffi-coturn`, etc.), image names, env-var names (`AUFFI_BACKEND_WS` etc.), and TURN realm (`turn.auffi.app`) all use the new branding.
 
 ## Non-Negotiable Engineering Rules
 
@@ -93,7 +104,7 @@ docker compose up --build
 
 ### Sharer Debug Logging
 
-`println!` / `eprintln!` from inside Tauri command handlers are **swallowed by `tauri-cli` pipe buffering** — you will see nothing on stdout. Use the `dbg_log()` helper in `sharer/src-tauri/src/lib.rs` instead; it appends to `/tmp/screenie-debug.log` with an explicit flush. Tail that file while running `tauri:dev`.
+`println!` / `eprintln!` from inside Tauri command handlers are **swallowed by `tauri-cli` pipe buffering** — you will see nothing on stdout. Use the `dbg_log()` helper in `sharer/src-tauri/src/lib.rs` instead; it appends to `/tmp/auffi-debug.log` with an explicit flush. Tail that file while running `tauri:dev`.
 
 ## Docker Conventions
 
@@ -109,7 +120,7 @@ docker compose up --build
 **Caddy** for TLS + Let's Encrypt + native WebSocket support. Two production modes:
 
 - **Standalone** — `docker-compose.prod.yml` brings up our own Caddy on :80/:443.
-- **Cluster** (current prod) — `docker-compose.prod.yml` + `docker-compose.cluster.yml` overlay. Our Caddy is disabled; the cluster's shared Caddy at `/opt/caddyserver/Caddyfile` reverse-proxies `screenie.mr-development.de` to `screenie-backend:8080` via the external `caddy-proxy` network. The `viewer` runs as a small nginx-alpine sidecar serving the static dist.
+- **Cluster** (current prod) — `docker-compose.prod.yml` + `docker-compose.cluster.yml` overlay. Our Caddy is disabled; the cluster's shared Caddy at `/opt/caddyserver/Caddyfile` reverse-proxies `auffi.app` to `auffi-backend:8080` via the external `caddy-proxy` network. The `viewer` runs as a small nginx-alpine sidecar serving the static dist.
 
 TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy cert volume to `turn-certs-staged`.
 

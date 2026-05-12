@@ -34,7 +34,7 @@ Validates the full `docker-compose.prod.yml` stack locally before deploying to t
 The script:
 1. Generates an ephemeral `TURN_SHARED_SECRET` for this run.
 2. Builds `viewer/dist/` via `npm ci && npm run build`.
-3. Builds the `screenie-backend:smoke` Docker image locally.
+3. Builds the `auffi-backend:smoke` Docker image locally.
 4. Creates a minimal `.env.prod` stub (required by Compose file validation; auto-deleted on teardown).
 5. Starts the stack with `docker compose -f docker-compose.prod.yml -f docker-compose.smoke.yml up -d`.
 6. Waits up to 60 s for the backend to become healthy, then up to 60 s for Caddy.
@@ -50,7 +50,7 @@ The script:
 
 | Service | What changes |
 |---------|-------------|
-| **backend** | Builds image locally (`screenie-backend:smoke`). Exposes port 8081 on localhost for the WS test. All env vars injected inline (no `.env.prod` needed at runtime). |
+| **backend** | Builds image locally (`auffi-backend:smoke`). Exposes port 8081 on localhost for the WS test. All env vars injected inline (no `.env.prod` needed at runtime). |
 | **caddy** | Mounts `caddy/Caddyfile.local` (site address = `localhost`, `tls internal`). Uses `caddy-data-smoke` volume to isolate Caddy's local-CA material. Ports remapped to `8080` (HTTP) / `8443` (HTTPS) via `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` env vars. |
 | **coturn** | Mounts `coturn/turnserver.conf.notls.tmpl` (no TLS, no-dtls) so it works without certificates. `TURN_REALM=localhost`. |
 | **viewer-build** | One-shot `busybox` container that copies `./viewer/dist` into the `viewer-static` volume for Caddy to serve. |
