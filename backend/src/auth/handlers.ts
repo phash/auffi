@@ -181,14 +181,25 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       }
 
       const account = db
-        .prepare<[string], { id: number; password_hash: string }>(
-          "SELECT id, password_hash FROM accounts WHERE email = ? AND deleted_at IS NULL",
+        .prepare<
+          [string],
+          { id: number; password_hash: string; suspended_at: number | null }
+        >(
+          "SELECT id, password_hash, suspended_at FROM accounts WHERE email = ? AND deleted_at IS NULL",
         )
         .get(email);
 
       const ok = await verifyPasswordTimingSafe(account?.password_hash, password);
       if (!ok || !account) {
         return bad(reply, 401, "bad-credentials", "email or password incorrect");
+      }
+
+      // Suspended accounts pass the password check but cannot proceed
+      // (gh #41 acceptance criterion: suspended_at blocks login after
+      // password verify). The response shape stays distinct from
+      // bad-credentials so the UI can show a meaningful message.
+      if (account.suspended_at !== null) {
+        return bad(reply, 403, "account-suspended", "account is suspended");
       }
 
       createSession(db, reply, account.id, req.headers["user-agent"]);
