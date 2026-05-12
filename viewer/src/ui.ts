@@ -6,6 +6,7 @@ import { FreeTierTimer } from "./free-tier-timer.js";
 import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
+import { DEFAULT_ZOOM, ZOOM_STEPS, formatZoom, nextZoomLevel } from "./zoom.js";
 
 function setStatus(text: string, kind: "ok" | "err" | "info"): void {
   const el = document.getElementById("status")!;
@@ -37,6 +38,7 @@ function setVideoStream(stream: MediaStream | null): void {
   const wrapper = document.getElementById("video-wrapper")!;
   const disconnect = document.getElementById("disconnect")!;
   const toolbar = document.getElementById("video-toolbar")!;
+  const controls = document.getElementById("video-controls");
   const inputGroup = document.querySelector<HTMLElement>(".input-group")!;
   const instruction = document.querySelector<HTMLElement>(".instruction")!;
   const app = document.getElementById("app")!;
@@ -47,6 +49,7 @@ function setVideoStream(stream: MediaStream | null): void {
     wrapper.classList.add("active");
     disconnect.classList.add("active");
     toolbar.classList.add("active");
+    controls?.classList.add("active");
     inputGroup.style.display = "none";
     instruction.style.display = "none";
     app.classList.add("streaming");
@@ -60,6 +63,7 @@ function setVideoStream(stream: MediaStream | null): void {
     wrapper.classList.remove("active");
     disconnect.classList.remove("active");
     toolbar.classList.remove("active");
+    controls?.classList.remove("active");
     inputGroup.style.display = "";
     instruction.style.display = "";
     app.classList.remove("streaming");
@@ -107,6 +111,65 @@ export function bindUI(backendWsUrl: string): void {
   const fileOfferAccept = document.getElementById("file-offer-accept") as HTMLButtonElement;
   const fileOfferReject = document.getElementById("file-offer-reject") as HTMLButtonElement;
   const videoWrapper = document.getElementById("video-wrapper")!;
+  const zoomInBtn = document.getElementById("zoom-in") as HTMLButtonElement | null;
+  const zoomOutBtn = document.getElementById("zoom-out") as HTMLButtonElement | null;
+  const zoomResetBtn = document.getElementById("zoom-reset") as HTMLButtonElement | null;
+  const zoomLevelLabel = document.getElementById("zoom-level");
+  const fullscreenBtn = document.getElementById("fullscreen-btn") as HTMLButtonElement | null;
+
+  let currentZoom = DEFAULT_ZOOM;
+
+  function applyZoom(): void {
+    const remote = document.getElementById("remote-video") as HTMLVideoElement | null;
+    if (!remote) return;
+    remote.style.setProperty("--zoom", String(currentZoom));
+    if (zoomLevelLabel) zoomLevelLabel.textContent = formatZoom(currentZoom);
+    if (zoomInBtn) zoomInBtn.disabled = currentZoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    if (zoomOutBtn) zoomOutBtn.disabled = currentZoom <= ZOOM_STEPS[0];
+    if (zoomResetBtn) zoomResetBtn.disabled = currentZoom === DEFAULT_ZOOM;
+  }
+
+  function resetZoom(): void {
+    currentZoom = DEFAULT_ZOOM;
+    applyZoom();
+  }
+
+  zoomInBtn?.addEventListener("click", () => {
+    currentZoom = nextZoomLevel(currentZoom, "in");
+    applyZoom();
+  });
+
+  zoomOutBtn?.addEventListener("click", () => {
+    currentZoom = nextZoomLevel(currentZoom, "out");
+    applyZoom();
+  });
+
+  zoomResetBtn?.addEventListener("click", () => {
+    resetZoom();
+  });
+
+  fullscreenBtn?.addEventListener("click", () => {
+    const root = document.getElementById("video-wrapper");
+    if (!root) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      const req = root.requestFullscreen?.bind(root);
+      if (req) void req();
+    }
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    if (!fullscreenBtn) return;
+    fullscreenBtn.setAttribute("aria-pressed", String(!!document.fullscreenElement));
+    fullscreenBtn.title = document.fullscreenElement ? "Vollbild verlassen" : "Vollbild";
+    fullscreenBtn.setAttribute(
+      "aria-label",
+      document.fullscreenElement ? "Vollbild verlassen" : "Vollbild",
+    );
+  });
+
+  applyZoom();
 
   let signaling: SignalingClient | null = null;
   let peer: ViewerPeer | null = null;
@@ -164,6 +227,12 @@ export function bindUI(backendWsUrl: string): void {
     signaling?.close();
     peer = null;
     signaling = null;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {
+        // Ignore — fullscreen may already be exiting via user gesture.
+      });
+    }
+    resetZoom();
     setVideoStream(null);
     setConnectionType(null);
     setStatus(reason, kind);
