@@ -36,13 +36,12 @@ mod gst_portal;
 
 /// Re-export of the portal restore-token reset helper. Lib.rs's
 /// `switch_monitor` command calls this on Wayland to force the portal
-/// dialog to re-prompt for a source.
+/// dialog to re-prompt for a source. The only call site is itself
+/// `#[cfg(target_os = "linux")]`-gated, so no stub is needed on other
+/// targets.
 #[cfg(target_os = "linux")]
 pub use gst_portal::delete_restore_token;
 
-/// No-op on non-Linux targets so call sites stay portable.
-#[cfg(not(target_os = "linux"))]
-pub fn delete_restore_token() {}
 #[cfg(target_os = "linux")]
 mod portal;
 #[cfg(target_os = "linux")]
