@@ -18,20 +18,6 @@
         "height": 660,
         "minWidth": 480,
         "minHeight": 600
-      },
-      {
-        "label": "border",
-        "title": "auffi-active",
-        "url": "border.html",
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "resizable": false,
-        "visible": false,
-        "focus": false,
-        "width": 1920,
-        "height": 1080
       }
     ],
     "security": {

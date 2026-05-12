@@ -77,12 +77,10 @@ struct PendingOffer {
 
 /// State tracked for a single incoming file transfer after user acceptance.
 struct ReceiveState {
-    /// The UUID supplied by the sender — stored for future reference.
-    #[allow(dead_code)]
-    id: String,
     name: String,
-    /// Total expected file size in bytes — stored for progress display.
-    #[allow(dead_code)]
+    /// Declared total size from the offer; used to enforce the size-cap so
+    /// a misbehaving viewer cannot keep streaming bytes past the agreed
+    /// length.
     total_size: u64,
     received_bytes: u64,
     file: BufWriter<std::fs::File>,
@@ -211,7 +209,6 @@ impl FileTransferManager {
         match Self::open_output_file(&offer.sanitized_name) {
             Ok(file) => {
                 let state = ReceiveState {
-                    id: offer.id.clone(),
                     name: offer.sanitized_name,
                     total_size: offer.total_size,
                     received_bytes: 0,
@@ -738,7 +735,6 @@ mod tests {
         let file = tmp.reopen().expect("reopen");
 
         let state = ReceiveState {
-            id: "oo-id".to_string(),
             name: "oo.bin".to_string(),
             total_size: 6,
             received_bytes: 0,
@@ -775,7 +771,6 @@ mod tests {
         // BufWriter, and the OS cleans the inode when the BufWriter drops.
         std::mem::forget(tmp);
         ReceiveState {
-            id: id.to_string(),
             name: format!("{id}.bin"),
             total_size,
             received_bytes: 0,

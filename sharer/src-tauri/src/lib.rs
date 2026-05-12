@@ -50,7 +50,7 @@ pub(crate) fn dbg_log(_msg: &str) {}
 
 use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
 
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, State};
 use tokio::sync::mpsc;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 
@@ -230,48 +230,6 @@ fn capture_backend_uses_portal() -> bool {
     }
 }
 
-/// Show the border overlay window on the monitor being streamed, emit
-/// `border-info` with the connected peer's IP prefix.
-///
-/// Temporarily unused — the transparent overlay window renders opaque-black on
-/// some compositors and traps user input. Re-enable once the compositor /
-/// pass-through behaviour is verified on the target distros.
-#[allow(dead_code)]
-fn show_border_window(app: &tauri::AppHandle, monitor: &DisplayInfo, ip_prefix: &str) {
-    let Some(border) = app.get_webview_window("border") else {
-        log::warn!("border window not found");
-        return;
-    };
-
-    let pos = tauri::PhysicalPosition::new(monitor.x, monitor.y);
-    let size = tauri::PhysicalSize::new(monitor.width, monitor.height);
-
-    if let Err(e) = border.set_position(pos) {
-        log::warn!("border window set_position failed: {e}");
-    }
-    if let Err(e) = border.set_size(size) {
-        log::warn!("border window set_size failed: {e}");
-    }
-
-    let payload = serde_json::json!({ "ipPrefix": ip_prefix });
-    if let Err(e) = app.emit_to("border", "border-info", payload) {
-        log::warn!("border-info emit failed: {e}");
-    }
-
-    if let Err(e) = border.show() {
-        log::warn!("border window show failed: {e}");
-    }
-}
-
-/// Hide the border overlay window, ignoring errors (window may already be hidden).
-fn hide_border_window(app: &tauri::AppHandle) {
-    if let Some(border) = app.get_webview_window("border") {
-        if let Err(e) = border.hide() {
-            log::warn!("border window hide failed: {e}");
-        }
-    }
-}
-
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn start_streaming(
@@ -281,7 +239,6 @@ async fn start_streaming(
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
-    ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
@@ -491,32 +448,6 @@ async fn start_streaming(
         let mut guard = rtc_state.0.lock().await;
         *guard = Some(peer);
     }
-
-    // Position and show the border overlay on the chosen monitor.
-    let monitors = capture::list_displays();
-    let monitor = monitors
-        .iter()
-        .find(|m| m.id == monitor_id)
-        .cloned()
-        .unwrap_or(DisplayInfo {
-            id: monitor_id,
-            title: String::new(),
-            x: 0,
-            y: 0,
-            width,
-            height,
-        });
-    let ip_prefix = ip_state
-        .0
-        .lock()
-        .ok()
-        .and_then(|g| g.clone())
-        .unwrap_or_default();
-    // TEMP-DISABLED: the transparent overlay window currently renders opaque
-    // black on this compositor and traps the user's desktop. Re-enable once
-    // the transparency / pass-through behaviour is verified end-to-end.
-    let _ = (&monitor, &ip_prefix);
-    // show_border_window(&app, &monitor, &ip_prefix);
 
     let enc = encoder::Vp8Encoder::new(width, height, 2000)?;
 
@@ -735,8 +666,6 @@ async fn disconnect_streaming(
         let mut guard = switch_state.0.lock().unwrap_or_else(|p| p.into_inner());
         *guard = None;
     }
-
-    hide_border_window(&app);
 
     // Notify the main window so it can reset its UI state.
     let _ = app.emit("streaming-stopped", serde_json::json!({}));
