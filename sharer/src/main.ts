@@ -466,9 +466,39 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
 
   const trusted = await isTrustedPeer(e.payload.ipPrefix);
   if (trusted) {
-    setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — Bildschirm auswählen…`, "waiting");
     invoke("confirm_peer", { accepted: true, ipPrefix: currentIpPrefix })
       .then(async () => {
+        // Same Wayland-skip logic as the manual-accept path: on Wayland
+        // the compositor's portal dialog handles monitor selection and
+        // showing our own picker would mean 2 dialogs for one share.
+        const usesPortal = await invoke<boolean>("capture_backend_uses_portal");
+        if (usesPortal) {
+          setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — wähle den Bildschirm im System-Dialog…`, "waiting");
+          streamBtn.disabled = true;
+          invoke("start_streaming", { monitorId: 0 })
+            .then(async () => {
+              streamingReady = true;
+              if (pendingOffer) {
+                const sdp = pendingOffer;
+                pendingOffer = null;
+                await invoke("receive_offer", { sdp }).catch((err: unknown) => {
+                  setStatus(`SDP-Fehler: ${String(err)}`, "error");
+                });
+              }
+              const ice = pendingIce.splice(0);
+              for (const c of ice) {
+                await invoke("receive_ice_candidate", c).catch(() => {});
+              }
+              setStatus("Streaming läuft.", "success");
+              showStreamingActions();
+            })
+            .catch((err: unknown) => {
+              setStatus(`Stream-Fehler: ${String(err)}`, "error");
+              streamBtn.disabled = false;
+            });
+          return;
+        }
+        setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — Bildschirm auswählen…`, "waiting");
         const monitors = await invoke<DisplayInfo[]>("list_monitors");
         renderMonitorChoices(monitors);
         monitorSelectEl.classList.add("visible");
