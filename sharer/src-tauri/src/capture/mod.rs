@@ -42,7 +42,6 @@ mod gst_portal;
 #[cfg(target_os = "linux")]
 pub use gst_portal::delete_restore_token;
 
-#[cfg(target_os = "linux")]
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "linux")]
