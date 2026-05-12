@@ -68,6 +68,10 @@ function setVideoStream(stream: MediaStream | null): void {
 
     const clearOverlay = (): void => {
       wrapper.classList.remove("awaiting-frames");
+      // gh #82: green-dot status only after the first composited frame.
+      // Until then the page reads "Verbunden — empfange Stream…" in info
+      // (blue) so the spinner overlay and status colour agree.
+      setStatus("Stream läuft.", "ok");
     };
 
     // Prefer requestVideoFrameCallback — fires exactly when the first
@@ -149,7 +153,13 @@ export function bindUI(backendWsUrl: string): void {
     if (zoomLevelLabel) zoomLevelLabel.textContent = formatZoom(currentZoom);
     if (zoomInBtn) zoomInBtn.disabled = currentZoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1];
     if (zoomOutBtn) zoomOutBtn.disabled = currentZoom <= ZOOM_STEPS[0];
-    if (zoomResetBtn) zoomResetBtn.disabled = currentZoom === DEFAULT_ZOOM;
+    if (zoomResetBtn) {
+      zoomResetBtn.disabled = currentZoom === DEFAULT_ZOOM;
+      // Screen-reader announcement should match the visible zoom level
+      // (gh #76). Without this update, NVDA / VoiceOver still announce
+      // "Originalgröße (100 %)" while the button visibly reads 150 %.
+      zoomResetBtn.setAttribute("aria-label", `Originalgröße (${formatZoom(currentZoom)})`);
+    }
   }
 
   function resetZoom(): void {
@@ -440,7 +450,11 @@ export function bindUI(backendWsUrl: string): void {
           if (!peer || !signaling) return;
           const offer = await peer.start();
           signaling.sendRelay({ kind: "sdp", sdp: offer });
-          setStatus("Verbunden — empfange Stream…", "ok");
+          // Spec gh #82: green dot only AFTER the first frame is composited;
+          // until then the spinner overlay is still up so the status must
+          // stay informational (blue dot). setVideoStream() flips this to
+          // "ok" via the first-frame callback.
+          setStatus("Verbunden — empfange Stream…", "info");
         })
         .catch((e: unknown) =>
           teardown(`Fehler: ${e instanceof Error ? e.message : String(e)}`, "err", true),

@@ -777,7 +777,12 @@
         z-index: 200;
         pointer-events: none;
         transition: transform 300ms ease;
-        white-space: nowrap;
+        /* Wrap on narrow viewports (gh #79). nowrap clipped the toast
+           on 360 px phones; allow line break, cap at viewport - 2rem
+           so it never touches the screen edge. */
+        max-width: calc(100vw - 2rem);
+        text-align: center;
+        line-height: 1.4;
       }
 
       #free-tier-warning-toast.active {
