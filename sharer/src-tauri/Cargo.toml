@@ -13,7 +13,7 @@ cc = "=1.2.25"
 [dependencies]
 tauri = { version = "=2.11.1", features = [] }
 tokio = { version = "=1.52.3", features = ["rt-multi-thread", "macros", "sync"] }
-tokio-tungstenite = { version = "=0.29.0", features = ["native-tls"] }
+tokio-tungstenite = { version = "=0.29.0", features = ["rustls-tls-native-roots"] }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
 url = "=2.5.8"
