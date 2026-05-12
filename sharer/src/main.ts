@@ -66,7 +66,6 @@ const peerRemoveConfirmDialog = document.getElementById("peer-remove-confirm")!;
 const peerRemoveConfirmText = document.getElementById("peer-remove-confirm-text")!;
 const peerRemoveConfirmYesBtn = document.getElementById("peer-remove-confirm-yes")! as HTMLButtonElement;
 const peerRemoveConfirmNoBtn = document.getElementById("peer-remove-confirm-no")! as HTMLButtonElement;
-const acceptBtn = document.getElementById("accept")! as HTMLButtonElement;
 const declineBtn = document.getElementById("decline")! as HTMLButtonElement;
 
 // Settings
@@ -83,8 +82,6 @@ const aboutVersionEl = document.getElementById("about-version")!;
 
 let currentIpPrefix: string | null = null;
 let currentCode: string | null = null;
-let isStreaming = false;
-let signalingActive = false;
 
 // SDP+ICE arrive immediately after `peer-confirmed` but the WebRTC peer is
 // only constructed when start_streaming runs (after the user picks a monitor).
@@ -98,6 +95,26 @@ type IcePayload = {
   usernameFragment: string | null;
 };
 let pendingIce: IcePayload[] = [];
+
+// SDP/ICE replay was duplicated across three start_streaming success
+// paths (manual accept, monitor-pick click, trusted-peer auto-accept).
+// New paths must use this helper or stale offer/ice candidates leak
+// between sessions.
+async function replayPendingSignaling(): Promise<void> {
+  if (pendingOffer) {
+    const sdp = pendingOffer;
+    pendingOffer = null;
+    await invoke("receive_offer", { sdp }).catch((err: unknown) => {
+      showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
+    });
+  }
+  const ice = pendingIce.splice(0);
+  for (const c of ice) {
+    await invoke("receive_ice_candidate", c).catch(() => {
+      // Benign: candidate may be stale (e.g. remote description not yet set).
+    });
+  }
+}
 
 // ── Persistent store ────────────────────────────────────────────────────────
 
@@ -260,12 +277,10 @@ function hideReconnect(): void {
 
 function showStreamingActions(): void {
   streamingActionsEl.classList.add("visible");
-  isStreaming = true;
 }
 
 function hideStreamingActions(): void {
   streamingActionsEl.classList.remove("visible");
-  isStreaming = false;
   // Clear buffered SDP/ICE — the next session starts fresh
   streamingReady = false;
   pendingOffer = null;
@@ -340,17 +355,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
         invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" })
           .then(async () => {
             streamingReady = true;
-            if (pendingOffer) {
-              const sdp = pendingOffer;
-              pendingOffer = null;
-              await invoke("receive_offer", { sdp }).catch((err: unknown) => {
-                showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
-              });
-            }
-            const ice = pendingIce.splice(0);
-            for (const c of ice) {
-              await invoke("receive_ice_candidate", c).catch(() => {});
-            }
+            await replayPendingSignaling();
             setStatus("Streaming läuft.", "success");
             showStreamingActions();
           })
@@ -454,21 +459,7 @@ streamBtn.addEventListener("click", () => {
   invoke("start_streaming", { monitorId, sessionCode: currentCode ?? "" })
     .then(async () => {
       streamingReady = true;
-      // Replay anything the viewer sent while we were waiting for the user to
-      // pick a monitor. Offer first (must precede ICE candidates per WebRTC).
-      if (pendingOffer) {
-        const sdp = pendingOffer;
-        pendingOffer = null;
-        await invoke("receive_offer", { sdp }).catch((err: unknown) => {
-          showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
-        });
-      }
-      const ice = pendingIce.splice(0);
-      for (const c of ice) {
-        await invoke("receive_ice_candidate", c).catch(() => {
-          /* benign: candidate may be stale */
-        });
-      }
+      await replayPendingSignaling();
       setStatus("Streaming läuft.", "success");
       showStreamingActions();
     })
@@ -599,7 +590,6 @@ listen<{ code: string }>("code-assigned", (e) => {
   showCode(e.payload.code);
   setStatus("Warte auf Verbindung…", "waiting");
   newCodeBtn.classList.add("visible");
-  signalingActive = true;
 });
 
 listen<{ ipPrefix: string }>("peer-joined", async (e) => {
@@ -644,17 +634,7 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
           invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" })
             .then(async () => {
               streamingReady = true;
-              if (pendingOffer) {
-                const sdp = pendingOffer;
-                pendingOffer = null;
-                await invoke("receive_offer", { sdp }).catch((err: unknown) => {
-                  showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
-                });
-              }
-              const ice = pendingIce.splice(0);
-              for (const c of ice) {
-                await invoke("receive_ice_candidate", c).catch(() => {});
-              }
+              await replayPendingSignaling();
               setStatus("Streaming läuft.", "success");
               showStreamingActions();
             })
@@ -710,7 +690,6 @@ listen<{ reason: string }>("disconnected", (e) => {
   confirmEl.classList.remove("visible");
   monitorSelectEl.classList.remove("visible");
   hideStreamingActions();
-  signalingActive = false;
   showReconnect();
 });
 
@@ -825,7 +804,6 @@ async function restartSignaling(): Promise<void> {
   streamingReady = false;
   pendingOffer = null;
   pendingIce = [];
-  signalingActive = false;
   await invoke("start_signaling");
 }
 
