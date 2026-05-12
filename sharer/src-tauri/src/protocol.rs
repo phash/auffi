@@ -37,5 +37,11 @@ pub enum Incoming {
 pub struct ViewerInfo {
     #[serde(rename = "ipPrefix")]
     pub ip_prefix: String,
+    // The backend sends `country: null` today; we deserialize but ignore
+    // it. Without the rename, serde looked for the literal "_country"
+    // key in JSON and failed the whole struct (Option<T> without
+    // #[serde(default)] is still required) — which silently dropped
+    // every PeerJoined message.
+    #[serde(rename = "country", default)]
     pub _country: Option<String>,
 }
