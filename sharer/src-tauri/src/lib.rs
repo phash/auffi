@@ -716,6 +716,15 @@ async fn streaming_loop(
                 // GStreamer/portal pipeline tears down) BEFORE we ack.
                 *capturer = None;
                 *enc = None;
+                // GStreamer's `pipeline.set_state(Null)` in Drop is
+                // asynchronous — by the time we reach this line the
+                // pipewiresrc connection is *initiating* its teardown but
+                // not necessarily complete. Plasma's portal limits to a
+                // single active capture per app and refuses the next
+                // `create_session()` while the old PipeWire connection
+                // still appears active. Give it a beat to release.
+                #[cfg(target_os = "linux")]
+                tokio::time::sleep(Duration::from_millis(500)).await;
                 let _ = ack.send(());
             }
             SwitchMsg::Replace {
