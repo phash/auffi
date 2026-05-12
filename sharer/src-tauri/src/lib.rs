@@ -74,11 +74,27 @@ struct FreeTierTimerState(Arc<Mutex<Option<free_tier_timer::TimerHandles>>>);
 /// track is preserved (no SDP renegotiation, no viewer reconnect).
 struct SwitchState(Mutex<Option<mpsc::Sender<SwitchMsg>>>);
 
-struct SwitchMsg {
-    capturer: capture::ScreenCapturer,
-    encoder: encoder::Vp8Encoder,
-    width: u32,
-    height: u32,
+/// Two-phase swap protocol so the OLD capture pipeline tears down before
+/// the NEW portal dialog is opened. On Plasma, two concurrent
+/// `org.freedesktop.portal.ScreenCast` pipelines confuse the compositor
+/// and the new session's media may be misrouted; see
+/// `docs/postmortem-2026-05-12-monitor-switch.md`.
+///
+/// `switch_monitor` first sends `Stop` and awaits ack — at that point
+/// the loop has dropped the old capturer. Only THEN does switch_monitor
+/// build the new one (which on Wayland opens the portal dialog). Once
+/// built it sends `Replace`. While in the stopped state the loop blocks
+/// on the next message instead of looping at frame rate.
+enum SwitchMsg {
+    Stop {
+        ack: tokio::sync::oneshot::Sender<()>,
+    },
+    Replace {
+        capturer: capture::ScreenCapturer,
+        encoder: encoder::Vp8Encoder,
+        width: u32,
+        height: u32,
+    },
 }
 
 #[tauri::command]
@@ -466,13 +482,17 @@ async fn start_streaming(
     // builds a fresh capturer + encoder and pushes them through this
     // channel; streaming_loop swaps them in between frames.
     let (switch_tx, switch_rx) = mpsc::channel::<SwitchMsg>(1);
-    if let Ok(mut g) = switch_state.0.lock() {
+    {
+        // Poison-recover so a panicked sibling thread doesn't strand the
+        // sender — without it, the streaming_loop would never receive a
+        // swap and switch_monitor would always reply "no active stream".
+        let mut g = switch_state.0.lock().unwrap_or_else(|p| p.into_inner());
         *g = Some(switch_tx);
     }
     let controller_arc_for_loop = Arc::clone(&input_state.0);
 
     tauri::async_runtime::spawn(async move {
-        streaming_loop(capturer, enc, track, switch_rx, controller_arc_for_loop).await;
+        streaming_loop(Some(capturer), Some(enc), track, switch_rx, controller_arc_for_loop).await;
     });
 
     Ok(())
@@ -499,21 +519,36 @@ async fn switch_monitor(
         let guard = switch_state
             .0
             .lock()
-            .map_err(|e| format!("switch state lock poisoned: {e}"))?;
+            .unwrap_or_else(|p| p.into_inner());
         guard.clone()
     };
     let Some(tx) = tx else {
         return Err("kein aktiver Stream — start_streaming zuerst aufrufen".to_string());
     };
 
+    // Phase 1: stop the live capturer FIRST. Without this step, building
+    // the new ScreenCapturer below opens a second portal pipeline while
+    // the old one is still alive — Plasma routes the new session's media
+    // unpredictably when two ScreenCast sources overlap.
+    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+    tx.send(SwitchMsg::Stop { ack: ack_tx })
+        .await
+        .map_err(|e| format!("switch channel closed: {e}"))?;
+    // Tolerate the ack sender being dropped (loop exited before acking) —
+    // we only need to know the loop has *observed* the stop request. If
+    // the loop exited that's also fine; the stale Replace below will
+    // fail to send and we return that error.
+    let _ = ack_rx.await;
+
     // Wayland: drop the cached restore_token so the portal re-prompts.
-    // X11 / Windows: no-op (the helper compiles to () on non-Linux and to
-    // the gst_portal cache reset on Linux).
+    // X11 / Windows: no-op.
     #[cfg(target_os = "linux")]
     if matches!(capture::select_backend(), capture::Backend::Portal) {
         capture::delete_restore_token();
     }
 
+    // Phase 2: now that the old pipeline is gone, open the portal dialog
+    // / pick the next monitor and build the fresh capturer + encoder.
     let new_capturer = capture::ScreenCapturer::start(monitor_id).map_err(|e| {
         dbg_log(&format!("[switch_monitor] capturer start failed: {e}"));
         e.to_string()
@@ -525,7 +560,7 @@ async fn switch_monitor(
         "[switch_monitor] new capturer ready {w}x{h}, queueing swap"
     ));
 
-    tx.send(SwitchMsg {
+    tx.send(SwitchMsg::Replace {
         capturer: new_capturer,
         encoder: new_enc,
         width: w,
@@ -566,11 +601,21 @@ async fn disconnect_streaming(
     // Otherwise the viewer only sees an ICE disconnect (which looks like a
     // network problem) and shows a "Verbindung verloren" error instead of
     // a friendly "Stream beendet" message.
-    let bye_tx = {
+    //
+    // CRITICAL: skip the bye when keep_signaling is true. By the time the
+    // viewer-swap path reaches us, the backend has already moved
+    // session.viewer to the NEW viewer (and `session.confirmed` is still
+    // true from the prior session because `detachViewer` does not reset
+    // it — see backend/src/codes.ts). Relaying `{"kind":"bye"}` over the
+    // kept-alive WS would therefore reach the *new* viewer and tear their
+    // session down before any offer is exchanged.
+    let bye_tx = if keep_signaling {
+        None
+    } else {
         let guard = sig_state
             .0
             .lock()
-            .map_err(|e| format!("signaling state lock poisoned: {e}"))?;
+            .unwrap_or_else(|p| p.into_inner());
         guard.as_ref().map(|s| s.tx.clone())
     };
     if let Some(tx) = bye_tx {
@@ -590,9 +635,8 @@ async fn disconnect_streaming(
     // a new viewer just joined the same code and we want to preserve the
     // WS task that delivered the join — replacing the streaming state only.
     if !keep_signaling {
-        if let Ok(mut guard) = sig_state.0.lock() {
-            *guard = None;
-        }
+        let mut guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
+        *guard = None;
     }
 
     // Drop the peer — this closes all ICE/DTLS transports.
@@ -614,22 +658,27 @@ async fn disconnect_streaming(
     }
 
     // Cancel any pending free-tier warning / cutoff timer so it cannot fire
-    // against a subsequent session (gh #63).
-    if let Ok(mut guard) = timer_state.0.lock() {
+    // against a subsequent session (gh #63). Poison-recover so a panicked
+    // peer-callback thread can't strand a live timer here.
+    {
+        let mut guard = timer_state.0.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(handles) = guard.take() {
             handles.cancel();
         }
     }
 
     // Clear the cached peer IP so the next session starts clean.
-    if let Ok(mut guard) = ip_state.0.lock() {
+    {
+        let mut guard = ip_state.0.lock().unwrap_or_else(|p| p.into_inner());
         *guard = None;
     }
 
-    // Drop the switch-monitor channel sender so the streaming_loop's
-    // try_recv sees the channel close. A stale sender from a prior session
-    // would make the next switch_monitor talk to a long-dead loop.
-    if let Ok(mut guard) = switch_state.0.lock() {
+    // Drop the switch-monitor channel sender so the streaming_loop sees
+    // the channel close (which is its canonical shutdown signal). A
+    // stale sender from a prior session would make the next switch_monitor
+    // talk to a long-dead loop.
+    {
+        let mut guard = switch_state.0.lock().unwrap_or_else(|p| p.into_inner());
         *guard = None;
     }
 
@@ -642,8 +691,8 @@ async fn disconnect_streaming(
 }
 
 async fn streaming_loop(
-    mut capturer: capture::ScreenCapturer,
-    mut enc: encoder::Vp8Encoder,
+    mut capturer: Option<capture::ScreenCapturer>,
+    mut enc: Option<encoder::Vp8Encoder>,
     track: std::sync::Arc<TrackLocalStaticSample>,
     mut switch_rx: mpsc::Receiver<SwitchMsg>,
     controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
@@ -653,29 +702,66 @@ async fn streaming_loop(
     let mut frame_count = 0u64;
     let mut sample_count = 0u64;
     let mut last_log_at = std::time::Instant::now();
-    loop {
-        // Pick up any pending monitor-switch request OR detect that
-        // disconnect_streaming dropped the sender. Channel close is the
-        // canonical shutdown signal — without it the old GStreamer pipeline
-        // keeps running on the previous portal source even after the
-        // WebRTC peer is dropped, and on Plasma two concurrent portal
-        // pipelines confuse the compositor enough that the *new* session's
-        // media never reaches the viewer.
-        match switch_rx.try_recv() {
-            Ok(msg) => {
+
+    async fn handle_switch_msg(
+        msg: SwitchMsg,
+        capturer: &mut Option<capture::ScreenCapturer>,
+        enc: &mut Option<encoder::Vp8Encoder>,
+        controller_arc: &Arc<tokio::sync::Mutex<Option<InputController>>>,
+    ) {
+        match msg {
+            SwitchMsg::Stop { ack } => {
+                dbg_log("[streaming_loop] stop request — dropping capturer");
+                // Take by ownership so Drop runs (and on Wayland the
+                // GStreamer/portal pipeline tears down) BEFORE we ack.
+                *capturer = None;
+                *enc = None;
+                let _ = ack.send(());
+            }
+            SwitchMsg::Replace {
+                capturer: c,
+                encoder: e,
+                width,
+                height,
+            } => {
                 dbg_log(&format!(
-                    "[streaming_loop] swap capturer -> {}x{}",
-                    msg.width, msg.height
+                    "[streaming_loop] replace -> {}x{}",
+                    width, height
                 ));
-                capturer = msg.capturer;
-                enc = msg.encoder;
-                match InputController::new(msg.width, msg.height) {
-                    Ok(c) => {
+                *capturer = Some(c);
+                *enc = Some(e);
+                match InputController::new(width, height) {
+                    Ok(ic) => {
                         let mut g = controller_arc.lock().await;
-                        *g = Some(c);
+                        *g = Some(ic);
                     }
                     Err(e) => log::warn!("[streaming_loop] InputController re-init failed: {e}"),
                 }
+            }
+        }
+    }
+
+    loop {
+        // Idle state (between Stop and Replace): block on the channel so we
+        // don't busy-loop. Channel close is shutdown.
+        if capturer.is_none() {
+            match switch_rx.recv().await {
+                Some(msg) => {
+                    handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc).await;
+                    continue;
+                }
+                None => {
+                    dbg_log("[streaming_loop] switch channel closed while idle; exiting");
+                    return;
+                }
+            }
+        }
+
+        // Active state: non-blocking poll for switch / shutdown between frames.
+        match switch_rx.try_recv() {
+            Ok(msg) => {
+                handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc).await;
+                continue;
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
@@ -686,7 +772,13 @@ async fn streaming_loop(
             }
         }
 
-        let frame = match capturer.next_frame() {
+        // Safety: `capturer.is_none()` was checked above and the only path
+        // that nulls it again is `Stop` which `continue`s back to the idle
+        // branch.
+        let cap = capturer.as_mut().expect("capturer present in active branch");
+        let encoder = enc.as_mut().expect("encoder present in active branch");
+
+        let frame = match cap.next_frame() {
             Ok(f) => f,
             Err(e) => {
                 dbg_log(&format!(
@@ -703,7 +795,7 @@ async fn streaming_loop(
                 frame.pts_us
             ));
         }
-        let packets = match enc.encode(&frame.data, frame.pts_us) {
+        let packets = match encoder.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,
             Err(e) => {
                 log::warn!("[streaming_loop] vp8 encode error: {e}");

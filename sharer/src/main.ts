@@ -613,11 +613,17 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
     // delivered this peer-joined must stay alive — without it the
     // confirm_peer / receive_offer calls below would fail with
     // "signaling not started" and the new helper would get stranded.
-    await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+    //
+    // Clear the flags BEFORE awaiting disconnect_streaming. The kept-alive
+    // WS may already start delivering relay frames from the new viewer
+    // while we await — and the relay handler at line below dispatches
+    // based on `streamingReady`. With the flag still true it would call
+    // receive_offer against the just-cleared rtc_state and lose the offer.
     streamingReady = false;
     pendingOffer = null;
     pendingIce = [];
     hideStreamingActions();
+    await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
   }
   currentIpPrefix = e.payload.ipPrefix;
   newCodeBtn.classList.remove("visible");

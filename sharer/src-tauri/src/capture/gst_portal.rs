@@ -60,7 +60,14 @@ fn read_restore_token() -> Option<String> {
     // we always show the portal dialog so the user picks the monitor each
     // session. The on-disk token is still written by write_restore_token
     // (cheap and forward-compatible) but never read here.
-    std::env::var_os("AUFFI_ENABLE_RESTORE_TOKEN")?;
+    //
+    // Only treat the env var as enable when set to "1" or "true". Setting
+    // it to the empty string (a common "disable" pattern) must NOT re-
+    // enable token restore.
+    let flag = std::env::var_os("AUFFI_ENABLE_RESTORE_TOKEN")?;
+    if !matches!(flag.to_str(), Some("1") | Some("true")) {
+        return None;
+    }
     let p = restore_token_path()?;
     let t = std::fs::read_to_string(p).ok()?;
     let t = t.trim();
