@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the Screenie sharer — allow webview to invoke Rust commands, listen to events emitted by Rust, and use the dialog plugin for file pickers.",
+  "description": "Default capabilities for the Auffi sharer — allow webview to invoke Rust commands, listen to events emitted by Rust, and use the dialog plugin for file pickers.",
   "windows": ["main", "border"],
   "permissions": [
     "core:default",

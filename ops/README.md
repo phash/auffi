@@ -1,8 +1,9 @@
-# Screenie — Production Deployment Runbook
+# Auffi — Production Deployment Runbook
 
-Target VPS: `musikersuche@musikersuche.org` (`/opt/screenie`)
-Main domain: `screenie.mr-development.de`
-TURN domain: `turn.screenie.mr-development.de`
+Target VPS: `musikersuche@musikersuche.org` (`/opt/screenie` — path retained
+post-rebrand for Docker volume / cert continuity; see CLAUDE.md).
+Main domain: `auffi.app`
+TURN domain: `turn.auffi.app`
 
 ---
 
@@ -24,10 +25,10 @@ TURN domain: `turn.screenie.mr-development.de`
 ### DNS records (must be live before first deploy)
 | Record type | Name | Value |
 |-------------|------|-------|
-| A | `screenie.mr-development.de` | VPS IPv4 |
-| A | `turn.screenie.mr-development.de` | VPS IPv4 |
+| A | `auffi.app` | VPS IPv4 |
+| A | `turn.auffi.app` | VPS IPv4 |
 
-Caddy obtains the Let's Encrypt certificate for `screenie.mr-development.de` automatically on first startup (HTTP-01 challenge). The TURN cert must be provisioned separately — see [TLS for coturn](#tls-for-coturn) below.
+Caddy obtains the Let's Encrypt certificate for `auffi.app` automatically on first startup (HTTP-01 challenge). The TURN cert must be provisioned separately — see [TLS for coturn](#tls-for-coturn) below.
 
 ---
 
@@ -56,7 +57,7 @@ openssl rand -hex 32
 
 ### TLS for coturn
 
-Caddy handles its own cert (screenie.mr-development.de) automatically. For the TURN subdomain (`turn.screenie.mr-development.de`) coturn needs a separate cert. Two approaches:
+Caddy handles its own cert (auffi.app) automatically. For the TURN subdomain (`turn.auffi.app`) coturn needs a separate cert. Two approaches:
 
 **Approach A — certbot on the host (recommended for simplicity)**
 
@@ -64,7 +65,7 @@ Caddy handles its own cert (screenie.mr-development.de) automatically. For the T
 ssh musikersuche@musikersuche.org
 sudo apt install certbot
 sudo certbot certonly --standalone \
-  -d turn.screenie.mr-development.de \
+  -d turn.auffi.app \
   -m m.roedig@gmail.com \
   --agree-tos --non-interactive
 # certbot writes to /etc/letsencrypt — populate the Docker volume:
@@ -82,7 +83,7 @@ echo '0 3 * * * root certbot renew --quiet && \
     -v screenshare_turn-certs:/dst \
     busybox sh -c "cp -a /src/. /dst/" && \
   docker compose -f /opt/screenie/docker-compose.prod.yml restart coturn' \
-  | sudo tee /etc/cron.d/certbot-screenie
+  | sudo tee /etc/cron.d/certbot-auffi
 ```
 
 **Approach B — Caddy certificate export (deferred)**
@@ -100,7 +101,7 @@ Caddy 2 stores ACME certs in the `caddy-data` volume under `/data/caddy/certific
 
 `deploy.sh` will:
 1. Verify SSH and Docker are reachable on the VPS.
-2. Build `screenie-backend:<git-sha>` locally.
+2. Build `auffi-backend:<git-sha>` locally.
 3. Build `viewer/dist/` locally.
 4. rsync compose files, Caddyfile, coturn config, and viewer dist.
 5. Load the backend image on the VPS.
@@ -182,8 +183,8 @@ Finds the second-most-recent image tarball on the VPS, loads it, sets `APP_VERSI
 
 **Fix**: Wait for DNS propagation (usually < 10 min, sometimes up to 48 h). Check with:
 ```sh
-dig +short screenie.mr-development.de
-nslookup screenie.mr-development.de 8.8.8.8
+dig +short auffi.app
+nslookup auffi.app 8.8.8.8
 ```
 Once the A-record resolves to the VPS IP, restart Caddy:
 ```sh
@@ -232,7 +233,7 @@ ssh musikersuche@musikersuche.org
 df -h
 docker system prune -f          # remove stopped containers, dangling images
 # Remove all but the latest backend image tarballs:
-ls -t /opt/screenie/screenie-backend-*.tar.gz | tail -n +4 | xargs -r rm
+ls -t /opt/screenie/auffi-backend-*.tar.gz | tail -n +4 | xargs -r rm
 ```
 
 ---
