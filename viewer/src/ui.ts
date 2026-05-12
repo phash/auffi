@@ -182,7 +182,7 @@ export function bindUI(backendWsUrl: string): void {
     resetZoom();
   });
 
-  fullscreenBtn?.addEventListener("click", () => {
+  function toggleFullscreen(): void {
     const root = document.getElementById("video-wrapper");
     if (!root) return;
     if (document.fullscreenElement) {
@@ -191,6 +191,26 @@ export function bindUI(backendWsUrl: string): void {
       const req = root.requestFullscreen?.bind(root);
       if (req) void req();
     }
+  }
+
+  fullscreenBtn?.addEventListener("click", () => {
+    toggleFullscreen();
+  });
+
+  // gh #75: 'f' toggles fullscreen while a stream is active. Ignored when
+  // the user is typing in a text field so it doesn't hijack the code input.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "f" && e.key !== "F") return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target) {
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const wrapper = document.getElementById("video-wrapper");
+    if (!wrapper?.classList.contains("active")) return;
+    e.preventDefault();
+    toggleFullscreen();
   });
 
   document.addEventListener("fullscreenchange", () => {
