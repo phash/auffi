@@ -584,6 +584,24 @@ async fn switch_monitor(
     Ok(())
 }
 
+/// Decide whether `disconnect_streaming` should emit the `{"kind":"bye"}`
+/// relay before tearing the peer down.
+///
+/// The bye is a courtesy: the viewer's relay handler shows
+/// "Der Sharer hat den Stream beendet." instead of the generic ICE-fail
+/// "Verbindung verloren" message. **But** when `keep_signaling = true`
+/// (the viewer-swap path) the backend has already moved `session.viewer`
+/// to the brand-new viewer (and `session.confirmed` stays true across
+/// `detachViewer` — see `backend/src/codes.ts`). The bye would therefore
+/// reach the new viewer instead of the prior one and tear THEIR session
+/// down before any offer is exchanged.
+///
+/// Pure helper so the policy is easy to unit-test; production passes the
+/// `keep_signaling` flag through verbatim.
+fn should_send_bye(keep_signaling: bool) -> bool {
+    !keep_signaling
+}
+
 /// Tear down the active WebRTC session and hide the border overlay.
 ///
 /// Invocable both from the main window (future use) and from the border
@@ -615,18 +633,13 @@ async fn disconnect_streaming(
     // network problem) and shows a "Verbindung verloren" error instead of
     // a friendly "Stream beendet" message.
     //
-    // CRITICAL: skip the bye when keep_signaling is true. By the time the
-    // viewer-swap path reaches us, the backend has already moved
-    // session.viewer to the NEW viewer (and `session.confirmed` is still
-    // true from the prior session because `detachViewer` does not reset
-    // it — see backend/src/codes.ts). Relaying `{"kind":"bye"}` over the
-    // kept-alive WS would therefore reach the *new* viewer and tear their
-    // session down before any offer is exchanged.
-    let bye_tx = if keep_signaling {
-        None
-    } else {
+    // CRITICAL: skip the bye when keep_signaling is true. See
+    // `should_send_bye` below for the full rationale.
+    let bye_tx = if should_send_bye(keep_signaling) {
         let guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
         guard.as_ref().map(|s| s.tx.clone())
+    } else {
+        None
     };
     if let Some(tx) = bye_tx {
         let payload = serde_json::json!({ "kind": "bye" });
@@ -1098,5 +1111,15 @@ mod tests {
             contents.contains(&marker),
             "expected dbg_log to append marker {marker:?} to {path:?}"
         );
+    }
+
+    /// Pinned regression for the `bye`-to-new-viewer Critical that
+    /// surfaced in the 2026-05-12 viewer-swap addendum (postmortem-05-12).
+    /// Anyone tempted to "simplify" `should_send_bye` to always-true is
+    /// recreating that bug; this test must fail when they do.
+    #[test]
+    fn should_send_bye_only_when_not_keeping_signaling() {
+        assert!(super::should_send_bye(false));
+        assert!(!super::should_send_bye(true));
     }
 }

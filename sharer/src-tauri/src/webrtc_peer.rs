@@ -82,6 +82,13 @@ pub fn resolve_connection_type(
 /// A WebRTC peer connection for the sharer side.
 ///
 /// Holds a VP8 video track and the underlying `RTCPeerConnection`.
+/// Pinned mDNS gathering mode for every SharerPeer we build. See the
+/// long comment inside `SharerPeer::new` for the rationale; the constant
+/// is hoisted out so the regression test below can assert on it without
+/// having to introspect a `SettingEngine` (webrtc-rs doesn't expose
+/// getters for its internal state).
+const MDNS_MODE: MulticastDnsMode = MulticastDnsMode::QueryAndGather;
+
 /// `files_dc` is populated once the viewer opens the `"files"` channel so the
 /// sharer can send file offers and chunks back.
 pub struct SharerPeer {
@@ -100,17 +107,16 @@ impl SharerPeer {
         let mut registry = Registry::new();
         registry = register_default_interceptors(registry, &mut media_engine)?;
 
-        // Use QueryAndGather so the sharer ALSO publishes mDNS-anonymized
-        // candidates for its own host addresses. Without this the sharer
-        // advertises ~25 raw private IPs (every Docker bridge on the host)
-        // and the Chrome viewer publishes only mDNS .local hostnames —
-        // none of the candidate pairs can connect-check, so ICE falls
-        // back to the TURN relay even when both peers sit on the same
-        // LAN. With mDNS on both ends the local responder (avahi /
-        // systemd-resolved) bridges the two and direct LAN p2p works.
-        // Spec: draft-ietf-rtcweb-mdns-ice-candidates.
+        // mDNS gathering policy is pinned via a named constant so a future
+        // refactor that "simplifies" the SettingEngine setup can't silently
+        // regress to QueryOnly. The QueryOnly default forces every same-LAN
+        // session through TURN relay because the sharer's raw private IPs
+        // never pair with Chrome's mDNS-anonymized `.local` candidates —
+        // see `docs/postmortem-2026-05-13-connectivity.md`. webrtc-rs
+        // requires a local mDNS responder (avahi / systemd-resolved on
+        // Linux) for resolution to work end-to-end.
         let mut setting_engine = SettingEngine::default();
-        setting_engine.set_ice_multicast_dns_mode(MulticastDnsMode::QueryAndGather);
+        setting_engine.set_ice_multicast_dns_mode(MDNS_MODE);
 
         // Best-effort UPnP-IGD discovery of our home router's public
         // IPv4. If the router answers, declare the public address as a
