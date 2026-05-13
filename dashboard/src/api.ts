@@ -225,6 +225,45 @@ export interface ConnectionLogPage {
  * `nextCursor` of the previous page; omit for page 1. `limit`
  * defaults to the backend's 20 and is clamped at `maxLimit`.
  */
+export interface Me {
+  id: number;
+  email: string;
+  emailVerifiedAt: number | null;
+  createdAt: number;
+  pendingEmail: string | null;
+  pendingEmailExpiresAt: number | null;
+}
+
+export function getMe(): Promise<ApiResult<Me>> {
+  return request("/api/me", { method: "GET" });
+}
+
+export interface PatchMeBody {
+  current_password: string;
+  new_email?: string;
+  new_password?: string;
+}
+
+export function patchMe(body: PatchMeBody): Promise<ApiResult<{ ok: true }>> {
+  return request("/api/me", {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export interface DeleteMeBody {
+  current_password: string;
+  /** Must be the exact string "LÖSCHEN" per backend acceptance. */
+  confirm: string;
+}
+
+export function deleteMe(body: DeleteMeBody): Promise<ApiResult<{ ok: true }>> {
+  return request("/api/me", {
+    method: "DELETE",
+    body: JSON.stringify(body),
+  });
+}
+
 export function listConnectionLog(
   deviceId: string,
   cursor?: number,

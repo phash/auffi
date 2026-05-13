@@ -2,6 +2,7 @@
 // and renders the top-bar nav.
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
+import { renderAccount } from "./views/account.js";
 import { renderAddDevice } from "./views/add-device.js";
 import { renderConnectionLog } from "./views/connection-log.js";
 import { renderDeviceDetail } from "./views/device-detail.js";
@@ -33,7 +34,8 @@ const routes: Route[] = [
   { pattern: "/devices/:id", render: renderDeviceDetail },
   // gh #34: paginated connection-log view per device.
   { pattern: "/devices/:id/log", render: renderConnectionLog },
-  { pattern: "/account", navLabel: "Account", render: renderHome },
+  // gh #35: account settings.
+  { pattern: "/account", navLabel: "Account", render: renderAccount },
   { pattern: "*", render: renderNotFound },
 ];
 
