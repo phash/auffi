@@ -21,6 +21,45 @@ function setStatus(text: string, kind: "ok" | "err" | "info"): void {
   el.className = kind;
 }
 
+/**
+ * Strip non-digits and reformat as `NNN-NNN-NNN` (max 9 digits).
+ * Pure helper, also used by the gh #37 ?code=... prefill so the
+ * dashboard can link with smart-dashes, spaces, or all kinds of
+ * paste-artefacts and we'll normalise.
+ */
+export function normaliseCodeInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 9);
+  const parts = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9)].filter(
+    (s) => s.length > 0,
+  );
+  return parts.join("-");
+}
+
+/**
+ * gh #37: extract a session code from the URL query string, if any.
+ * Returns the normalised `NNN-NNN-NNN` form or `null` if no `?code`
+ * was present / the input couldn't be reduced to 9 digits.
+ * Pure on the input — the caller passes the live string for jsdom
+ * test injection.
+ */
+export function codeFromQuery(search: string): string | null {
+  const params = new URLSearchParams(search);
+  const raw = params.get("code");
+  if (raw === null) return null;
+  const normalised = normaliseCodeInput(raw);
+  // Require the full 9-digit form. Partial / garbage prefills
+  // would leave a confusingly-half-filled field for the user.
+  if (!/^\d{3}-\d{3}-\d{3}$/.test(normalised)) return null;
+  return normalised;
+}
+
+function applyCodePrefill(input: HTMLInputElement): void {
+  if (input.value.length > 0) return; // user typed something first
+  const code = codeFromQuery(window.location.search);
+  if (code === null) return;
+  input.value = code;
+}
+
 function setConnectionType(type: ConnectionType | null): void {
   const el = document.getElementById("connection-type")!;
   if (type === null) {
@@ -323,12 +362,16 @@ export function bindUI(backendWsUrl: string): void {
   };
 
   codeInput.addEventListener("input", () => {
-    const digits = codeInput.value.replace(/\D/g, "").slice(0, 9);
-    const parts = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 9)].filter(
-      (s) => s.length > 0,
-    );
-    codeInput.value = parts.join("-");
+    codeInput.value = normaliseCodeInput(codeInput.value);
   });
+
+  // gh #37: ?code=NNN-NNN-NNN prefill — lets the dashboard's
+  // "Verbinden"-Button link directly to auffi.app/?code=… and land
+  // the user on a populated input. We do NOT auto-submit: the
+  // explicit click stays an intentional consent step, and a code
+  // pasted from a phishing email shouldn't immediately initiate
+  // a session.
+  applyCodePrefill(codeInput);
 
   // Pressing Enter in the code input is the same as clicking Verbinden.
   codeInput.addEventListener("keydown", (e) => {
