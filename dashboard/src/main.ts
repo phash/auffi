@@ -2,6 +2,7 @@
 // and renders the top-bar nav.
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
+import { renderAddDevice } from "./views/add-device.js";
 import { renderDevices } from "./views/devices.js";
 import { renderForgot } from "./views/forgot.js";
 import { renderHome } from "./views/home.js";
@@ -23,7 +24,10 @@ const routes: Route[] = [
   { pattern: "/reset/:token", render: renderReset },
   // gh #31: device list (default after login)
   { pattern: "/devices", navLabel: "Geräte", render: renderDevices },
-  // Placeholders for gh #32-#35 until those views land:
+  // gh #32: add-device modal route. Mounted as its own URL so the
+  // user can deep-link / share-via-link the pairing instructions.
+  { pattern: "/devices/new", render: renderAddDevice },
+  // Placeholders for gh #33-#35 until those views land:
   { pattern: "/devices/:id", render: renderHome },
   { pattern: "/account", navLabel: "Account", render: renderHome },
   { pattern: "*", render: renderNotFound },

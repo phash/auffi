@@ -167,3 +167,18 @@ export interface Device {
 export function listDevices(): Promise<ApiResult<{ items: Device[] }>> {
   return request("/api/devices", { method: "GET" });
 }
+
+export interface PairingCodeResponse {
+  code: string;
+  expiresAt: number;
+}
+
+/**
+ * Mint a fresh single-use pairing code for the signed-in account.
+ * The user types the code into the sharer's Settings → "Mit Account
+ * verbinden" prompt; the sharer then POSTs /api/devices/redeem to
+ * trade it for a permanent token (spec §5.1 + §5.2).
+ */
+export function mintPairingCode(): Promise<ApiResult<PairingCodeResponse>> {
+  return request("/api/devices/pairing-code", { method: "POST" });
+}
