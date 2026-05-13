@@ -1,3 +1,4 @@
+mod account;
 mod capture;
 mod device_password;
 mod encoder;
