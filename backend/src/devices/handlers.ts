@@ -3,6 +3,7 @@ import { randomInt } from "node:crypto";
 import type { Db } from "../db.js";
 import { hashPassword } from "../auth/argon.js";
 import { newToken, hashToken } from "../auth/tokens.js";
+import type { UnattendedRegistry } from "../unattended.js";
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const ONLINE_WINDOW_MS = 90 * 1000;
@@ -10,6 +11,13 @@ const DEVICE_ID_MAX_ATTEMPTS = 10;
 
 export interface DevicesDeps {
   db: Db;
+  /**
+   * Optional registry of open unattended-sharer WSS connections.
+   * When provided, DELETE /api/devices/:id force-closes the sharer's
+   * live connection with WS code 4401 so a revoked device can't keep
+   * relaying messages until its next reconnect (gh #16 acceptance).
+   */
+  registry?: UnattendedRegistry;
 }
 
 function bad(reply: FastifyReply, status: number, code: string, message: string) {
@@ -55,7 +63,7 @@ function mintDeviceId(): string {
 }
 
 export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): void {
-  const { db } = deps;
+  const { db, registry } = deps;
 
   // ── POST /api/devices/pairing-code ──────────────────────────────────
   // Auth-required; only the account owner mints codes for their own
@@ -217,6 +225,10 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
         return bad(reply, 403, "forbidden", "not your device");
       }
       db.prepare("DELETE FROM devices WHERE id = ?").run(id);
+      // Force-close any live WSS for this device with WS code 4401
+      // so the sharer's reconnect loop immediately sees "auth
+      // failed" instead of relaying frames for the next 30 s window.
+      registry?.evict(id);
       return reply.status(204).send();
     },
   );

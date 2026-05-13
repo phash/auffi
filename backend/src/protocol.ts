@@ -46,10 +46,22 @@ export type ErrorMessage = {
   message: string;
 };
 
+/**
+ * Acknowledgement sent to an unattended sharer after its bearer
+ * credentials verify on /signal upgrade (gh #16). Confirms that
+ * `last_seen_at` has been bumped and the connection is registered;
+ * the sharer can now idle waiting for `pw-check` frames (gh #17).
+ */
+export type UnattendedHello = {
+  type: "unattended-hello";
+  deviceId: string;
+};
+
 export type OutgoingMessage =
   | CodeAssigned
   | PeerJoined
   | PeerConfirmed
   | PeerRejected
   | RelayMsg
-  | ErrorMessage;
+  | ErrorMessage
+  | UnattendedHello;

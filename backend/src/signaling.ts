@@ -6,6 +6,13 @@ import type {
   IncomingMessage,
   OutgoingMessage,
 } from "./protocol.js";
+import type { Db } from "./db.js";
+import {
+  parseBearerAuth,
+  verifyBearerAuth,
+  WS_CLOSE,
+  UnattendedRegistry,
+} from "./unattended.js";
 
 export type RateLimitEntry = { count: number; resetAt: number };
 
@@ -65,6 +72,11 @@ const RELAY_KINDS = new Set<string>(["sdp", "ice", "hello", "bye"]);
 /// per minute is well above that pattern.
 const DEFAULT_REGISTER_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 5 };
 
+export interface UnattendedDeps {
+  db: Db;
+  registry: UnattendedRegistry;
+}
+
 export function registerSignaling(
   app: FastifyInstance,
   store: SessionStore,
@@ -72,7 +84,17 @@ export function registerSignaling(
   attemptCounts: Map<string, RateLimitEntry> = new Map(),
   perPeerCfg: PerPeerRateLimitConfig = DEFAULT_PER_PEER_LIMIT,
   registerCfg: RateLimitConfig = DEFAULT_REGISTER_LIMIT,
-  registerCounts: Map<string, RateLimitEntry> = new Map()
+  registerCounts: Map<string, RateLimitEntry> = new Map(),
+  /**
+   * Optional unattended-sharer wiring. When omitted (legacy callers,
+   * tests that don't care about unattended), every WSS upgrade falls
+   * through to the ad-hoc browser-viewer path. When provided, an
+   * incoming upgrade with `Authorization: Bearer <token>` +
+   * `X-Auffi-Device-Id: <id>` is verified against the devices table
+   * BEFORE the message handler runs; on success the peer is
+   * registered with the registry and last_seen_at is bumped (gh #16).
+   */
+  unattended?: UnattendedDeps,
 ): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
@@ -87,8 +109,86 @@ export function registerSignaling(
 
   app.get("/signal", { websocket: true }, (socket, req) => {
     const peer = socket;
-    let role: "sharer" | "viewer" | null = null;
+    let role: "sharer" | "viewer" | "unattended-sharer" | null = null;
     const peerMsgEntry = newPerPeerEntry(perPeerCfg);
+
+    // ── Unattended bearer-auth path (gh #16) ──────────────────────
+    // Runs BEFORE the message handler attaches so a wrong token never
+    // observes ad-hoc protocol behaviour.
+    const parsed = parseBearerAuth(req.headers);
+    if (parsed === "malformed") {
+      peer.close(WS_CLOSE.AUTH_FAILED, "invalid bearer auth");
+      return;
+    }
+    if (parsed !== null) {
+      if (!unattended) {
+        // Server doesn't have device storage wired up yet; reject
+        // the bearer attempt so a misconfigured deploy doesn't
+        // silently look "authenticated" to the sharer.
+        peer.close(WS_CLOSE.AUTH_FAILED, "unattended mode not configured");
+        return;
+      }
+      const auth = parsed;
+      const { db, registry } = unattended;
+      // verify is async (argon2). Tell the handler to swallow any
+      // incoming messages until we've answered. We attach the
+      // message listener AFTER the verify resolves so timing
+      // observers can't differentiate "rejected because invalid
+      // token" from "rejected because rate-limited later".
+      verifyBearerAuth(db, auth).then(
+        (ok) => {
+          if (peer.readyState !== peer.OPEN) return;
+          if (!ok) {
+            peer.close(WS_CLOSE.AUTH_FAILED, "invalid device token");
+            return;
+          }
+          role = "unattended-sharer";
+          registry.register(auth.deviceId, peer);
+          peer.on("close", () => {
+            registry.unregister(auth.deviceId, peer);
+          });
+          // Hello message so the sharer knows the bearer was
+          // accepted and last_seen_at was bumped. The #17 flow
+          // builds on top of this — for now the connection just
+          // idles waiting for `pw-check` etc. frames forwarded by
+          // the backend.
+          send(peer, {
+            type: "unattended-hello",
+            deviceId: auth.deviceId,
+          });
+        },
+        () => {
+          // Unexpected error (DB closed during verify, …). Fail
+          // closed: the sharer's reconnect loop will retry with
+          // backoff.
+          if (peer.readyState === peer.OPEN) {
+            peer.close(WS_CLOSE.AUTH_FAILED, "verification error");
+          }
+        },
+      );
+      // Defensive: ignore any message that arrives before / during
+      // verify. The legitimate flow has no messages from the sharer
+      // until the backend forwards a `pw-check` first.
+      peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
+        if (role !== "unattended-sharer") {
+          send(peer, {
+            type: "error",
+            code: "bad-message",
+            message: "wait for unattended-hello before sending",
+          });
+          return;
+        }
+        // gh #17 will land the real message handler here. Until
+        // then any frame from the sharer side is a protocol error.
+        void raw;
+        send(peer, {
+          type: "error",
+          code: "bad-message",
+          message: "unattended messages not yet implemented",
+        });
+      });
+      return;
+    }
 
     peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
       if (!checkPerPeerLimit(peerMsgEntry, perPeerCfg)) {

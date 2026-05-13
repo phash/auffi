@@ -19,6 +19,7 @@ import { registerAdminAuditRoutes } from "./admin/audit.js";
 import { registerAdminStatsRoutes } from "./admin/stats.js";
 import { registerAdminTimeseriesRoutes } from "./admin/timeseries.js";
 import { bootstrapInitialAdmin } from "./admin/bootstrap.js";
+import { UnattendedRegistry } from "./unattended.js";
 
 export type ServerConfig = {
   port: number;
@@ -153,6 +154,20 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
 
   const store = new SessionStore({ ttlMs: env.sessionTtlMs, maxAttempts: env.maxFailedAttempts });
   const registerCounts: Map<string, RateLimitEntry> = new Map();
+  // Unattended-sharer registry: shared between the signaling handler
+  // (which registers on a verified bearer auth) and the device DELETE
+  // route (which evicts when the owner revokes the device). Live only
+  // for the lifetime of this process — restarts drop every connection
+  // anyway.
+  const unattendedRegistry = new UnattendedRegistry();
+  // DB is opened below for the auth/me/device/admin routes; we share
+  // the same handle with the signaling Bearer-auth path.
+  const ownsDb = cfg.db === undefined;
+  const db: Db = cfg.db ?? openDb(cfg.dbPath);
+  if (ownsDb) {
+    applyMigrations(db, defaultMigrationsDir());
+  }
+
   const attemptCounts = registerSignaling(
     app,
     store,
@@ -161,6 +176,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     undefined,
     { windowMs: env.registerRateLimitWindowMs, max: env.registerRateLimitMax },
     registerCounts,
+    { db, registry: unattendedRegistry },
   );
 
   const sweepHandle = setInterval(() => {
@@ -199,6 +215,9 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   }
 
   // ── SQLite-backed surfaces: accounts, devices, /me, admin ──────────
+  // The DB handle was opened above so the signaling Bearer-auth path
+  // can share it. Auth/device/me/admin routes attach here.
+  //
   // Before this hook landed, all of these route registrars existed in
   // the codebase but were never invoked from `createServer` — the
   // /api/auth/*, /api/me/*, /api/devices/*, /api/admin/* surfaces were
@@ -210,11 +229,6 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // production we open a file-backed connection from AUFFI_DB_PATH (or
   // the volume-mounted default at /var/lib/auffi/auffi.db) and apply
   // migrations every boot — idempotent if no new files appear.
-  const ownsDb = cfg.db === undefined;
-  const db: Db = cfg.db ?? openDb(cfg.dbPath);
-  if (ownsDb) {
-    applyMigrations(db, defaultMigrationsDir());
-  }
 
   const { mailer, accountMailer } = mailerFromEnv();
 
@@ -223,7 +237,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
 
   registerAuthRoutes(app, { db, mailer });
   registerMeRoutes(app, { db, mailer: accountMailer });
-  registerDeviceRoutes(app, { db });
+  registerDeviceRoutes(app, { db, registry: unattendedRegistry });
   registerAdminUsersRoutes(app, db);
   registerAdminDevicesRoutes(app, db);
   registerAdminAuditRoutes(app, db);
