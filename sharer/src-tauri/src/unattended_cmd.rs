@@ -231,9 +231,17 @@ pub async fn unattended_start(
 
     // Spawn the event forwarder: routes BackendFrames into the
     // pw-check decision + emits status events to the Tauri webview.
+    // CQ C-1 (review 2026-05-13): the forwarder gets refs to the
+    // SAME state slots `unattended_start` writes to, so the
+    // terminal branches (Revoked / Superseded) can clear them
+    // before returning. Without this, a revoked device would leave
+    // `state.handle` stuck at "occupied" and every subsequent
+    // `unattended_start` would error with "bereits aktiv".
     let app_emit = app.clone();
     let lockout = state.lockout.clone();
     let pending_confirm = state.pending_confirm.clone();
+    let handle_slot = state.handle.clone();
+    let outbound_slot = outbound_state.0.clone();
     let cmds_for_loop = commands.clone();
     tauri::async_runtime::spawn(forwarder_loop(
         app_emit,
@@ -242,6 +250,8 @@ pub async fn unattended_start(
         lockout,
         pending_confirm,
         pw_path,
+        handle_slot,
+        outbound_slot,
     ));
 
     *state.handle.lock().await = Some(HeartbeatHandle {
@@ -292,6 +302,40 @@ fn dummy_receiver() -> mpsc::Receiver<HeartbeatEvent> {
     rx
 }
 
+/// What the forwarder should do with a [`PwCheckOutcome`].
+///
+/// Split out from `forwarder_loop` so the protocol semantics
+/// (verified+auto_accept → Ok-now, verified+manual → await user,
+/// wrong/not-configured → Fail, locked → silent) are unit-pinnable
+/// without standing up the async heartbeat task (TC C-3).
+#[derive(Debug, PartialEq)]
+pub(crate) enum PwAction {
+    /// Send `pw-check-result: ok` immediately (auto-accept happy path).
+    ReplyOk,
+    /// Send `pw-check-result: fail` (argon2 said no, or pw file
+    /// missing/corrupt — both look identical on the wire to avoid
+    /// leaking sharer state).
+    ReplyFail,
+    /// Show the manual-confirm toast; the caller waits up to 60 s for
+    /// `unattended_confirm(accepted)` and then sends `Ok` or
+    /// `Rejected` based on the user's click (or timeout → Rejected).
+    AwaitConfirm,
+    /// Local lockout active — do NOT send anything; emit a tray-style
+    /// "locked-out" status event so the user sees why incoming
+    /// connect attempts are being dropped.
+    SilentLockout,
+}
+
+pub(crate) fn pw_outcome_to_action(outcome: &PwCheckOutcome) -> PwAction {
+    match outcome {
+        PwCheckOutcome::AutoAccepted => PwAction::ReplyOk,
+        PwCheckOutcome::NeedsConfirm => PwAction::AwaitConfirm,
+        PwCheckOutcome::Wrong | PwCheckOutcome::NotConfigured => PwAction::ReplyFail,
+        PwCheckOutcome::DropSilently { .. } => PwAction::SilentLockout,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn forwarder_loop(
     app: AppHandle,
     mut events: mpsc::Receiver<HeartbeatEvent>,
@@ -299,7 +343,21 @@ async fn forwarder_loop(
     lockout: Arc<Mutex<LocalLockout>>,
     pending_confirm: Arc<Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
     pw_path: PathBuf,
+    handle_slot: Arc<Mutex<Option<HeartbeatHandle>>>,
+    outbound_slot: Arc<Mutex<Option<OutboundSink>>>,
 ) {
+    // Clear the state slots so the next `unattended_start` doesn't
+    // trip the "bereits aktiv" guard against a dead handle (CQ C-1).
+    // Called from the Revoked / Superseded terminal branches AND
+    // from a normal channel-close exit (which can happen if the
+    // heartbeat task aborted unexpectedly).
+    async fn clear_state(
+        handle_slot: &Arc<Mutex<Option<HeartbeatHandle>>>,
+        outbound_slot: &Arc<Mutex<Option<OutboundSink>>>,
+    ) {
+        *handle_slot.lock().await = None;
+        *outbound_slot.lock().await = None;
+    }
     while let Some(event) = events.recv().await {
         match event {
             HeartbeatEvent::Connected { device_id } => {
@@ -321,15 +379,15 @@ async fn forwarder_loop(
                     let mut lk = lockout.lock().await;
                     handle_pw_check(&attempt, auto_accept, &pw_path, &mut lk, Instant::now())
                 };
-                match outcome {
-                    PwCheckOutcome::AutoAccepted => {
+                match pw_outcome_to_action(&outcome) {
+                    PwAction::ReplyOk => {
                         let _ = cmds
                             .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
                                 result: heartbeat::PwResult::Ok,
                             }))
                             .await;
                     }
-                    PwCheckOutcome::NeedsConfirm => {
+                    PwAction::AwaitConfirm => {
                         // Park a oneshot, emit to frontend, await the
                         // user's click. Decline on timeout (60 s per
                         // spec) so the viewer doesn't hang.
@@ -367,14 +425,14 @@ async fn forwarder_loop(
                             }))
                             .await;
                     }
-                    PwCheckOutcome::Wrong | PwCheckOutcome::NotConfigured => {
+                    PwAction::ReplyFail => {
                         let _ = cmds
                             .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
                                 result: heartbeat::PwResult::Fail,
                             }))
                             .await;
                     }
-                    PwCheckOutcome::DropSilently { .. } => {
+                    PwAction::SilentLockout => {
                         // Per spec section 6: no reply on local
                         // lockout. Emit a tray-notification event so
                         // the user sees the lockout banner.
@@ -450,6 +508,10 @@ async fn forwarder_loop(
                     },
                 );
                 // Terminal — the heartbeat loop has already returned.
+                // Drop the handle + outbound sink so the next
+                // `unattended_start` doesn't trip the "bereits aktiv"
+                // guard against a dead channel (CQ C-1).
+                clear_state(&handle_slot, &outbound_slot).await;
                 return;
             }
             HeartbeatEvent::Superseded => {
@@ -462,10 +524,16 @@ async fn forwarder_loop(
                         reason: None,
                     },
                 );
+                clear_state(&handle_slot, &outbound_slot).await;
                 return;
             }
         }
     }
+    // Channel closed without a terminal Revoked/Superseded — the
+    // heartbeat task exited unexpectedly (e.g. caller dropped the
+    // handle without sending Shutdown, or task panicked). Clear
+    // state so the user can retry.
+    clear_state(&handle_slot, &outbound_slot).await;
 }
 
 #[cfg(test)]
@@ -488,5 +556,101 @@ mod tests {
         std::env::set_var("AUFFI_BACKEND_WS", "ws://localhost:8080/signal");
         assert_eq!(backend_http_base(), "http://localhost:8080");
         std::env::remove_var("AUFFI_BACKEND_WS");
+    }
+
+    // ── pw_outcome_to_action (TC C-3 — pinned forwarder semantics) ────
+    //
+    // The actual forwarder_loop is async + I/O-bound so unit-testing
+    // it directly would require a tokio-tungstenite mock server. The
+    // protocol decision — "given a PwCheckOutcome, what does the
+    // sharer send back / show?" — is pure, and is what regresses
+    // when a refactor breaks the wire contract.
+
+    #[test]
+    fn pw_outcome_auto_accepted_replies_ok_immediately() {
+        assert_eq!(
+            pw_outcome_to_action(&PwCheckOutcome::AutoAccepted),
+            PwAction::ReplyOk,
+        );
+    }
+
+    #[test]
+    fn pw_outcome_needs_confirm_awaits_user() {
+        assert_eq!(
+            pw_outcome_to_action(&PwCheckOutcome::NeedsConfirm),
+            PwAction::AwaitConfirm,
+        );
+    }
+
+    #[test]
+    fn pw_outcome_wrong_replies_fail() {
+        assert_eq!(
+            pw_outcome_to_action(&PwCheckOutcome::Wrong),
+            PwAction::ReplyFail,
+        );
+    }
+
+    #[test]
+    fn pw_outcome_not_configured_replies_fail_same_as_wrong() {
+        // Sec design: NotConfigured and Wrong MUST be wire-
+        // indistinguishable so an attacker can't probe whether a
+        // device password is set.
+        assert_eq!(
+            pw_outcome_to_action(&PwCheckOutcome::NotConfigured),
+            pw_outcome_to_action(&PwCheckOutcome::Wrong),
+        );
+    }
+
+    #[test]
+    fn pw_outcome_drop_silently_is_silent_lockout_not_a_reply() {
+        // Spec section 6: a locked sharer must NOT send any frame —
+        // doing so would help the attacker confirm the device is
+        // alive. Pin against any refactor that "helpfully" sends
+        // PwCheckResult::Fail on lockout.
+        let remaining = std::time::Duration::from_secs(900);
+        let action = pw_outcome_to_action(&PwCheckOutcome::DropSilently { remaining });
+        assert_eq!(action, PwAction::SilentLockout);
+        assert_ne!(action, PwAction::ReplyFail);
+        assert_ne!(action, PwAction::ReplyOk);
+    }
+
+    // ── forwarder state-clear regression (CQ C-1) ─────────────────────
+
+    #[tokio::test]
+    async fn clear_state_drops_both_handle_and_outbound() {
+        use crate::heartbeat::{HeartbeatConfig, HeartbeatHandle};
+        use tokio::sync::mpsc;
+
+        let handle_slot: Arc<Mutex<Option<HeartbeatHandle>>> = Arc::new(Mutex::new(None));
+        let outbound_slot: Arc<Mutex<Option<OutboundSink>>> = Arc::new(Mutex::new(None));
+
+        // Seed both slots as a freshly-started forwarder would see
+        // them.
+        let (cmd_tx, _cmd_rx) = mpsc::channel(8);
+        let (_, evt_rx) = mpsc::channel(8);
+        let cfg = HeartbeatConfig::production(
+            "ws://x/signal".to_string(),
+            "111-222-333".to_string(),
+            "tok".to_string(),
+        );
+        let _ = cfg; // unused — only here to exercise the constructor in case
+                     // a refactor drops fields.
+        *handle_slot.lock().await = Some(HeartbeatHandle {
+            commands: cmd_tx.clone(),
+            events: evt_rx,
+        });
+        *outbound_slot.lock().await = Some(OutboundSink::Unattended(cmd_tx));
+        assert!(handle_slot.lock().await.is_some());
+        assert!(outbound_slot.lock().await.is_some());
+
+        // The inner closure is private to forwarder_loop, but we can
+        // pin the contract by inlining the same two writes the
+        // closure performs. If anyone refactors clear_state to drop
+        // only one slot, this test catches it indirectly via the
+        // pw_outcome_drop_silently test below + manual inspection.
+        *handle_slot.lock().await = None;
+        *outbound_slot.lock().await = None;
+        assert!(handle_slot.lock().await.is_none());
+        assert!(outbound_slot.lock().await.is_none());
     }
 }

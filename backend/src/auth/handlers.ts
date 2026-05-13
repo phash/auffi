@@ -218,7 +218,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
     const cookie = readSessionCookie(req);
     if (cookie) {
       const sess = findSession(db, cookie);
-      if (sess) deleteSession(db, sess.id);
+      if (sess) deleteSession(db, sess.tokenHash);
     }
     clearSessionCookie(reply);
     return reply.status(200).send({ ok: true });

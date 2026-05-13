@@ -13,35 +13,41 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const SESSION_COOKIE = "auffi_session";
 
 /**
- * Insert a new sessions row for `account_id`, set the cookie on `reply`,
- * and return the random session id (also the cookie value). The token
- * itself is only stored hashed; the cookie value is the plaintext.
+ * Insert a new session row for `account_id`, set the cookie on `reply`,
+ * and return the random cookie value. The DB stores only `sha256(cookie)`
+ * via the `token_hash` primary key — the plaintext NEVER hits SQLite.
+ *
+ * Sec C-1 (review 2026-05-13): a prior version stored the plaintext as
+ * `sessions.id` alongside the hash. Anyone with read access to the DB
+ * file could replay every live session. The migration in
+ * `0006_sessions_drop_plaintext_id.sql` drops the column; this function
+ * is the matching producer-side fix.
  */
 export function createSession(
   db: Db,
   reply: FastifyReply,
   accountId: number,
   userAgent: string | undefined,
-): { sessionId: string } {
+): { cookieValue: string } {
   const now = Date.now();
-  const sessionId = newToken();
-  const tokenHash = hashToken(sessionId);
+  const cookieValue = newToken();
+  const tokenHash = hashToken(cookieValue);
   const expiresAt = now + SESSION_TTL_MS;
   // user_agent_hint is truncated to 200 chars; we record a coarse fingerprint
   // for the "active sessions" UI later, not the full UA for DSGVO reasons.
   const uaHint = (userAgent ?? "").slice(0, 200);
 
   db.prepare(
-    `INSERT INTO sessions (id, account_id, token_hash, expires_at, last_seen_at, user_agent_hint)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(sessionId, accountId, tokenHash, expiresAt, now, uaHint);
+    `INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at, user_agent_hint)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(tokenHash, accountId, expiresAt, now, uaHint);
 
   // Cookie attributes per spec §4.3 step 4: HttpOnly + Secure + SameSite=Strict + 30d TTL.
   // Path=/ so it covers /api/* and /dashboard/* without per-route cookies.
   reply.header(
     "Set-Cookie",
     [
-      `${SESSION_COOKIE}=${sessionId}`,
+      `${SESSION_COOKIE}=${cookieValue}`,
       "Path=/",
       "HttpOnly",
       "Secure",
@@ -50,7 +56,7 @@ export function createSession(
     ].join("; "),
   );
 
-  return { sessionId };
+  return { cookieValue };
 }
 
 /** Clear the session cookie on the response (used by logout). */
@@ -87,19 +93,23 @@ export function readSessionCookie(req: FastifyRequest): string | undefined {
 }
 
 /**
- * Look up the sessions row whose token_hash matches the supplied cookie
- * value. Returns null if the session is missing, expired, or the matching
+ * Look up the session whose `token_hash` matches `sha256(cookieValue)`.
+ * Returns `null` if the session is missing, expired, or the owning
  * account is soft-deleted.
+ *
+ * The returned `tokenHash` is the row's primary key — pass it to
+ * [`deleteSession`] (e.g. on logout). The plaintext cookie value is
+ * NOT retained anywhere server-side.
  */
 export function findSession(
   db: Db,
   cookieValue: string,
-): { id: string; accountId: number } | null {
+): { tokenHash: string; accountId: number } | null {
   if (!cookieValue) return null;
   const tokenHash = hashToken(cookieValue);
   const row = db
-    .prepare<[string, number], { id: string; account_id: number; account_deleted_at: number | null }>(
-      `SELECT s.id, s.account_id, a.deleted_at AS account_deleted_at
+    .prepare<[string, number], { account_id: number; account_deleted_at: number | null }>(
+      `SELECT s.account_id, a.deleted_at AS account_deleted_at
          FROM sessions s
          JOIN accounts a ON a.id = s.account_id
         WHERE s.token_hash = ? AND s.expires_at > ?`,
@@ -107,12 +117,12 @@ export function findSession(
     .get(tokenHash, Date.now());
   if (!row) return null;
   if (row.account_deleted_at !== null) return null;
-  return { id: row.id, accountId: row.account_id };
+  return { tokenHash, accountId: row.account_id };
 }
 
-/** Delete a single session by id (used by logout). */
-export function deleteSession(db: Db, sessionId: string): void {
-  db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+/** Delete a single session by its token hash (used by logout). */
+export function deleteSession(db: Db, tokenHash: string): void {
+  db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
 }
 
 /**

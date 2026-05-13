@@ -9,7 +9,12 @@ import { findSession, readSessionCookie } from "./sessions.js";
  */
 declare module "fastify" {
   interface FastifyRequest {
-    account?: { id: number; sessionId: string };
+    /**
+     * Populated by `requireSession`. `tokenHash` is the `sessions`
+     * row's primary key (sha256 of the cookie value, NOT the value
+     * itself — see Sec C-1).
+     */
+    account?: { id: number; tokenHash: string };
   }
 }
 
@@ -21,7 +26,7 @@ declare module "fastify" {
  *  - 401 if cookie value not in `sessions` or row is expired
  *  - 401 if the matching account is soft-deleted
  *  - otherwise: stamps `sessions.last_seen_at = now` and attaches
- *    `req.account = { id, sessionId }`
+ *    `req.account = { id, tokenHash }`.
  */
 export function makeRequireSession(db: Db) {
   return async function requireSession(req: FastifyRequest, reply: FastifyReply) {
@@ -36,8 +41,11 @@ export function makeRequireSession(db: Db) {
     // Refresh last_seen_at on every authenticated hit (per #12 acceptance).
     // This makes "stale" sessions visible in the dashboard's active-sessions
     // view later and keeps active users' cookies from rolling-expiry pruning.
-    db.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").run(Date.now(), sess.id);
-    req.account = { id: sess.accountId, sessionId: sess.id };
+    db.prepare("UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?").run(
+      Date.now(),
+      sess.tokenHash,
+    );
+    req.account = { id: sess.accountId, tokenHash: sess.tokenHash };
   };
 }
 

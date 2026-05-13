@@ -237,8 +237,8 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     // Plant a session for the target
     const targetId = 2;
     h.db.prepare(
-      `INSERT INTO sessions (id, account_id, token_hash, expires_at, last_seen_at)
-       VALUES ('s1', ?, 'h1', ?, ?)`,
+      `INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at)
+       VALUES ('h1', ?, ?, ?)`,
     ).run(targetId, Date.now() + 1_000_000, Date.now());
 
     const res = await h.app.inject({

@@ -18,11 +18,13 @@ async function build(): Promise<{ app: FastifyInstance; db: Db; cookie: () => Pr
   decorateRequireSession(app, db);
   registerAuthRoutes(app, { db, mailer });
 
-  // Toy authenticated route to exercise the decorator.
+  // Toy authenticated route to exercise the decorator. We surface
+  // `tokenHash` so the regression test for Sec C-1 can confirm the
+  // server-side identifier is NOT the raw cookie value.
   app.get(
     "/api/me",
     { preHandler: app.requireSession },
-    async (req) => ({ accountId: req.account?.id, sessionId: req.account?.sessionId }),
+    async (req) => ({ accountId: req.account?.id, tokenHash: req.account?.tokenHash }),
   );
 
   await app.ready();
@@ -66,7 +68,12 @@ describe("requireSession decorator", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.accountId).toBe(1);
-    expect(body.sessionId).toBe(c);
+    // Sec C-1 regression pin: the server-side session identifier is
+    // sha256(cookie), NOT the cookie value. Anyone restoring the old
+    // "store the plaintext as the row id" shape brings this back as
+    // an equality.
+    expect(body.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.tokenHash).not.toBe(c);
   });
 
   it("returns 401 when no cookie is set", async () => {

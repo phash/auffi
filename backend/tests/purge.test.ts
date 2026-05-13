@@ -27,11 +27,11 @@ describe("runPurge", () => {
 
   it("deletes expired sessions and keeps live ones", () => {
     db.prepare(
-      "INSERT INTO sessions (id, account_id, token_hash, expires_at, last_seen_at) VALUES ('s1', 1, 'h1', ?, ?)",
+      "INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at) VALUES ('h1', 1, ?, ?)",
     ).run(now - 1, now); // expired
     db.prepare(
-      "INSERT INTO sessions (id, account_id, token_hash, expires_at, last_seen_at) VALUES ('s2', 1, 'h2', ?, ?)",
-    ).run(now + HOUR, now); // alive
+      "INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at) VALUES ('h2-alive', 1, ?, ?)",
+    ).run(now + HOUR, now); // alive — unique token_hash needed as PK
 
     const rep = runPurge(db, now);
     expect(rep.sessions).toBe(1);
@@ -165,7 +165,7 @@ describe("runPurge", () => {
 
   it("is idempotent — second consecutive run reports zeroes everywhere", () => {
     db.prepare(
-      "INSERT INTO sessions (id, account_id, token_hash, expires_at, last_seen_at) VALUES ('s1', 1, 'h1', ?, ?)",
+      "INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at) VALUES ('h1', 1, ?, ?)",
     ).run(now - 1, now);
     const first = runPurge(db, now);
     expect(first.sessions).toBe(1);
@@ -207,7 +207,7 @@ describe("startPurgeScheduler", () => {
       "INSERT INTO accounts (id, email, password_hash, created_at) VALUES (1, 'a@a', 'x', ?)",
     ).run(1);
     db.prepare(
-      "INSERT INTO sessions (id, account_id, token_hash, expires_at, last_seen_at) VALUES ('s1', 1, 'h1', 1, 1)",
+      "INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at) VALUES ('h-sched', 1, 1, 1)",
     ).run();
 
     const reports: number[] = [];

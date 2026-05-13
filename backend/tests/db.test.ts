@@ -151,4 +151,33 @@ describe("applyMigrations against the real bundled migrations directory", () => 
       db.close();
     }
   });
+
+  /**
+   * Sec C-1 regression pin (review 2026-05-13). The `sessions` table
+   * must NOT carry the raw cookie value alongside the hash — that
+   * defeats the entire reason `token_hash` exists. Anyone tempted to
+   * resurrect an `id` column "for joins" must fail this test.
+   */
+  it("sessions table has no plaintext-cookie 'id' column (Sec C-1)", async () => {
+    const { defaultMigrationsDir } = await import("../src/db.js");
+    const db = openDb(":memory:");
+    try {
+      applyMigrations(db, defaultMigrationsDir());
+      const cols = db
+        .prepare<[], { name: string }>("PRAGMA table_info(sessions)")
+        .all()
+        .map((r) => r.name);
+      expect(cols).not.toContain("id");
+      expect(cols).toContain("token_hash");
+      // token_hash is the primary key.
+      const pkCols = db
+        .prepare<[], { name: string; pk: number }>("PRAGMA table_info(sessions)")
+        .all()
+        .filter((r) => r.pk > 0)
+        .map((r) => r.name);
+      expect(pkCols).toEqual(["token_hash"]);
+    } finally {
+      db.close();
+    }
+  });
 });
