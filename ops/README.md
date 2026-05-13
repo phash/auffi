@@ -55,6 +55,57 @@ ssh musikersuche@musikersuche.org
 openssl rand -hex 32
 ```
 
+### SMTP (gh #39 — required for unattended-mode accounts)
+
+The dashboard's account flows (signup → verify-email, forgot-password
+→ reset, change-email confirmation) all send outbound mail through
+nodemailer. If `SMTP_*` is unset, the backend falls back to an
+in-memory capture transport — signups succeed but nothing is
+delivered. **For production: set SMTP_HOST + creds in `.env.prod`
+BEFORE inviting users**, otherwise verify links never arrive.
+
+Recommended providers (TLS-on-587, app-passwords supported):
+mailbox.org, Fastmail, SendGrid. Generate an app-specific password
+on the provider — don't paste a personal mailbox login.
+
+Fill in `.env.prod` (the example file ships with stub keys + the
+deliverability matrix as comments):
+
+```sh
+SMTP_HOST=smtp.mailbox.org
+SMTP_PORT=587
+SMTP_USER=noreply@yourdomain
+SMTP_PASS=<app-password>
+SMTP_FROM=noreply@yourdomain
+DASHBOARD_URL=https://auffi.app/dashboard
+```
+
+Smoke-test from the VPS after first deploy:
+
+```sh
+ssh musikersuche@musikersuche.org
+docker compose -f /opt/screenie/docker-compose.prod.yml exec backend \
+  node -e 'require("./dist/email/mailer.js").mailerFromEnv().transport.send({
+    to: "you@your-mailbox", subject: "auffi smtp test", text: "ok"
+  }).then(()=>console.log("sent")).catch(e=>console.error(e))'
+```
+
+If the test mail doesn't arrive: check the backend container log for
+`verify-email send failed` / `reset-email send failed` warnings. The
+backend never crashes on SMTP failure — it just drops the mail.
+
+#### Initial admin
+
+To grant `/api/admin/*` access to your own account: sign up via the
+dashboard FIRST (so the row exists), then set `INITIAL_ADMIN_EMAIL`
+in `.env.prod` and restart the backend. `bootstrapInitialAdmin()`
+runs on every boot and idempotently flips the admin flag on the
+matching account. Unset to keep every account non-admin.
+
+```sh
+INITIAL_ADMIN_EMAIL=admin@yourdomain
+```
+
 ### TLS for coturn
 
 Caddy handles its own cert (auffi.app) automatically. For the TURN subdomain (`turn.auffi.app`) coturn needs a separate cert. Two approaches:
@@ -102,13 +153,23 @@ Caddy 2 stores ACME certs in the `caddy-data` volume under `/data/caddy/certific
 `deploy.sh` will:
 1. Verify SSH and Docker are reachable on the VPS.
 2. Build `auffi-backend:<git-sha>` locally.
-3. Build `viewer/dist/` locally.
-4. rsync compose files, Caddyfile, coturn config, and viewer dist.
+3. Build `viewer/dist/` AND `dashboard/dist/` locally (gh #38).
+4. rsync compose files, Caddyfile, coturn config, viewer dist, and
+   the dashboard dist into `dashboard-dist/` on the VPS.
 5. Load the backend image on the VPS.
 6. Place `.env.prod.example` on the VPS if `.env.prod` is absent.
 7. Run `docker compose up -d`.
 8. Wait up to 90 seconds for `/healthz` to return 200.
 9. Print `docker compose ps`.
+
+### Cluster-mode Caddy snippet (gh #38)
+
+When running behind a shared cluster Caddy at
+`/opt/caddyserver/Caddyfile`, the site block for `auffi.app` needs
+the same `/dashboard/*` + `/api/*` routes that our standalone
+`caddy/Caddyfile` ships. Copy-paste the new `handle /api/* { ... }`
+and `handle_path /dashboard/* { ... }` blocks into the cluster
+Caddyfile, then `caddy reload --config /opt/caddyserver/Caddyfile`.
 
 Preview without executing anything:
 ```sh
