@@ -1087,6 +1087,19 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
+        // Unattended-mode autostart: registered but defaults to off — the
+        // settings UI (gh #20) flips it via the plugin's JS bindings
+        // (`enable()` / `disable()` / `isEnabled()` from
+        // `@tauri-apps/plugin-autostart`). On macOS we use LaunchAgent
+        // (per-user, no privileged install required); Linux ships a
+        // .desktop file under `~/.config/autostart`; Windows uses
+        // `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. No
+        // extra args — the sharer's normal entry point handles
+        // unattended-mode bootstrap on its own.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(SignalingState(Mutex::new(None)))
         .manage(WebRtcState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
