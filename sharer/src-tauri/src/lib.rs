@@ -1138,6 +1138,85 @@ pub fn run() {
             unattended_cmd::unattended_stop,
             unattended_cmd::unattended_confirm,
         ])
+        // gh #26: tray icon + minimise-to-tray. Built in setup() so
+        // the AppHandle is available. The window-close handler reads
+        // the persisted mode (gh #20) and prevents close in
+        // unattended mode — the sharer keeps running in the tray and
+        // the heartbeat WSS stays alive. In ad-hoc mode the default
+        // quit-on-close behaviour is preserved so the existing UX
+        // for the help-a-friend use case doesn't change.
+        .setup(|app| {
+            use tauri::menu::{Menu, MenuItem};
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+            use tauri::Manager;
+
+            let show_item =
+                MenuItem::with_id(app, "tray-show", "Auffi öffnen", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "tray-quit", "Beenden", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            let icon = app
+                .default_window_icon()
+                .ok_or_else(|| "tauri: no default window icon configured for tray".to_string())?
+                .clone();
+
+            let _tray = TrayIconBuilder::with_id("auffi-tray")
+                .icon(icon)
+                .tooltip("Auffi")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "tray-show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "tray-quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(w) = tray.app_handle().get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            use tauri::{Manager, WindowEvent};
+            if window.label() != "main" {
+                return;
+            }
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                // Read the persisted mode synchronously — it's a tiny
+                // text file under app_data_dir. Anything other than
+                // "unattended" falls through to the default close
+                // (quit) behaviour.
+                let unattended = window
+                    .app_handle()
+                    .path()
+                    .app_data_dir()
+                    .ok()
+                    .and_then(|dir| std::fs::read_to_string(dir.join("mode.txt")).ok())
+                    .map(|s| s.trim() == "unattended")
+                    .unwrap_or(false);
+                if unattended {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error running tauri");
 }

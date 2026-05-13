@@ -166,7 +166,11 @@ pub fn unattended_get_mode(app: AppHandle) -> CmdResult<String> {
 
 #[tauri::command]
 pub fn unattended_set_mode(app: AppHandle, mode: String) -> CmdResult<()> {
-    let normalised = if mode == "unattended" { "unattended" } else { "adhoc" };
+    let normalised = if mode == "unattended" {
+        "unattended"
+    } else {
+        "adhoc"
+    };
     let dir = app_data_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create dir: {e}"))?;
     let path = mode_path(&app)?;
@@ -191,10 +195,7 @@ struct UnattendedEvent<'a> {
 /// paired AND the password set; returns an `Err` otherwise so the UI
 /// can route the user to the appropriate setup step.
 #[tauri::command]
-pub async fn unattended_start(
-    app: AppHandle,
-    state: State<'_, UnattendedState>,
-) -> CmdResult<()> {
+pub async fn unattended_start(app: AppHandle, state: State<'_, UnattendedState>) -> CmdResult<()> {
     if state.handle.lock().await.is_some() {
         return Err("unattended bereits aktiv".to_string());
     }
@@ -230,7 +231,10 @@ pub async fn unattended_start(
         pw_path,
     ));
 
-    *state.handle.lock().await = Some(HeartbeatHandle { commands, events: dummy_receiver() });
+    *state.handle.lock().await = Some(HeartbeatHandle {
+        commands,
+        events: dummy_receiver(),
+    });
     Ok(())
 }
 
@@ -337,7 +341,9 @@ async fn forwarder_loop(
                             heartbeat::PwResult::Rejected
                         };
                         let _ = cmds
-                            .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult { result }))
+                            .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                                result,
+                            }))
                             .await;
                     }
                     PwCheckOutcome::Wrong | PwCheckOutcome::NotConfigured => {

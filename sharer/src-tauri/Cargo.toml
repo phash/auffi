@@ -11,7 +11,7 @@ tauri-build = { version = "=2.6.1", features = [] }
 cc = "=1.2.25"
 
 [dependencies]
-tauri = { version = "=2.11.1", features = [] }
+tauri = { version = "=2.11.1", features = ["tray-icon"] }
 tokio = { version = "=1.52.3", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-tungstenite = { version = "=0.29.0", features = ["rustls-tls-native-roots"] }
 serde = { version = "=1.0.228", features = ["derive"] }
