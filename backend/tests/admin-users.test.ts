@@ -43,7 +43,7 @@ async function build(): Promise<{
     });
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
     const raw = Array.isArray(sc) ? sc[0] : sc!;
-    return raw.match(/^auffi_session=([^;]+)/)![1];
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
   return { app, db, adminCookie };
@@ -76,7 +76,7 @@ describe("GET /api/admin/users", () => {
     const first = await h.app.inject({
       method: "GET",
       url: "/api/admin/users?limit=2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(first.statusCode).toBe(200);
     const a = first.json();
@@ -86,7 +86,7 @@ describe("GET /api/admin/users", () => {
     const second = await h.app.inject({
       method: "GET",
       url: `/api/admin/users?limit=2&cursor=${a.next_cursor}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     const b = second.json();
     expect(b.items).toHaveLength(2);
@@ -103,7 +103,7 @@ describe("GET /api/admin/users", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users?status=suspended",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     const body = res.json();
     expect(body.items).toHaveLength(1);
@@ -124,7 +124,7 @@ describe("GET /api/admin/users", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users?q=%25",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -147,7 +147,7 @@ describe("GET /api/admin/users", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     const u1 = res.json().items.find((x: { email: string }) => x.email === "user1@example.com");
     expect(u1.device_count).toBe(2);
@@ -157,7 +157,7 @@ describe("GET /api/admin/users", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users?status=wat",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -166,7 +166,7 @@ describe("GET /api/admin/users", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users?cursor=$$$",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -189,7 +189,7 @@ describe("GET /api/admin/users/:id", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users/2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -203,7 +203,7 @@ describe("GET /api/admin/users/:id", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users/2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     const body = res.json();
     expect(body).not.toHaveProperty("password_hash");
@@ -214,7 +214,7 @@ describe("GET /api/admin/users/:id", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users/9999",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -244,7 +244,7 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/admin/users/${targetId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { action: "suspend", reason: "spam" },
     });
     expect(res.statusCode).toBe(200);
@@ -277,7 +277,7 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/admin/users/2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { action: "unsuspend" },
     });
     expect(res.statusCode).toBe(200);
@@ -293,7 +293,7 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     await h.app.inject({
       method: "PATCH",
       url: "/api/admin/users/2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { action: "promote" },
     });
     const row = h.db.prepare<[], { admin: number }>("SELECT admin FROM accounts WHERE id = 2").get();
@@ -305,7 +305,7 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/admin/users/1",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { action: "demote" },
     });
     expect(res.statusCode).toBe(409);
@@ -317,7 +317,7 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/admin/users/1",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { action: "demote" },
     });
     expect(res.statusCode).toBe(200);
@@ -327,7 +327,7 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/admin/users/2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { action: "wat" },
     });
     expect(res.statusCode).toBe(400);
@@ -358,7 +358,7 @@ describe("DELETE /api/admin/users/:id", () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: `/api/admin/users/${targetId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { reason: "manual abuse-report cleanup" },
     });
     expect(res.statusCode).toBe(204);
@@ -388,7 +388,7 @@ describe("DELETE /api/admin/users/:id", () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: "/api/admin/users/1",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { reason: "boom" },
     });
     expect(res.statusCode).toBe(409);
@@ -410,7 +410,7 @@ describe("DELETE /api/admin/users/:id", () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: "/api/admin/users/2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { reason: "test" },
     });
     expect(res.statusCode).toBe(403); // session is no longer admin
@@ -420,7 +420,7 @@ describe("DELETE /api/admin/users/:id", () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: "/api/admin/users/2",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { reason: "" },
     });
     expect(res.statusCode).toBe(400);

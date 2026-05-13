@@ -42,7 +42,7 @@ async function build(): Promise<{ app: FastifyInstance; db: Db; cookie: () => Pr
     });
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
     const raw = Array.isArray(sc) ? sc[0] : sc!;
-    return raw.match(/^auffi_session=([^;]+)/)![1];
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
   return { app, db, cookie };
@@ -63,7 +63,7 @@ describe("requireSession decorator", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -85,7 +85,7 @@ describe("requireSession decorator", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: "auffi_session=garbage" },
+      headers: { cookie: "__Host-auffi_session=garbage" },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -96,7 +96,7 @@ describe("requireSession decorator", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -116,7 +116,7 @@ describe("requireSession decorator", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -134,7 +134,7 @@ describe("requireSession decorator", () => {
     await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
 
     const after = h.db

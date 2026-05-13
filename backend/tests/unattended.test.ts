@@ -407,7 +407,7 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     });
     expect(loginRes.status).toBe(200);
     const setCookie = loginRes.headers.get("set-cookie")!;
-    const cookieVal = setCookie.match(/auffi_session=([^;]+)/)![1];
+    const cookieVal = setCookie.match(/__Host-auffi_session=([^;]+)/)![1];
 
     // Open the unattended WSS for the second device.
     const ws = new WebSocket(url, {
@@ -423,7 +423,7 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     const delRes = await fetch(`${baseUrl}/api/devices/888-777-666`, {
       method: "DELETE",
       headers: {
-        cookie: `auffi_session=${cookieVal}`,
+        cookie: `__Host-auffi_session=${cookieVal}`,
         origin: "http://127.0.0.1",
       },
     });

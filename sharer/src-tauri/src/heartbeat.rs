@@ -78,11 +78,20 @@ pub fn with_jitter(base: Duration) -> Duration {
         return base;
     }
     let half = base / 2;
-    let extra_nanos = half.as_nanos() as u64;
+    // u128→u64 via try_from so a pathological `half` (years long) can't
+    // silently truncate. half = base/2 for any Duration we'd realistically
+    // pass is ≪ u64::MAX nanos (~584 years), but the explicit fallback
+    // matches the convention used at line 64 in `next_backoff`.
+    let extra_nanos = u64::try_from(half.as_nanos()).unwrap_or(u64::MAX);
     // Cheap "pretty random" source — getrandom for one u64.
     let mut buf = [0u8; 8];
-    if getrandom::fill(&mut buf).is_err() {
-        return base; // fall back if entropy source unavailable
+    if let Err(e) = getrandom::fill(&mut buf) {
+        // Entropy source unavailable. Falling back to deterministic
+        // `base` keeps the heartbeat alive, but reconnect-jitter is
+        // gone for this attempt — log so a host with a broken
+        // /dev/urandom doesn't fail silently.
+        log::warn!("[heartbeat] jitter: getrandom failed — no jitter on this attempt: {e}");
+        return base;
     }
     let r = u64::from_le_bytes(buf);
     let jitter_nanos = r % extra_nanos.max(1);

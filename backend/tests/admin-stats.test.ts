@@ -41,7 +41,7 @@ async function build(): Promise<{
     });
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
     const raw = Array.isArray(sc) ? sc[0] : sc!;
-    return raw.match(/^auffi_session=([^;]+)/)![1];
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
   return { app, db, adminCookie };
@@ -96,7 +96,7 @@ describe("GET /api/admin/stats", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/stats",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -118,7 +118,7 @@ describe("GET /api/admin/stats", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/stats",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     const body = res.json();
     expect(body.users.total).toBe(3); // admin + verified + suspended
@@ -139,7 +139,7 @@ describe("GET /api/admin/stats", () => {
       await h.app.inject({
         method: "GET",
         url: "/api/admin/stats",
-        headers: { cookie: `auffi_session=${c}` },
+        headers: { cookie: `__Host-auffi_session=${c}` },
       })
     ).json();
 
@@ -155,7 +155,7 @@ describe("GET /api/admin/stats", () => {
       await h.app.inject({
         method: "GET",
         url: "/api/admin/stats",
-        headers: { cookie: `auffi_session=${c}` },
+        headers: { cookie: `__Host-auffi_session=${c}` },
       })
     ).json();
     expect(second.users.total).toBe(first.users.total);
@@ -173,11 +173,11 @@ describe("GET /api/admin/stats", () => {
       payload: { email: "plain@example.com", password: "plain-account-pw" },
     });
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
-    const cookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+    const cookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^__Host-auffi_session=([^;]+)/)![1];
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/stats",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(res.statusCode).toBe(403);
   });

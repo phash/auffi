@@ -49,7 +49,7 @@ async function build(): Promise<{
     });
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
     const raw = Array.isArray(sc) ? sc[0] : sc!;
-    return raw.match(/^auffi_session=([^;]+)/)![1];
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
   return { app, db, changeMailer, cookie };
@@ -70,7 +70,7 @@ describe("GET /api/me", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -102,7 +102,7 @@ describe("PATCH /api/me — password change", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { new_password: "brand-new-password" },
     });
     expect(res.statusCode).toBe(403);
@@ -112,7 +112,7 @@ describe("PATCH /api/me — password change", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_password: "brand-new-secret-pw" },
     });
     expect(res.statusCode).toBe(200);
@@ -121,7 +121,7 @@ describe("PATCH /api/me — password change", () => {
     const after = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(after.statusCode).toBe(401);
 
@@ -158,7 +158,7 @@ describe("PATCH /api/me — email change", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_email: "henry-new@example.com" },
     });
     expect(res.statusCode).toBe(200);
@@ -170,7 +170,7 @@ describe("PATCH /api/me — email change", () => {
     const me = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(me.json().email).toBe("henry@example.com");
     expect(me.json().pendingEmail).toBe("henry-new@example.com");
@@ -180,7 +180,7 @@ describe("PATCH /api/me — email change", () => {
     await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_email: "henry-new@example.com" },
     });
     const token = h.changeMailer.sent[0].token;
@@ -197,7 +197,7 @@ describe("PATCH /api/me — email change", () => {
     const stale = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(stale.statusCode).toBe(401);
 
@@ -209,12 +209,12 @@ describe("PATCH /api/me — email change", () => {
     });
     expect(login.statusCode).toBe(200);
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
-    const fresh = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+    const fresh = (Array.isArray(sc) ? sc[0] : sc!).match(/^__Host-auffi_session=([^;]+)/)![1];
 
     const me = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${fresh}` },
+      headers: { cookie: `__Host-auffi_session=${fresh}` },
     });
     expect(me.json().email).toBe("henry-new@example.com");
     expect(me.json().pendingEmail).toBeNull();
@@ -229,7 +229,7 @@ describe("PATCH /api/me — email change", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_email: "rival@example.com" },
     });
     expect(res.statusCode).toBe(409);
@@ -247,13 +247,13 @@ describe("PATCH /api/me — email change", () => {
     await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_email: "a@example.com" },
     });
     await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_email: "b@example.com" },
     });
     const count = h.db
@@ -279,7 +279,7 @@ describe("DELETE /api/me", () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", confirm: "yes" },
     });
     expect(res.statusCode).toBe(400);
@@ -289,7 +289,7 @@ describe("DELETE /api/me", () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "wrong-pw", confirm: "LÖSCHEN" },
     });
     expect(res.statusCode).toBe(403);
@@ -301,14 +301,14 @@ describe("DELETE /api/me", () => {
     await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_email: "z@example.com" },
     });
 
     const res = await h.app.inject({
       method: "DELETE",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
     });
     expect(res.statusCode).toBe(204);
@@ -325,7 +325,7 @@ describe("DELETE /api/me", () => {
     const after = await h.app.inject({
       method: "GET",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(after.statusCode).toBe(401);
   });
@@ -349,7 +349,7 @@ describe("PATCH /api/me — per-account lockout (Sec H-3)", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: currentPw, new_email: "next@example.com" },
     });
     return res.statusCode;
@@ -371,7 +371,7 @@ describe("PATCH /api/me — per-account lockout (Sec H-3)", () => {
     const body = await h.app.inject({
       method: "PATCH",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", new_email: "x@y.test" },
     });
     expect(body.json().error).toBe("locked");
@@ -407,7 +407,7 @@ describe("PATCH /api/me — per-account lockout (Sec H-3)", () => {
     const del = await h.app.inject({
       method: "DELETE",
       url: "/api/me",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
     });
     expect(del.statusCode).toBe(423);

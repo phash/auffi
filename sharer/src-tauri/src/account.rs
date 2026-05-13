@@ -200,6 +200,25 @@ pub fn normalise_pairing_code(input: &str) -> Result<String, AccountError> {
     Ok(buf)
 }
 
+/// Maximum number of bytes of backend response body to surface in
+/// `AccountError::Backend` / `AccountError::InvalidCode`. CQ M-30
+/// (review 2026-05-13): a 5xx from a misconfigured reverse proxy can
+/// return verbose HTML, which would otherwise spill into the toast.
+const MAX_BACKEND_BODY_BYTES: usize = 200;
+
+/// Clamp `body` to at most `MAX_BACKEND_BODY_BYTES`, respecting UTF-8
+/// boundaries and appending an ellipsis when truncation happened.
+pub(crate) fn clamp_for_display(body: &str) -> String {
+    if body.len() <= MAX_BACKEND_BODY_BYTES {
+        return body.to_string();
+    }
+    let mut cut = MAX_BACKEND_BODY_BYTES;
+    while cut > 0 && !body.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}…", &body[..cut])
+}
+
 /// True iff `s` matches `^[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{2}$`. Split
 /// out so `pair()` can re-check after normalisation without re-parsing.
 fn is_valid_pairing_code(s: &str) -> bool {
@@ -332,12 +351,18 @@ pub async fn pair<S: TokenStore>(
         // to backend strings; instead surface the raw body so the UI
         // can show a friendly toast distinguishing "ungültig/abgelaufen"
         // from "Backend down".
+        //
+        // CQ M-30 (review 2026-05-13): clamp the surfaced body to
+        // 200 bytes so a 5xx returning verbose HTML ("Internal
+        // Server Error\n<html>…</html>") doesn't dump the full
+        // server-side error text into the user's toast.
+        let clamped = clamp_for_display(&body);
         if status.as_u16() == 400 || status.as_u16() == 404 || status.as_u16() == 410 {
-            return Err(AccountError::InvalidCode(body));
+            return Err(AccountError::InvalidCode(clamped));
         }
         return Err(AccountError::Backend {
             status: status.as_u16(),
-            body,
+            body: clamped,
         });
     }
     let parsed: PairingResponse =
@@ -489,6 +514,43 @@ mod tests {
             normalise_pairing_code("AB!-DEF-GH"),
             Err(AccountError::InvalidCode(_))
         ));
+    }
+
+    // ── clamp_for_display ────────────────────────────────────────────
+    // CQ M-30 regression pin: a 5xx backend response with verbose HTML
+    // (think Caddy default error page) must not flood the toast.
+
+    #[test]
+    fn clamp_for_display_passes_short_body_through() {
+        let body = "Code abgelaufen";
+        assert_eq!(clamp_for_display(body), body);
+    }
+
+    #[test]
+    fn clamp_for_display_truncates_long_body_with_ellipsis() {
+        let long = "x".repeat(MAX_BACKEND_BODY_BYTES + 50);
+        let out = clamp_for_display(&long);
+        // Each ellipsis is 3 bytes in UTF-8 (…); body bytes plus the ellipsis.
+        assert_eq!(out.len(), MAX_BACKEND_BODY_BYTES + "…".len());
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn clamp_for_display_respects_utf8_boundaries() {
+        // Build a body where byte MAX_BACKEND_BODY_BYTES lands in the
+        // middle of a multi-byte character. "ö" is 2 bytes; pad with
+        // single-byte chars so the cut would otherwise split it.
+        let mut body = String::new();
+        for _ in 0..MAX_BACKEND_BODY_BYTES - 1 {
+            body.push('a');
+        }
+        body.push('ö');
+        body.push('z');
+        let out = clamp_for_display(&body);
+        assert!(out.is_char_boundary(out.len()));
+        // The 'ö' (bytes MAX-1..MAX+1) must be excluded, so cut shifts
+        // back to MAX-1.
+        assert!(out.ends_with("a…"));
     }
 
     // ── normalise_alias ──────────────────────────────────────────────

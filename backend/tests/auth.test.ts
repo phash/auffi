@@ -43,7 +43,7 @@ function cookieValue(headers: Record<string, string | string[] | undefined>): st
   const sc = headers["set-cookie"];
   const raw = Array.isArray(sc) ? sc[0] : sc;
   if (!raw) return undefined;
-  const m = raw.match(/^auffi_session=([^;]+)/);
+  const m = raw.match(/^__Host-auffi_session=([^;]+)/);
   return m?.[1];
 }
 
@@ -296,7 +296,7 @@ describe("POST /api/auth/logout", () => {
     const logoutRes = await h.app.inject({
       method: "POST",
       url: "/api/auth/logout",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(logoutRes.statusCode).toBe(200);
 

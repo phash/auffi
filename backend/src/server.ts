@@ -137,7 +137,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   await app.register(corsPlugin, {
     origin: env.allowedOrigins,
     methods: ["GET", "POST", "PATCH", "DELETE"],
-    // The dashboard sends credentials (auffi_session cookie) on every
+    // The dashboard sends credentials (__Host-auffi_session cookie) on every
     // authenticated request. Without this the browser strips the
     // cookie on cross-origin requests in dev mode.
     credentials: true,

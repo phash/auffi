@@ -50,7 +50,7 @@ async function build(): Promise<{
     });
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
     const raw = Array.isArray(sc) ? sc[0] : sc!;
-    return raw.match(/^auffi_session=([^;]+)/)![1];
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
   return {
@@ -76,7 +76,7 @@ describe("requireAdmin middleware", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(200);
   });
@@ -86,7 +86,7 @@ describe("requireAdmin middleware", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toBe("admin-required");
@@ -107,7 +107,7 @@ describe("requireAdmin middleware", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     // requireSession runs first → 401 (account gone, session resolves to no account)
     expect(res.statusCode).toBe(401);
@@ -118,7 +118,7 @@ describe("requireAdmin middleware", () => {
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
-      headers: { cookie: `auffi_session=${c}`, "x-forwarded-for": "84.137.42.7, 10.0.0.1" },
+      headers: { cookie: `__Host-auffi_session=${c}`, "x-forwarded-for": "84.137.42.7, 10.0.0.1" },
     });
     const row = h.db
       .prepare<
@@ -149,7 +149,7 @@ describe("writeAudit IP-prefix shaping", () => {
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
-      headers: { cookie: `auffi_session=${c}`, "x-forwarded-for": "203.0.113.42" },
+      headers: { cookie: `__Host-auffi_session=${c}`, "x-forwarded-for": "203.0.113.42" },
     });
     const row = h.db
       .prepare<[], { viewer_ip_prefix: string }>(
@@ -168,7 +168,7 @@ describe("writeAudit IP-prefix shaping", () => {
       method: "POST",
       url: "/api/admin/ping",
       headers: {
-        cookie: `auffi_session=${c}`,
+        cookie: `__Host-auffi_session=${c}`,
         "x-forwarded-for": "2001:db8:abcd:1234:5678:9abc:def0:1234",
       },
     });

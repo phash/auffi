@@ -9,8 +9,18 @@ import { newToken, hashToken } from "./tokens.js";
  */
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Cookie name carrying the session token. */
-export const SESSION_COOKIE = "auffi_session";
+/**
+ * Cookie name carrying the session token. The `__Host-` prefix is a
+ * browser-side defense-in-depth measure (Sec L-1, review 2026-05-13):
+ *   - the browser refuses to set the cookie unless `Secure` is on AND
+ *     `Path=/` is set AND no `Domain` attribute is present,
+ *   - subdomains can NEVER overwrite it (no Domain attribute allowed).
+ * Together with our existing HttpOnly + SameSite=Strict + sha256-only
+ * server storage, this makes the cookie resistant to subdomain take-
+ * over (e.g. a future static-assets host on `*.auffi.app` cannot
+ * forge a session cookie that the dashboard will accept).
+ */
+export const SESSION_COOKIE = "__Host-auffi_session";
 
 /**
  * Insert a new session row for `account_id`, set the cookie on `reply`,

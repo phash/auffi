@@ -37,7 +37,7 @@ async function build(): Promise<{ app: FastifyInstance; db: Db; cookie: () => Pr
     });
     const sc = login.headers["set-cookie"] as string | string[] | undefined;
     const raw = Array.isArray(sc) ? sc[0] : sc!;
-    return raw.match(/^auffi_session=([^;]+)/)![1];
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
   return { app, db, cookie };
@@ -70,7 +70,7 @@ describe("POST /api/devices/pairing-code", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/api/devices/pairing-code",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -108,7 +108,7 @@ describe("POST /api/devices/redeem", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/api/devices/pairing-code",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     return res.json().code;
   }
@@ -219,7 +219,7 @@ describe("GET /api/devices", () => {
       await h.app.inject({
         method: "POST",
         url: "/api/devices/pairing-code",
-        headers: { cookie: `auffi_session=${c}` },
+        headers: { cookie: `__Host-auffi_session=${c}` },
       })
     ).json().code;
     await h.app.inject({
@@ -231,7 +231,7 @@ describe("GET /api/devices", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/devices",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -247,7 +247,7 @@ describe("GET /api/devices", () => {
       await h.app.inject({
         method: "POST",
         url: "/api/devices/pairing-code",
-        headers: { cookie: `auffi_session=${c}` },
+        headers: { cookie: `__Host-auffi_session=${c}` },
       })
     ).json().code;
     const redeem = await h.app.inject({
@@ -262,7 +262,7 @@ describe("GET /api/devices", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/devices",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.json().items[0].online).toBe(true);
   });
@@ -281,12 +281,12 @@ describe("GET /api/devices", () => {
       payload: { email: "other@example.com", password: "other-account-pw" },
     });
     const sc = other.headers["set-cookie"] as string | string[] | undefined;
-    const otherCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+    const otherCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^__Host-auffi_session=([^;]+)/)![1];
     const otherCode = (
       await h.app.inject({
         method: "POST",
         url: "/api/devices/pairing-code",
-        headers: { cookie: `auffi_session=${otherCookie}` },
+        headers: { cookie: `__Host-auffi_session=${otherCookie}` },
       })
     ).json().code;
     await h.app.inject({
@@ -299,7 +299,7 @@ describe("GET /api/devices", () => {
     const res = await h.app.inject({
       method: "GET",
       url: "/api/devices",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(res.json().items).toHaveLength(0);
   });
@@ -321,7 +321,7 @@ describe("PATCH /api/devices/:id", () => {
       await h.app.inject({
         method: "POST",
         url: "/api/devices/pairing-code",
-        headers: { cookie: `auffi_session=${cookie}` },
+        headers: { cookie: `__Host-auffi_session=${cookie}` },
       })
     ).json().code;
     deviceId = (
@@ -341,7 +341,7 @@ describe("PATCH /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { alias: "renamed" },
     });
     expect(res.statusCode).toBe(200);
@@ -355,7 +355,7 @@ describe("PATCH /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { auto_accept: false },
     });
     expect(res.statusCode).toBe(200);
@@ -369,7 +369,7 @@ describe("PATCH /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { alias: "   " },
     });
     expect(res.statusCode).toBe(400);
@@ -379,7 +379,7 @@ describe("PATCH /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { alias: "x".repeat(81) },
     });
     expect(res.statusCode).toBe(400);
@@ -389,7 +389,7 @@ describe("PATCH /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { auto_accept: "no" },
     });
     expect(res.statusCode).toBe(400);
@@ -399,7 +399,7 @@ describe("PATCH /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: {},
     });
     expect(res.statusCode).toBe(400);
@@ -418,12 +418,12 @@ describe("PATCH /api/devices/:id", () => {
       payload: { email: "rival@example.com", password: "rival-account-pw" },
     });
     const sc = rivalLogin.headers["set-cookie"] as string | string[] | undefined;
-    const rivalCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+    const rivalCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^__Host-auffi_session=([^;]+)/)![1];
 
     const res = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${rivalCookie}` },
+      headers: { cookie: `__Host-auffi_session=${rivalCookie}` },
       payload: { alias: "stolen" },
     });
     expect(res.statusCode).toBe(403);
@@ -433,7 +433,7 @@ describe("PATCH /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "PATCH",
       url: "/api/devices/999-999-999",
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
       payload: { alias: "ghost" },
     });
     expect(res.statusCode).toBe(403);
@@ -460,7 +460,7 @@ describe("DELETE /api/devices/:id", () => {
       await h.app.inject({
         method: "POST",
         url: "/api/devices/pairing-code",
-        headers: { cookie: `auffi_session=${cookie}` },
+        headers: { cookie: `__Host-auffi_session=${cookie}` },
       })
     ).json().code;
     deviceId = (
@@ -488,7 +488,7 @@ describe("DELETE /api/devices/:id", () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${cookie}` },
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(res.statusCode).toBe(204);
 
@@ -514,12 +514,12 @@ describe("DELETE /api/devices/:id", () => {
       payload: { email: "thief@example.com", password: "thief-account-pw" },
     });
     const sc = tl.headers["set-cookie"] as string | string[] | undefined;
-    const thiefCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+    const thiefCookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^__Host-auffi_session=([^;]+)/)![1];
 
     const res = await h.app.inject({
       method: "DELETE",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${thiefCookie}` },
+      headers: { cookie: `__Host-auffi_session=${thiefCookie}` },
     });
     expect(res.statusCode).toBe(403);
   });
@@ -554,14 +554,14 @@ describe("device-route rate limits (TC H-6 / H-7 / Sec M-5)", () => {
       const ok = await h.app.inject({
         method: "POST",
         url: "/api/devices/pairing-code",
-        headers: { cookie: `auffi_session=${c}` },
+        headers: { cookie: `__Host-auffi_session=${c}` },
       });
       expect(ok.statusCode).toBe(200);
     }
     const sixth = await h.app.inject({
       method: "POST",
       url: "/api/devices/pairing-code",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(sixth.statusCode).toBe(429);
   });
@@ -595,7 +595,7 @@ describe("device-route rate limits (TC H-6 / H-7 / Sec M-5)", () => {
     const mint = await h.app.inject({
       method: "POST",
       url: "/api/devices/pairing-code",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     const code = mint.json().code;
     const redeem = await h.app.inject({
@@ -609,7 +609,7 @@ describe("device-route rate limits (TC H-6 / H-7 / Sec M-5)", () => {
       const r = await h.app.inject({
         method: "PATCH",
         url: `/api/devices/${deviceId}`,
-        headers: { cookie: `auffi_session=${c}` },
+        headers: { cookie: `__Host-auffi_session=${c}` },
         payload: { alias: `name-${i}` },
       });
       expect(r.statusCode).toBe(200);
@@ -617,7 +617,7 @@ describe("device-route rate limits (TC H-6 / H-7 / Sec M-5)", () => {
     const overflow = await h.app.inject({
       method: "PATCH",
       url: `/api/devices/${deviceId}`,
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
       payload: { alias: "burst-overflow" },
     });
     expect(overflow.statusCode).toBe(429);
@@ -632,14 +632,14 @@ describe("device-route rate limits (TC H-6 / H-7 / Sec M-5)", () => {
       const r = await h.app.inject({
         method: "DELETE",
         url: "/api/devices/000-000-000",
-        headers: { cookie: `auffi_session=${c}` },
+        headers: { cookie: `__Host-auffi_session=${c}` },
       });
       expect(r.statusCode).toBe(403);
     }
     const eleventh = await h.app.inject({
       method: "DELETE",
       url: "/api/devices/000-000-000",
-      headers: { cookie: `auffi_session=${c}` },
+      headers: { cookie: `__Host-auffi_session=${c}` },
     });
     expect(eleventh.statusCode).toBe(429);
   });

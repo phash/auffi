@@ -153,13 +153,13 @@ describe("GET /api/devices/:id/log", () => {
     });
     expect(res.status).toBe(200);
     const sc = res.headers.get("set-cookie")!;
-    return sc.match(/auffi_session=([^;]+)/)![1];
+    return sc.match(/__Host-auffi_session=([^;]+)/)![1];
   }
 
   it("returns newest rows first, default limit 20, with nextCursor", async () => {
     const c = await cookieFor("owner@a.test", "owner-account-pw");
     const res = await fetch(`${baseUrl}/api/devices/333-333-333/log`, {
-      headers: { cookie: `auffi_session=${c}`, origin: "http://127.0.0.1" },
+      headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" },
     });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -173,14 +173,14 @@ describe("GET /api/devices/:id/log", () => {
     const c = await cookieFor("owner@a.test", "owner-account-pw");
     const first = await (
       await fetch(`${baseUrl}/api/devices/333-333-333/log?limit=10`, {
-        headers: { cookie: `auffi_session=${c}`, origin: "http://127.0.0.1" },
+        headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" },
       })
     ).json();
     expect(first.items.length).toBe(10);
     const second = await (
       await fetch(
         `${baseUrl}/api/devices/333-333-333/log?limit=10&cursor=${first.nextCursor}`,
-        { headers: { cookie: `auffi_session=${c}`, origin: "http://127.0.0.1" } },
+        { headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" } },
       )
     ).json();
     expect(second.items[0].id).toBeLessThan(first.items[9].id);
@@ -189,7 +189,7 @@ describe("GET /api/devices/:id/log", () => {
   it("403s on cross-account access (does NOT leak device existence)", async () => {
     const c = await cookieFor("other@a.test", "other-account-pw");
     const res = await fetch(`${baseUrl}/api/devices/333-333-333/log`, {
-      headers: { cookie: `auffi_session=${c}`, origin: "http://127.0.0.1" },
+      headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" },
     });
     expect(res.status).toBe(403);
   });
@@ -197,7 +197,7 @@ describe("GET /api/devices/:id/log", () => {
   it("403s on unknown device id (same shape as cross-account)", async () => {
     const c = await cookieFor("owner@a.test", "owner-account-pw");
     const res = await fetch(`${baseUrl}/api/devices/000-000-000/log`, {
-      headers: { cookie: `auffi_session=${c}`, origin: "http://127.0.0.1" },
+      headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" },
     });
     expect(res.status).toBe(403);
   });

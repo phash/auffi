@@ -1,6 +1,6 @@
 // Thin fetch wrapper for the backend /api/* surface.
 //
-// All requests include credentials so the auffi_session cookie is
+// All requests include credentials so the __Host-auffi_session cookie is
 // sent on every authed call. The base URL defaults to "" (same-
 // origin, the production layout where Caddy serves /dashboard/*
 // and /api/* on auffi.app) and can be overridden via the Vite env
