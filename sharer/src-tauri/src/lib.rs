@@ -4,6 +4,7 @@ mod device_password;
 mod encoder;
 mod files;
 mod free_tier_timer;
+mod heartbeat;
 mod hotkey;
 pub mod input;
 mod ip_redact;

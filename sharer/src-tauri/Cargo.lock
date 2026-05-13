@@ -374,6 +374,7 @@ dependencies = [
  "dirs 6.0.0",
  "enigo",
  "futures-util",
+ "getrandom 0.3.4",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",
