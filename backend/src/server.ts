@@ -6,10 +6,36 @@ import { SessionStore } from "./codes.js";
 import { registerSignaling } from "./signaling.js";
 import type { RateLimitEntry } from "./signaling.js";
 import { registerTurnEndpoint } from "./turn-credentials.js";
+import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "./db.js";
+import { mailerFromEnv } from "./email/mailer.js";
+import { decorateRequireSession } from "./auth/middleware.js";
+import { decorateRequireAdmin } from "./admin/middleware.js";
+import { registerAuthRoutes } from "./auth/handlers.js";
+import { registerMeRoutes } from "./account/me.js";
+import { registerDeviceRoutes } from "./devices/handlers.js";
+import { registerAdminUsersRoutes } from "./admin/users.js";
+import { registerAdminDevicesRoutes } from "./admin/devices.js";
+import { registerAdminAuditRoutes } from "./admin/audit.js";
+import { registerAdminStatsRoutes } from "./admin/stats.js";
+import { registerAdminTimeseriesRoutes } from "./admin/timeseries.js";
+import { bootstrapInitialAdmin } from "./admin/bootstrap.js";
 
 export type ServerConfig = {
   port: number;
   host: string;
+  /**
+   * Override the DB path. When undefined the server falls back to
+   * `process.env.AUFFI_DB_PATH` / `db.ts:DEFAULT_DB_PATH`. Tests pass
+   * `:memory:` for hermetic runs.
+   */
+  dbPath?: string;
+  /**
+   * Optional pre-built DB handle. When provided, the server skips
+   * `openDb` entirely and uses this one as-is. Tests that need to
+   * pre-seed rows before any route registers will pass their own
+   * handle here.
+   */
+  db?: Db;
 };
 
 function envNumber(key: string, fallback: number): number {
@@ -79,7 +105,7 @@ function buildLoggerOptions(nodeEnv: string | undefined) {
   };
 }
 
-export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance> {
+export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> {
   // Read env at call-time so tests can override values per-server.
   const env = readEnvConfig();
   const turnSharedSecret = process.env.TURN_SHARED_SECRET ?? "";
@@ -169,6 +195,54 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
       ttlSec: turnTtlSec,
       allowedOrigins: env.allowedOrigins,
       sessionStore: store,
+    });
+  }
+
+  // ── SQLite-backed surfaces: accounts, devices, /me, admin ──────────
+  // Before this hook landed, all of these route registrars existed in
+  // the codebase but were never invoked from `createServer` — the
+  // /api/auth/*, /api/me/*, /api/devices/*, /api/admin/* surfaces were
+  // dead code in v0.3.0 (Sec OBS-1, fixed here). End-to-end pairing,
+  // the unattended WSS Bearer flow (gh #16/#17), and the dashboard all
+  // depend on these being live.
+  //
+  // Tests pass an in-memory DB (or a pre-seeded handle) via `cfg`. In
+  // production we open a file-backed connection from AUFFI_DB_PATH (or
+  // the volume-mounted default at /var/lib/auffi/auffi.db) and apply
+  // migrations every boot — idempotent if no new files appear.
+  const ownsDb = cfg.db === undefined;
+  const db: Db = cfg.db ?? openDb(cfg.dbPath);
+  if (ownsDb) {
+    applyMigrations(db, defaultMigrationsDir());
+  }
+
+  const { mailer, accountMailer } = mailerFromEnv();
+
+  decorateRequireSession(app, db);
+  decorateRequireAdmin(app, db);
+
+  registerAuthRoutes(app, { db, mailer });
+  registerMeRoutes(app, { db, mailer: accountMailer });
+  registerDeviceRoutes(app, { db });
+  registerAdminUsersRoutes(app, db);
+  registerAdminDevicesRoutes(app, db);
+  registerAdminAuditRoutes(app, db);
+  registerAdminStatsRoutes(app, db);
+  registerAdminTimeseriesRoutes(app, db);
+
+  // Promote the configured INITIAL_ADMIN_EMAIL on every boot.
+  // Idempotent — if the account doesn't exist yet (first deploy), the
+  // next signup will trigger the same check via `maybePromoteToAdmin`.
+  const bootstrap = bootstrapInitialAdmin(db);
+  if (bootstrap.promoted) {
+    app.log.info({ email: bootstrap.email }, "promoted initial admin account");
+  }
+
+  // Close the DB on shutdown only if we opened it; injected handles
+  // belong to the caller.
+  if (ownsDb) {
+    app.addHook("onClose", () => {
+      db.close();
     });
   }
 

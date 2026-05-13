@@ -6,7 +6,7 @@ let app: FastifyInstance;
 let baseUrl: string;
 
 beforeAll(async () => {
-  app = await createServer({ port: 0, host: "127.0.0.1" });
+  app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
   if (typeof addr === "string" || !addr) throw new Error("no address");

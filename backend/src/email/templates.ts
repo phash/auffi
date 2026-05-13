@@ -54,10 +54,30 @@ dein Passwort bleibt unverändert.
 https://auffi.app
 `;
 
+const EMAIL_CHANGE_SUBJECT = "Bestätige deine neue Auffi-E-Mail-Adresse";
+const EMAIL_CHANGE_BODY = `Hallo,
+
+du hast angefordert, die mit deinem Auffi-Account verknüpfte
+E-Mail-Adresse zu ändern. Bestätige die neue Adresse über diesen Link:
+
+    {{link}}
+
+Der Link ist 24 Stunden gültig. Bis du ihn anklickst, bleibt deine
+alte Adresse aktiv — falls du dich vertippt hast oder die Anfrage
+nicht von dir kam, kannst du diese E-Mail einfach ignorieren.
+
+— Auffi
+https://auffi.app
+`;
+
 export function verifyEmailTemplate(link: string): TemplateContent {
   return { subject: VERIFY_SUBJECT, text: applyLink(VERIFY_BODY, link) };
 }
 
 export function resetPasswordTemplate(link: string): TemplateContent {
   return { subject: RESET_SUBJECT, text: applyLink(RESET_BODY, link) };
+}
+
+export function emailChangeTemplate(link: string): TemplateContent {
+  return { subject: EMAIL_CHANGE_SUBJECT, text: applyLink(EMAIL_CHANGE_BODY, link) };
 }

@@ -70,7 +70,7 @@ describe("POST /turn-credentials — credentials", () => {
 
   beforeAll(async () => {
     setTurnEnv();
-    app = await createServer({ port: 0, host: "127.0.0.1" });
+    app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
     await app.listen({ port: 0, host: "127.0.0.1" });
   });
 
@@ -171,7 +171,7 @@ describe("POST /turn-credentials — TURN_SHARED_SECRET unset", () => {
   beforeAll(async () => {
     setTurnEnv();
     delete process.env.TURN_SHARED_SECRET; // explicit
-    app = await createServer({ port: 0, host: "127.0.0.1" });
+    app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
     await app.listen({ port: 0, host: "127.0.0.1" });
   });
 
@@ -195,7 +195,7 @@ describe("POST /turn-credentials — rate limiting", () => {
 
   beforeAll(async () => {
     setTurnEnv();
-    app = await createServer({ port: 0, host: "127.0.0.1" });
+    app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
     await app.listen({ port: 0, host: "127.0.0.1" });
   });
 

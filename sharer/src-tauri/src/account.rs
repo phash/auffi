@@ -79,14 +79,21 @@ impl From<io::Error> for AccountError {
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PairingResponse {
     pub device_id: String,
     pub token: String,
 }
 
+/// Wire shape of `POST /api/devices/redeem`. The backend
+/// (`backend/src/devices/handlers.ts`) requires both `code` and `alias`:
+/// the alias is the human label the dashboard shows in the device list,
+/// 1-80 chars, trimmed. The sharer caller supplies it from
+/// `gethostname()` (default) or a user override.
 #[derive(Debug, Deserialize, Serialize)]
 struct RedeemRequest<'a> {
     code: &'a str,
+    alias: &'a str,
 }
 
 /// Abstraction over the OS-native credential store so tests can swap in
@@ -149,31 +156,69 @@ impl TokenStore for KeyringTokenStore {
     }
 }
 
-/// Validate the pairing-code shape BEFORE round-tripping to the backend.
-/// Spec §5.2: "8-stellig alphanumerisch (z.B. 7K3-9PQ-XR)" — the user
-/// types the human-formatted version with optional hyphens; the backend
-/// hashes the unhyphenated 8 chars. We accept hyphens / spaces / case
-/// and normalise to upper-ASCII alphanumeric.
+/// Validate and normalise a user-typed pairing code to the exact wire
+/// shape the backend expects (`backend/src/devices/handlers.ts`):
+/// `^[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{2}$` (10 chars, two dashes).
+/// Strips whitespace and lower-cases input but **preserves the dashes**
+/// — the backend's `normalizePairingCode` keeps them and matches the
+/// hashed value off the dashed form. Accepts paste-from-mail-client
+/// artefacts (smart-dashes, surrounding whitespace, lower-case typing)
+/// and converts to the canonical form.
 ///
-/// Pure for trivial unit-pinning.
+/// Pure for unit-pinning. The dash policy is a wire-contract pin: the
+/// previous implementation stripped dashes and produced an 8-char
+/// payload that the backend rejected with 400 `bad-code`.
 pub fn normalise_pairing_code(input: &str) -> Result<String, AccountError> {
-    let normalised: String = input
+    // Collapse en-dash / em-dash / NBSP-hyphen into ASCII '-' first.
+    let pre: String = input
         .chars()
-        .filter(|c| !c.is_whitespace() && *c != '-')
-        .map(|c| c.to_ascii_uppercase())
+        .map(|c| match c {
+            '\u{2013}' | '\u{2014}' | '\u{2212}' | '\u{2010}' | '\u{2011}' => '-',
+            _ => c,
+        })
         .collect();
-    if normalised.len() != 8 {
+    // Strip whitespace and any character outside [A-Z0-9-] after
+    // upper-casing. Then collapse runs of dashes.
+    let mut buf = String::with_capacity(pre.len());
+    for c in pre.chars() {
+        if c.is_whitespace() {
+            continue;
+        }
+        let up = c.to_ascii_uppercase();
+        if up.is_ascii_alphanumeric() || up == '-' {
+            buf.push(up);
+        }
+    }
+    while buf.contains("--") {
+        buf = buf.replace("--", "-");
+    }
+    if !is_valid_pairing_code(&buf) {
         return Err(AccountError::InvalidCode(format!(
-            "Code muss 8 Zeichen lang sein (bekam {})",
-            normalised.len()
+            "Code muss Form XXX-XXX-XX haben (bekam {buf:?})"
         )));
     }
-    if !normalised.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return Err(AccountError::InvalidCode(
-            "nur Buchstaben und Ziffern erlaubt".to_string(),
-        ));
+    Ok(buf)
+}
+
+/// True iff `s` matches `^[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{2}$`. Split
+/// out so `pair()` can re-check after normalisation without re-parsing.
+fn is_valid_pairing_code(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() != 10 {
+        return false;
     }
-    Ok(normalised)
+    if bytes[3] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    for (i, &b) in bytes.iter().enumerate() {
+        if i == 3 || i == 7 {
+            continue;
+        }
+        if !(b.is_ascii_uppercase() || b.is_ascii_digit()) {
+            return false;
+        }
+    }
+    true
 }
 
 fn device_id_path(config_dir: &Path) -> PathBuf {
@@ -222,22 +267,57 @@ fn delete_device_id(config_dir: &Path) -> io::Result<()> {
     }
 }
 
+/// Maximum alias length the backend will accept. Mirrors the constraint
+/// in `backend/src/devices/handlers.ts`: 1-80 chars, trimmed. We
+/// truncate here so a long hostname (e.g. macOS auto-names like
+/// `Hans-Mustermann-MacBook-Pro-15-Inch-Mid-2024.local`) still pairs.
+pub const MAX_ALIAS_LEN: usize = 80;
+
+/// Normalise the alias: trim, drop control chars, truncate to
+/// [`MAX_ALIAS_LEN`]. Returns `InvalidCode` if the result is empty —
+/// the user has to type *something* the dashboard can display.
+fn normalise_alias(input: &str) -> Result<String, AccountError> {
+    let cleaned: String = input
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if cleaned.is_empty() {
+        return Err(AccountError::InvalidCode(
+            "Gerätename darf nicht leer sein".to_string(),
+        ));
+    }
+    let truncated: String = cleaned.chars().take(MAX_ALIAS_LEN).collect();
+    Ok(truncated)
+}
+
 /// Redeem a pairing code and persist the resulting credentials.
 /// On success returns the `device_id` (the token is already stored).
 /// On any failure the local state is left untouched so the user can
 /// retry without first needing to unpair.
+///
+/// `alias` is the human label that will show up in the dashboard's
+/// device list; trimmed and truncated to [`MAX_ALIAS_LEN`]. Callers
+/// typically pass the OS hostname as a sensible default; the user can
+/// later rename via the dashboard.
 pub async fn pair<S: TokenStore>(
     http: &reqwest::Client,
     store: &S,
     backend_base: &str,
     code: &str,
+    alias: &str,
     config_dir: &Path,
 ) -> Result<String, AccountError> {
     let normalised = normalise_pairing_code(code)?;
+    let alias = normalise_alias(alias)?;
     let url = format!("{}/api/devices/redeem", backend_base.trim_end_matches('/'));
     let resp = http
         .post(&url)
-        .json(&RedeemRequest { code: &normalised })
+        .json(&RedeemRequest {
+            code: &normalised,
+            alias: &alias,
+        })
         .send()
         .await
         .map_err(|e| AccountError::Transport(e.to_string()))?;
@@ -350,32 +430,87 @@ mod tests {
     }
 
     // ── normalise_pairing_code ────────────────────────────────────────
+    // Wire-contract pin: backend/src/devices/handlers.ts accepts the
+    // shape `^[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{2}$` (10 chars with
+    // dashes), NOT the bare 8-char form. Anyone "simplifying" the
+    // normaliser to strip dashes recreates the gh #21/#16 contract
+    // mismatch we shipped on 2026-05-14.
 
     #[test]
-    fn normalise_strips_hyphens_and_whitespace_and_uppercases() {
-        assert_eq!(normalise_pairing_code("7k3-9pq-xr").unwrap(), "7K39PQXR");
+    fn normalise_uppercases_and_preserves_dashes() {
+        assert_eq!(normalise_pairing_code("7k3-9pq-xr").unwrap(), "7K3-9PQ-XR");
         assert_eq!(
-            normalise_pairing_code("  7K3 9PQ XR  ").unwrap(),
-            "7K39PQXR"
+            normalise_pairing_code("  7K3-9PQ-XR  ").unwrap(),
+            "7K3-9PQ-XR"
         );
     }
 
     #[test]
-    fn normalise_rejects_wrong_length() {
+    fn normalise_strips_internal_whitespace_but_keeps_dashes() {
+        assert_eq!(
+            normalise_pairing_code("7K3 - 9PQ - XR").unwrap(),
+            "7K3-9PQ-XR"
+        );
+    }
+
+    #[test]
+    fn normalise_collapses_runs_of_dashes() {
+        assert_eq!(
+            normalise_pairing_code("7K3--9PQ---XR").unwrap(),
+            "7K3-9PQ-XR"
+        );
+    }
+
+    #[test]
+    fn normalise_converts_smart_dashes_into_ascii_dashes() {
+        // En-dash, em-dash, hyphen-bullet. Mail clients love these.
+        assert_eq!(
+            normalise_pairing_code("7K3\u{2013}9PQ\u{2014}XR").unwrap(),
+            "7K3-9PQ-XR"
+        );
+    }
+
+    #[test]
+    fn normalise_rejects_wrong_length_or_shape() {
+        for bad in ["ABC", "ABCDEFGHIJ", "ABC-DEF-GH-XX", "ABCD-EF-XY", ""] {
+            assert!(
+                matches!(
+                    normalise_pairing_code(bad),
+                    Err(AccountError::InvalidCode(_))
+                ),
+                "{bad:?} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn normalise_rejects_non_alphanumeric_in_letter_slots() {
         assert!(matches!(
-            normalise_pairing_code("ABC"),
-            Err(AccountError::InvalidCode(_))
-        ));
-        assert!(matches!(
-            normalise_pairing_code("ABCDEFGHIJ"),
+            normalise_pairing_code("AB!-DEF-GH"),
             Err(AccountError::InvalidCode(_))
         ));
     }
 
+    // ── normalise_alias ──────────────────────────────────────────────
+
     #[test]
-    fn normalise_rejects_non_alphanumeric() {
+    fn normalise_alias_trims_and_drops_controls() {
+        assert_eq!(
+            normalise_alias("  Manuel's Laptop\t\n ").unwrap(),
+            "Manuel's Laptop"
+        );
+    }
+
+    #[test]
+    fn normalise_alias_truncates_to_80_chars() {
+        let long: String = "x".repeat(200);
+        assert_eq!(normalise_alias(&long).unwrap().chars().count(), 80);
+    }
+
+    #[test]
+    fn normalise_alias_rejects_empty_after_trim() {
         assert!(matches!(
-            normalise_pairing_code("ABCDEFG!"),
+            normalise_alias("   \n\t  "),
             Err(AccountError::InvalidCode(_))
         ));
     }
@@ -389,20 +524,27 @@ mod tests {
             .mock("POST", "/api/devices/redeem")
             .match_header("content-type", "application/json")
             .match_body(mockito::Matcher::JsonString(
-                "{\"code\":\"7K39PQXR\"}".to_string(),
+                r#"{"code":"7K3-9PQ-XR","alias":"Manuels Laptop"}"#.to_string(),
             ))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"device_id":"123-456-789","token":"deadbeef0123"}"#)
+            .with_body(r#"{"deviceId":"123-456-789","token":"deadbeef0123"}"#)
             .create_async()
             .await;
 
         let store = MemTokenStore::default();
         let dir = tempdir().unwrap();
 
-        let device_id = pair(&http(), &store, &server.url(), "7k3-9pq-xr", dir.path())
-            .await
-            .expect("pair succeeds");
+        let device_id = pair(
+            &http(),
+            &store,
+            &server.url(),
+            "7k3-9pq-xr",
+            "Manuels Laptop",
+            dir.path(),
+        )
+        .await
+        .expect("pair succeeds");
 
         assert_eq!(device_id, "123-456-789");
         assert_eq!(
@@ -430,9 +572,16 @@ mod tests {
 
         let store = MemTokenStore::default();
         let dir = tempdir().unwrap();
-        let err = pair(&http(), &store, &server.url(), "7K39PQXR", dir.path())
-            .await
-            .expect_err("expired must fail");
+        let err = pair(
+            &http(),
+            &store,
+            &server.url(),
+            "7K3-9PQ-XR",
+            "Laptop",
+            dir.path(),
+        )
+        .await
+        .expect_err("expired must fail");
         assert!(matches!(err, AccountError::InvalidCode(_)));
         assert!(
             store.read().unwrap().is_none(),
@@ -456,9 +605,16 @@ mod tests {
 
         let store = MemTokenStore::default();
         let dir = tempdir().unwrap();
-        let err = pair(&http(), &store, &server.url(), "7K39PQXR", dir.path())
-            .await
-            .expect_err("500 must fail");
+        let err = pair(
+            &http(),
+            &store,
+            &server.url(),
+            "7K3-9PQ-XR",
+            "Laptop",
+            dir.path(),
+        )
+        .await
+        .expect_err("500 must fail");
         match err {
             AccountError::Backend { status, .. } => assert_eq!(status, 500),
             other => panic!("expected Backend, got {other:?}"),
@@ -477,9 +633,16 @@ mod tests {
 
         let store = MemTokenStore::default();
         let dir = tempdir().unwrap();
-        let err = pair(&http(), &store, &server.url(), "7K39PQXR", dir.path())
-            .await
-            .expect_err("malformed response must fail");
+        let err = pair(
+            &http(),
+            &store,
+            &server.url(),
+            "7K3-9PQ-XR",
+            "Laptop",
+            dir.path(),
+        )
+        .await
+        .expect_err("malformed response must fail");
         assert!(matches!(err, AccountError::MalformedResponse(_)));
     }
 
@@ -489,15 +652,22 @@ mod tests {
         server
             .mock("POST", "/api/devices/redeem")
             .with_status(200)
-            .with_body(r#"{"device_id":"123-456-789","token":""}"#)
+            .with_body(r#"{"deviceId":"123-456-789","token":""}"#)
             .create_async()
             .await;
 
         let store = MemTokenStore::default();
         let dir = tempdir().unwrap();
-        let err = pair(&http(), &store, &server.url(), "7K39PQXR", dir.path())
-            .await
-            .expect_err("empty token must fail");
+        let err = pair(
+            &http(),
+            &store,
+            &server.url(),
+            "7K3-9PQ-XR",
+            "Laptop",
+            dir.path(),
+        )
+        .await
+        .expect_err("empty token must fail");
         assert!(matches!(err, AccountError::MalformedResponse(_)));
         assert!(
             store.read().unwrap().is_none(),

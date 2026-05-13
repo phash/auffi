@@ -1,5 +1,10 @@
 import type { AuthMailer } from "../auth/handlers.js";
-import { resetPasswordTemplate, verifyEmailTemplate } from "./templates.js";
+import type { AccountMailer } from "../account/me.js";
+import {
+  emailChangeTemplate,
+  resetPasswordTemplate,
+  verifyEmailTemplate,
+} from "./templates.js";
 import {
   type MailTransport,
   captureTransport,
@@ -41,6 +46,22 @@ export function buildAuthMailer(cfg: MailerConfig): AuthMailer {
 }
 
 /**
+ * Mailer for /api/me email-change verification. Kept separate from
+ * `AuthMailer` so a stub transport for one flow can be swapped without
+ * touching the other.
+ */
+export function buildAccountMailer(cfg: MailerConfig): AccountMailer {
+  const base = cfg.dashboardUrl.replace(/\/+$/, "");
+  return {
+    async sendEmailChangeVerification(newEmail, token) {
+      const link = `${base}/verify-email-change/${token}`;
+      const { subject, text } = emailChangeTemplate(link);
+      await cfg.transport.send({ to: newEmail, subject, text });
+    },
+  };
+}
+
+/**
  * Resolve the appropriate transport from env vars:
  *  - NODE_ENV=test or missing SMTP_* → in-memory capture
  *  - otherwise → real nodemailer SMTP
@@ -50,21 +71,25 @@ export function buildAuthMailer(cfg: MailerConfig): AuthMailer {
  */
 export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
   mailer: AuthMailer;
+  accountMailer: AccountMailer;
   transport: MailTransport;
 } {
   const dashboardUrl = env.DASHBOARD_URL?.trim() || DEFAULT_DASHBOARD_URL;
-  if (env.NODE_ENV === "test") {
-    const transport = captureTransport();
-    return { mailer: buildAuthMailer({ dashboardUrl, transport }), transport };
-  }
-  const cfg = smtpConfigFromEnv(env);
-  if (!cfg) {
-    // No SMTP wired up — fall back to capture so signup still works
-    // locally (mail just isn't delivered). The /api/auth/signup handler
-    // logs a fire-and-forget warning so the dev sees it.
-    const transport = captureTransport();
-    return { mailer: buildAuthMailer({ dashboardUrl, transport }), transport };
-  }
-  const transport = smtpTransport(cfg);
-  return { mailer: buildAuthMailer({ dashboardUrl, transport }), transport };
+  const wantTransport = (): MailTransport => {
+    if (env.NODE_ENV === "test") return captureTransport();
+    const cfg = smtpConfigFromEnv(env);
+    if (!cfg) {
+      // No SMTP wired up — fall back to capture so signup still works
+      // locally (mail just isn't delivered). The auth handlers log a
+      // fire-and-forget warning so the dev sees it.
+      return captureTransport();
+    }
+    return smtpTransport(cfg);
+  };
+  const transport = wantTransport();
+  return {
+    mailer: buildAuthMailer({ dashboardUrl, transport }),
+    accountMailer: buildAccountMailer({ dashboardUrl, transport }),
+    transport,
+  };
 }
