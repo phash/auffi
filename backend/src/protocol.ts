@@ -26,7 +26,9 @@ export type IncomingMessage =
   | ViewerJoin
   | RelayMsg
   | { type: "pw-attempt"; password: string }
-  | { type: "pw-check-result"; result: "ok" | "fail" | "rejected" };
+  | { type: "pw-check-result"; result: "ok" | "fail" | "rejected" }
+  | { type: "connection-started"; connectionType: "p2p" | "relay" }
+  | { type: "connection-ended"; bytesRelayed: number };
 
 export type CodeAssigned = {
   type: "code-assigned";

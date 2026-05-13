@@ -4,6 +4,7 @@ import type { Db } from "../db.js";
 import { hashPassword } from "../auth/argon.js";
 import { newToken, hashToken } from "../auth/tokens.js";
 import type { UnattendedRegistry } from "../unattended.js";
+import { listConnectionLog, MAX_LIMIT as LOG_MAX_LIMIT } from "../connection_log.js";
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const ONLINE_WINDOW_MS = 90 * 1000;
@@ -267,6 +268,43 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
         online: r.last_seen_at !== null && now - r.last_seen_at < ONLINE_WINDOW_MS,
       }));
       return reply.status(200).send({ items });
+    },
+  );
+
+  // ── GET /api/devices/:id/log ────────────────────────────────────────
+  // Cursor-paginated connection log for a single device (spec
+  // section 18). Owner-only — 403 on cross-account access so we
+  // don't leak device existence. `cursor` is the smallest id seen on
+  // the previous page; omit on page 1. `limit` is clamped to
+  // [`LOG_MAX_LIMIT`].
+  app.get(
+    "/api/devices/:id/log",
+    { preHandler: app.requireSession },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const dev = db
+        .prepare<[string], { owner_account_id: number }>(
+          "SELECT owner_account_id FROM devices WHERE id = ?",
+        )
+        .get(id);
+      if (!dev || dev.owner_account_id !== req.account!.id) {
+        return bad(reply, 403, "forbidden", "not your device");
+      }
+      const q = req.query as { cursor?: unknown; limit?: unknown };
+      const cursor =
+        typeof q.cursor === "string" && /^\d+$/.test(q.cursor)
+          ? Number(q.cursor)
+          : undefined;
+      const limit =
+        typeof q.limit === "string" && /^\d+$/.test(q.limit)
+          ? Number(q.limit)
+          : 20;
+      const page = listConnectionLog(db, id, cursor, limit);
+      return reply.status(200).send({
+        items: page.items,
+        nextCursor: page.nextCursor,
+        maxLimit: LOG_MAX_LIMIT,
+      });
     },
   );
 }

@@ -129,6 +129,20 @@ export interface UnattendedSession {
    *                       SDP/ICE flows normally now
    */
   state: "awaiting-pw" | "pw-in-flight" | "confirmed";
+  /**
+   * The viewer's IP prefix at JOIN time (e.g. "84.xxx"). Stored on
+   * the session so connection_log can record it later — by the time
+   * the sharer reports `connection-started`, the viewer's request
+   * object is no longer easily accessible.
+   */
+  viewerIpPrefix: string;
+  /**
+   * connection_log row id for the active session, set when the
+   * sharer emits `connection-started`. Used by `connection-ended`
+   * and viewer/sharer close handlers to finalise `ended_at` +
+   * `bytes_relayed`.
+   */
+  logId: number | null;
 }
 
 export class UnattendedSessions {
@@ -147,16 +161,28 @@ export class UnattendedSessions {
    * authenticated on (gh #16). Caller looks it up via
    * `UnattendedRegistry`.
    */
-  begin(deviceId: string, viewer: WebSocket, sharer: WebSocket): "ok" | "busy" {
+  begin(
+    deviceId: string,
+    viewer: WebSocket,
+    sharer: WebSocket,
+    viewerIpPrefix: string,
+  ): "ok" | "busy" {
     if (this.byDevice.has(deviceId)) return "busy";
     this.byDevice.set(deviceId, {
       deviceId,
       viewer,
       sharer,
       state: "awaiting-pw",
+      viewerIpPrefix,
+      logId: null,
     });
     this.viewerToDevice.set(viewer, deviceId);
     return "ok";
+  }
+
+  attachLog(deviceId: string, logId: number): void {
+    const sess = this.byDevice.get(deviceId);
+    if (sess) sess.logId = logId;
   }
 
   /** Lookup by either end of the pairing. */

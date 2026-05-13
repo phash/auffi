@@ -19,6 +19,7 @@ import {
   resetPwFail,
   UnattendedSessions,
 } from "./unattended_sessions.js";
+import { startConnectionLog, endConnectionLog } from "./connection_log.js";
 
 export type RateLimitEntry = { count: number; resetAt: number };
 
@@ -266,14 +267,51 @@ export function registerSignaling(
           return;
         }
 
+        if (msg.type === "connection-started") {
+          // Sharer reports it has finished ICE and now knows whether
+          // the media path is P2P or TURN-relayed. We record a new
+          // connection_log row keyed by the device + the viewer
+          // ipPrefix we captured at JOIN time (gh #18).
+          const sess = sessions.findBySharer(peer);
+          if (!sess || sess.state !== "confirmed") return;
+          if (msg.connectionType !== "p2p" && msg.connectionType !== "relay") return;
+          const id = startConnectionLog(
+            db,
+            sess.deviceId,
+            sess.viewerIpPrefix,
+            msg.connectionType,
+          );
+          sessions.attachLog(sess.deviceId, id);
+          return;
+        }
+
+        if (msg.type === "connection-ended") {
+          const sess = sessions.findBySharer(peer);
+          if (!sess || sess.logId === null) return;
+          const bytes = Number.isFinite(msg.bytesRelayed) && msg.bytesRelayed >= 0
+            ? Math.floor(msg.bytesRelayed)
+            : 0;
+          endConnectionLog(db, sess.logId, bytes);
+          sess.logId = null;
+          return;
+        }
+
         send(peer, { type: "error", code: "bad-message", message: "unexpected message" });
       });
 
       // Tear down any pending session if the sharer drops. The viewer
       // gets the same "sharer-gone" treatment as the ad-hoc flow.
+      // If a connection_log row was open for this session, finalise
+      // it with bytes_relayed=0 — the sharer didn't report a final
+      // count (gh #18). The dashboard treats ended_at != null as
+      // "session over"; an underestimate of bytes_relayed is better
+      // than leaving the row "alive" forever.
       peer.on("close", () => {
         const sess = sessions.detachSharer(peer);
         if (sess) {
+          if (sess.logId !== null) {
+            endConnectionLog(db, sess.logId, 0);
+          }
           send(sess.viewer, { type: "peer-rejected", reason: "sharer-gone" });
           sess.viewer.close();
         }
@@ -335,7 +373,12 @@ export function registerSignaling(
                 peer.close();
                 return;
               }
-              const begin = unattended.sessions.begin(normalized, peer, live);
+              const begin = unattended.sessions.begin(
+                normalized,
+                peer,
+                live,
+                ipPrefix(req),
+              );
               if (begin === "busy") {
                 checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg);
                 send(peer, { type: "error", code: "invalid-code", message: "session full" });
@@ -487,6 +530,13 @@ export function registerSignaling(
       if (unattended) {
         const usess = unattended.sessions.detachViewer(peer);
         if (usess) {
+          // If a connection_log row was open, finalise it with
+          // bytes_relayed=0 — the sharer typically reports the final
+          // count via connection-ended, but the viewer can drop
+          // before that arrives (gh #18).
+          if (usess.logId !== null) {
+            endConnectionLog(unattended.db, usess.logId, 0);
+          }
           // No need to close the sharer — it stays online for the
           // next viewer. If the session was in flight, the sharer's
           // pw-check-result (if it ever arrives) will just be ignored
