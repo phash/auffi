@@ -47,6 +47,16 @@ export class UnattendedRegistry {
     return this.conns.has(deviceId);
   }
 
+  /**
+   * Return the live WSS for `deviceId`, or `undefined` if no sharer
+   * is currently connected for that device. Used by signaling.ts to
+   * find the paired sharer when a viewer joins with a code that
+   * matches a registered device-id (gh #17).
+   */
+  peer(deviceId: string): WebSocket | undefined {
+    return this.conns.get(deviceId);
+  }
+
   size(): number {
     return this.conns.size;
   }

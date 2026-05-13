@@ -20,6 +20,7 @@ import { registerAdminStatsRoutes } from "./admin/stats.js";
 import { registerAdminTimeseriesRoutes } from "./admin/timeseries.js";
 import { bootstrapInitialAdmin } from "./admin/bootstrap.js";
 import { UnattendedRegistry } from "./unattended.js";
+import { UnattendedSessions } from "./unattended_sessions.js";
 import { startPurgeScheduler } from "./purge.js";
 
 export type ServerConfig = {
@@ -161,6 +162,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // for the lifetime of this process — restarts drop every connection
   // anyway.
   const unattendedRegistry = new UnattendedRegistry();
+  const unattendedSessions = new UnattendedSessions();
   // DB is opened below for the auth/me/device/admin routes; we share
   // the same handle with the signaling Bearer-auth path.
   const ownsDb = cfg.db === undefined;
@@ -177,7 +179,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     undefined,
     { windowMs: env.registerRateLimitWindowMs, max: env.registerRateLimitMax },
     registerCounts,
-    { db, registry: unattendedRegistry },
+    { db, registry: unattendedRegistry, sessions: unattendedSessions },
   );
 
   const sweepHandle = setInterval(() => {

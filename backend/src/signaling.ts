@@ -13,6 +13,12 @@ import {
   WS_CLOSE,
   UnattendedRegistry,
 } from "./unattended.js";
+import {
+  checkLockout,
+  recordPwFail,
+  resetPwFail,
+  UnattendedSessions,
+} from "./unattended_sessions.js";
 
 export type RateLimitEntry = { count: number; resetAt: number };
 
@@ -75,6 +81,7 @@ const DEFAULT_REGISTER_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 5 };
 export interface UnattendedDeps {
   db: Db;
   registry: UnattendedRegistry;
+  sessions: UnattendedSessions;
 }
 
 export function registerSignaling(
@@ -129,7 +136,7 @@ export function registerSignaling(
         return;
       }
       const auth = parsed;
-      const { db, registry } = unattended;
+      const { db, registry, sessions } = unattended;
       // verify is async (argon2). Tell the handler to swallow any
       // incoming messages until we've answered. We attach the
       // message listener AFTER the verify resolves so timing
@@ -166,9 +173,12 @@ export function registerSignaling(
           }
         },
       );
-      // Defensive: ignore any message that arrives before / during
-      // verify. The legitimate flow has no messages from the sharer
-      // until the backend forwards a `pw-check` first.
+      // Real message handler for an authenticated unattended sharer.
+      // Three kinds of frame are accepted:
+      //   - pw-check-result: backend records the outcome and routes
+      //     status to the paired viewer (gh #17)
+      //   - relay:           after pw-ok, normal SDP/ICE flows
+      //   - anything else:   protocol error
       peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
         if (role !== "unattended-sharer") {
           send(peer, {
@@ -178,15 +188,100 @@ export function registerSignaling(
           });
           return;
         }
-        // gh #17 will land the real message handler here. Until
-        // then any frame from the sharer side is a protocol error.
-        void raw;
-        send(peer, {
-          type: "error",
-          code: "bad-message",
-          message: "unattended messages not yet implemented",
-        });
+        if (!checkPerPeerLimit(peerMsgEntry, perPeerCfg)) {
+          send(peer, { type: "error", code: "rate-limit", message: "message rate exceeded" });
+          peer.close();
+          return;
+        }
+        let msg: IncomingMessage;
+        try {
+          msg = JSON.parse(raw.toString());
+        } catch {
+          send(peer, { type: "error", code: "bad-message", message: "invalid JSON" });
+          return;
+        }
+
+        if (msg.type === "pw-check-result") {
+          const sess = sessions.findBySharer(peer);
+          if (!sess || sess.state !== "pw-in-flight") {
+            send(peer, {
+              type: "error",
+              code: "bad-message",
+              message: "no pw-check in flight",
+            });
+            return;
+          }
+          if (msg.result === "ok") {
+            resetPwFail(db, sess.deviceId);
+            sessions.transition(sess.deviceId, "confirmed");
+            send(sess.viewer, { type: "peer-confirmed" });
+            // Mirror peer-joined to the sharer so its WebRTC code path
+            // matches the ad-hoc one (the sharer initiates the offer).
+            send(peer, {
+              type: "peer-joined",
+              viewerInfo: { ipPrefix: ipPrefix(req), country: null },
+            });
+            return;
+          }
+          if (msg.result === "rejected") {
+            send(sess.viewer, { type: "rejected-by-user" });
+            sess.viewer.close();
+            sessions.remove(sess.deviceId);
+            return;
+          }
+          // result === "fail"
+          const outcome = recordPwFail(db, sess.deviceId);
+          if (outcome.locked) {
+            send(sess.viewer, {
+              type: "locked",
+              retryAfterSec: outcome.retryAfterSec,
+            });
+            sess.viewer.close();
+            sessions.remove(sess.deviceId);
+          } else {
+            send(sess.viewer, {
+              type: "wrong-password",
+              attemptsLeft: outcome.attemptsLeft,
+            });
+            // Stay paired — viewer can try again. Back to awaiting-pw.
+            sessions.transition(sess.deviceId, "awaiting-pw");
+          }
+          return;
+        }
+
+        if (msg.type === "relay") {
+          const sess = sessions.findBySharer(peer);
+          if (!sess || sess.state !== "confirmed") return;
+          const payload = msg.payload as { kind?: unknown } | null;
+          if (
+            !payload ||
+            typeof payload !== "object" ||
+            typeof payload.kind !== "string" ||
+            !RELAY_KINDS.has(payload.kind)
+          ) {
+            send(peer, { type: "error", code: "bad-message", message: "invalid relay payload" });
+            return;
+          }
+          send(sess.viewer, { type: "relay", payload: msg.payload });
+          return;
+        }
+
+        send(peer, { type: "error", code: "bad-message", message: "unexpected message" });
       });
+
+      // Tear down any pending session if the sharer drops. The viewer
+      // gets the same "sharer-gone" treatment as the ad-hoc flow.
+      peer.on("close", () => {
+        const sess = sessions.detachSharer(peer);
+        if (sess) {
+          send(sess.viewer, { type: "peer-rejected", reason: "sharer-gone" });
+          sess.viewer.close();
+        }
+      });
+
+      // Keep references silenced — registry + sessions are
+      // captured in the closure above. The early return below.
+      void registry;
       return;
     }
 
@@ -227,6 +322,31 @@ export function registerSignaling(
         }
         const session = store.getSession(normalized);
         if (!session) {
+          // gh #17: ad-hoc lookup miss → try registered unattended
+          // device with the same code shape. The normaliser already
+          // returned `NNN-NNN-NNN`, which is also the device-id
+          // shape, so we can look up directly.
+          if (unattended) {
+            const live = unattended.registry.peer(normalized);
+            if (live) {
+              const lock = checkLockout(unattended.db, normalized);
+              if (lock.locked) {
+                send(peer, { type: "locked", retryAfterSec: lock.retryAfterSec });
+                peer.close();
+                return;
+              }
+              const begin = unattended.sessions.begin(normalized, peer, live);
+              if (begin === "busy") {
+                checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg);
+                send(peer, { type: "error", code: "invalid-code", message: "session full" });
+                peer.close();
+                return;
+              }
+              role = "viewer";
+              send(peer, { type: "needs-password" });
+              return;
+            }
+          }
           if (!checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg)) {
             send(peer, { type: "error", code: "rate-limit", message: "too many attempts" });
             peer.close();
@@ -288,7 +408,51 @@ export function registerSignaling(
         return;
       }
 
+      // gh #17: viewer-side handler for the unattended pw flow.
+      if (msg.type === "pw-attempt" && role === "viewer" && unattended) {
+        const sess = unattended.sessions.findByViewer(peer);
+        if (!sess || sess.state !== "awaiting-pw") {
+          send(peer, {
+            type: "error",
+            code: "bad-message",
+            message: "no pw-check expected",
+          });
+          return;
+        }
+        if (typeof msg.password !== "string" || msg.password.length === 0) {
+          send(peer, {
+            type: "error",
+            code: "bad-message",
+            message: "password missing",
+          });
+          return;
+        }
+        unattended.sessions.transition(sess.deviceId, "pw-in-flight");
+        send(sess.sharer, { type: "pw-check", attempt: msg.password });
+        return;
+      }
+
       if (msg.type === "relay") {
+        // First check for an unattended session this peer might be in
+        // (state must be "confirmed"). Falls through to ad-hoc on miss.
+        if (unattended) {
+          const usess = unattended.sessions.findByViewer(peer);
+          if (usess) {
+            if (usess.state !== "confirmed") return;
+            const payload = msg.payload as { kind?: unknown } | null;
+            if (
+              !payload ||
+              typeof payload !== "object" ||
+              typeof payload.kind !== "string" ||
+              !RELAY_KINDS.has(payload.kind)
+            ) {
+              send(peer, { type: "error", code: "bad-message", message: "invalid relay payload" });
+              return;
+            }
+            send(usess.sharer, { type: "relay", payload: msg.payload });
+            return;
+          }
+        }
         const found = store.findByPeer(peer as Peer);
         if (!found) return;
         if (!found.confirmed) return;
@@ -317,6 +481,19 @@ export function registerSignaling(
     });
 
     peer.on("close", () => {
+      // gh #17: viewer might be in an unattended session — tear that
+      // down first so we don't accidentally fall through into the
+      // ad-hoc cleanup.
+      if (unattended) {
+        const usess = unattended.sessions.detachViewer(peer);
+        if (usess) {
+          // No need to close the sharer — it stays online for the
+          // next viewer. If the session was in flight, the sharer's
+          // pw-check-result (if it ever arrives) will just be ignored
+          // by findBySharer returning null.
+          return;
+        }
+      }
       const found = store.findByPeer(peer as Peer);
       if (!found) return;
       if (found.sharer === peer) {
