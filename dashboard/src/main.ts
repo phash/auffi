@@ -2,9 +2,11 @@
 // and renders the top-bar nav.
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
+import { renderForgot } from "./views/forgot.js";
 import { renderHome } from "./views/home.js";
 import { renderLogin } from "./views/login.js";
 import { renderNotFound } from "./views/not-found.js";
+import { renderReset } from "./views/reset.js";
 import { renderSignup } from "./views/signup.js";
 import { renderVerify } from "./views/verify.js";
 
@@ -14,9 +16,10 @@ const routes: Route[] = [
   { pattern: "/login", render: renderLogin },
   { pattern: "/signup", render: renderSignup },
   { pattern: "/verify/:token", render: renderVerify },
-  // Placeholders for gh #30, #31-#35 — wired so the nav doesn't 404:
-  { pattern: "/forgot", render: renderHome },
-  { pattern: "/reset/:token", render: renderHome },
+  // gh #30: password-reset flow
+  { pattern: "/forgot", render: renderForgot },
+  { pattern: "/reset/:token", render: renderReset },
+  // Placeholders for gh #31-#35 — wired so the nav doesn't 404:
   { pattern: "/devices", navLabel: "Geräte", render: renderHome },
   { pattern: "/devices/:id", render: renderHome },
   { pattern: "/account", navLabel: "Account", render: renderHome },

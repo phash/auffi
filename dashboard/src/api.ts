@@ -129,3 +129,26 @@ export function verifyEmail(token: string): Promise<ApiResult<{ ok: true }>> {
     method: "GET",
   });
 }
+
+/**
+ * Initiates a password-reset flow. Backend ALWAYS returns 200 — we
+ * cannot let the response distinguish "email exists" from "email
+ * unknown" (would enable enumeration). The caller therefore shows a
+ * generic "if the address is on file, a mail is on its way".
+ */
+export function forgotPassword(email: string): Promise<ApiResult<{ ok: true }>> {
+  return request("/api/auth/forgot", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(
+  token: string,
+  password: string,
+): Promise<ApiResult<{ ok: true }>> {
+  return request(`/api/auth/reset/${encodeURIComponent(token)}`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
