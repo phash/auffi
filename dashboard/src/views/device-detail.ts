@@ -116,6 +116,15 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   );
   card.appendChild(statusLine);
 
+  const logLink = document.createElement("p");
+  logLink.style.marginBottom = "0.75rem";
+  const logA = document.createElement("a");
+  logA.href = BASE_PATH + "/devices/" + encodeURIComponent(dev.id) + "/log";
+  logA.textContent = "Verbindungs-Protokoll anzeigen →";
+  logA.style.fontSize = "0.875rem";
+  logLink.appendChild(logA);
+  card.appendChild(logLink);
+
   // ── Alias edit ──────────────────────────────────────────────────
   const aliasForm = document.createElement("form");
   aliasForm.style.marginBottom = "1rem";

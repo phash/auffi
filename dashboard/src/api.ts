@@ -203,3 +203,38 @@ export function deleteDevice(id: string): Promise<ApiResult<{ ok: true }>> {
     method: "DELETE",
   });
 }
+
+export interface ConnectionLogRow {
+  id: number;
+  deviceId: string;
+  startedAt: number;
+  endedAt: number | null;
+  viewerIpPrefix: string;
+  connectionType: "p2p" | "relay";
+  bytesRelayed: number;
+}
+
+export interface ConnectionLogPage {
+  items: ConnectionLogRow[];
+  nextCursor: number | null;
+  maxLimit: number;
+}
+
+/**
+ * Cursor-paginated connection log for a device. Pass `cursor` as the
+ * `nextCursor` of the previous page; omit for page 1. `limit`
+ * defaults to the backend's 20 and is clamped at `maxLimit`.
+ */
+export function listConnectionLog(
+  deviceId: string,
+  cursor?: number,
+  limit?: number,
+): Promise<ApiResult<ConnectionLogPage>> {
+  const qs = new URLSearchParams();
+  if (cursor !== undefined) qs.set("cursor", String(cursor));
+  if (limit !== undefined) qs.set("limit", String(limit));
+  const path =
+    `/api/devices/${encodeURIComponent(deviceId)}/log` +
+    (qs.toString().length > 0 ? `?${qs}` : "");
+  return request(path, { method: "GET" });
+}

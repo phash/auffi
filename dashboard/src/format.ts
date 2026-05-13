@@ -24,3 +24,52 @@ export function formatRelative(ts: number | null, now: number = Date.now()): str
     day: "2-digit",
   });
 }
+
+/**
+ * Format an absolute unix-ms timestamp as a German locale
+ * "DD.MM.YYYY, HH:MM" string. Pure; used by the connection-log view.
+ */
+export function formatAbsolute(ts: number): string {
+  return new Date(ts).toLocaleString("de-DE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Format a positive byte count as "1.2 MB" / "456 KB" / "78 B" /
+ * "—" for zero (p2p sessions report bytes_relayed = 0). Uses
+ * binary (1024) prefixes since that's what the WebRTC layer
+ * accumulates over the relay socket. Pure.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "—";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const formatted = unit === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${formatted} ${units[unit]}`;
+}
+
+/**
+ * Render a connection's wall-clock duration as "1:23 Min" /
+ * "0:05 Std" / "—" for an unfinished session (ended_at = null).
+ * Inputs are absolute unix-ms.
+ */
+export function formatDuration(startedAt: number, endedAt: number | null): string {
+  if (endedAt === null) return "—";
+  const sec = Math.max(0, Math.floor((endedAt - startedAt) / 1000));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const mmss = `${m}:${s.toString().padStart(2, "0")}`;
+  if (h === 0) return `${mmss} Min`;
+  return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")} Std`;
+}

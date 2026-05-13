@@ -3,6 +3,7 @@
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
 import { renderAddDevice } from "./views/add-device.js";
+import { renderConnectionLog } from "./views/connection-log.js";
 import { renderDeviceDetail } from "./views/device-detail.js";
 import { renderDevices } from "./views/devices.js";
 import { renderForgot } from "./views/forgot.js";
@@ -30,6 +31,8 @@ const routes: Route[] = [
   { pattern: "/devices/new", render: renderAddDevice },
   // gh #33: device detail with alias-edit + auto-accept toggle.
   { pattern: "/devices/:id", render: renderDeviceDetail },
+  // gh #34: paginated connection-log view per device.
+  { pattern: "/devices/:id/log", render: renderConnectionLog },
   { pattern: "/account", navLabel: "Account", render: renderHome },
   { pattern: "*", render: renderNotFound },
 ];
