@@ -176,7 +176,7 @@ describe("PATCH /api/me — email change", () => {
     expect(me.json().pendingEmail).toBe("henry-new@example.com");
   });
 
-  it("verify click on the change token swaps the email", async () => {
+  it("verify click on the change token swaps the email + invalidates sessions (Sec L-9)", async () => {
     await h.app.inject({
       method: "PATCH",
       url: "/api/me",
@@ -191,10 +191,30 @@ describe("PATCH /api/me — email change", () => {
     });
     expect(verify.statusCode).toBe(200);
 
-    const me = await h.app.inject({
+    // Sec L-9: the prior session must be dead — mirrors the
+    // password-change behaviour. A stolen cookie shouldn't survive
+    // an email-recovery-address swap.
+    const stale = await h.app.inject({
       method: "GET",
       url: "/api/me",
       headers: { cookie: `auffi_session=${cookie}` },
+    });
+    expect(stale.statusCode).toBe(401);
+
+    // Logging in with the new address proves the swap landed in DB.
+    const login = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "henry-new@example.com", password: "the-current-password" },
+    });
+    expect(login.statusCode).toBe(200);
+    const sc = login.headers["set-cookie"] as string | string[] | undefined;
+    const fresh = (Array.isArray(sc) ? sc[0] : sc!).match(/^auffi_session=([^;]+)/)![1];
+
+    const me = await h.app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { cookie: `auffi_session=${fresh}` },
     });
     expect(me.json().email).toBe("henry-new@example.com");
     expect(me.json().pendingEmail).toBeNull();

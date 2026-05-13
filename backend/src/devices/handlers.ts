@@ -165,7 +165,15 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
   // auto_accept type.
   app.patch(
     "/api/devices/:id",
-    { preHandler: app.requireSession },
+    {
+      preHandler: app.requireSession,
+      // Sec M-5 (review 2026-05-13): tighter per-route cap than the
+      // global 1000/min. A hijacked session shouldn't be able to
+      // enumerate auto_accept toggles or alias-spam via this route.
+      // 30/min/IP is generous for a legitimate user clicking through
+      // device settings.
+      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
       const body = (req.body ?? {}) as { alias?: unknown; auto_accept?: unknown };
@@ -208,13 +216,19 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
 
   // ── DELETE /api/devices/:id ─────────────────────────────────────────
   // Hard-deletes the row; FK cascade removes connection_log entries.
-  // If a sharer is currently WSS-connected with this device's bearer
-  // token, its next heartbeat will fail the auth lookup and the
-  // connection will close — the registry-based eager-evict comes in
-  // a follow-up once gh #16 wires the bearer-auth WSS path.
+  // If the sharer is currently WSS-connected with this device's
+  // bearer token, `registry.evict()` below force-closes the
+  // connection immediately (gh #16) — the heartbeat layer doesn't
+  // need to time out.
   app.delete(
     "/api/devices/:id",
-    { preHandler: app.requireSession },
+    {
+      preHandler: app.requireSession,
+      // Sec M-5: tighter cap. Lower than PATCH because deletion is
+      // a one-shot per device — a legitimate user has no reason to
+      // call DELETE 30 times per minute.
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
       const dev = db

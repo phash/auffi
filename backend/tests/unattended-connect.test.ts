@@ -300,6 +300,26 @@ describe("/signal unattended connect flow (gh #17)", () => {
     sharer.close();
   });
 
+  it("rejects pw-attempt with password >256 chars (Sec H-4)", async () => {
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message");
+
+    const tooLong = "x".repeat(257);
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: tooLong }));
+    const out = await once(viewer, "message");
+    expect(out.type).toBe("error");
+    expect(out.message).toContain("password too long");
+    // Sharer never sees the pw-check forward — gated server-side.
+    // We can't directly assert "sharer didn't receive" without a
+    // race-free hook, but the session state remains awaiting-pw,
+    // which the next legitimate pw-attempt observes.
+    viewer.close();
+    sharer.close();
+  });
+
   it("pw-check-result fail → wrong-password to viewer + counter increments", async () => {
     const sharer = await openSharer();
     const viewer = openViewer();

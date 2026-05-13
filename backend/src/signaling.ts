@@ -318,9 +318,19 @@ export function registerSignaling(
         if (msg.type === "connection-ended") {
           const sess = sessions.findBySharer(peer);
           if (!sess || sess.logId === null) return;
-          const bytes = Number.isFinite(msg.bytesRelayed) && msg.bytesRelayed >= 0
-            ? Math.floor(msg.bytesRelayed)
-            : 0;
+          // Sec L-3 (review 2026-05-13): cap server-side. A malicious
+          // or buggy sharer reporting Number.MAX_SAFE_INTEGER would
+          // pollute the per-device usage metric on the dashboard. The
+          // ceiling is the gh #18 free-tier soft-cap (100 GB) — well
+          // above any realistic ad-hoc session and a low enough
+          // ceiling that "1.2 TB this hour" sticks out as an outlier
+          // worth alerting on.
+          const MAX_BYTES_PER_SESSION = 100 * 1024 * 1024 * 1024;
+          const rawBytes = msg.bytesRelayed;
+          const bytes =
+            Number.isFinite(rawBytes) && rawBytes >= 0
+              ? Math.min(Math.floor(rawBytes), MAX_BYTES_PER_SESSION)
+              : 0;
           endConnectionLog(db, sess.logId, bytes);
           sess.logId = null;
           return;
@@ -497,6 +507,21 @@ export function registerSignaling(
             type: "error",
             code: "bad-message",
             message: "password missing",
+          });
+          return;
+        }
+        // Sec H-4 (review 2026-05-13): cap server-side BEFORE
+        // forwarding. The WSS maxPayload (65 536 B) was the only
+        // ceiling, letting a malicious viewer push ~60 KB strings
+        // through the relay to the sharer on every attempt — pure
+        // bandwidth/log abuse since argon2 cost doesn't scale with
+        // input length. 256 chars matches `isAcceptablePassword`
+        // upper-bound in auth/handlers.ts.
+        if (msg.password.length > 256) {
+          send(peer, {
+            type: "error",
+            code: "bad-message",
+            message: "password too long",
           });
           return;
         }

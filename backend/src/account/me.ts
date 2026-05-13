@@ -290,6 +290,14 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         db.prepare(
           "UPDATE pending_email_changes SET used_at = ? WHERE token_hash = ?",
         ).run(Date.now(), hashToken(token));
+        // Sec L-9 (review 2026-05-13): invalidate every session of
+        // the account on email change — mirrors the password-change
+        // policy (spec §4.5 step 3). The recovery-address is now a
+        // different inbox; existing live sessions on other devices
+        // should re-authenticate so a stolen cookie doesn't keep
+        // privileged access after the legitimate owner's email
+        // suddenly differs.
+        deleteAllSessionsForAccount(db, row.account_id);
       });
       try {
         tx();
@@ -300,6 +308,12 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         throw e;
       }
 
+      // Sec L-9: also clear the cookie on THIS response so the
+      // browser following the mail link sees the logout immediately.
+      // Other browsers (mobile, second laptop) will hit a 401 on
+      // their next request because deleteAllSessionsForAccount
+      // dropped the DB row.
+      clearSessionCookie(reply);
       return reply.status(200).send({ ok: true });
     },
   );

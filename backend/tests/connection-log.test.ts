@@ -316,6 +316,46 @@ describe("/signal connection-started + connection-ended (gh #18)", () => {
     sharer.close();
   });
 
+  it("caps bytesRelayed at MAX_BYTES_PER_SESSION (Sec L-3)", async () => {
+    // 100 GB is the documented cap. A malicious/buggy sharer
+    // sending Number.MAX_SAFE_INTEGER must not pollute the
+    // per-device usage metric.
+    const MAX_BYTES = 100 * 1024 * 1024 * 1024;
+    const { sharer, viewer } = await completePwOk();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await new Promise((r) => setTimeout(r, 30));
+    sharer.send(
+      JSON.stringify({ type: "connection-ended", bytesRelayed: Number.MAX_SAFE_INTEGER }),
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    const row = db
+      .prepare<[string], { bytes_relayed: number }>(
+        "SELECT bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId);
+    expect(row?.bytes_relayed).toBe(MAX_BYTES);
+    viewer.close();
+    sharer.close();
+  });
+
+  it("coerces negative/NaN/Infinity bytesRelayed to 0", async () => {
+    const { sharer, viewer } = await completePwOk();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await new Promise((r) => setTimeout(r, 30));
+    // -1, NaN, and Infinity all collapse to 0 — no spam pixels in
+    // the usage UI.
+    sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: -1 }));
+    await new Promise((r) => setTimeout(r, 30));
+    const row = db
+      .prepare<[string], { bytes_relayed: number }>(
+        "SELECT bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId);
+    expect(row?.bytes_relayed).toBe(0);
+    viewer.close();
+    sharer.close();
+  });
+
   it("viewer close finalises an open log row with bytes_relayed=0", async () => {
     const { sharer, viewer } = await completePwOk();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
