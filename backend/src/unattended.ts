@@ -111,6 +111,23 @@ function pickString(v: string | string[] | undefined): string | undefined {
  *
  * Updates last_seen_at = now on success.
  */
+/**
+ * Read the device's `auto_accept` flag fresh from the DB. Used by
+ * signaling.ts when forwarding a viewer's `pw-attempt` as `pw-check`
+ * so the value reflects the latest dashboard toggle (gh #25).
+ * Returns `false` for an unknown device-id — the dashboard would
+ * have to mint a fresh row before the pair, so an unknown id at
+ * this point is a protocol error caught upstream.
+ */
+export function getAutoAccept(db: Db, deviceId: string): boolean {
+  const row = db
+    .prepare<[string], { auto_accept: number }>(
+      "SELECT auto_accept FROM devices WHERE id = ?",
+    )
+    .get(deviceId);
+  return row !== undefined && row.auto_accept === 1;
+}
+
 export async function verifyBearerAuth(
   db: Db,
   auth: BearerAuth,

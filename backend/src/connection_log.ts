@@ -60,6 +60,16 @@ export function endConnectionLog(
  */
 export const MAX_LIMIT = 100;
 
+interface RawRow {
+  id: number;
+  device_id: string;
+  started_at: number;
+  ended_at: number | null;
+  viewer_ip_prefix: string;
+  connection_type: string;
+  bytes_relayed: number;
+}
+
 export function listConnectionLog(
   db: Db,
   deviceId: string,
@@ -67,51 +77,22 @@ export function listConnectionLog(
   limit: number,
 ): { items: ConnectionLogRow[]; nextCursor: number | null } {
   const safeLimit = Math.max(1, Math.min(limit, MAX_LIMIT));
-  const rows = (
+  // The only difference between the cursor and no-cursor cases is
+  // one extra `AND id < ?` predicate and one extra bind param.
+  // Build the SQL once, dispatch once.
+  const cursorPredicate = cursor !== undefined ? " AND id < ?" : "";
+  const sql =
+    `SELECT id, device_id, started_at, ended_at, viewer_ip_prefix,
+            connection_type, bytes_relayed
+     FROM connection_log
+     WHERE device_id = ?${cursorPredicate}
+     ORDER BY id DESC
+     LIMIT ?`;
+  const stmt = db.prepare<unknown[], RawRow>(sql);
+  const rows =
     cursor !== undefined
-      ? db
-          .prepare<
-            [string, number, number],
-            {
-              id: number;
-              device_id: string;
-              started_at: number;
-              ended_at: number | null;
-              viewer_ip_prefix: string;
-              connection_type: string;
-              bytes_relayed: number;
-            }
-          >(
-            `SELECT id, device_id, started_at, ended_at, viewer_ip_prefix,
-                    connection_type, bytes_relayed
-             FROM connection_log
-             WHERE device_id = ? AND id < ?
-             ORDER BY id DESC
-             LIMIT ?`,
-          )
-          .all(deviceId, cursor, safeLimit + 1)
-      : db
-          .prepare<
-            [string, number],
-            {
-              id: number;
-              device_id: string;
-              started_at: number;
-              ended_at: number | null;
-              viewer_ip_prefix: string;
-              connection_type: string;
-              bytes_relayed: number;
-            }
-          >(
-            `SELECT id, device_id, started_at, ended_at, viewer_ip_prefix,
-                    connection_type, bytes_relayed
-             FROM connection_log
-             WHERE device_id = ?
-             ORDER BY id DESC
-             LIMIT ?`,
-          )
-          .all(deviceId, safeLimit + 1)
-  );
+      ? stmt.all(deviceId, cursor, safeLimit + 1)
+      : stmt.all(deviceId, safeLimit + 1);
 
   const hasMore = rows.length > safeLimit;
   const page = hasMore ? rows.slice(0, safeLimit) : rows;

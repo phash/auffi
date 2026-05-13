@@ -8,6 +8,7 @@ import type {
 } from "./protocol.js";
 import type { Db } from "./db.js";
 import {
+  getAutoAccept,
   parseBearerAuth,
   verifyBearerAuth,
   WS_CLOSE,
@@ -526,12 +527,7 @@ export function registerSignaling(
         // after a successful argon2-verify. The flag is read fresh on
         // every pw-check so a dashboard toggle takes effect without
         // sharer reconnect.
-        const row = unattended.db
-          .prepare<[string], { auto_accept: number }>(
-            "SELECT auto_accept FROM devices WHERE id = ?",
-          )
-          .get(sess.deviceId);
-        const autoAccept = row !== undefined && row.auto_accept === 1;
+        const autoAccept = getAutoAccept(unattended.db, sess.deviceId);
         unattended.sessions.transition(sess.deviceId, "pw-in-flight");
         send(sess.sharer, {
           type: "pw-check",

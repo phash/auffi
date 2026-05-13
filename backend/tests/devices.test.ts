@@ -14,6 +14,10 @@ async function build(): Promise<{ app: FastifyInstance; db: Db; cookie: () => Pr
   const transport = captureTransport();
   const mailer = buildAuthMailer({ dashboardUrl: "https://t/", transport });
   const app = Fastify();
+  // global: false means each route's `config.rateLimit` opts in
+  // explicitly; the default cap is enforced PER route. The
+  // per-route limits (pairing-code 5/h, redeem 5/min, PATCH 30/min,
+  // DELETE 10/min) are what the regression tests below pin.
   await app.register(rateLimit, { global: false });
   decorateRequireSession(app, db);
   registerAuthRoutes(app, { db, mailer });
@@ -526,5 +530,117 @@ describe("DELETE /api/devices/:id", () => {
       url: `/api/devices/${deviceId}`,
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+// TC H-6 / H-7 (review 2026-05-13): pin the per-route rate limits.
+// Without these, a silent halving of the limit in handlers.ts ships
+// unnoticed — the production deploy has no other backstop because
+// Caddy's global zone tops out at 300/min/IP and these routes were
+// excluded from the auth-bucket already.
+describe("device-route rate limits (TC H-6 / H-7 / Sec M-5)", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  beforeEach(async () => {
+    h = await build();
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("POST /api/devices/pairing-code locks the 6th call within the hour (limit: 5)", async () => {
+    const c = await h.cookie();
+    for (let i = 0; i < 5; i++) {
+      const ok = await h.app.inject({
+        method: "POST",
+        url: "/api/devices/pairing-code",
+        headers: { cookie: `auffi_session=${c}` },
+      });
+      expect(ok.statusCode).toBe(200);
+    }
+    const sixth = await h.app.inject({
+      method: "POST",
+      url: "/api/devices/pairing-code",
+      headers: { cookie: `auffi_session=${c}` },
+    });
+    expect(sixth.statusCode).toBe(429);
+  });
+
+  it("POST /api/devices/redeem locks the 6th call within the minute (limit: 5)", async () => {
+    // Each call uses an invalid code so the route exits early but
+    // still after the rate-limit hook runs. The 6th call's 429
+    // proves the limit is in place.
+    for (let i = 0; i < 5; i++) {
+      const r = await h.app.inject({
+        method: "POST",
+        url: "/api/devices/redeem",
+        payload: { code: "XYZ-XYZ-99", alias: "test" },
+      });
+      // Either 410 (code-invalid) or 400 (bad-code) is fine —
+      // we only care that they aren't 429 yet.
+      expect(r.statusCode).not.toBe(429);
+    }
+    const sixth = await h.app.inject({
+      method: "POST",
+      url: "/api/devices/redeem",
+      payload: { code: "XYZ-XYZ-99", alias: "test" },
+    });
+    expect(sixth.statusCode).toBe(429);
+  });
+
+  it("PATCH /api/devices/:id locks the 31st call within the minute (limit: 30)", async () => {
+    const c = await h.cookie();
+    // Mint a device by redeeming a real pairing code first so the
+    // PATCH route hits a real row, not a 403-forbidden short-circuit.
+    const mint = await h.app.inject({
+      method: "POST",
+      url: "/api/devices/pairing-code",
+      headers: { cookie: `auffi_session=${c}` },
+    });
+    const code = mint.json().code;
+    const redeem = await h.app.inject({
+      method: "POST",
+      url: "/api/devices/redeem",
+      payload: { code, alias: "loop-test-dev" },
+    });
+    const deviceId = redeem.json().deviceId;
+
+    for (let i = 0; i < 30; i++) {
+      const r = await h.app.inject({
+        method: "PATCH",
+        url: `/api/devices/${deviceId}`,
+        headers: { cookie: `auffi_session=${c}` },
+        payload: { alias: `name-${i}` },
+      });
+      expect(r.statusCode).toBe(200);
+    }
+    const overflow = await h.app.inject({
+      method: "PATCH",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `auffi_session=${c}` },
+      payload: { alias: "burst-overflow" },
+    });
+    expect(overflow.statusCode).toBe(429);
+  });
+
+  it("DELETE /api/devices/:id locks the 11th call within the minute (limit: 10)", async () => {
+    const c = await h.cookie();
+    // 11 calls against a non-existent id all 403 quickly (route
+    // short-circuits on ownership check) BUT pass through the
+    // rate-limit hook first, so the 11th hits the cap.
+    for (let i = 0; i < 10; i++) {
+      const r = await h.app.inject({
+        method: "DELETE",
+        url: "/api/devices/000-000-000",
+        headers: { cookie: `auffi_session=${c}` },
+      });
+      expect(r.statusCode).toBe(403);
+    }
+    const eleventh = await h.app.inject({
+      method: "DELETE",
+      url: "/api/devices/000-000-000",
+      headers: { cookie: `auffi_session=${c}` },
+    });
+    expect(eleventh.statusCode).toBe(429);
   });
 });
