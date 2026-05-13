@@ -23,12 +23,11 @@
 // pub surface is dead-code-allowed.
 #![allow(dead_code)]
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
@@ -266,7 +265,13 @@ pub type HeartbeatEvents = mpsc::Receiver<HeartbeatEvent>;
 pub fn start(config: HeartbeatConfig) -> (HeartbeatCommands, HeartbeatEvents) {
     let (cmd_tx, cmd_rx) = mpsc::channel::<HeartbeatCommand>(16);
     let (evt_tx, evt_rx) = mpsc::channel::<HeartbeatEvent>(64);
-    let cmd_rx = Arc::new(Mutex::new(cmd_rx));
+    // CQ M-25 (review 2026-05-13): `cmd_rx` used to be wrapped in
+    // `Arc<Mutex<…>>` so it could be re-locked from both the outer
+    // backoff-sleep branch and the inner connect-and-run loop. Those
+    // two branches are strictly sequential (connect_and_run always
+    // returns before the backoff branch runs), so we can just keep
+    // the Receiver owned by run_loop and hand a `&mut` to the inner
+    // function. No mutex, no Arc, no `lock().await` on the hot path.
     tauri::async_runtime::spawn(run_loop(config, cmd_rx, evt_tx));
     (cmd_tx, evt_rx)
 }
@@ -288,12 +293,12 @@ fn derive_origin(ws_url: &str) -> String {
 
 async fn run_loop(
     config: HeartbeatConfig,
-    cmd_rx: Arc<Mutex<mpsc::Receiver<HeartbeatCommand>>>,
+    mut cmd_rx: mpsc::Receiver<HeartbeatCommand>,
     evt_tx: mpsc::Sender<HeartbeatEvent>,
 ) {
     let mut attempt: u32 = 0;
     loop {
-        match connect_and_run(&config, &cmd_rx, &evt_tx).await {
+        match connect_and_run(&config, &mut cmd_rx, &evt_tx).await {
             ConnectOutcome::Revoked => {
                 let _ = evt_tx.send(HeartbeatEvent::Revoked).await;
                 return;
@@ -321,12 +326,9 @@ async fn run_loop(
 
         // Wait either for the backoff to elapse OR for an explicit
         // shutdown command. We don't want a Shutdown to wait 60 s.
-        let stopped = {
-            let mut rx = cmd_rx.lock().await;
-            tokio::select! {
-                _ = tokio::time::sleep(sleep) => false,
-                cmd = rx.recv() => matches!(cmd, Some(HeartbeatCommand::Shutdown) | None),
-            }
+        let stopped = tokio::select! {
+            _ = tokio::time::sleep(sleep) => false,
+            cmd = cmd_rx.recv() => matches!(cmd, Some(HeartbeatCommand::Shutdown) | None),
         };
         if stopped {
             return;
@@ -348,7 +350,7 @@ enum ConnectOutcome {
 
 async fn connect_and_run(
     config: &HeartbeatConfig,
-    cmd_rx: &Arc<Mutex<mpsc::Receiver<HeartbeatCommand>>>,
+    cmd_rx: &mut mpsc::Receiver<HeartbeatCommand>,
     evt_tx: &mpsc::Sender<HeartbeatEvent>,
 ) -> ConnectOutcome {
     let mut request = match config.backend_ws_url.as_str().into_client_request() {
@@ -387,10 +389,9 @@ async fn connect_and_run(
     let mut last_pong = tokio::time::Instant::now();
 
     loop {
-        let mut rx = cmd_rx.lock().await;
         tokio::select! {
             biased;
-            cmd = rx.recv() => {
+            cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(HeartbeatCommand::Send(frame)) => {
                         let json = match serde_json::to_string(&frame) {
@@ -429,9 +430,27 @@ async fn connect_and_run(
                 };
                 match msg {
                     Message::Text(txt) => {
-                        if let Ok(frame) = serde_json::from_str::<BackendFrame>(&txt) {
-                            match frame {
-                                BackendFrame::UnattendedHello { device_id } => {
+                        // CQ M-26 (review 2026-05-13): log parse errors
+                        // explicitly so a wire-protocol mismatch
+                        // doesn't manifest as a silent stall. The
+                        // `serde_json::from_str` path returns the
+                        // SAME Err for "unknown variant" and
+                        // "malformed JSON"; we log both at warn level
+                        // — a new backend message type ought to land
+                        // in BackendFrame, not arrive unannounced.
+                        let frame = match serde_json::from_str::<BackendFrame>(&txt) {
+                            Ok(f) => f,
+                            Err(e) => {
+                                let preview = txt.chars().take(120).collect::<String>();
+                                log::warn!(
+                                    "[heartbeat] unknown/malformed backend frame ({}): {preview}",
+                                    e
+                                );
+                                continue;
+                            }
+                        };
+                        match frame {
+                            BackendFrame::UnattendedHello { device_id } => {
                                     let _ = evt_tx
                                         .send(HeartbeatEvent::Connected { device_id })
                                         .await;
@@ -468,9 +487,6 @@ async fn connect_and_run(
                                     };
                                 }
                             }
-                        }
-                        // Unknown frame: ignore. New backend message
-                        // types should not crash an old sharer build.
                     }
                     Message::Pong(_) => {
                         last_pong = tokio::time::Instant::now();

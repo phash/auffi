@@ -10,10 +10,8 @@
 //! an attacker who can stuff arbitrary `pw-check` frames into the
 //! sharer's WSS (e.g. compromised backend) hits a second wall.
 //!
-//! Pure logic, no IO — wired into the heartbeat event-loop in #24.
-
-// Consumed by the heartbeat event-loop wiring in lib.rs.
-#![allow(dead_code)]
+//! Pure logic, no IO — wired into the heartbeat event-loop via
+//! `pw_check::handle_pw_check`.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
