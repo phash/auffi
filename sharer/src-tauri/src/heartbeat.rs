@@ -280,6 +280,16 @@ fn derive_origin(ws_url: &str) -> String {
     if let Ok(custom) = std::env::var("AUFFI_SHARER_ORIGIN") {
         return custom;
     }
+    derive_origin_from(ws_url)
+}
+
+/// Pure mapping `ws[s]://host[:port]/…` → `http[s]://host[:port]`.
+/// Split out so the unit test can pin the mapping without touching
+/// the `AUFFI_SHARER_ORIGIN` env var (CQ M-20: parallel tests racing
+/// on env vars flaked CI). The override branch is exercised by the
+/// integration suite, where serial process isolation is already
+/// guaranteed.
+fn derive_origin_from(ws_url: &str) -> String {
     if let Some(rest) = ws_url.strip_prefix("wss://") {
         let host = rest.split('/').next().unwrap_or(rest);
         return format!("https://{host}");
@@ -718,11 +728,18 @@ mod tests {
 
     #[test]
     fn derive_origin_strips_path_keeps_host() {
-        std::env::remove_var("AUFFI_SHARER_ORIGIN");
-        assert_eq!(derive_origin("wss://auffi.app/signal"), "https://auffi.app");
         assert_eq!(
-            derive_origin("ws://localhost:8080/signal"),
+            derive_origin_from("wss://auffi.app/signal"),
+            "https://auffi.app"
+        );
+        assert_eq!(
+            derive_origin_from("ws://localhost:8080/signal"),
             "http://localhost:8080"
         );
+    }
+
+    #[test]
+    fn derive_origin_falls_back_to_localhost_on_unknown_scheme() {
+        assert_eq!(derive_origin_from("nope://x"), "http://localhost");
     }
 }

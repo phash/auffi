@@ -87,7 +87,14 @@ fn backend_ws_url() -> String {
 }
 
 fn backend_http_base() -> String {
-    let ws = backend_ws_url();
+    backend_http_base_from(&backend_ws_url())
+}
+
+/// Pure mapping `ws[s]://host[:port]/…` → `http[s]://host[:port]`.
+/// Split out so the unit tests can pin the mapping without touching
+/// process-wide env vars (CQ M-20: parallel tests racing on
+/// `AUFFI_BACKEND_WS` flaked CI).
+fn backend_http_base_from(ws: &str) -> String {
     if let Some(rest) = ws.strip_prefix("wss://") {
         return format!("https://{}", rest.split('/').next().unwrap_or(rest));
     }
@@ -540,15 +547,26 @@ mod tests {
 
     #[test]
     fn backend_http_base_converts_wss_to_https() {
-        std::env::set_var("AUFFI_BACKEND_WS", "wss://auffi.app/signal");
-        assert_eq!(backend_http_base(), "https://auffi.app");
+        assert_eq!(
+            backend_http_base_from("wss://auffi.app/signal"),
+            "https://auffi.app"
+        );
     }
 
     #[test]
     fn backend_http_base_converts_ws_to_http_keeping_port() {
-        std::env::set_var("AUFFI_BACKEND_WS", "ws://localhost:8080/signal");
-        assert_eq!(backend_http_base(), "http://localhost:8080");
-        std::env::remove_var("AUFFI_BACKEND_WS");
+        assert_eq!(
+            backend_http_base_from("ws://localhost:8080/signal"),
+            "http://localhost:8080"
+        );
+    }
+
+    #[test]
+    fn backend_http_base_falls_back_to_localhost_on_unknown_scheme() {
+        assert_eq!(
+            backend_http_base_from("garbage://nope"),
+            "http://localhost:8080"
+        );
     }
 
     // ── pw_outcome_to_action (TC C-3 — pinned forwarder semantics) ────
