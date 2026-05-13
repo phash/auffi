@@ -43,6 +43,17 @@ services:
     networks:
       - cluster-proxy
 
+  # gh #38: dashboard SPA sidecar. The cluster Caddy proxies
+  # /dashboard/* to this container (path stripped before forward),
+  # exactly mirroring the viewer's setup at the root path.
+  # IMPORTANT: this is the cluster-mode override. The standalone
+  # docker-compose.prod.yml has the matching `dashboard:` block
+  # with `networks: [internal]` — this overrides it so the cluster
+  # Caddy can resolve `auffi-dashboard:80`.
+  dashboard:
+    networks:
+      - cluster-proxy
+
   # One-shot sidecar: copies the Caddy-issued TLS cert + key for the TURN
   # subdomain from the cluster Caddy's data volume into a small shared
   # volume that coturn can read as its unprivileged user. Re-runs on every

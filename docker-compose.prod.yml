@@ -16,6 +16,15 @@ volumes:
   caddy-config:
   viewer-static:
   turn-certs:
+  # gh #38: SQLite store for accounts / devices / sessions / pairings
+  # / connection_log / audit_log. Mounted into the backend at
+  # /var/lib/auffi (the default DEFAULT_DB_PATH in src/db.ts). On a
+  # fresh host the directory comes up empty; applyMigrations() on
+  # the first boot creates every table. Volume name uses the same
+  # `auffi-*` prefix the rest of this file uses — the docker-compose
+  # project on prod is still `screenie` (see CLAUDE.md rebrand
+  # notes) so the on-disk volume name will be `screenie_auffi-db`.
+  auffi-db:
 
 services:
   backend:
@@ -25,9 +34,35 @@ services:
     env_file: [.env.prod]
     expose:
       - "8080"
+    volumes:
+      # gh #38: persist accounts / devices / connection-log etc.
+      # across container restarts.
+      - auffi-db:/var/lib/auffi
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/healthz"]
       interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - internal
+
+  # gh #38: dashboard sidecar — serves the Vite-built dist/ behind
+  # the cluster Caddy at /dashboard/*. Caddy strips the prefix
+  # before proxying, so nginx sees /, /assets/..., /login, etc.
+  # See `nginx/auffi-dashboard.conf` for the SPA fallback config.
+  dashboard:
+    image: nginx:1.29-alpine
+    container_name: auffi-dashboard
+    restart: unless-stopped
+    volumes:
+      - ./dashboard-dist:/usr/share/nginx/html:ro
+      - ./nginx/auffi-dashboard.conf:/etc/nginx/conf.d/default.conf:ro
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/healthz"]
+      interval: 15s
       timeout: 3s
       retries: 3
       start_period: 5s

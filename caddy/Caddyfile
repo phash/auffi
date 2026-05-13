@@ -63,6 +63,27 @@ auffi.app {
         reverse_proxy backend:8080
     }
 
+    # gh #38: REST API for the dashboard (auth + me + devices +
+    # admin). Same backend container as /signal — separate handle
+    # block (not handle_path) so the /api prefix is preserved end-
+    # to-end. Fastify routes are mounted as /api/auth, /api/devices,
+    # /api/me, /api/admin etc.
+    handle /api/* {
+        reverse_proxy backend:8080
+    }
+
+    # gh #38: dashboard SPA. Bundle is built with base="/dashboard/"
+    # so internal asset references point at /dashboard/assets/...
+    # The dashboard nginx sidecar serves the static dist; Caddy
+    # strips /dashboard/ before proxying so nginx sees /assets/...
+    handle_path /dashboard/* {
+        reverse_proxy dashboard:80
+    }
+    # Bare /dashboard (no trailing slash) → redirect for canonical URL.
+    handle /dashboard {
+        redir /dashboard/ permanent
+    }
+
     # Health + readiness probes
     handle /healthz {
         reverse_proxy backend:8080
