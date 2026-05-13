@@ -138,8 +138,6 @@ export type PwCheckResult = {
   result: "ok" | "fail" | "rejected";
 };
 
-export type IncomingMessageUnattended = PwAttempt | PwCheckResult;
-
 export type OutgoingMessage =
   | CodeAssigned
   | PeerJoined

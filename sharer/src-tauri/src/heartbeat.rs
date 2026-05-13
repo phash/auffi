@@ -126,8 +126,8 @@ impl HeartbeatConfig {
 
 /// Mirror of the backend's `OutgoingMessage` types from
 /// `backend/src/protocol.ts`, restricted to the unattended subset.
-/// `#[serde(untagged)]` so we can deserialise the raw JSON shape the
-/// backend sends.
+/// Internally-tagged on `"type"` so serde matches each variant on
+/// the wire `{ "type": "unattended-hello", … }` shape.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum BackendFrame {

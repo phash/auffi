@@ -356,10 +356,6 @@ export function registerSignaling(
           sess.viewer.close();
         }
       });
-
-      // Keep references silenced — registry + sessions are
-      // captured in the closure above. The early return below.
-      void registry;
       return;
     }
 

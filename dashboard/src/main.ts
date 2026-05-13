@@ -8,7 +8,6 @@ import { renderConnectionLog } from "./views/connection-log.js";
 import { renderDeviceDetail } from "./views/device-detail.js";
 import { renderDevices } from "./views/devices.js";
 import { renderForgot } from "./views/forgot.js";
-import { renderHome } from "./views/home.js";
 import { renderLogin } from "./views/login.js";
 import { renderNotFound } from "./views/not-found.js";
 import { renderReset } from "./views/reset.js";

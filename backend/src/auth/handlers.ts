@@ -313,18 +313,3 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   },
   );
 }
-
-/**
- * Default no-op mailer used when SMTP isn't configured. The signup /
- * forgot flows complete locally but no mail ever reaches the user — this
- * is fine for tests and for development before #11 lands. Production
- * always replaces this with the real SMTP adapter.
- */
-export const noopMailer: AuthMailer = {
-  async sendVerifyEmail() {
-    /* no-op */
-  },
-  async sendResetEmail() {
-    /* no-op */
-  },
-};
