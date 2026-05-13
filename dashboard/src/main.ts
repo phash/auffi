@@ -3,15 +3,18 @@
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
 import { renderHome } from "./views/home.js";
+import { renderLogin } from "./views/login.js";
 import { renderNotFound } from "./views/not-found.js";
+import { renderSignup } from "./views/signup.js";
+import { renderVerify } from "./views/verify.js";
 
 const routes: Route[] = [
   { pattern: "/", navLabel: "Übersicht", render: renderHome },
-  // Placeholder targets for the upcoming gh #29-#35 views — wired
-  // into the router so the nav links don't 404 during dev:
-  { pattern: "/login", render: renderHome },
-  { pattern: "/signup", render: renderHome },
-  { pattern: "/verify/:token", render: renderHome },
+  // gh #29: auth pages
+  { pattern: "/login", render: renderLogin },
+  { pattern: "/signup", render: renderSignup },
+  { pattern: "/verify/:token", render: renderVerify },
+  // Placeholders for gh #30, #31-#35 — wired so the nav doesn't 404:
   { pattern: "/forgot", render: renderHome },
   { pattern: "/reset/:token", render: renderHome },
   { pattern: "/devices", navLabel: "Geräte", render: renderHome },
