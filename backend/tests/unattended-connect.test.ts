@@ -270,7 +270,31 @@ describe("/signal unattended connect flow (gh #17)", () => {
 
     viewer.send(JSON.stringify({ type: "pw-attempt", password: "hunter2" }));
     const onSharer = await once(sharer, "message");
-    expect(onSharer).toEqual({ type: "pw-check", attempt: "hunter2" });
+    // gh #25 added autoAccept which reflects devices.auto_accept (1 in seed).
+    expect(onSharer).toEqual({ type: "pw-check", attempt: "hunter2", autoAccept: true });
+    viewer.close();
+    sharer.close();
+  });
+
+  it("pw-check forwards autoAccept=false when the device row has auto_accept=0", async () => {
+    // gh #25: dashboard toggling auto-accept off must take effect
+    // without sharer reconnect — backend reads the flag fresh on
+    // every pw-attempt.
+    db.prepare("UPDATE devices SET auto_accept = 0 WHERE id = ?").run(deviceId);
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message");
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "irrelevant" }));
+    const onSharer = await once(sharer, "message");
+    expect(onSharer).toEqual({
+      type: "pw-check",
+      attempt: "irrelevant",
+      autoAccept: false,
+    });
+    // Reset for any later test.
+    db.prepare("UPDATE devices SET auto_accept = 1 WHERE id = ?").run(deviceId);
     viewer.close();
     sharer.close();
   });

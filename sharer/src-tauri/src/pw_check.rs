@@ -21,11 +21,15 @@ pub enum PwCheckOutcome {
     /// confirming the device is alive. `remaining` is the lockout
     /// time left, for tray-notification text only.
     DropSilently { remaining: Duration },
-    /// Password verified. The caller proceeds to either auto-accept
-    /// (PwCheckResult::Ok immediately, gh #25 auto_accept = true) or
-    /// show a manual-confirm toast and reply later.
-    Verified,
-    /// Argon2-verify said no — caller sends PwCheckResult::Fail.
+    /// Verified AND the device's `auto_accept` is on. Caller replies
+    /// `pw-check-result: ok` immediately — no UI prompt.
+    AutoAccepted,
+    /// Verified BUT `auto_accept` is off. Caller shows the
+    /// manual-confirm toast (60 s timeout per spec section 6) and
+    /// later sends `pw-check-result: ok` on accept or
+    /// `pw-check-result: rejected` on decline.
+    NeedsConfirm,
+    /// Argon2-verify said no — caller sends `pw-check-result: fail`.
     /// Counter has already been incremented.
     Wrong,
     /// The on-disk password file is corrupt or missing. Per spec,
@@ -39,10 +43,12 @@ pub enum PwCheckOutcome {
 
 /// Single-call decision: lockout-check → argon2-verify → state update.
 /// Returns what the caller should send back. Pure on (attempt,
-/// password_path, lockout-state, now) so the heartbeat tests can pin
-/// the protocol without touching the actual filesystem more than once.
+/// password_path, lockout-state, now, auto_accept) so the heartbeat
+/// tests can pin the protocol without touching the actual filesystem
+/// more than once.
 pub fn handle_pw_check(
     attempt: &str,
+    auto_accept: bool,
     password_path: &Path,
     lockout: &mut LocalLockout,
     now: Instant,
@@ -53,7 +59,11 @@ pub fn handle_pw_check(
     match device_password::verify(attempt, password_path) {
         Ok(true) => {
             lockout.record_success();
-            PwCheckOutcome::Verified
+            if auto_accept {
+                PwCheckOutcome::AutoAccepted
+            } else {
+                PwCheckOutcome::NeedsConfirm
+            }
         }
         Ok(false) => {
             lockout.record_fail(now);
@@ -92,36 +102,64 @@ mod tests {
     }
 
     #[test]
-    fn correct_password_returns_verified_and_resets_lockout_counter() {
+    fn correct_password_with_auto_accept_returns_auto_accepted() {
         let dir = tempdir().unwrap();
         let path = pw_path(&dir);
         device_password::set("correct horse battery staple", &path).unwrap();
         let mut l = LocalLockout::new();
         let now = Instant::now();
-        // Pre-load 3 fails.
         for i in 0..3 {
             l.record_fail(now + Duration::from_secs(i));
         }
         let out = handle_pw_check(
             "correct horse battery staple",
+            true,
             &path,
             &mut l,
             now + Duration::from_secs(5),
         );
-        assert_eq!(out, PwCheckOutcome::Verified);
+        assert_eq!(out, PwCheckOutcome::AutoAccepted);
         assert_eq!(l.fails_in_window(), 0);
     }
 
     #[test]
-    fn wrong_password_returns_wrong_and_increments_counter() {
+    fn correct_password_without_auto_accept_returns_needs_confirm() {
+        // gh #25: same input but auto_accept=false → caller must
+        // show a manual-confirm toast before replying.
+        let dir = tempdir().unwrap();
+        let path = pw_path(&dir);
+        device_password::set("correct horse battery staple", &path).unwrap();
+        let mut l = LocalLockout::new();
+        let out = handle_pw_check(
+            "correct horse battery staple",
+            false,
+            &path,
+            &mut l,
+            Instant::now(),
+        );
+        assert_eq!(out, PwCheckOutcome::NeedsConfirm);
+        // Counter still resets — argon2-verify succeeded; the
+        // user's accept/decline decision is orthogonal to whether
+        // the password was correct.
+        assert_eq!(l.fails_in_window(), 0);
+    }
+
+    #[test]
+    fn wrong_password_returns_wrong_regardless_of_auto_accept() {
         let dir = tempdir().unwrap();
         let path = pw_path(&dir);
         device_password::set("correct horse battery staple", &path).unwrap();
         let mut l = LocalLockout::new();
         let now = Instant::now();
-        let out = handle_pw_check("nope!", &path, &mut l, now);
-        assert_eq!(out, PwCheckOutcome::Wrong);
-        assert_eq!(l.fails_in_window(), 1);
+        assert_eq!(
+            handle_pw_check("nope!", true, &path, &mut l, now),
+            PwCheckOutcome::Wrong
+        );
+        assert_eq!(
+            handle_pw_check("nope!", false, &path, &mut l, now),
+            PwCheckOutcome::Wrong
+        );
+        assert_eq!(l.fails_in_window(), 2);
     }
 
     #[test]
@@ -133,12 +171,17 @@ mod tests {
         let now = Instant::now();
         for i in 0..10 {
             assert_eq!(
-                handle_pw_check("wrong", &path, &mut l, now + Duration::from_secs(i)),
+                handle_pw_check("wrong", true, &path, &mut l, now + Duration::from_secs(i)),
                 PwCheckOutcome::Wrong
             );
         }
-        // 11th attempt is locked — DropSilently with remaining < 1 h.
-        match handle_pw_check("anything", &path, &mut l, now + Duration::from_secs(11)) {
+        match handle_pw_check(
+            "anything",
+            true,
+            &path,
+            &mut l,
+            now + Duration::from_secs(11),
+        ) {
             PwCheckOutcome::DropSilently { remaining } => {
                 assert!(remaining > Duration::from_secs(60 * 59));
                 assert!(remaining <= Duration::from_secs(60 * 60));
@@ -148,37 +191,37 @@ mod tests {
     }
 
     #[test]
-    fn drop_silently_does_not_run_argon2_or_increment_counter() {
-        // Pre-engage the lockout via direct record_fail calls so we
-        // can prove the function early-returns without touching
-        // device_password::verify.
+    fn drop_silently_bypasses_auto_accept_flag() {
+        // gh #25 + section 6 invariant: a locked sharer never
+        // auto-accepts even if auto_accept=true would have applied.
         let dir = tempdir().unwrap();
-        let path = pw_path(&dir); // intentionally never written
+        let path = pw_path(&dir);
+        device_password::set("correct horse battery staple", &path).unwrap();
         let mut l = LocalLockout::new();
         let now = Instant::now();
         for i in 0..10 {
             l.record_fail(now + Duration::from_secs(i));
         }
-        // path doesn't exist, but DropSilently must short-circuit
-        // before verify() would Err with Io.
-        match handle_pw_check("anything", &path, &mut l, now + Duration::from_secs(11)) {
+        match handle_pw_check(
+            "correct horse battery staple",
+            true,
+            &path,
+            &mut l,
+            now + Duration::from_secs(11),
+        ) {
             PwCheckOutcome::DropSilently { .. } => {}
             other => panic!("expected DropSilently, got {other:?}"),
         }
-        // 10 fails (no increment from this call).
-        assert_eq!(l.fails_in_window(), 0); // window of fails got cleared on lock
     }
 
     #[test]
     fn missing_password_file_returns_not_configured() {
         let dir = tempdir().unwrap();
-        let path = pw_path(&dir); // never written
+        let path = pw_path(&dir);
         let mut l = LocalLockout::new();
         let now = Instant::now();
-        let out = handle_pw_check("anything", &path, &mut l, now);
+        let out = handle_pw_check("anything", true, &path, &mut l, now);
         assert_eq!(out, PwCheckOutcome::NotConfigured);
-        // Should still count toward lockout to prevent a misconfigured
-        // sharer being used as a yes/no oracle.
         assert_eq!(l.fails_in_window(), 1);
     }
 
@@ -189,7 +232,7 @@ mod tests {
         std::fs::write(&path, "not an argon2 hash").unwrap();
         let mut l = LocalLockout::new();
         let now = Instant::now();
-        let out = handle_pw_check("anything", &path, &mut l, now);
+        let out = handle_pw_check("anything", true, &path, &mut l, now);
         assert_eq!(out, PwCheckOutcome::NotConfigured);
         assert_eq!(l.fails_in_window(), 1);
     }

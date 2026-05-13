@@ -470,8 +470,23 @@ export function registerSignaling(
           });
           return;
         }
+        // gh #25: thread the device's auto_accept flag through to the
+        // sharer so it knows whether to skip the manual-confirm step
+        // after a successful argon2-verify. The flag is read fresh on
+        // every pw-check so a dashboard toggle takes effect without
+        // sharer reconnect.
+        const row = unattended.db
+          .prepare<[string], { auto_accept: number }>(
+            "SELECT auto_accept FROM devices WHERE id = ?",
+          )
+          .get(sess.deviceId);
+        const autoAccept = row !== undefined && row.auto_accept === 1;
         unattended.sessions.transition(sess.deviceId, "pw-in-flight");
-        send(sess.sharer, { type: "pw-check", attempt: msg.password });
+        send(sess.sharer, {
+          type: "pw-check",
+          attempt: msg.password,
+          autoAccept,
+        });
         return;
       }
 

@@ -135,8 +135,12 @@ pub enum BackendFrame {
     /// camelCase fields, hence per-variant rename_all.
     #[serde(rename = "unattended-hello", rename_all = "camelCase")]
     UnattendedHello { device_id: String },
-    #[serde(rename = "pw-check")]
-    PwCheck { attempt: String },
+    /// gh #25: `auto_accept` from the device row, threaded through
+    /// on every pw-check so a dashboard toggle takes effect without
+    /// sharer reconnect. False → caller shows a confirm toast after
+    /// argon2-verify succeeds.
+    #[serde(rename = "pw-check", rename_all = "camelCase")]
+    PwCheck { attempt: String, auto_accept: bool },
     /// `{"type":"peer-joined","viewerInfo":{...}}`
     #[serde(rename = "peer-joined", rename_all = "camelCase")]
     PeerJoined { viewer_info: serde_json::Value },
@@ -193,8 +197,10 @@ pub enum HeartbeatEvent {
     /// pw-check frames. `device_id` is echoed from the backend.
     Connected { device_id: String },
     /// Viewer is attempting an unattended connect — verify locally,
-    /// reply via `SharerFrame::PwCheckResult`.
-    PwCheck { attempt: String },
+    /// reply via `SharerFrame::PwCheckResult`. `auto_accept` mirrors
+    /// `devices.auto_accept`; the caller uses it to choose between
+    /// auto-replying Ok or showing a manual-confirm toast.
+    PwCheck { attempt: String, auto_accept: bool },
     /// After `PwCheckResult::Ok`, the backend pairs viewer+sharer
     /// and forwards this. The sharer should now start the WebRTC
     /// offer (same as the ad-hoc `peer-joined`).
@@ -412,9 +418,15 @@ async fn connect_and_run(
                                         .send(HeartbeatEvent::Connected { device_id })
                                         .await;
                                 }
-                                BackendFrame::PwCheck { attempt } => {
+                                BackendFrame::PwCheck {
+                                    attempt,
+                                    auto_accept,
+                                } => {
                                     let _ = evt_tx
-                                        .send(HeartbeatEvent::PwCheck { attempt })
+                                        .send(HeartbeatEvent::PwCheck {
+                                            attempt,
+                                            auto_accept,
+                                        })
                                         .await;
                                 }
                                 BackendFrame::PeerJoined { viewer_info } => {
@@ -603,11 +615,30 @@ mod tests {
     }
 
     #[test]
-    fn incoming_pw_check_parses() {
-        let raw = r#"{"type":"pw-check","attempt":"hunter2"}"#;
+    fn incoming_pw_check_parses_with_auto_accept() {
+        let raw = r#"{"type":"pw-check","attempt":"hunter2","autoAccept":true}"#;
         let parsed: BackendFrame = serde_json::from_str(raw).unwrap();
         match parsed {
-            BackendFrame::PwCheck { attempt } => assert_eq!(attempt, "hunter2"),
+            BackendFrame::PwCheck {
+                attempt,
+                auto_accept,
+            } => {
+                assert_eq!(attempt, "hunter2");
+                assert!(auto_accept);
+            }
+            other => panic!("expected PwCheck, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn incoming_pw_check_with_auto_accept_false() {
+        // gh #25: when the dashboard turns auto-accept off, every
+        // pw-check arrives with `autoAccept: false` and the sharer
+        // should show the manual-confirm toast.
+        let raw = r#"{"type":"pw-check","attempt":"hunter2","autoAccept":false}"#;
+        let parsed: BackendFrame = serde_json::from_str(raw).unwrap();
+        match parsed {
+            BackendFrame::PwCheck { auto_accept, .. } => assert!(!auto_accept),
             other => panic!("expected PwCheck, got {other:?}"),
         }
     }

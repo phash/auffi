@@ -111,11 +111,16 @@ export type PwAttempt = {
 /**
  * Backend → unattended sharer: a viewer is trying to connect with
  * this attempted password. Sharer argon2-verifies locally and
- * responds with `pw-check-result`.
+ * responds with `pw-check-result`. `autoAccept` mirrors
+ * `devices.auto_accept` — when `false` the sharer shows a confirm
+ * toast after the verify succeeds (spec section 6 / gh #25). The
+ * flag is sent on every pw-check so a dashboard toggle takes effect
+ * without needing a sharer reconnect.
  */
 export type PwCheck = {
   type: "pw-check";
   attempt: string;
+  autoAccept: boolean;
 };
 
 /**
