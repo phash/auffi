@@ -1,0 +1,20 @@
+{
+  "name": "auffi-dashboard",
+  "version": "0.3.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/jsdom": "21.1.7",
+    "@types/node": "22.15.21",
+    "jsdom": "29.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.12",
+    "vitest": "4.1.6"
+  }
+}
