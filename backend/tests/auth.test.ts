@@ -150,14 +150,19 @@ describe("GET /api/auth/verify/:token", () => {
     return h.mailer.sent[0].token;
   }
 
-  it("marks the token used + verifies the account + issues a session cookie", async () => {
+  it("marks the token used + verifies the account WITHOUT issuing a session cookie (Sec H-2)", async () => {
     const token = await signup();
     const res = await h.app.inject({
       method: "GET",
       url: `/api/auth/verify/${token}`,
     });
     expect(res.statusCode).toBe(200);
-    expect(cookieValue(res.headers)).toBeDefined();
+    // Sec H-2 (review 2026-05-13): the verify GET must NOT auto-
+    // login. A page embedding the URL as <img src=…> could
+    // otherwise silently authenticate the victim's browser. The
+    // user logs in explicitly after the dashboard renders the
+    // success message.
+    expect(cookieValue(res.headers)).toBeUndefined();
 
     const row = h.db
       .prepare<[number], { email_verified_at: number | null }>(

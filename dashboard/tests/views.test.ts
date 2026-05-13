@@ -165,6 +165,11 @@ describe("renderVerify", () => {
     expect(called).toBe(true);
     const status = root.querySelector('[role="status"]') as HTMLElement;
     expect(status.textContent).toContain("bestätigt");
+    // Sec H-2: post-verify success points the user at /login, NOT
+    // /devices — the backend doesn't auto-login anymore.
+    const loginLink = root.querySelector('a[href$="/login"]') as HTMLAnchorElement;
+    expect(loginLink).not.toBeNull();
+    expect(loginLink.textContent).toContain("Anmeldung");
   });
 
   it("shows 'token-used' friendly message + link to login", async () => {

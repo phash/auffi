@@ -127,9 +127,16 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   );
 
   // ── Verify ──────────────────────────────────────────────────────────
-  // GET because the link is followed by a click in a mail client; the
-  // handler atomically marks the token used + the account verified +
-  // issues the session cookie (so the user lands logged in).
+  // GET because the link is followed by a click in a mail client.
+  // Marks the token used + the account verified, and that's IT —
+  // explicitly does NOT issue a session cookie (Sec H-2, review
+  // 2026-05-13). A prior version auto-logged the user in here,
+  // which made the URL a phishing/XS-leak vehicle: any page
+  // embedding the link as <img src=…> would silently log a
+  // first-time-visiting victim into their own (or, with
+  // token-guessing, someone else's) account. The dashboard's
+  // verify view now redirects to /login after a successful
+  // verify and the user picks up from there.
   app.get(
     "/api/auth/verify/:token",
     {
@@ -138,30 +145,29 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       config: { rateLimit: { max: 10, timeWindow: "1 hour" } },
     },
     async (req: FastifyRequest, reply: FastifyReply) => {
-    const { token } = req.params as { token: string };
-    if (!token) return bad(reply, 400, "bad-token", "missing token");
-    const row = db
-      .prepare<[string, number], { account_id: number; used_at: number | null }>(
-        `SELECT account_id, used_at FROM email_verifications
-          WHERE token_hash = ? AND expires_at > ?`,
-      )
-      .get(hashToken(token), Date.now());
-    if (!row) return bad(reply, 410, "token-invalid", "verification link expired or unknown");
-    if (row.used_at !== null) return bad(reply, 410, "token-used", "verification link already used");
+      const { token } = req.params as { token: string };
+      if (!token) return bad(reply, 400, "bad-token", "missing token");
+      const row = db
+        .prepare<[string, number], { account_id: number; used_at: number | null }>(
+          `SELECT account_id, used_at FROM email_verifications
+            WHERE token_hash = ? AND expires_at > ?`,
+        )
+        .get(hashToken(token), Date.now());
+      if (!row) return bad(reply, 410, "token-invalid", "verification link expired or unknown");
+      if (row.used_at !== null) return bad(reply, 410, "token-used", "verification link already used");
 
-    const now = Date.now();
-    const tx = db.transaction(() => {
-      db.prepare("UPDATE email_verifications SET used_at = ? WHERE token_hash = ?").run(
-        now,
-        hashToken(token),
-      );
-      db.prepare("UPDATE accounts SET email_verified_at = ? WHERE id = ?").run(now, row.account_id);
-    });
-    tx();
+      const now = Date.now();
+      const tx = db.transaction(() => {
+        db.prepare("UPDATE email_verifications SET used_at = ? WHERE token_hash = ?").run(
+          now,
+          hashToken(token),
+        );
+        db.prepare("UPDATE accounts SET email_verified_at = ? WHERE id = ?").run(now, row.account_id);
+      });
+      tx();
 
-    createSession(db, reply, row.account_id, req.headers["user-agent"]);
-    return reply.status(200).send({ ok: true });
-  },
+      return reply.status(200).send({ ok: true });
+    },
   );
 
   // ── Login ───────────────────────────────────────────────────────────

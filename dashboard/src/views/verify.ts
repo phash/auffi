@@ -41,10 +41,13 @@ export const renderVerify: RouteRenderer = (root: HTMLElement, ctx: RouteContext
     const res = await verifyEmail(token);
     if (res.ok) {
       status.style.color = "var(--success)";
-      status.textContent = "E-Mail bestätigt. Du bist eingeloggt.";
+      // Sec H-2: backend deliberately does NOT auto-login on verify
+      // anymore. The user has to sign in explicitly so a fishy mail
+      // link can't silently log them in via an embed/redirect.
+      status.textContent = "E-Mail bestätigt. Du kannst dich jetzt anmelden.";
       const link = document.createElement("a");
-      link.href = BASE_PATH + "/devices";
-      link.textContent = "→ Zu deinen Geräten";
+      link.href = BASE_PATH + "/login";
+      link.textContent = "→ Zur Anmeldung";
       actions.appendChild(link);
       return;
     }
