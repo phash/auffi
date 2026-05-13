@@ -152,3 +152,18 @@ export function resetPassword(
     body: JSON.stringify({ password }),
   });
 }
+
+// ── Device endpoints ───────────────────────────────────────────────
+
+export interface Device {
+  id: string;
+  alias: string;
+  autoAccept: boolean;
+  createdAt: number;
+  lastSeenAt: number | null;
+  online: boolean;
+}
+
+export function listDevices(): Promise<ApiResult<{ items: Device[] }>> {
+  return request("/api/devices", { method: "GET" });
+}

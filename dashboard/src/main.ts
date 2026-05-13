@@ -2,6 +2,7 @@
 // and renders the top-bar nav.
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
+import { renderDevices } from "./views/devices.js";
 import { renderForgot } from "./views/forgot.js";
 import { renderHome } from "./views/home.js";
 import { renderLogin } from "./views/login.js";
@@ -11,7 +12,8 @@ import { renderSignup } from "./views/signup.js";
 import { renderVerify } from "./views/verify.js";
 
 const routes: Route[] = [
-  { pattern: "/", navLabel: "Übersicht", render: renderHome },
+  // Default post-login destination (spec §8.3).
+  { pattern: "/", navLabel: "Übersicht", render: renderDevices },
   // gh #29: auth pages
   { pattern: "/login", render: renderLogin },
   { pattern: "/signup", render: renderSignup },
@@ -19,8 +21,9 @@ const routes: Route[] = [
   // gh #30: password-reset flow
   { pattern: "/forgot", render: renderForgot },
   { pattern: "/reset/:token", render: renderReset },
-  // Placeholders for gh #31-#35 — wired so the nav doesn't 404:
-  { pattern: "/devices", navLabel: "Geräte", render: renderHome },
+  // gh #31: device list (default after login)
+  { pattern: "/devices", navLabel: "Geräte", render: renderDevices },
+  // Placeholders for gh #32-#35 until those views land:
   { pattern: "/devices/:id", render: renderHome },
   { pattern: "/account", navLabel: "Account", render: renderHome },
   { pattern: "*", render: renderNotFound },
