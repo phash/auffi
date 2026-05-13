@@ -1176,10 +1176,17 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "tray-quit", "Beenden", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            let icon = app
-                .default_window_icon()
-                .ok_or_else(|| "tauri: no default window icon configured for tray".to_string())?
-                .clone();
+            // Load the 32x32 PNG explicitly — the default window icon
+            // comes through as raw 16-bit-per-channel RGBA (the source
+            // PNGs are 16-bit) which the tray-icon crate rejects with
+            // "expected 4096 got 8192". Decoding with `image` gives us
+            // normalised 8-bit RGBA.
+            let icon_png: &[u8] = include_bytes!("../icons/32x32.png");
+            let decoded = image::load_from_memory_with_format(icon_png, image::ImageFormat::Png)
+                .map_err(|e| format!("tray icon decode: {e}"))?
+                .to_rgba8();
+            let (w, h) = decoded.dimensions();
+            let icon = tauri::image::Image::new_owned(decoded.into_raw(), w, h);
 
             let _tray = TrayIconBuilder::with_id("auffi-tray")
                 .icon(icon)
