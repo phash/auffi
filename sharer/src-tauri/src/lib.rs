@@ -1,4 +1,5 @@
 mod capture;
+mod device_password;
 mod encoder;
 mod files;
 mod free_tier_timer;
