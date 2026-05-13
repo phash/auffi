@@ -3,6 +3,7 @@
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
 import { renderAddDevice } from "./views/add-device.js";
+import { renderDeviceDetail } from "./views/device-detail.js";
 import { renderDevices } from "./views/devices.js";
 import { renderForgot } from "./views/forgot.js";
 import { renderHome } from "./views/home.js";
@@ -27,8 +28,8 @@ const routes: Route[] = [
   // gh #32: add-device modal route. Mounted as its own URL so the
   // user can deep-link / share-via-link the pairing instructions.
   { pattern: "/devices/new", render: renderAddDevice },
-  // Placeholders for gh #33-#35 until those views land:
-  { pattern: "/devices/:id", render: renderHome },
+  // gh #33: device detail with alias-edit + auto-accept toggle.
+  { pattern: "/devices/:id", render: renderDeviceDetail },
   { pattern: "/account", navLabel: "Account", render: renderHome },
   { pattern: "*", render: renderNotFound },
 ];

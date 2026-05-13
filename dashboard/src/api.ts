@@ -182,3 +182,24 @@ export interface PairingCodeResponse {
 export function mintPairingCode(): Promise<ApiResult<PairingCodeResponse>> {
   return request("/api/devices/pairing-code", { method: "POST" });
 }
+
+export interface DevicePatch {
+  alias?: string;
+  auto_accept?: boolean;
+}
+
+export function patchDevice(
+  id: string,
+  patch: DevicePatch,
+): Promise<ApiResult<{ ok: true }>> {
+  return request(`/api/devices/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteDevice(id: string): Promise<ApiResult<{ ok: true }>> {
+  return request(`/api/devices/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
