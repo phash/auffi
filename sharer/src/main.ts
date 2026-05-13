@@ -694,6 +694,15 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
     invoke("receive_ice_candidate", ice).catch(() => {
       // Benign: candidate may be stale (e.g. remote description not yet set).
     });
+  } else if (p.kind === "bye") {
+    // Viewer pressed Beenden — without this branch the sharer would only
+    // notice when ICE eventually times out, which surfaces as the
+    // generic "Verbindung verloren" message instead of the friendly
+    // "Helfer hat die Verbindung beendet" the user actually wants.
+    invoke("disconnect_streaming").catch(() => {});
+    hideStreamingActions();
+    setStatus("Helfer hat die Verbindung beendet.", "idle");
+    newCodeBtn.classList.add("visible");
   }
 });
 

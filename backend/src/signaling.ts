@@ -57,12 +57,22 @@ const DEFAULT_PER_PEER_LIMIT: PerPeerRateLimitConfig = { windowMs: 10_000, max: 
 /// protocol error and gets rejected before being forwarded to the other peer.
 const RELAY_KINDS = new Set<string>(["sdp", "ice", "hello", "bye"]);
 
+/// Per-IP cap on `register`-as-sharer messages. Caddy's `/signal`
+/// path is excluded from its rate-limit zone (the WS connection itself
+/// is long-lived), so without an app-level gate a single IP could open
+/// thousands of WS upgrades and flood the SessionStore. Sharers
+/// legitimately re-register on bootstrap-after-F5 / "Neuer Code", but 5
+/// per minute is well above that pattern.
+const DEFAULT_REGISTER_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 5 };
+
 export function registerSignaling(
   app: FastifyInstance,
   store: SessionStore,
   rateLimitCfg: RateLimitConfig = { windowMs: 60_000, max: 5 },
   attemptCounts: Map<string, RateLimitEntry> = new Map(),
-  perPeerCfg: PerPeerRateLimitConfig = DEFAULT_PER_PEER_LIMIT
+  perPeerCfg: PerPeerRateLimitConfig = DEFAULT_PER_PEER_LIMIT,
+  registerCfg: RateLimitConfig = DEFAULT_REGISTER_LIMIT,
+  registerCounts: Map<string, RateLimitEntry> = new Map()
 ): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
@@ -96,6 +106,11 @@ export function registerSignaling(
       }
 
       if (msg.type === "register" && msg.role === "sharer" && role === null) {
+        if (!checkRateLimit(req.ip ?? "unknown", registerCounts, registerCfg)) {
+          send(peer, { type: "error", code: "rate-limit", message: "too many registrations" });
+          peer.close();
+          return;
+        }
         role = "sharer";
         const { code, session } = store.registerSharer(peer as Peer);
         const ttlSec = Math.floor((session.expiresAt - Date.now()) / 1000);

@@ -61,7 +61,10 @@ use input::{InputController, InputEvent};
 
 struct SignalingState(Mutex<Option<signaling::Signaling>>);
 
-struct WebRtcState(tokio::sync::Mutex<Option<webrtc_peer::SharerPeer>>);
+/// Wrapped in `Arc` so the file-task spawn can hold a reference to send
+/// auto-reject responses through the files DataChannel without borrowing
+/// `tauri::State` across an await.
+struct WebRtcState(Arc<tokio::sync::Mutex<Option<webrtc_peer::SharerPeer>>>);
 
 /// Shared mutable access to the active `InputController`.
 ///
@@ -422,14 +425,33 @@ async fn start_streaming(
 
     // Spawn the file-task that drives incoming file messages.
     let file_mgr_arc = Arc::clone(&file_state.0);
+    let rtc_arc_for_files = Arc::clone(&rtc_state.0);
     let app_for_files = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(msg) = files_msg_rx.recv().await {
             match msg {
                 FileMessage::Event(ev) => {
-                    let mut guard = file_mgr_arc.lock().await;
-                    if let Some(mgr) = guard.as_mut() {
-                        let _ = mgr.handle_offer(ev, &app_for_files);
+                    // handle_offer returns auto-reject FileError events
+                    // (too-many-active, file-too-large) that MUST be sent
+                    // back to the viewer over the files DataChannel —
+                    // otherwise the viewer's FileTransferManager keeps
+                    // the offer pending indefinitely.
+                    let auto_responses = {
+                        let mut guard = file_mgr_arc.lock().await;
+                        guard
+                            .as_mut()
+                            .map(|mgr| mgr.handle_offer(ev, &app_for_files))
+                            .unwrap_or_default()
+                    };
+                    if !auto_responses.is_empty() {
+                        let guard = rtc_arc_for_files.lock().await;
+                        if let Some(peer) = guard.as_ref() {
+                            for resp in &auto_responses {
+                                if let Err(e) = peer.send_file_event(resp).await {
+                                    log::warn!("auto-reject send_file_event failed: {e}");
+                                }
+                            }
+                        }
                     }
                 }
                 FileMessage::Chunk(data) => {
@@ -1008,7 +1030,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .manage(SignalingState(Mutex::new(None)))
-        .manage(WebRtcState(tokio::sync::Mutex::new(None)))
+        .manage(WebRtcState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
             None,
         ))))

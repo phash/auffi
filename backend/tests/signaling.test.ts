@@ -10,6 +10,12 @@ let app: FastifyInstance;
 let url: string;
 
 beforeAll(async () => {
+  // The test suite makes many sharer-register WS calls from 127.0.0.1.
+  // The production register-rate-limit (5/min/IP) would trip during the
+  // run; bypass via env. The dedicated per-IP-register-limit test below
+  // builds its own Fastify instance with a tight cap so the gate
+  // is still exercised end-to-end.
+  process.env.REGISTER_RATE_LIMIT_MAX = "1000";
   app = await createServer({ port: 0, host: "127.0.0.1" });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
@@ -409,5 +415,106 @@ describe("per-peer message rate limit", () => {
         (m as Record<string, unknown>).code === "rate-limit"
     );
     expect(rateError).toBeDefined();
+  });
+});
+
+describe("per-IP register rate limit", () => {
+  let rApp: ReturnType<typeof Fastify>;
+  let rUrl: string;
+
+  beforeAll(async () => {
+    rApp = Fastify({ logger: false });
+    await rApp.register(websocketPlugin, {
+      options: {
+        maxPayload: 65_536,
+        verifyClient(_info: unknown, cb: (result: boolean) => void) {
+          cb(true);
+        },
+      },
+    });
+    const store = new SessionStore({ ttlMs: 60_000, maxAttempts: 5 });
+    // Tight register cap (2/minute) so we can exhaust it without burning
+    // dozens of test connections.
+    registerSignaling(
+      rApp,
+      store,
+      { windowMs: 60_000, max: 5 }, // join (existing)
+      new Map(),
+      undefined, // per-peer (defaults)
+      { windowMs: 60_000, max: 2 }, // register (new)
+      new Map(),
+    );
+    await rApp.listen({ port: 0, host: "127.0.0.1" });
+    const addr = rApp.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    rUrl = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await rApp.close();
+  });
+
+  it("third sharer-register from same IP within the window is rate-limited", async () => {
+    // The same client IP (127.0.0.1) — three back-to-back fresh WS upgrades
+    // that each register as sharer. The third must trip the per-IP gate.
+    async function registerOnce(): Promise<unknown[]> {
+      const ws = new WebSocket(rUrl);
+      await new Promise((r) => ws.once("open", r));
+      const messages: unknown[] = [];
+      ws.on("message", (d) => messages.push(JSON.parse(d.toString())));
+      ws.send(JSON.stringify({ type: "register", role: "sharer" }));
+      // Wait for either code-assigned (success) or close (rejected).
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          ws.removeAllListeners();
+          resolve();
+        };
+        ws.once("close", done);
+        ws.on("message", () => {
+          // Give a tick so the server's `peer.close()` arrives if any.
+          setTimeout(done, 50);
+        });
+      });
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
+      return messages;
+    }
+
+    const first = await registerOnce();
+    const second = await registerOnce();
+    const third = await registerOnce();
+
+    // First two: code-assigned, no rate-limit error.
+    for (const msgs of [first, second]) {
+      expect(
+        msgs.some(
+          (m) =>
+            m !== null &&
+            typeof m === "object" &&
+            (m as Record<string, unknown>).type === "code-assigned",
+        ),
+      ).toBe(true);
+    }
+    // Third: rate-limit error, NO code-assigned.
+    expect(
+      third.some(
+        (m) =>
+          m !== null &&
+          typeof m === "object" &&
+          (m as Record<string, unknown>).type === "error" &&
+          (m as Record<string, unknown>).code === "rate-limit",
+      ),
+    ).toBe(true);
+    expect(
+      third.some(
+        (m) =>
+          m !== null &&
+          typeof m === "object" &&
+          (m as Record<string, unknown>).type === "code-assigned",
+      ),
+    ).toBe(false);
   });
 });

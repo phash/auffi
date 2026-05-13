@@ -386,6 +386,15 @@ export function bindUI(backendWsUrl: string): void {
   }
 
   disconnectBtn.addEventListener("click", () => {
+    // Tell the sharer we're leaving so it shows "Helfer hat die
+    // Verbindung beendet" instead of waiting for the ICE timeout to
+    // surface as the less-friendly "Verbindung verloren". Best-effort —
+    // if the WS already closed the message is dropped silently.
+    try {
+      signaling?.sendRelay({ kind: "bye" });
+    } catch {
+      /* ignore */
+    }
     // Keep lastCode for a short window so a misclick on Beenden is recoverable.
     const hadCode = lastCode !== null;
     teardown(

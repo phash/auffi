@@ -4,6 +4,7 @@ import rateLimitPlugin from "@fastify/rate-limit";
 import corsPlugin from "@fastify/cors";
 import { SessionStore } from "./codes.js";
 import { registerSignaling } from "./signaling.js";
+import type { RateLimitEntry } from "./signaling.js";
 import { registerTurnEndpoint } from "./turn-credentials.js";
 
 export type ServerConfig = {
@@ -24,16 +25,22 @@ function envList(key: string, fallback: string[]): string[] {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-const SESSION_TTL_MS = envNumber("SESSION_TTL_MS", 600_000);
-const MAX_FAILED_ATTEMPTS = envNumber("MAX_FAILED_ATTEMPTS", 5);
-const RATE_LIMIT_WINDOW_MS = envNumber("RATE_LIMIT_WINDOW_MS", 60_000);
-const RATE_LIMIT_MAX = envNumber("RATE_LIMIT_MAX", 5);
-const ALLOWED_ORIGINS = envList("ALLOWED_ORIGINS", [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost",
-  "http://127.0.0.1",
-]);
+function readEnvConfig() {
+  return {
+    sessionTtlMs: envNumber("SESSION_TTL_MS", 600_000),
+    maxFailedAttempts: envNumber("MAX_FAILED_ATTEMPTS", 5),
+    rateLimitWindowMs: envNumber("RATE_LIMIT_WINDOW_MS", 60_000),
+    rateLimitMax: envNumber("RATE_LIMIT_MAX", 5),
+    registerRateLimitWindowMs: envNumber("REGISTER_RATE_LIMIT_WINDOW_MS", 60_000),
+    registerRateLimitMax: envNumber("REGISTER_RATE_LIMIT_MAX", 5),
+    allowedOrigins: envList("ALLOWED_ORIGINS", [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://localhost",
+      "http://127.0.0.1",
+    ]),
+  };
+}
 
 const REDACT_PATHS = [
   "req.remoteAddress",
@@ -73,6 +80,8 @@ function buildLoggerOptions(nodeEnv: string | undefined) {
 }
 
 export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance> {
+  // Read env at call-time so tests can override values per-server.
+  const env = readEnvConfig();
   const turnSharedSecret = process.env.TURN_SHARED_SECRET ?? "";
   const turnRealm = process.env.TURN_REALM ?? "localhost";
   const turnHosts = envList("TURN_HOSTS", []);
@@ -91,7 +100,7 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
   await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
 
   await app.register(corsPlugin, {
-    origin: ALLOWED_ORIGINS,
+    origin: env.allowedOrigins,
     methods: ["GET", "POST", "PATCH", "DELETE"],
     // The dashboard sends credentials (auffi_session cookie) on every
     // authenticated request. Without this the browser strips the
@@ -104,7 +113,7 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
       maxPayload: 65_536,
       verifyClient(info, cb) {
         const origin = info.req.headers.origin as string | undefined;
-        if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+        if (!origin || !env.allowedOrigins.includes(origin)) {
           // 403 is the correct pre-handshake reject status. 1008 (Policy
           // Violation) is a WebSocket close code, NOT a valid HTTP status —
           // reverse proxies reject the malformed response as 502.
@@ -116,16 +125,24 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
     },
   });
 
-  const store = new SessionStore({ ttlMs: SESSION_TTL_MS, maxAttempts: MAX_FAILED_ATTEMPTS });
-  const attemptCounts = registerSignaling(app, store, {
-    windowMs: RATE_LIMIT_WINDOW_MS,
-    max: RATE_LIMIT_MAX,
-  });
+  const store = new SessionStore({ ttlMs: env.sessionTtlMs, maxAttempts: env.maxFailedAttempts });
+  const registerCounts: Map<string, RateLimitEntry> = new Map();
+  const attemptCounts = registerSignaling(
+    app,
+    store,
+    { windowMs: env.rateLimitWindowMs, max: env.rateLimitMax },
+    undefined,
+    undefined,
+    { windowMs: env.registerRateLimitWindowMs, max: env.registerRateLimitMax },
+    registerCounts,
+  );
 
   const sweepHandle = setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of attemptCounts) {
-      if (entry.resetAt < now) attemptCounts.delete(key);
+    for (const map of [attemptCounts, registerCounts]) {
+      for (const [key, entry] of map) {
+        if (entry.resetAt < now) map.delete(key);
+      }
     }
   }, 60_000);
 
@@ -150,7 +167,7 @@ export async function createServer(_cfg: ServerConfig): Promise<FastifyInstance>
       realm: turnRealm,
       urls: turnHosts,
       ttlSec: turnTtlSec,
-      allowedOrigins: ALLOWED_ORIGINS,
+      allowedOrigins: env.allowedOrigins,
       sessionStore: store,
     });
   }
