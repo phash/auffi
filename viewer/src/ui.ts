@@ -577,12 +577,78 @@ export function bindUI(backendWsUrl: string): void {
         }
       });
 
-      signaling.onDisconnect((reason) => teardown(`Verbindung beendet: ${reason}`, "err", true));
+      // gh #36: unattended-mode password prompt. The backend emits
+      // `needs-password` after the JOIN when the code resolves to a
+      // registered device. We don't tear down on this; we show a
+      // modal that lets the user type the device password and
+      // `sendPwAttempt` it back. wrong-password keeps the modal up
+      // and shows attempts-left; the terminal failures (locked,
+      // rejected-by-user) are caught by the join() .catch below.
+      const pwToast = document.getElementById("pw-prompt-toast");
+      const pwInput = document.getElementById("pw-prompt-input") as HTMLInputElement | null;
+      const pwSubmit = document.getElementById("pw-prompt-submit") as HTMLButtonElement | null;
+      const pwCancel = document.getElementById("pw-prompt-cancel") as HTMLButtonElement | null;
+      const pwMessage = document.getElementById("pw-prompt-message");
+      // The pw-prompt scaffolding lives in index.html and is missing
+      // only in test-DOM stubs. In production all five are present;
+      // guarding makes the existing test fixtures keep working without
+      // every one of them having to be updated.
+      const havePwPrompt = !!(pwToast && pwInput && pwSubmit && pwCancel && pwMessage);
+      const showPwPrompt = (text: string, wrong: boolean): void => {
+        if (!havePwPrompt) return;
+        pwMessage!.textContent = text;
+        pwMessage!.classList.toggle("wrong", wrong);
+        pwInput!.value = "";
+        pwToast!.classList.add("active");
+        pwSubmit!.disabled = false;
+        pwInput!.focus();
+      };
+      const hidePwPrompt = (): void => {
+        if (!havePwPrompt) return;
+        pwToast!.classList.remove("active");
+        pwInput!.value = "";
+      };
+      const submitPw = (): void => {
+        if (!havePwPrompt) return;
+        const password = pwInput!.value;
+        if (password.length === 0) return;
+        pwSubmit!.disabled = true;
+        setStatus("Passwort wird geprüft…", "info");
+        signaling?.sendPwAttempt(password);
+        // Don't hide the toast yet — wrong-password may bring it
+        // back. peer-confirmed (join resolves) will hide it.
+      };
+      if (havePwPrompt) {
+        pwSubmit!.onclick = submitPw;
+        pwInput!.onkeydown = (e: KeyboardEvent): void => {
+          if (e.key === "Enter") submitPw();
+        };
+        pwCancel!.onclick = (): void => {
+          hidePwPrompt();
+          teardown("Vom Helfer abgebrochen.", "info", true);
+        };
+      }
+
+      signaling.onNeedsPassword(() => {
+        showPwPrompt("Dieses Gerät ist passwortgeschützt. Bitte das Geräte-Passwort eingeben.", false);
+      });
+      signaling.onWrongPassword((attemptsLeft) => {
+        showPwPrompt(
+          `Falsches Passwort. Noch ${attemptsLeft} Versuch${attemptsLeft === 1 ? "" : "e"}.`,
+          true,
+        );
+      });
+
+      signaling.onDisconnect((reason) => {
+        hidePwPrompt();
+        teardown(`Verbindung beendet: ${reason}`, "err", true);
+      });
 
       signaling
         .join(code)
         .then(async () => {
           if (!peer || !signaling) return;
+          hidePwPrompt();
           const offer = await peer.start();
           signaling.sendRelay({ kind: "sdp", sdp: offer });
           // Spec gh #82: green dot only AFTER the first frame is composited;
@@ -591,9 +657,26 @@ export function bindUI(backendWsUrl: string): void {
           // "ok" via the first-frame callback.
           setStatus("Verbunden — empfange Stream…", "info");
         })
-        .catch((e: unknown) =>
-          teardown(`Fehler: ${e instanceof Error ? e.message : String(e)}`, "err", true),
-        );
+        .catch((e: unknown) => {
+          hidePwPrompt();
+          const msg = e instanceof Error ? e.message : String(e);
+          // gh #36: friendly text for the unattended-mode terminal
+          // failures so the user sees what went wrong instead of a
+          // raw error code.
+          if (msg.startsWith("locked:")) {
+            const secs = Number(msg.slice("locked:".length));
+            const mins = Math.max(1, Math.ceil(secs / 60));
+            teardown(
+              `Zu viele Fehlversuche. Sperre für ca. ${mins} Min — später erneut versuchen.`,
+              "err",
+              true,
+            );
+          } else if (msg === "rejected-by-user") {
+            teardown("Der Sharer hat die Verbindung abgelehnt.", "info", true);
+          } else {
+            teardown(`Fehler: ${msg}`, "err", true);
+          }
+        });
     });
   }
 

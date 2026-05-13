@@ -87,4 +87,73 @@ describe("SignalingClient", () => {
     client.close();
     expect(disconnectFn).not.toHaveBeenCalled();
   });
+
+  // ── gh #36: unattended-mode flow ────────────────────────────────────
+
+  it("needs-password fires onNeedsPassword and keeps the promise unsettled", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const needsPw = vi.fn();
+    client.onNeedsPassword(needsPw);
+    const p = client.join("123-456-789");
+    let settled: "yes" | "no" = "no";
+    void p.then(() => (settled = "yes")).catch(() => (settled = "yes"));
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "needs-password" });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(needsPw).toHaveBeenCalledTimes(1);
+    expect(settled).toBe("no");
+    // Now confirm to settle the promise.
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+  });
+
+  it("sendPwAttempt forwards a pw-attempt frame", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const p = client.join("123-456-789");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "needs-password" });
+    client.sendPwAttempt("hunter2");
+    expect(JSON.parse(mock.sent[1])).toEqual({ type: "pw-attempt", password: "hunter2" });
+    // Resolve to keep the test clean.
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+  });
+
+  it("wrong-password fires onWrongPassword with attemptsLeft, no settle", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const wrongPw = vi.fn();
+    client.onWrongPassword(wrongPw);
+    const p = client.join("123-456-789");
+    let settled: "yes" | "no" = "no";
+    void p.then(() => (settled = "yes")).catch(() => (settled = "yes"));
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "needs-password" });
+    mock.fakeMessage({ type: "wrong-password", attemptsLeft: 3 });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(wrongPw).toHaveBeenCalledWith(3);
+    expect(settled).toBe("no");
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+  });
+
+  it("locked rejects the promise with code locked:N", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const p = client.join("123-456-789");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "locked", retryAfterSec: 850 });
+    await expect(p).rejects.toThrow(/locked:850/);
+  });
+
+  it("rejected-by-user rejects the promise", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const p = client.join("123-456-789");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "rejected-by-user" });
+    await expect(p).rejects.toThrow(/rejected-by-user/);
+  });
 });

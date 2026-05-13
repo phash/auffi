@@ -43,11 +43,19 @@ export type RelayPayload = RelaySdp | RelayIce | RelayHello | RelayBye;
 
 export type RelayMsg = { type: "relay"; payload: RelayPayload };
 
+/**
+ * gh #17 / #36 — viewer side of the unattended-mode connect flow.
+ * Viewer sends `pw-attempt` after receiving `needs-password` from the
+ * backend.
+ */
+export type PwAttempt = { type: "pw-attempt"; password: string };
+
 export type IncomingMessage =
   | SharerRegister
   | SharerConfirm
   | ViewerJoin
-  | RelayMsg;
+  | RelayMsg
+  | PwAttempt;
 
 export type CodeAssigned = {
   type: "code-assigned";
@@ -69,10 +77,33 @@ export type ErrorMessage = {
   message: string;
 };
 
+/**
+ * gh #17 / #36 — unattended-mode messages from the backend.
+ *
+ *   needs-password    — viewer joined a code that resolved to a registered
+ *                        device; UI must show a password prompt and reply
+ *                        with `pw-attempt`.
+ *   wrong-password    — sharer rejected the attempt; `attemptsLeft` counts
+ *                        down toward the per-device backend lockout.
+ *   locked            — too many bad attempts; server-side lockout active
+ *                        for `retryAfterSec` seconds. UI must NOT keep
+ *                        retrying inside this window.
+ *   rejected-by-user  — argon2-verify succeeded but the sharer's user
+ *                        clicked "ablehnen" in their confirm toast.
+ */
+export type NeedsPassword = { type: "needs-password" };
+export type WrongPassword = { type: "wrong-password"; attemptsLeft: number };
+export type LockedOut = { type: "locked"; retryAfterSec: number };
+export type RejectedByUser = { type: "rejected-by-user" };
+
 export type OutgoingMessage =
   | CodeAssigned
   | PeerJoined
   | PeerConfirmed
   | PeerRejected
   | RelayMsg
-  | ErrorMessage;
+  | ErrorMessage
+  | NeedsPassword
+  | WrongPassword
+  | LockedOut
+  | RejectedByUser;

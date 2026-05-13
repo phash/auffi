@@ -173,6 +173,23 @@
       </div>
     </div>
 
+    <!-- gh #36: unattended-mode password prompt. Shown when the
+         backend sends `needs-password` after the viewer joins a
+         code that resolved to a registered device. -->
+    <div id="pw-prompt-toast" role="dialog" aria-modal="true" aria-label="Geräte-Passwort">
+      <div class="toast-title">Geräte-Passwort</div>
+      <div class="toast-body">
+        <p id="pw-prompt-message">Dieses Gerät ist passwortgeschützt. Bitte das Geräte-Passwort eingeben.</p>
+        <input id="pw-prompt-input" type="password" autocomplete="off"
+          aria-label="Geräte-Passwort"
+          style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; font-size: 1rem;" />
+      </div>
+      <div class="toast-actions">
+        <button class="toast-btn toast-btn-accept" id="pw-prompt-submit">Verbinden</button>
+        <button class="toast-btn toast-btn-reject" id="pw-prompt-cancel">Abbrechen</button>
+      </div>
+    </div>
+
     <footer id="site-footer" role="contentinfo">
       <span>
         powered by

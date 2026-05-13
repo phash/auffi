@@ -6,6 +6,8 @@ export class SignalingClient {
   private ws: WebSocket | null = null;
   private relayListeners: Array<(payload: RelayPayload) => void> = [];
   private rejectionListeners: Array<(reason: string) => void> = [];
+  private needsPasswordListeners: Array<() => void> = [];
+  private wrongPasswordListeners: Array<(attemptsLeft: number) => void> = [];
   private settled = false;
   private _closed = false;
 
@@ -47,6 +49,25 @@ export class SignalingClient {
           reject(new Error(`${msg.code}: ${msg.message}`));
         } else if (msg.type === "relay") {
           for (const l of this.relayListeners) l(msg.payload);
+        } else if (msg.type === "needs-password") {
+          // gh #36 — unattended-mode flow. Don't settle the join
+          // promise yet; the UI will prompt the user and call
+          // sendPwAttempt, then either peer-confirmed (success) or
+          // wrong-password / locked / rejected-by-user (terminal)
+          // arrives later.
+          for (const l of this.needsPasswordListeners) l();
+        } else if (msg.type === "wrong-password") {
+          // Stay unsettled — the UI re-shows the prompt and the user
+          // can try again until backend lockout fires.
+          for (const l of this.wrongPasswordListeners) l(msg.attemptsLeft);
+        } else if (msg.type === "locked") {
+          this.settled = true;
+          reject(
+            new Error(`locked:${msg.retryAfterSec}`),
+          );
+        } else if (msg.type === "rejected-by-user") {
+          this.settled = true;
+          reject(new Error("rejected-by-user"));
         }
       };
       ws.onclose = () => {
@@ -62,12 +83,30 @@ export class SignalingClient {
     this.ws?.send(JSON.stringify({ type: "relay", payload }));
   }
 
+  /**
+   * Send the user-supplied unattended password attempt. The backend
+   * routes it to the sharer via pw-check; the response arrives as
+   * `wrong-password`, `locked`, `rejected-by-user`, or `peer-confirmed`
+   * on the same WS.
+   */
+  sendPwAttempt(password: string): void {
+    this.ws?.send(JSON.stringify({ type: "pw-attempt", password }));
+  }
+
   onRelay(fn: (payload: RelayPayload) => void): void {
     this.relayListeners.push(fn);
   }
 
   onDisconnect(fn: (reason: string) => void): void {
     this.rejectionListeners.push(fn);
+  }
+
+  onNeedsPassword(fn: () => void): void {
+    this.needsPasswordListeners.push(fn);
+  }
+
+  onWrongPassword(fn: (attemptsLeft: number) => void): void {
+    this.wrongPasswordListeners.push(fn);
   }
 
   close(): void {

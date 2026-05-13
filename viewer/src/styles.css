@@ -712,6 +712,34 @@
         display: flex;
       }
 
+      /* gh #36: unattended-mode password prompt — same visual shape
+         as #file-offer-toast so the user recognises the modal style. */
+      #pw-prompt-toast {
+        position: fixed;
+        bottom: calc(var(--footer-height) + 1rem);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        padding: 1rem 1.25rem;
+        display: none;
+        flex-direction: column;
+        gap: 0.75rem;
+        min-width: 280px;
+        max-width: 360px;
+        z-index: 100;
+      }
+
+      #pw-prompt-toast.active {
+        display: flex;
+      }
+
+      #pw-prompt-message.wrong {
+        color: var(--error);
+      }
+
       .toast-title {
         font-size: 0.875rem;
         font-weight: 600;
