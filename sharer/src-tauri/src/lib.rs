@@ -135,19 +135,14 @@ async fn start_signaling(
     // session are still live would leak running tasks and silently keep an
     // attacker-controlled remote-input session alive after the UI thinks
     // it has been replaced. The UI must call `disconnect_streaming` first.
-    // (gh #64)
-    if state.0.lock().map(|g| g.is_some()).unwrap_or(false) {
-        return Err("signaling already running — call disconnect_streaming first".to_string());
-    }
-    if rtc_state.0.lock().await.is_some() {
-        return Err("webrtc peer still alive — call disconnect_streaming first".to_string());
-    }
-    if input_state.0.lock().await.is_some() {
-        return Err("input controller still alive — call disconnect_streaming first".to_string());
-    }
-    if file_state.0.lock().await.is_some() {
-        return Err("file transfer still alive — call disconnect_streaming first".to_string());
-    }
+    // (gh #64) Policy lives in `check_streaming_preconditions` so each
+    // guard is independently unit-pinnable.
+    let signaling_active = state.0.lock().map(|g| g.is_some()).unwrap_or(false);
+    let rtc_alive = rtc_state.0.lock().await.is_some();
+    let input_alive = input_state.0.lock().await.is_some();
+    let file_alive = file_state.0.lock().await.is_some();
+    check_streaming_preconditions(signaling_active, rtc_alive, input_alive, file_alive)
+        .map_err(|e| e.to_string())?;
 
     // Clear any stale peer IP from a previous session.
     if let Ok(mut guard) = ip_state.0.lock() {
@@ -514,6 +509,28 @@ async fn start_streaming(
 /// `monitor_id` is the X11 / Windows monitor index. Ignored on Wayland
 /// (the portal owns selection there) — the UI should pass 0 in that
 /// case.
+/// Phase 1 of the two-phase monitor swap: enqueue `Stop` and BLOCK until
+/// the streaming_loop has acknowledged it has dropped the old capturer.
+///
+/// Extracted so the ordering invariant is testable in isolation: callers
+/// MUST `.await?` this before opening a fresh portal pipeline. The
+/// regression we are pinning here is recreating the
+/// `docs/postmortem-2026-05-12-monitor-switch.md` chain — where a refactor
+/// allowed the new ScreenCast pipeline to start while the old one was
+/// still emitting frames, and Plasma misrouted the resulting media.
+///
+/// Tolerates the loop dropping the ack sender (loop exited before
+/// acknowledging) — at worst, the subsequent `Replace` send will return
+/// the closed-channel error and the caller surfaces it.
+async fn send_stop_and_wait_ack(tx: &mpsc::Sender<SwitchMsg>) -> Result<(), String> {
+    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+    tx.send(SwitchMsg::Stop { ack: ack_tx })
+        .await
+        .map_err(|e| format!("switch channel closed: {e}"))?;
+    let _ = ack_rx.await;
+    Ok(())
+}
+
 #[tauri::command]
 async fn switch_monitor(
     monitor_id: u32,
@@ -534,15 +551,7 @@ async fn switch_monitor(
     // the new ScreenCapturer below opens a second portal pipeline while
     // the old one is still alive — Plasma routes the new session's media
     // unpredictably when two ScreenCast sources overlap.
-    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-    tx.send(SwitchMsg::Stop { ack: ack_tx })
-        .await
-        .map_err(|e| format!("switch channel closed: {e}"))?;
-    // Tolerate the ack sender being dropped (loop exited before acking) —
-    // we only need to know the loop has *observed* the stop request. If
-    // the loop exited that's also fine; the stale Replace below will
-    // fail to send and we return that error.
-    let _ = ack_rx.await;
+    send_stop_and_wait_ack(&tx).await?;
 
     // Wayland: drop the cached restore_token so the portal re-prompts.
     // X11 / Windows: no-op.
@@ -600,6 +609,40 @@ async fn switch_monitor(
 /// `keep_signaling` flag through verbatim.
 fn should_send_bye(keep_signaling: bool) -> bool {
     !keep_signaling
+}
+
+/// Reentrancy guards for `start_signaling`. Each of the four sub-resources
+/// is checked independently — if ANY is still live, we refuse to start.
+///
+/// This is gh #64: a previous version of `start_signaling` would replace
+/// `SignalingState` while the WebRTC peer / input controller /
+/// file-transfer manager from the prior session were still allocated.
+/// The result was a leaked input loop that kept applying mouse/keyboard
+/// events from the previous (potentially attacker-confirmed) peer, after
+/// the UI thought the session was gone. Anyone "simplifying" this to a
+/// single signaling-only check is recreating that bug.
+///
+/// Error strings are stable (`&'static str`) so they can be asserted on
+/// without comparing dynamic format output.
+fn check_streaming_preconditions(
+    signaling_active: bool,
+    rtc_alive: bool,
+    input_alive: bool,
+    file_alive: bool,
+) -> Result<(), &'static str> {
+    if signaling_active {
+        return Err("signaling already running — call disconnect_streaming first");
+    }
+    if rtc_alive {
+        return Err("webrtc peer still alive — call disconnect_streaming first");
+    }
+    if input_alive {
+        return Err("input controller still alive — call disconnect_streaming first");
+    }
+    if file_alive {
+        return Err("file transfer still alive — call disconnect_streaming first");
+    }
+    Ok(())
 }
 
 /// Tear down the active WebRTC session and hide the border overlay.
@@ -1121,5 +1164,184 @@ mod tests {
     fn should_send_bye_only_when_not_keeping_signaling() {
         assert!(super::should_send_bye(false));
         assert!(!super::should_send_bye(true));
+    }
+
+    /// Pinned regression for the monitor-switch ordering chain in
+    /// `docs/postmortem-2026-05-12-monitor-switch.md`. The two-phase swap
+    /// MUST observe the loop's ack before any caller-side "build new
+    /// pipeline" work begins. We assert two things in one harness:
+    /// (1) `Stop` lands on the channel, and (2) `send_stop_and_wait_ack`
+    /// does not return until the loop has actually dropped the ack
+    /// sender (i.e. the loop saw Stop). Anyone refactoring the helper to
+    /// skip the await — or to send Replace inline before Stop — must
+    /// fail this test.
+    #[tokio::test]
+    async fn send_stop_and_wait_ack_blocks_until_loop_acks() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use tokio::sync::mpsc;
+
+        let (tx, mut rx) = mpsc::channel::<super::SwitchMsg>(1);
+        let loop_observed_stop = Arc::new(AtomicBool::new(false));
+        let loop_observed_stop_clone = loop_observed_stop.clone();
+
+        let loop_task = tokio::spawn(async move {
+            match rx.recv().await {
+                Some(super::SwitchMsg::Stop { ack }) => {
+                    // Simulate the streaming_loop doing its drop-the-old-
+                    // capturer work, then acking.
+                    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                    loop_observed_stop_clone.store(true, Ordering::SeqCst);
+                    let _ = ack.send(());
+                }
+                Some(super::SwitchMsg::Replace { .. }) => {
+                    panic!("expected first message to be Stop, got Replace")
+                }
+                None => panic!("channel closed before Stop arrived"),
+            }
+        });
+
+        super::send_stop_and_wait_ack(&tx)
+            .await
+            .expect("ack must succeed when loop responds");
+
+        assert!(
+            loop_observed_stop.load(Ordering::SeqCst),
+            "send_stop_and_wait_ack returned before the loop processed Stop"
+        );
+
+        loop_task.await.expect("loop task panicked");
+    }
+
+    /// If the loop has already exited and dropped the ack sender, the
+    /// caller must NOT hang. (The follow-up Replace send will report the
+    /// closed-channel error and the user sees a clean failure.)
+    #[tokio::test]
+    async fn send_stop_and_wait_ack_does_not_hang_when_loop_drops_ack() {
+        use tokio::sync::mpsc;
+
+        let (tx, mut rx) = mpsc::channel::<super::SwitchMsg>(1);
+        let loop_task = tokio::spawn(async move {
+            // Receive Stop and drop the ack sender without firing it.
+            match rx.recv().await {
+                Some(super::SwitchMsg::Stop { ack }) => drop(ack),
+                Some(super::SwitchMsg::Replace { .. }) => panic!("expected Stop, got Replace"),
+                None => panic!("channel closed before Stop arrived"),
+            }
+        });
+
+        tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            super::send_stop_and_wait_ack(&tx),
+        )
+        .await
+        .expect("must not hang when ack sender is dropped")
+        .expect("function must return Ok even if ack was not fired");
+
+        loop_task.await.expect("loop task panicked");
+    }
+
+    /// Closed channel surfaces as a typed error, not a panic.
+    #[tokio::test]
+    async fn send_stop_and_wait_ack_errors_when_channel_closed() {
+        use tokio::sync::mpsc;
+        let (tx, rx) = mpsc::channel::<super::SwitchMsg>(1);
+        drop(rx);
+        let err = super::send_stop_and_wait_ack(&tx)
+            .await
+            .expect_err("closed channel must produce Err");
+        assert!(
+            err.contains("switch channel closed"),
+            "error should mention switch channel closed, got: {err}"
+        );
+    }
+
+    /// Pinned regression for gh #64. Each precondition for
+    /// `start_signaling` must fail independently with a stable error
+    /// message — anyone collapsing these checks into a single one is
+    /// recreating the leaked-input-controller bug. Order of evaluation
+    /// is also stable (signaling → rtc → input → file): later
+    /// preconditions surface only when all earlier ones are clean.
+    #[test]
+    fn check_streaming_preconditions_all_clean_returns_ok() {
+        assert!(super::check_streaming_preconditions(false, false, false, false).is_ok());
+    }
+
+    #[test]
+    fn check_streaming_preconditions_signaling_alive_blocks() {
+        let err = super::check_streaming_preconditions(true, false, false, false)
+            .expect_err("signaling-alive must error");
+        assert_eq!(
+            err,
+            "signaling already running — call disconnect_streaming first"
+        );
+    }
+
+    #[test]
+    fn check_streaming_preconditions_rtc_alive_blocks() {
+        let err = super::check_streaming_preconditions(false, true, false, false)
+            .expect_err("rtc-alive must error");
+        assert_eq!(
+            err,
+            "webrtc peer still alive — call disconnect_streaming first"
+        );
+    }
+
+    #[test]
+    fn check_streaming_preconditions_input_alive_blocks() {
+        let err = super::check_streaming_preconditions(false, false, true, false)
+            .expect_err("input-alive must error");
+        assert_eq!(
+            err,
+            "input controller still alive — call disconnect_streaming first"
+        );
+    }
+
+    #[test]
+    fn check_streaming_preconditions_file_alive_blocks() {
+        let err = super::check_streaming_preconditions(false, false, false, true)
+            .expect_err("file-alive must error");
+        assert_eq!(
+            err,
+            "file transfer still alive — call disconnect_streaming first"
+        );
+    }
+
+    /// Pinned regression for `docs/postmortem-2026-05-13-connectivity.md`
+    /// layer #1: `ScreenCapturer::start` MUST stay `async` so the portal
+    /// handshake runs on the caller's long-lived tokio runtime. If
+    /// someone refactors it back to a synchronous fn that internally
+    /// spawns a per-call runtime, `ashpd`'s cached `zbus::Connection`
+    /// (a process-wide `OnceLock`) ends up bound to a dying runtime and
+    /// the second `create_session()` hangs forever.
+    ///
+    /// The pin is a type-level assertion: `ScreenCapturer::start` is
+    /// coerced into a function pointer whose return type is constrained
+    /// to implement `Future`. A sync fn returning `Result<…, String>`
+    /// directly would fail this coercion.
+    #[test]
+    fn screen_capturer_start_remains_async() {
+        fn assert_returns_future<Fut>(_: fn(u32) -> Fut)
+        where
+            Fut: std::future::Future<Output = Result<super::capture::ScreenCapturer, String>>,
+        {
+        }
+        assert_returns_future(super::capture::ScreenCapturer::start);
+    }
+
+    #[test]
+    fn check_streaming_preconditions_short_circuits_in_order() {
+        // signaling beats rtc beats input beats file. If we ever changed
+        // the evaluation order, several existing UI error toasts would
+        // start firing for a different "reason" than before. Pin it.
+        let err =
+            super::check_streaming_preconditions(true, true, true, true).expect_err("must error");
+        assert!(err.starts_with("signaling already running"));
+        let err =
+            super::check_streaming_preconditions(false, true, true, true).expect_err("must error");
+        assert!(err.starts_with("webrtc peer still alive"));
+        let err =
+            super::check_streaming_preconditions(false, false, true, true).expect_err("must error");
+        assert!(err.starts_with("input controller still alive"));
     }
 }
