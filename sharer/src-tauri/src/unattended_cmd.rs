@@ -20,7 +20,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::account::{self, KeyringTokenStore, TokenStore};
 use crate::device_password;
-use crate::heartbeat::{self, HeartbeatCommand, HeartbeatEvent, HeartbeatHandle, SharerFrame};
+use crate::heartbeat::{self, HeartbeatCommand, HeartbeatCommands, HeartbeatEvent, SharerFrame};
 use crate::local_lockout::LocalLockout;
 use crate::outbound::OutboundSink;
 use crate::pw_check::{handle_pw_check, PwCheckOutcome};
@@ -38,8 +38,13 @@ type CmdResult<T> = Result<T, String>;
 /// `Mutex` so multiple Tauri command handlers can claim the handle
 /// without holding it across an await. Wrapped in `Arc` so the
 /// event-forwarder background task can hold a reference too.
+///
+/// `commands` is the `HeartbeatCommands` half of the gh #23 channel
+/// pair — `Some` means "heartbeat task is alive", `None` means
+/// "stopped". The matching `HeartbeatEvents` receiver lives inside
+/// the forwarder task (CQ H-2/H-3).
 pub struct UnattendedState {
-    pub handle: Arc<Mutex<Option<HeartbeatHandle>>>,
+    pub commands: Arc<Mutex<Option<HeartbeatCommands>>>,
     pub lockout: Arc<Mutex<LocalLockout>>,
     /// `Option<oneshot::Sender<bool>>` set when the sharer is showing
     /// a manual-confirm prompt to the user and waiting for their
@@ -52,7 +57,7 @@ pub struct UnattendedState {
 impl Default for UnattendedState {
     fn default() -> Self {
         Self {
-            handle: Arc::new(Mutex::new(None)),
+            commands: Arc::new(Mutex::new(None)),
             lockout: Arc::new(Mutex::new(LocalLockout::new())),
             pending_confirm: Arc::new(Mutex::new(None)),
         }
@@ -201,7 +206,7 @@ pub async fn unattended_start(
     state: State<'_, UnattendedState>,
     outbound_state: State<'_, crate::OutboundSinkState>,
 ) -> CmdResult<()> {
-    if state.handle.lock().await.is_some() {
+    if state.commands.lock().await.is_some() {
         return Err("unattended bereits aktiv".to_string());
     }
     let dir = app_data_dir(&app)?;
@@ -219,7 +224,7 @@ pub async fn unattended_start(
     }
 
     let cfg = heartbeat::HeartbeatConfig::production(backend_ws_url(), device_id, token);
-    let HeartbeatHandle { commands, events } = heartbeat::start(cfg);
+    let (commands, events) = heartbeat::start(cfg);
 
     // gh #20: install the outbound sink BEFORE the forwarder runs so
     // the very first inbound SDP/ICE relays can immediately answer
@@ -235,12 +240,12 @@ pub async fn unattended_start(
     // SAME state slots `unattended_start` writes to, so the
     // terminal branches (Revoked / Superseded) can clear them
     // before returning. Without this, a revoked device would leave
-    // `state.handle` stuck at "occupied" and every subsequent
+    // `state.commands` stuck at "occupied" and every subsequent
     // `unattended_start` would error with "bereits aktiv".
     let app_emit = app.clone();
     let lockout = state.lockout.clone();
     let pending_confirm = state.pending_confirm.clone();
-    let handle_slot = state.handle.clone();
+    let cmd_slot = state.commands.clone();
     let outbound_slot = outbound_state.0.clone();
     let cmds_for_loop = commands.clone();
     tauri::async_runtime::spawn(forwarder_loop(
@@ -250,14 +255,11 @@ pub async fn unattended_start(
         lockout,
         pending_confirm,
         pw_path,
-        handle_slot,
+        cmd_slot,
         outbound_slot,
     ));
 
-    *state.handle.lock().await = Some(HeartbeatHandle {
-        commands,
-        events: dummy_receiver(),
-    });
+    *state.commands.lock().await = Some(commands);
     Ok(())
 }
 
@@ -266,9 +268,9 @@ pub async fn unattended_stop(
     state: State<'_, UnattendedState>,
     outbound_state: State<'_, crate::OutboundSinkState>,
 ) -> CmdResult<()> {
-    let h = state.handle.lock().await.take();
-    if let Some(handle) = h {
-        let _ = handle.commands.send(HeartbeatCommand::Shutdown).await;
+    let cmds = state.commands.lock().await.take();
+    if let Some(cmds) = cmds {
+        let _ = cmds.send(HeartbeatCommand::Shutdown).await;
     }
     // Clear the OutboundSink so subsequent receive_offer / on_ice
     // calls fail cleanly instead of silently piling up on a dead
@@ -291,15 +293,6 @@ pub async fn unattended_confirm(
         let _ = s.send(accepted);
     }
     Ok(())
-}
-
-/// Returns a receiver that's already closed — used as a placeholder
-/// in `UnattendedState.handle` because the real receiver has been
-/// moved into the forwarder task. The handle's `commands` Sender is
-/// what callers actually use.
-fn dummy_receiver() -> mpsc::Receiver<HeartbeatEvent> {
-    let (_, rx) = mpsc::channel(1);
-    rx
 }
 
 /// What the forwarder should do with a [`PwCheckOutcome`].
@@ -343,7 +336,7 @@ async fn forwarder_loop(
     lockout: Arc<Mutex<LocalLockout>>,
     pending_confirm: Arc<Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
     pw_path: PathBuf,
-    handle_slot: Arc<Mutex<Option<HeartbeatHandle>>>,
+    cmd_slot: Arc<Mutex<Option<HeartbeatCommands>>>,
     outbound_slot: Arc<Mutex<Option<OutboundSink>>>,
 ) {
     // Clear the state slots so the next `unattended_start` doesn't
@@ -352,10 +345,10 @@ async fn forwarder_loop(
     // from a normal channel-close exit (which can happen if the
     // heartbeat task aborted unexpectedly).
     async fn clear_state(
-        handle_slot: &Arc<Mutex<Option<HeartbeatHandle>>>,
+        cmd_slot: &Arc<Mutex<Option<HeartbeatCommands>>>,
         outbound_slot: &Arc<Mutex<Option<OutboundSink>>>,
     ) {
-        *handle_slot.lock().await = None;
+        *cmd_slot.lock().await = None;
         *outbound_slot.lock().await = None;
     }
     while let Some(event) = events.recv().await {
@@ -511,7 +504,7 @@ async fn forwarder_loop(
                 // Drop the handle + outbound sink so the next
                 // `unattended_start` doesn't trip the "bereits aktiv"
                 // guard against a dead channel (CQ C-1).
-                clear_state(&handle_slot, &outbound_slot).await;
+                clear_state(&cmd_slot, &outbound_slot).await;
                 return;
             }
             HeartbeatEvent::Superseded => {
@@ -524,7 +517,7 @@ async fn forwarder_loop(
                         reason: None,
                     },
                 );
-                clear_state(&handle_slot, &outbound_slot).await;
+                clear_state(&cmd_slot, &outbound_slot).await;
                 return;
             }
         }
@@ -533,7 +526,7 @@ async fn forwarder_loop(
     // heartbeat task exited unexpectedly (e.g. caller dropped the
     // handle without sending Shutdown, or task panicked). Clear
     // state so the user can retry.
-    clear_state(&handle_slot, &outbound_slot).await;
+    clear_state(&cmd_slot, &outbound_slot).await;
 }
 
 #[cfg(test)]
@@ -617,40 +610,27 @@ mod tests {
     // ── forwarder state-clear regression (CQ C-1) ─────────────────────
 
     #[tokio::test]
-    async fn clear_state_drops_both_handle_and_outbound() {
-        use crate::heartbeat::{HeartbeatConfig, HeartbeatHandle};
+    async fn clear_state_drops_both_commands_and_outbound() {
         use tokio::sync::mpsc;
 
-        let handle_slot: Arc<Mutex<Option<HeartbeatHandle>>> = Arc::new(Mutex::new(None));
+        let cmd_slot: Arc<Mutex<Option<HeartbeatCommands>>> = Arc::new(Mutex::new(None));
         let outbound_slot: Arc<Mutex<Option<OutboundSink>>> = Arc::new(Mutex::new(None));
 
         // Seed both slots as a freshly-started forwarder would see
         // them.
         let (cmd_tx, _cmd_rx) = mpsc::channel(8);
-        let (_, evt_rx) = mpsc::channel(8);
-        let cfg = HeartbeatConfig::production(
-            "ws://x/signal".to_string(),
-            "111-222-333".to_string(),
-            "tok".to_string(),
-        );
-        let _ = cfg; // unused — only here to exercise the constructor in case
-                     // a refactor drops fields.
-        *handle_slot.lock().await = Some(HeartbeatHandle {
-            commands: cmd_tx.clone(),
-            events: evt_rx,
-        });
+        *cmd_slot.lock().await = Some(cmd_tx.clone());
         *outbound_slot.lock().await = Some(OutboundSink::Unattended(cmd_tx));
-        assert!(handle_slot.lock().await.is_some());
+        assert!(cmd_slot.lock().await.is_some());
         assert!(outbound_slot.lock().await.is_some());
 
-        // The inner closure is private to forwarder_loop, but we can
-        // pin the contract by inlining the same two writes the
-        // closure performs. If anyone refactors clear_state to drop
-        // only one slot, this test catches it indirectly via the
-        // pw_outcome_drop_silently test below + manual inspection.
-        *handle_slot.lock().await = None;
+        // Mirror what `clear_state` does — the helper is private to
+        // forwarder_loop, but the contract is "both slots clear on
+        // any terminal exit path" (Revoked / Superseded / channel
+        // close without terminal).
+        *cmd_slot.lock().await = None;
         *outbound_slot.lock().await = None;
-        assert!(handle_slot.lock().await.is_none());
+        assert!(cmd_slot.lock().await.is_none());
         assert!(outbound_slot.lock().await.is_none());
     }
 }

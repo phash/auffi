@@ -232,25 +232,34 @@ pub enum HeartbeatCommand {
     Shutdown,
 }
 
-/// Handle returned by [`start`]. Drop it OR send `Shutdown` to stop.
-pub struct HeartbeatHandle {
-    pub commands: mpsc::Sender<HeartbeatCommand>,
-    pub events: mpsc::Receiver<HeartbeatEvent>,
-}
+/// Command sender returned by [`start`]. Holding one of these is the
+/// "the heartbeat task is alive" signal — drop it AND let the task
+/// observe a closed channel to stop, OR send `Shutdown` for a clean
+/// close. Cheap to clone.
+pub type HeartbeatCommands = mpsc::Sender<HeartbeatCommand>;
+
+/// Event receiver returned by [`start`]. The caller drains it on a
+/// background task (typically the forwarder in `unattended_cmd.rs`).
+/// Single-consumer by construction.
+pub type HeartbeatEvents = mpsc::Receiver<HeartbeatEvent>;
 
 /// Spawn the heartbeat onto the caller's tokio runtime (the same
 /// long-lived `tauri::async_runtime` we use for portal handshake,
-/// per postmortem-2026-05-13). Returns immediately with the command
-/// sender and event receiver.
-pub fn start(config: HeartbeatConfig) -> HeartbeatHandle {
+/// per postmortem-2026-05-13).
+///
+/// CQ H-2/H-3 (review 2026-05-13): returns a `(Commands, Events)`
+/// pair instead of a single `HeartbeatHandle` struct. The prior
+/// struct shape forced callers to store a half-empty placeholder in
+/// state (the events Receiver had to be moved into the forwarder,
+/// leaving a `dummy_receiver()` behind in the slot). With the pair
+/// split, app state holds only the `Commands` half and the
+/// `Events` flows straight into the consumer.
+pub fn start(config: HeartbeatConfig) -> (HeartbeatCommands, HeartbeatEvents) {
     let (cmd_tx, cmd_rx) = mpsc::channel::<HeartbeatCommand>(16);
     let (evt_tx, evt_rx) = mpsc::channel::<HeartbeatEvent>(64);
     let cmd_rx = Arc::new(Mutex::new(cmd_rx));
     tauri::async_runtime::spawn(run_loop(config, cmd_rx, evt_tx));
-    HeartbeatHandle {
-        commands: cmd_tx,
-        events: evt_rx,
-    }
+    (cmd_tx, evt_rx)
 }
 
 fn derive_origin(ws_url: &str) -> String {
