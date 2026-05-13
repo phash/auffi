@@ -20,6 +20,7 @@ import { registerAdminStatsRoutes } from "./admin/stats.js";
 import { registerAdminTimeseriesRoutes } from "./admin/timeseries.js";
 import { bootstrapInitialAdmin } from "./admin/bootstrap.js";
 import { UnattendedRegistry } from "./unattended.js";
+import { startPurgeScheduler } from "./purge.js";
 
 export type ServerConfig = {
   port: number;
@@ -250,6 +251,36 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   const bootstrap = bootstrapInitialAdmin(db);
   if (bootstrap.promoted) {
     app.log.info({ email: bootstrap.email }, "promoted initial admin account");
+  }
+
+  // Periodic retention purge (gh #19): every 6h drop expired
+  // sessions / pairings / verifications / resets, age-out connection
+  // and audit logs, hard-delete soft-deleted accounts past grace.
+  // Only attach when we own the DB — injected test handles often
+  // close before the timer fires and the resulting "DB is closed"
+  // error would noise the test logs.
+  if (ownsDb) {
+    const stopPurge = startPurgeScheduler(db, {
+      log: (report) => {
+        // Don't log when nothing happened; once-per-six-hours of
+        // "purge ran, deleted nothing" is just noise.
+        const total =
+          report.sessions +
+          report.devicePairings +
+          report.emailVerifications +
+          report.passwordResets +
+          report.pendingEmailChanges +
+          report.connectionLog +
+          report.auditLog +
+          report.softDeletedAccounts +
+          report.rateLimitBuckets;
+        if (total > 0) app.log.info({ purge: report }, "retention purge complete");
+      },
+      onError: (err) => app.log.warn({ err }, "retention purge failed"),
+    });
+    app.addHook("onClose", () => {
+      stopPurge();
+    });
   }
 
   // Close the DB on shutdown only if we opened it; injected handles
