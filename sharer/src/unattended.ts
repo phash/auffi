@@ -232,6 +232,10 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
     case "peer-joined":
       setStatusText("Helfer verbunden");
       hide(confirmToast);
+      // gh #20 + heartbeat→webrtc_peer integration: kick off the
+      // WebRTC pipeline. The viewer will follow up with an SDP offer
+      // forwarded via "relay".
+      void invoke("start_streaming", { monitorId: 0, sessionCode: "" }).catch(() => {});
       break;
     case "peer-rejected":
       setStatusText(`Helfer getrennt: ${ev.reason ?? ""}`);
@@ -249,10 +253,25 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
     case "locked-out":
       setStatusText("Lokales Lockout aktiv (10+ Fehlversuche). 1 h Sperre.");
       break;
-    case "relay":
-      // SDP/ICE forwarding — handled by the existing WebRTC code path
-      // once the unattended → webrtc_peer integration lands.
+    case "relay": {
+      // SDP/ICE forwarding — calls the same receive_offer /
+      // receive_ice_candidate Tauri commands the ad-hoc path uses;
+      // outbound goes back via the OutboundSink in Unattended mode.
+      const payload = (e.payload as unknown as { payload?: unknown }).payload;
+      if (payload && typeof payload === "object" && "kind" in payload) {
+        const p = payload as { kind: string; sdp?: { sdp: string }; candidate?: unknown };
+        if (p.kind === "sdp" && p.sdp && typeof p.sdp.sdp === "string") {
+          void invoke("receive_offer", { sdp: p.sdp.sdp }).catch(() => {});
+        } else if (p.kind === "ice" && p.candidate) {
+          void invoke("receive_ice_candidate", p.candidate as Record<string, unknown>).catch(
+            () => {},
+          );
+        } else if (p.kind === "bye") {
+          void invoke("disconnect_streaming").catch(() => {});
+        }
+      }
       break;
+    }
   }
 }).catch(() => {});
 

@@ -10,6 +10,7 @@ pub mod input;
 mod ip_redact;
 mod local_lockout;
 mod nat_traversal;
+mod outbound;
 mod protocol;
 mod pw_check;
 mod signaling;
@@ -96,6 +97,14 @@ struct FreeTierTimerState(Arc<Mutex<Option<free_tier_timer::TimerHandles>>>);
 /// track is preserved (no SDP renegotiation, no viewer reconnect).
 struct SwitchState(Mutex<Option<mpsc::Sender<SwitchMsg>>>);
 
+/// Mode-agnostic outbound relay channel. Set by `start_signaling`
+/// (AdHoc variant) or `unattended_start` (Unattended variant);
+/// cleared by `disconnect_streaming` and `unattended_stop`. Every
+/// outbound relay (on_ice_candidate, receive_offer's answer, the
+/// bye on teardown) reads through this so the same webrtc_peer
+/// wiring works in both modes. See `outbound.rs`.
+struct OutboundSinkState(Arc<tokio::sync::Mutex<Option<outbound::OutboundSink>>>);
+
 /// Two-phase swap protocol so the OLD capture pipeline tears down before
 /// the NEW portal dialog is opened. On Plasma, two concurrent
 /// `org.freedesktop.portal.ScreenCast` pipelines confuse the compositor
@@ -134,6 +143,7 @@ async fn start_signaling(
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
     file_state: State<'_, FileTransferState>,
+    outbound_state: State<'_, OutboundSinkState>,
 ) -> Result<(), String> {
     // Refuse to start a fresh signaling session while the previous one's
     // resources are still allocated. Overwriting `SignalingState` while the
@@ -162,6 +172,13 @@ async fn start_signaling(
     });
 
     let sig = signaling::run(app, url).await;
+    // gh #20: set the mode-agnostic OutboundSink so receive_offer +
+    // on_ice_candidate + the bye on teardown all route through this
+    // ad-hoc channel.
+    {
+        let mut guard = outbound_state.0.lock().await;
+        *guard = Some(outbound::OutboundSink::AdHoc(sig.tx.clone()));
+    }
     match state.0.lock() {
         Ok(mut guard) => {
             *guard = Some(sig);
@@ -247,7 +264,10 @@ async fn start_streaming(
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
+    outbound_state: State<'_, OutboundSinkState>,
 ) -> Result<(), String> {
+    // unused but kept to preserve the existing command signature shape.
+    let _ = &sig_state;
     dbg_log(&format!(
         "[start_streaming] enter monitor_id={} session_code=***",
         monitor_id
@@ -284,18 +304,7 @@ async fn start_streaming(
             e.to_string()
         })?;
 
-    let tx = {
-        let guard = sig_state
-            .0
-            .lock()
-            .map_err(|e| format!("signaling state lock poisoned: {e}"))?;
-        guard
-            .as_ref()
-            .map(|s| s.tx.clone())
-            .ok_or_else(|| "signaling not started".to_string())?
-    };
-
-    let tx_ice = tx.clone();
+    let outbound_arc_for_ice = Arc::clone(&outbound_state.0);
     peer.on_ice_candidate(move |candidate| {
         if let Some(c) = candidate {
             if let Ok(init) = c.to_json() {
@@ -314,10 +323,16 @@ async fn start_streaming(
                         "usernameFragment": init.username_fragment,
                     }
                 });
-                let tx = tx_ice.clone();
+                let outbound = Arc::clone(&outbound_arc_for_ice);
                 tauri::async_runtime::spawn(async move {
-                    if let Err(e) = tx.send(protocol::Outgoing::Relay { payload }).await {
-                        dbg_log(&format!("[local-ice] send err: {e}"));
+                    let sink = outbound.lock().await.clone();
+                    match sink {
+                        Some(s) => {
+                            if let Err(e) = s.send_relay(payload).await {
+                                dbg_log(&format!("[local-ice] send err: {e}"));
+                            }
+                        }
+                        None => dbg_log("[local-ice] no outbound sink — dropping candidate"),
                     }
                 });
             }
@@ -674,6 +689,7 @@ async fn disconnect_streaming(
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
+    outbound_state: State<'_, OutboundSinkState>,
     keep_signaling: Option<bool>,
 ) -> Result<(), String> {
     let keep_signaling = keep_signaling.unwrap_or(false);
@@ -684,15 +700,14 @@ async fn disconnect_streaming(
     //
     // CRITICAL: skip the bye when keep_signaling is true. See
     // `should_send_bye` below for the full rationale.
-    let bye_tx = if should_send_bye(keep_signaling) {
-        let guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
-        guard.as_ref().map(|s| s.tx.clone())
+    let bye_sink = if should_send_bye(keep_signaling) {
+        outbound_state.0.lock().await.clone()
     } else {
         None
     };
-    if let Some(tx) = bye_tx {
+    if let Some(sink) = bye_sink {
         let payload = serde_json::json!({ "kind": "bye" });
-        let _ = tx.send(protocol::Outgoing::Relay { payload }).await;
+        let _ = sink.send_relay(payload).await;
         // Give the message a brief moment to flush before we tear down the
         // signaling-adjacent state.
         tokio::time::sleep(Duration::from_millis(80)).await;
@@ -707,8 +722,18 @@ async fn disconnect_streaming(
     // a new viewer just joined the same code and we want to preserve the
     // WS task that delivered the join — replacing the streaming state only.
     if !keep_signaling {
-        let mut guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
-        *guard = None;
+        {
+            let mut guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
+            *guard = None;
+        }
+        // Clear the OutboundSink only on the full-teardown path. The
+        // viewer-swap path (keep_signaling=true) keeps the same WSS
+        // and the same sink — the new viewer's offer must answer
+        // through the channel still in flight. Scoped block above
+        // drops the std::sync::MutexGuard before the await on the
+        // tokio::sync::Mutex (the guard isn't `Send`).
+        let mut sink_guard = outbound_state.0.lock().await;
+        *sink_guard = None;
     }
 
     // Drop the peer — this closes all ICE/DTLS transports.
@@ -926,8 +951,8 @@ async fn streaming_loop(
 #[tauri::command]
 async fn receive_offer(
     sdp: String,
-    sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
+    outbound_state: State<'_, OutboundSinkState>,
 ) -> Result<(), String> {
     dbg_log(&format!("[receive_offer] enter sdp_len={}", sdp.len()));
     let answer_sdp = {
@@ -946,14 +971,11 @@ async fn receive_offer(
         answer_sdp.len()
     ));
 
-    let tx = {
-        let guard = sig_state
-            .0
-            .lock()
-            .map_err(|e| format!("signaling state lock poisoned: {e}"))?;
-        guard.as_ref().map(|s| s.tx.clone()).ok_or_else(|| {
-            dbg_log("[receive_offer] FAILED: signaling not started");
-            "signaling not started".to_string()
+    let sink = {
+        let guard = outbound_state.0.lock().await;
+        guard.clone().ok_or_else(|| {
+            dbg_log("[receive_offer] FAILED: no outbound sink configured");
+            "kein aktiver Signaling-Kanal".to_string()
         })?
     };
 
@@ -961,12 +983,10 @@ async fn receive_offer(
         "kind": "sdp",
         "sdp": { "type": "answer", "sdp": answer_sdp }
     });
-    tx.send(protocol::Outgoing::Relay { payload })
-        .await
-        .map_err(|e| {
-            dbg_log(&format!("[receive_offer] tx.send err: {e}"));
-            e.to_string()
-        })?;
+    sink.send_relay(payload).await.map_err(|e| {
+        dbg_log(&format!("[receive_offer] send err: {e}"));
+        e
+    })?;
     dbg_log("[receive_offer] answer sent");
 
     Ok(())
@@ -1113,6 +1133,7 @@ pub fn run() {
         .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .manage(SwitchState(Mutex::new(None)))
+        .manage(OutboundSinkState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(unattended_cmd::UnattendedState::default())
         .invoke_handler(tauri::generate_handler![
             start_signaling,

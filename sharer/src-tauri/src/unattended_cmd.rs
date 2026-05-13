@@ -22,6 +22,7 @@ use crate::account::{self, KeyringTokenStore, TokenStore};
 use crate::device_password;
 use crate::heartbeat::{self, HeartbeatCommand, HeartbeatEvent, HeartbeatHandle, SharerFrame};
 use crate::local_lockout::LocalLockout;
+use crate::outbound::OutboundSink;
 use crate::pw_check::{handle_pw_check, PwCheckOutcome};
 
 /// Filename used inside the app-config directory for the persisted
@@ -195,7 +196,11 @@ struct UnattendedEvent<'a> {
 /// paired AND the password set; returns an `Err` otherwise so the UI
 /// can route the user to the appropriate setup step.
 #[tauri::command]
-pub async fn unattended_start(app: AppHandle, state: State<'_, UnattendedState>) -> CmdResult<()> {
+pub async fn unattended_start(
+    app: AppHandle,
+    state: State<'_, UnattendedState>,
+    outbound_state: State<'_, crate::OutboundSinkState>,
+) -> CmdResult<()> {
     if state.handle.lock().await.is_some() {
         return Err("unattended bereits aktiv".to_string());
     }
@@ -215,6 +220,14 @@ pub async fn unattended_start(app: AppHandle, state: State<'_, UnattendedState>)
 
     let cfg = heartbeat::HeartbeatConfig::production(backend_ws_url(), device_id, token);
     let HeartbeatHandle { commands, events } = heartbeat::start(cfg);
+
+    // gh #20: install the outbound sink BEFORE the forwarder runs so
+    // the very first inbound SDP/ICE relays can immediately answer
+    // back through the same heartbeat WSS.
+    {
+        let mut sink_guard = outbound_state.0.lock().await;
+        *sink_guard = Some(OutboundSink::Unattended(commands.clone()));
+    }
 
     // Spawn the event forwarder: routes BackendFrames into the
     // pw-check decision + emits status events to the Tauri webview.
@@ -239,11 +252,19 @@ pub async fn unattended_start(app: AppHandle, state: State<'_, UnattendedState>)
 }
 
 #[tauri::command]
-pub async fn unattended_stop(state: State<'_, UnattendedState>) -> CmdResult<()> {
+pub async fn unattended_stop(
+    state: State<'_, UnattendedState>,
+    outbound_state: State<'_, crate::OutboundSinkState>,
+) -> CmdResult<()> {
     let h = state.handle.lock().await.take();
     if let Some(handle) = h {
         let _ = handle.commands.send(HeartbeatCommand::Shutdown).await;
     }
+    // Clear the OutboundSink so subsequent receive_offer / on_ice
+    // calls fail cleanly instead of silently piling up on a dead
+    // channel.
+    let mut sink_guard = outbound_state.0.lock().await;
+    *sink_guard = None;
     Ok(())
 }
 
