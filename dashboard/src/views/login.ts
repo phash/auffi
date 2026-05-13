@@ -4,7 +4,7 @@
 // parser.
 
 import { login } from "../api.js";
-import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
   const card = document.createElement("section");
@@ -69,10 +69,8 @@ export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext
     submit.textContent = "Anmelden …";
     const res = await login(emailInput.value.trim(), pwInput.value);
     if (res.ok) {
-      // Replace state so back-button doesn't return to the login
-      // form after a successful sign-in.
-      window.history.pushState({}, "", BASE_PATH + "/");
-      window.dispatchEvent(new PopStateEvent("popstate"));
+      // Land on the device list as the post-login default.
+      navigate("/");
       return;
     }
     submit.disabled = false;

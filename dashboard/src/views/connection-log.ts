@@ -11,7 +11,7 @@ import {
   type ConnectionLogRow,
 } from "../api.js";
 import { formatAbsolute, formatBytes, formatDuration } from "../format.js";
-import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -82,8 +82,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
     const res = await listConnectionLog(deviceId, cursor);
     if (!res.ok) {
       if (res.status === 401) {
-        window.history.pushState({}, "", BASE_PATH + "/login");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        navigate("/login");
         return;
       }
       status.className = "error";

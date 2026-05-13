@@ -79,6 +79,17 @@ const RELAY_KINDS = new Set<string>(["sdp", "ice", "hello", "bye"]);
 /// per minute is well above that pattern.
 const DEFAULT_REGISTER_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 5 };
 
+/// Per-IP cap on WSS Bearer-auth attempts. Each attempt costs ~250 ms
+/// of argon2 CPU on the backend (see Sec H-1, review 2026-05-13).
+/// Without this cap an attacker can mount a CPU-exhaustion DoS by
+/// opening WSS connections with syntactically valid but unknown
+/// device-id/token pairs. Legitimate unattended sharers reconnect via
+/// the heartbeat backoff loop (1s → 60s), so a healthy reconnect
+/// pattern is well below 10/min. We pick 10/min/IP — generous for a
+/// NAT'd network hosting multiple paired devices, tight enough to
+/// blunt enumeration.
+const DEFAULT_BEARER_AUTH_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 10 };
+
 export interface UnattendedDeps {
   db: Db;
   registry: UnattendedRegistry;
@@ -103,6 +114,14 @@ export function registerSignaling(
    * registered with the registry and last_seen_at is bumped (gh #16).
    */
   unattended?: UnattendedDeps,
+  /**
+   * Per-IP rate-limit for bearer-auth attempts (Sec H-1). Defaults to
+   * 10/min/IP; passing a tighter map+config lets tests force-trip the
+   * gate quickly. The map is held by the caller so the sweep-task in
+   * `createServer` can GC stale entries.
+   */
+  bearerCfg: RateLimitConfig = DEFAULT_BEARER_AUTH_LIMIT,
+  bearerCounts: Map<string, RateLimitEntry> = new Map(),
 ): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
@@ -134,6 +153,17 @@ export function registerSignaling(
         // the bearer attempt so a misconfigured deploy doesn't
         // silently look "authenticated" to the sharer.
         peer.close(WS_CLOSE.AUTH_FAILED, "unattended mode not configured");
+        return;
+      }
+      // Sec H-1 (review 2026-05-13): cap argon2-verify rate per IP
+      // BEFORE calling verifyBearerAuth. Without this an attacker
+      // can mount a CPU-exhaustion DoS at ~250 ms/attempt. We close
+      // with the same 4401 code as a real auth failure so the
+      // attacker can't distinguish "rate-limited" from "wrong
+      // token". Legitimate unattended-mode sharers reconnect via
+      // the heartbeat backoff (1s → 60s) and never approach the cap.
+      if (!checkRateLimit(req.ip ?? "unknown", bearerCounts, bearerCfg)) {
+        peer.close(WS_CLOSE.AUTH_FAILED, "rate limit");
         return;
       }
       const auth = parsed;

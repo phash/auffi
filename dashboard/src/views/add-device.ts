@@ -8,7 +8,7 @@
 // The user closes the modal manually and refreshes /devices.
 
 import { mintPairingCode } from "../api.js";
-import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -33,8 +33,7 @@ export const renderAddDevice: RouteRenderer = (root: HTMLElement, _ctx: RouteCon
     const res = await mintPairingCode();
     if (!res.ok) {
       if (res.status === 401) {
-        window.history.pushState({}, "", BASE_PATH + "/login");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        navigate("/login");
         return;
       }
       status.className = "error";

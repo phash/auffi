@@ -6,6 +6,11 @@ import {
   clearSessionCookie,
   deleteAllSessionsForAccount,
 } from "../auth/sessions.js";
+import {
+  checkAccountLockout,
+  recordAccountPwFail,
+  recordAccountPwSuccess,
+} from "../auth/account_lockout.js";
 
 const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -121,12 +126,28 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         .get(req.account!.id);
       if (!account) return bad(reply, 404, "not-found", "account gone");
 
+      // Sec H-3 (review 2026-05-13): per-account lockout. An attacker
+      // who steals one session cookie should NOT be able to brute the
+      // current_password gate through the per-IP limit alone. Check
+      // BEFORE running argon2 so a locked account also short-circuits
+      // the CPU cost.
+      const lock = checkAccountLockout(db, account.id);
+      if (lock.locked) {
+        return reply.status(423).send({
+          error: "locked",
+          message: "account temporarily locked",
+          retryAfterSec: lock.retryAfterSec,
+        });
+      }
+
       // current_password gates every change. Use plain verify (not the
       // timing-safe variant) — the account is known to exist.
       const ok = await verifyPassword(account.password_hash, currentPassword);
       if (!ok) {
+        recordAccountPwFail(db, account.id);
         return bad(reply, 403, "bad-credentials", "current password incorrect");
       }
+      recordAccountPwSuccess(db, account.id);
 
       // Email change: queue a pending row + send verify mail to the NEW
       // address. The accounts.email column is NOT touched yet — the
@@ -201,8 +222,25 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         .get(req.account!.id);
       if (!account) return bad(reply, 404, "not-found", "account gone");
 
+      // Sec H-3: share the lockout with PATCH /api/me. Account
+      // deletion is a one-shot but the cost of a delete-then-undo on
+      // a wrong-password attacker is the same as a PATCH: 250 ms of
+      // argon2 + a state-changing op. Lock check before verify.
+      const lock = checkAccountLockout(db, account.id);
+      if (lock.locked) {
+        return reply.status(423).send({
+          error: "locked",
+          message: "account temporarily locked",
+          retryAfterSec: lock.retryAfterSec,
+        });
+      }
+
       const ok = await verifyPassword(account.password_hash, currentPassword);
-      if (!ok) return bad(reply, 403, "bad-credentials", "current password incorrect");
+      if (!ok) {
+        recordAccountPwFail(db, account.id);
+        return bad(reply, 403, "bad-credentials", "current password incorrect");
+      }
+      recordAccountPwSuccess(db, account.id);
 
       // Hard-delete. Foreign-key cascades on sessions, email_verifications,
       // password_resets, pending_email_changes (and devices / log once #14

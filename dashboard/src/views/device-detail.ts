@@ -17,7 +17,7 @@ import {
   type Device,
 } from "../api.js";
 import { formatRelative } from "../format.js";
-import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -43,8 +43,7 @@ export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteC
     const res = await listDevices();
     if (!res.ok) {
       if (res.status === 401) {
-        window.history.pushState({}, "", BASE_PATH + "/login");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        navigate("/login");
         return;
       }
       status.className = "error";
@@ -287,8 +286,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
     dangerBtn.textContent = "Entkoppeln …";
     const res = await deleteDevice(dev.id);
     if (res.ok) {
-      window.history.pushState({}, "", BASE_PATH + "/devices");
-      window.dispatchEvent(new PopStateEvent("popstate"));
+      navigate("/devices");
       return;
     }
     dangerBtn.disabled = false;

@@ -62,6 +62,12 @@ function readEnvConfig() {
     rateLimitMax: envNumber("RATE_LIMIT_MAX", 5),
     registerRateLimitWindowMs: envNumber("REGISTER_RATE_LIMIT_WINDOW_MS", 60_000),
     registerRateLimitMax: envNumber("REGISTER_RATE_LIMIT_MAX", 5),
+    // Sec H-1 (review 2026-05-13): WSS bearer-auth per-IP cap. Default
+    // 10/min/IP — generous for legitimate NAT'd networks hosting
+    // multiple unattended devices, tight enough to gate argon2-verify
+    // CPU exhaustion attempts.
+    bearerAuthRateLimitWindowMs: envNumber("BEARER_AUTH_RATE_LIMIT_WINDOW_MS", 60_000),
+    bearerAuthRateLimitMax: envNumber("BEARER_AUTH_RATE_LIMIT_MAX", 10),
     allowedOrigins: envList("ALLOWED_ORIGINS", [
       "http://localhost:5173",
       "http://localhost:5174",
@@ -171,6 +177,8 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     applyMigrations(db, defaultMigrationsDir());
   }
 
+  // Sec H-1: per-IP cap on WSS Bearer-auth attempts (argon2-DoS gate).
+  const bearerCounts: Map<string, RateLimitEntry> = new Map();
   const attemptCounts = registerSignaling(
     app,
     store,
@@ -180,11 +188,13 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     { windowMs: env.registerRateLimitWindowMs, max: env.registerRateLimitMax },
     registerCounts,
     { db, registry: unattendedRegistry, sessions: unattendedSessions },
+    { windowMs: env.bearerAuthRateLimitWindowMs, max: env.bearerAuthRateLimitMax },
+    bearerCounts,
   );
 
   const sweepHandle = setInterval(() => {
     const now = Date.now();
-    for (const map of [attemptCounts, registerCounts]) {
+    for (const map of [attemptCounts, registerCounts, bearerCounts]) {
       for (const [key, entry] of map) {
         if (entry.resetAt < now) map.delete(key);
       }

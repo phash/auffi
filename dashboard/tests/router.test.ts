@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   matchRoute,
+  navigate,
   pathUnderBase,
   BASE_PATH,
+  createRouter,
   type Route,
 } from "../src/router.js";
 
@@ -90,5 +92,59 @@ describe("pathUnderBase", () => {
   it("returns / for paths outside the base", () => {
     expect(pathUnderBase("/")).toBe("/");
     expect(pathUnderBase("/something-else")).toBe("/");
+  });
+});
+
+// CQ H-5 (review 2026-05-13): the module-level `navigate()` singleton
+// is the replacement for the 12+ pushState+popstate copies that used
+// to live in every view. The contract: a view calls `navigate(path)`
+// and the active router (if any) re-renders. With no active router,
+// fall back to plain pushState so the dashboard still works during
+// rapid test cycles where the router was torn down.
+describe("navigate (module-level singleton)", () => {
+  it("falls back to plain pushState when no router is active", () => {
+    // No router constructed in this test — direct navigate.
+    const startPath = window.location.pathname;
+    navigate("/login");
+    expect(window.location.pathname).toBe(BASE_PATH + "/login");
+    // Restore so subsequent tests don't drift.
+    window.history.pushState({}, "", startPath);
+  });
+
+  it("delegates to the active router and renders the new view", () => {
+    let lastPath: string | null = null;
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/login",
+        render: (_root, ctx) => {
+          lastPath = ctx.path;
+        },
+      },
+      {
+        pattern: "/devices",
+        render: (_root, ctx) => {
+          lastPath = ctx.path;
+        },
+      },
+    ];
+    const r = createRouter(root, rs);
+    r.start();
+    navigate("/devices");
+    expect(window.location.pathname).toBe(BASE_PATH + "/devices");
+    expect(lastPath).toBe("/devices");
+    r.stop();
+  });
+
+  it("stop() unregisters the singleton — subsequent navigate hits the fallback", () => {
+    const root = document.createElement("div");
+    const rs: Route[] = [{ pattern: "/", render: () => undefined }];
+    const r = createRouter(root, rs);
+    r.start();
+    r.stop();
+    // After stop the active-router slot is null; navigate falls back.
+    // No crash, no render call.
+    navigate("/");
+    expect(window.location.pathname).toBe(BASE_PATH + "/");
   });
 });

@@ -212,6 +212,11 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     ).run(tokenHash, Date.now());
 
     process.env.REGISTER_RATE_LIMIT_MAX = "1000";
+    // Sec H-1 cap is 10/min/IP by default — existing tests run >10
+    // WSS connects from 127.0.0.1 across the suite, so raise it
+    // here for everything except the dedicated rate-limit test
+    // below (which builds its own server with a tight cap).
+    process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
     app = await createServer({ port: 0, host: "127.0.0.1", db });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
@@ -315,6 +320,70 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     expect(msg.type).toBe("code-assigned");
     expect(msg.code).toMatch(/^\d{3}-\d{3}-\d{3}$/);
     ws.close();
+  });
+
+  it("closes WSS with 4401 once bearer-auth attempts exceed the per-IP cap (Sec H-1)", async () => {
+    // Spin up a dedicated server with a TIGHT bearer cap so we can
+    // trip the gate without thousands of connections. The map is
+    // per-server-instance; the shared test rig at the top of this
+    // file uses BEARER_AUTH_RATE_LIMIT_MAX=1000.
+    const tightDb = openDb(":memory:");
+    applyMigrations(tightDb, defaultMigrationsDir());
+    tightDb
+      .prepare(
+        "INSERT INTO accounts (email, password_hash, email_verified_at, created_at) VALUES (?, ?, ?, ?)",
+      )
+      .run("owner2@example.com", "x", Date.now(), Date.now());
+    const tightTokenHash = await hashPassword(token);
+    tightDb
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
+         VALUES ('444-555-666', 1, 'Tight', ?, 1, ?)`,
+      )
+      .run(tightTokenHash, Date.now());
+
+    process.env.BEARER_AUTH_RATE_LIMIT_MAX = "2";
+    process.env.BEARER_AUTH_RATE_LIMIT_WINDOW_MS = "60000";
+    const tight = await createServer({
+      port: 0,
+      host: "127.0.0.1",
+      db: tightDb,
+    });
+    await tight.listen({ port: 0, host: "127.0.0.1" });
+    const addr = tight.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    const tightUrl = `ws://127.0.0.1:${addr.port}/signal`;
+    // Reset back so subsequent tests in this file aren't affected.
+    process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
+
+    function tryConnect(): Promise<{ code: number }> {
+      return new Promise((resolve) => {
+        const ws = new WebSocket(tightUrl, {
+          headers: {
+            origin: "http://127.0.0.1",
+            authorization: `Bearer ${token}`,
+            "x-auffi-device-id": "444-555-666",
+          },
+        });
+        ws.once("message", () => {
+          ws.once("close", (code) => resolve({ code }));
+          ws.close();
+        });
+        ws.once("close", (code) => resolve({ code }));
+      });
+    }
+
+    // Two attempts under the cap of 2: both authenticate cleanly.
+    const r1 = await tryConnect();
+    const r2 = await tryConnect();
+    expect(r1.code).not.toBe(WS_CLOSE.AUTH_FAILED);
+    expect(r2.code).not.toBe(WS_CLOSE.AUTH_FAILED);
+    // Third: rate-limited → AUTH_FAILED close.
+    const r3 = await tryConnect();
+    expect(r3.code).toBe(WS_CLOSE.AUTH_FAILED);
+
+    await tight.close();
+    tightDb.close();
   });
 
   it("DELETE /api/devices/:id force-closes a live WSS with 4401", async () => {

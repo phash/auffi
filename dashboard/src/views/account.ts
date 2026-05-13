@@ -12,7 +12,7 @@
 
 import { deleteMe, getMe, patchMe, type Me } from "../api.js";
 import { formatAbsolute } from "../format.js";
-import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderAccount: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -29,8 +29,7 @@ export const renderAccount: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
     const res = await getMe();
     if (!res.ok) {
       if (res.status === 401) {
-        window.history.pushState({}, "", BASE_PATH + "/login");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        navigate("/login");
         return;
       }
       status.className = "error";
@@ -234,8 +233,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
     });
     if (res.ok) {
       // Backend revoked our session — bounce to /login.
-      window.history.pushState({}, "", BASE_PATH + "/login");
-      window.dispatchEvent(new PopStateEvent("popstate"));
+      navigate("/login");
       return;
     }
     pwSubmit.disabled = false;
@@ -330,8 +328,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
       confirm: dConfirmInput.value,
     });
     if (res.ok) {
-      window.history.pushState({}, "", BASE_PATH + "/login");
-      window.dispatchEvent(new PopStateEvent("popstate"));
+      navigate("/login");
       return;
     }
     dSubmit.disabled = false;

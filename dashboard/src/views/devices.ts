@@ -8,7 +8,7 @@
 
 import { listDevices, type Device } from "../api.js";
 import { formatRelative } from "../format.js";
-import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderDevices: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -30,11 +30,9 @@ export const renderDevices: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
     const res = await listDevices();
     if (!res.ok) {
       if (res.status === 401) {
-        // Cookie expired or never logged in — bounce to /login.
-        // pushState + popstate so the router re-renders without a
-        // full reload.
-        window.history.pushState({}, "", BASE_PATH + "/login");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        // Cookie expired or never logged in — bounce to /login
+        // without a full reload.
+        navigate("/login");
         return;
       }
       status.className = "error";

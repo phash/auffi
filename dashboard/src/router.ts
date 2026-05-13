@@ -14,6 +14,35 @@
 
 export const BASE_PATH = "/dashboard";
 
+/**
+ * Module-level navigator: pushes a path onto history and triggers the
+ * active router to re-render.
+ *
+ * Why a singleton instead of taking the `Router` instance everywhere:
+ * views need to navigate after async work (an API response, a form
+ * submit, a back-from-promise) and threading the router handle through
+ * 10 views just to call `.navigate()` was the original CQ H-5 finding
+ * — 12+ inlined `history.pushState({}, "", BASE_PATH + "...")` +
+ * `dispatchEvent(new PopStateEvent("popstate"))` were spread across
+ * the codebase. The first call to `createRouter()` registers itself
+ * here; subsequent calls overwrite (last-router-wins, but tests are
+ * the only place that creates more than one).
+ */
+let _activeRouter: Router | null = null;
+
+export function navigate(path: string): void {
+  if (_activeRouter !== null) {
+    _activeRouter.navigate(path);
+    return;
+  }
+  // Fallback: no router registered yet (e.g. test environment, or
+  // a misordered import). Mimic the old behaviour so callers stay
+  // crash-free.
+  const full = path.startsWith(BASE_PATH) ? path : BASE_PATH + path;
+  window.history.pushState({}, "", full);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 export interface RouteContext {
   /** The full incoming path under BASE_PATH, e.g. "/devices/123-456-789". */
   path: string;
@@ -112,6 +141,11 @@ export function createRouter(
   history: History = window.history,
   location: Location = window.location,
 ): Router {
+  // Register this instance as the active singleton so module-level
+  // `navigate(path)` works from any view without threading the
+  // router handle through every callsite.
+  // (Last-router-wins; tests that build multiple routers should
+  // call stop() before constructing a new one.)
   const render = (): void => {
     const path = pathUnderBase(location.pathname);
     const match = matchRoute(routes, path);
@@ -134,7 +168,7 @@ export function createRouter(
 
   const onPopState = (): void => render();
 
-  return {
+  const router: Router = {
     navigate(path: string): void {
       // Always prefix with BASE_PATH so callers can write
       // navigate("/devices/123") without worrying about the mount
@@ -164,6 +198,11 @@ export function createRouter(
     },
     stop(): void {
       window.removeEventListener("popstate", onPopState);
+      if (_activeRouter === router) {
+        _activeRouter = null;
+      }
     },
   };
+  _activeRouter = router;
+  return router;
 }

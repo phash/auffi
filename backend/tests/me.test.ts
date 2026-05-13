@@ -310,3 +310,87 @@ describe("DELETE /api/me", () => {
     expect(after.statusCode).toBe(401);
   });
 });
+
+// Sec H-3 (review 2026-05-13): per-account lockout on bad-credentials.
+// PATCH /me and DELETE /me both gate every change on current_password.
+// Without a per-account counter, an attacker who holds one session
+// can iterate the per-IP limit (10/hour) ≈ 240×/day per account.
+describe("PATCH /api/me — per-account lockout (Sec H-3)", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  beforeEach(async () => {
+    h = await build();
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  async function patchAttempt(cookie: string, currentPw: string): Promise<number> {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { current_password: currentPw, new_email: "next@example.com" },
+    });
+    return res.statusCode;
+  }
+
+  it("5 wrong current_password attempts → 6th attempt is 423 locked", async () => {
+    const cookie = await h.cookie();
+    // 5 wrong-pw attempts (PATCH-level rate-limiter is disabled in
+    // the test rig at line 33). The 5th hit engages the lockout per
+    // the unified threshold across device + account flows.
+    for (let i = 0; i < 5; i++) {
+      const status = await patchAttempt(cookie, "wrong-pw-" + i);
+      expect(status).toBe(403);
+    }
+    // 6th: locked. Even if the password is now correct we expect 423,
+    // because the gate runs BEFORE argon2.
+    const status = await patchAttempt(cookie, "the-current-password");
+    expect(status).toBe(423);
+    const body = await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", new_email: "x@y.test" },
+    });
+    expect(body.json().error).toBe("locked");
+    expect(body.json().retryAfterSec).toBeGreaterThan(0);
+  });
+
+  it("successful PATCH resets the fail counter", async () => {
+    const cookie = await h.cookie();
+    // Two wrong attempts...
+    await patchAttempt(cookie, "wrong1");
+    await patchAttempt(cookie, "wrong2");
+    // ...then a successful one resets to zero.
+    const ok = await patchAttempt(cookie, "the-current-password");
+    expect(ok).toBe(200);
+    // We could now run 5 more wrong attempts before locking. Show
+    // that 3 more wrongs do NOT lock (would be 5 total without the
+    // reset).
+    for (let i = 0; i < 3; i++) {
+      const status = await patchAttempt(cookie, "wrong-again-" + i);
+      expect(status).toBe(403);
+    }
+    // 4th wrong post-success: still not locked.
+    const fourth = await patchAttempt(cookie, "still-wrong");
+    expect(fourth).toBe(403);
+  });
+
+  it("DELETE /api/me observes the same per-account lockout", async () => {
+    const cookie = await h.cookie();
+    // Burn the counter via PATCH first.
+    for (let i = 0; i < 5; i++) {
+      await patchAttempt(cookie, "wrong-pw-" + i);
+    }
+    const del = await h.app.inject({
+      method: "DELETE",
+      url: "/api/me",
+      headers: { cookie: `auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
+    });
+    expect(del.statusCode).toBe(423);
+    expect(del.json().error).toBe("locked");
+  });
+});
