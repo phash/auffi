@@ -1,5 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+// gh #20: side-effect import wires the unattended-mode settings UI.
+// Pure UI handlers + Tauri command bindings; safe to import even when
+// the user never enters unattended mode.
+import "./unattended.js";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { load } from "@tauri-apps/plugin-store";
 import type { TrustedPeer } from "./trusted-peers.js";

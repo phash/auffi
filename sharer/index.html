@@ -824,6 +824,83 @@
 
     <!-- ── Settings panel ── -->
     <div id="panel-settings" class="panel" role="tabpanel" aria-labelledby="tab-settings">
+      <!-- gh #20: Unattended-Modus -->
+      <div class="card" id="unattended-card">
+        <p class="settings-section-title">Unattended-Modus</p>
+        <p class="unattended-desc" style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 0.75rem;">
+          Im Unattended-Modus läuft der Sharer im Hintergrund und Helfer können sich
+          jederzeit über einen Geräte-Code verbinden — abgesichert durch ein
+          Geräte-Passwort.
+        </p>
+
+        <div class="settings-toggle-row" style="margin-bottom: 0.75rem;">
+          <div>
+            <div class="settings-toggle-label">Modus</div>
+            <div class="settings-toggle-desc">Wechsel benötigt Pairing + Geräte-Passwort</div>
+          </div>
+          <select id="unattended-mode-select" style="font-size: 0.875rem;">
+            <option value="adhoc">Ad-hoc</option>
+            <option value="unattended">Unattended</option>
+          </select>
+        </div>
+
+        <div id="unattended-setup" style="display: none;">
+          <p style="font-size: 0.8125rem; color: var(--text-secondary); margin: 0.5rem 0 0.25rem;">
+            Pairing-Code vom Dashboard (Form: XXX-XXX-XX):
+          </p>
+          <input id="unattended-pair-code" type="text" autocomplete="off" placeholder="z. B. ABC-DEF-7K"
+            style="width: 100%; padding: 0.5rem; font-family: monospace; font-size: 1rem;" />
+          <p style="font-size: 0.8125rem; color: var(--text-secondary); margin: 0.5rem 0 0.25rem;">
+            Geräte-Name (sichtbar im Dashboard):
+          </p>
+          <input id="unattended-pair-alias" type="text" autocomplete="off"
+            style="width: 100%; padding: 0.5rem; font-size: 1rem;" />
+          <button id="unattended-pair-btn" type="button" class="btn"
+            style="margin-top: 0.5rem; width: 100%;">Gerät verbinden</button>
+          <p id="unattended-pair-status" role="status" aria-live="polite"
+            style="margin-top: 0.5rem; font-size: 0.8125rem;"></p>
+        </div>
+
+        <div id="unattended-password" style="display: none;">
+          <p style="font-size: 0.8125rem; color: var(--text-secondary); margin: 0.5rem 0 0.25rem;">
+            Geräte-Passwort setzen (mindestens 8 Zeichen):
+          </p>
+          <input id="unattended-pw-input" type="password" autocomplete="new-password"
+            style="width: 100%; padding: 0.5rem; font-size: 1rem;" />
+          <button id="unattended-pw-btn" type="button" class="btn"
+            style="margin-top: 0.5rem; width: 100%;">Passwort setzen</button>
+          <p id="unattended-pw-status" role="status" aria-live="polite"
+            style="margin-top: 0.5rem; font-size: 0.8125rem;"></p>
+        </div>
+
+        <div id="unattended-active" style="display: none;">
+          <p style="font-size: 0.875rem; margin: 0.5rem 0;">
+            Gerät: <span id="unattended-device-id" style="font-family: monospace;">—</span>
+          </p>
+          <p style="font-size: 0.875rem; margin: 0.5rem 0;">
+            Status: <span id="unattended-status">Inaktiv</span>
+          </p>
+          <button id="unattended-start-btn" type="button" class="btn"
+            style="margin-top: 0.5rem; width: 100%;">Aktivieren</button>
+          <button id="unattended-stop-btn" type="button" class="btn btn-secondary"
+            style="margin-top: 0.5rem; width: 100%; display: none;">Deaktivieren</button>
+          <button id="unattended-unpair-btn" type="button" class="btn btn-danger"
+            style="margin-top: 0.5rem; width: 100%;">Gerät entkoppeln</button>
+        </div>
+
+        <div id="unattended-confirm-toast" role="dialog" aria-modal="true"
+          style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: var(--surface);
+                 border: 1px solid var(--border); border-radius: var(--radius);">
+          <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
+            Ein Helfer möchte sich verbinden. Akzeptieren?
+          </p>
+          <div class="btn-row">
+            <button id="unattended-confirm-yes" type="button" class="btn">Akzeptieren</button>
+            <button id="unattended-confirm-no" type="button" class="btn btn-secondary">Ablehnen</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <p class="settings-section-title">Bekannte Helfer</p>
         <ul id="trusted-peers-list" class="trusted-peer-list">

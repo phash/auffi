@@ -14,6 +14,7 @@ mod protocol;
 mod pw_check;
 mod signaling;
 mod turn_config;
+mod unattended_cmd;
 mod webrtc_peer;
 
 /// Resolve the destination path for `dbg_log()` writes.
@@ -1112,6 +1113,7 @@ pub fn run() {
         .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .manage(SwitchState(Mutex::new(None)))
+        .manage(unattended_cmd::UnattendedState::default())
         .invoke_handler(tauri::generate_handler![
             start_signaling,
             confirm_peer,
@@ -1125,6 +1127,16 @@ pub fn run() {
             accept_file,
             reject_file,
             pick_and_send_file,
+            unattended_cmd::unattended_pair,
+            unattended_cmd::unattended_unpair,
+            unattended_cmd::unattended_is_paired,
+            unattended_cmd::unattended_set_password,
+            unattended_cmd::unattended_is_password_set,
+            unattended_cmd::unattended_get_mode,
+            unattended_cmd::unattended_set_mode,
+            unattended_cmd::unattended_start,
+            unattended_cmd::unattended_stop,
+            unattended_cmd::unattended_confirm,
         ])
         .run(tauri::generate_context!())
         .expect("error running tauri");
