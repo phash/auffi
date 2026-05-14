@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-li
 ```
 
 Oder manuell aus den [Releases](https://github.com/phash/auffi/releases) herunterladen —
-detaillierte Anleitung: [INSTALL-LINUX.md](INSTALL-LINUX.md)
+detaillierte Anleitung inkl. Arch-PKGBUILD: [INSTALL.md](INSTALL.md)
 
 ---
 
@@ -93,7 +93,8 @@ Ende-zu-Ende DTLS-verschlüsselt.
 
 ## Installation auf dem Linux-Desktop
 
-Vollständige Anleitung: **[INSTALL-LINUX.md](INSTALL-LINUX.md)**
+Vollständige Anleitung inkl. Arch-PKGBUILD, Debian/Ubuntu `.deb`,
+Fedora `.rpm` und distroübergreifender AppImage: **[INSTALL.md](INSTALL.md)**
 
 Schnell-Installation:
 

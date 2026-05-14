@@ -1,0 +1,117 @@
+# Maintainer: Manuel Rödig <m.roedig@gmail.com>
+# AUR-Konvention: das -git-Suffix signalisiert „baut den aktuellen
+# Stand von main", nicht eine pinned Release. Für eine pinned
+# Version gibt es daneben das stabile `auffi`-Paket-Skript (siehe
+# INSTALL.md), das auf einen Release-Tag zeigt.
+
+pkgname=auffi-git
+_pkgname=auffi
+pkgver=0.3.0.r0.gHEAD
+pkgrel=1
+pkgdesc="Sicheres, Open-Source Bildschirm-Sharing mit Fernsteuerung — DSGVO-konform, WebRTC P2P (Tauri-Desktop-App)"
+arch=('x86_64')
+url="https://auffi.app"
+license=('MIT')
+
+# Runtime — alles was die fertige Binary lädt:
+#   webkit2gtk-4.1 = Tauri-Webview
+#   gst-* + pipewire = Wayland-Capture (gst_portal.rs)
+#   libvpx = VP8/VP9-Encoder (webrtc-rs)
+#   libxdo = enigo Remote-Input (X11-Pfad)
+#   xdg-desktop-portal = ScreenCast-Portal-Endpunkt
+#   gtk3 + libsoup3 = Webview-Abhängigkeiten von webkit2gtk-4.1
+depends=(
+  'webkit2gtk-4.1'
+  'gtk3'
+  'libsoup3'
+  'gstreamer'
+  'gst-plugins-base'
+  'gst-plugins-good'
+  'gst-plugins-bad'
+  'gst-plugin-pipewire'
+  'libvpx'
+  'libxdo'
+  'xdg-desktop-portal'
+  'hicolor-icon-theme'
+)
+
+makedepends=(
+  'git'
+  'rust'
+  'cargo'
+  'nodejs'
+  'npm'
+  'pkgconf'
+  'patchelf'
+)
+
+provides=("${_pkgname}")
+conflicts=("${_pkgname}")
+
+# Lokale Klone des Repos. Wenn du AUR submittest, ersetze dies durch
+# "git+https://github.com/phash/auffi.git" und tagge ein Release.
+source=("${_pkgname}::git+https://github.com/phash/auffi.git#branch=main")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/$_pkgname"
+  # Format: <last-tag>.r<commits-since>.g<sha>  →  z.B. 0.3.0.r62.ga2b87b8
+  git describe --long --tags --abbrev=7 2>/dev/null \
+    | sed 's/\([^-]*-g\)/r\1/;s/-/./g' \
+    | sed 's/^v//'
+}
+
+prepare() {
+  cd "$srcdir/$_pkgname/sharer"
+  # `npm ci` braucht den lockfile, der ist im Repo. Tauri-CLI ist
+  # devDependency, daher --include=dev (ohnehin npm-Default bei ci).
+  npm ci --no-audit --no-fund
+}
+
+build() {
+  cd "$srcdir/$_pkgname/sharer"
+  # Tauri-Bundle produziert .deb, .rpm, AppImage unter
+  # src-tauri/target/release/bundle/. Für unser Arch-Paket brauchen
+  # wir nur die rohe Binary + Assets — die Bundle-Schritte können
+  # aber nicht weggeschaltet werden ohne tauri.conf.json zu patchen,
+  # also bauen wir alles und ignorieren die Bundle-Outputs.
+  export CARGO_TARGET_DIR="$srcdir/$_pkgname/sharer/src-tauri/target"
+  npm run tauri:build
+}
+
+package() {
+  cd "$srcdir/$_pkgname"
+
+  # 1. Hauptbinary.
+  install -Dm755 \
+    "sharer/src-tauri/target/release/${_pkgname}-sharer" \
+    "$pkgdir/usr/bin/${_pkgname}"
+
+  # 2. Icons (256/128/32) ins hicolor-Theme.
+  install -Dm644 "sharer/src-tauri/icons/128x128@2x.png" \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/${_pkgname}.png"
+  install -Dm644 "sharer/src-tauri/icons/128x128.png" \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/${_pkgname}.png"
+  install -Dm644 "sharer/src-tauri/icons/32x32.png" \
+    "$pkgdir/usr/share/icons/hicolor/32x32/apps/${_pkgname}.png"
+
+  # 3. .desktop-Datei für App-Launcher (Plasma, GNOME, …).
+  install -Dm644 /dev/stdin \
+    "$pkgdir/usr/share/applications/${_pkgname}.desktop" <<EOF
+[Desktop Entry]
+Name=Auffi
+GenericName=Bildschirm-Sharing
+Comment=Sichere Bildschirm-Freigabe mit Fernsteuerung
+Exec=${_pkgname}
+Terminal=false
+Type=Application
+Icon=${_pkgname}
+Categories=Network;RemoteAccess;
+StartupNotify=true
+StartupWMClass=Auffi
+Keywords=screen;share;remote;teamviewer;
+EOF
+
+  # 4. Lizenz.
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/${_pkgname}/LICENSE"
+}
