@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
 import { parseBearerAuth, verifyBearerAuth } from "../unattended.js";
 import { findSession, readSessionCookie } from "../auth/sessions.js";
+import { truncateUserAgent } from "./user_agent.js";
 
 const ALLOWED_CATEGORIES = ["bug", "feature", "praise", "other"] as const;
 const ALLOWED_SOURCES = ["dashboard", "sharer"] as const;
@@ -49,8 +50,11 @@ export function registerFeedbackRoutes(app: FastifyInstance, db: Db): void {
           .send({ error: "no-auth", message: "login or device-bearer required" });
       }
 
-      const uaHint = ((req.headers["user-agent"] as string | undefined) ?? "")
-        .slice(0, 200);
+      // Security-Review L-2 (2026-05-14): UA wird auf
+      // `Browser-Family/OS-Family` reduziert — die volle UA wäre ein
+      // unnötig präziser Fingerprint für das, was Admins brauchen
+      // („aus welcher Umgebung kam der Bug-Report").
+      const uaHint = truncateUserAgent(req.headers["user-agent"] as string | undefined);
       db.prepare(
         `INSERT INTO feedback
            (account_id, source, category, rating, body, user_agent_hint, created_at)

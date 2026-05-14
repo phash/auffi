@@ -300,7 +300,8 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
           report.connectionLog +
           report.auditLog +
           report.softDeletedAccounts +
-          report.rateLimitBuckets;
+          report.rateLimitBuckets +
+          report.feedback;
         if (total > 0) app.log.info({ purge: report }, "retention purge complete");
       },
       onError: (err) => app.log.warn({ err }, "retention purge failed"),

@@ -180,7 +180,62 @@ describe("runPurge", () => {
       auditLog: 0,
       softDeletedAccounts: 0,
       rateLimitBuckets: 0,
+      feedback: 0,
     });
+  });
+
+  // gh #39 + Security-Review L-1 (2026-05-14): feedback rows must
+  // age out — resolved ones after 1 y, open ones after 2 y.
+  it("hard-deletes resolved feedback past `feedbackResolvedMs` and stale open feedback past `feedbackOpenMaxMs`", () => {
+    // Account-row required for the FK.
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, created_at) VALUES (10, 'feedback@test', 'x', ?)",
+    ).run(now);
+
+    const insert = db.prepare(
+      `INSERT INTO feedback
+         (account_id, source, category, rating, body, created_at, resolved_at)
+       VALUES (10, 'dashboard', 'feature', 4, ?, ?, ?)`,
+    );
+
+    // Resolved 13 months ago → deletes (> 1 y).
+    insert.run("old-resolved", now - 400 * DAY, now - 400 * DAY);
+    // Resolved 6 months ago → keeps (< 1 y).
+    insert.run("recent-resolved", now - 180 * DAY, now - 180 * DAY);
+    // Open since 3 years ago → deletes (> 2 y).
+    insert.run("ancient-open", now - 3 * 365 * DAY, null);
+    // Open since 6 months ago → keeps (< 2 y).
+    insert.run("recent-open", now - 180 * DAY, null);
+
+    const report = runPurge(db, now);
+    expect(report.feedback).toBe(2);
+
+    const survivors = db
+      .prepare<[], { body: string }>("SELECT body FROM feedback ORDER BY body")
+      .all()
+      .map((r) => r.body);
+    expect(survivors).toEqual(["recent-open", "recent-resolved"]);
+  });
+
+  it("custom feedback retention windows override the default", () => {
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, created_at) VALUES (11, 'fb-custom@test', 'x', ?)",
+    ).run(now);
+    db.prepare(
+      `INSERT INTO feedback
+         (account_id, source, category, rating, body, created_at, resolved_at)
+       VALUES (11, 'sharer', 'bug', 2, 'two-days-resolved', ?, ?)`,
+    ).run(now - 2 * DAY, now - 2 * DAY);
+
+    // Default 1-year window — survives.
+    expect(runPurge(db, now).feedback).toBe(0);
+    // 1-day window — purged.
+    expect(
+      runPurge(db, now, {
+        ...DEFAULT_RETENTION,
+        feedbackResolvedMs: 1 * DAY,
+      }).feedback,
+    ).toBe(1);
   });
 
   it("respects custom retention windows", () => {

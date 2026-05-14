@@ -14,12 +14,23 @@ export interface PurgeRetention {
   connectionLogMs: number;
   /** audit_log rows older than this are deleted. */
   auditLogMs: number;
+  /**
+   * Feedback (gh #39): resolved rows past `resolved_at + this` get
+   * hard-deleted; open rows past `created_at + feedbackOpenMaxMs` go
+   * too. Two windows because resolved feedback is mostly historical
+   * (admin already saw + actioned it), open feedback may still need
+   * triage. Default: 365 d resolved / 730 d open.
+   */
+  feedbackResolvedMs: number;
+  feedbackOpenMaxMs: number;
 }
 
 export const DEFAULT_RETENTION: PurgeRetention = {
   softDeletedAccountsGraceMs: 30 * 24 * 60 * 60 * 1000, // 30 d
   connectionLogMs: 30 * 24 * 60 * 60 * 1000, // 30 d
   auditLogMs: 365 * 24 * 60 * 60 * 1000, // 1 y
+  feedbackResolvedMs: 365 * 24 * 60 * 60 * 1000, // 1 y
+  feedbackOpenMaxMs: 2 * 365 * 24 * 60 * 60 * 1000, // 2 y
 };
 
 export interface PurgeReport {
@@ -41,6 +52,8 @@ export interface PurgeReport {
   softDeletedAccounts: number;
   /** rate_limit_buckets rows whose lockout is past and counter is zero. */
   rateLimitBuckets: number;
+  /** Feedback rows past retention (resolved-window + open-max). */
+  feedback: number;
 }
 
 /**
@@ -115,6 +128,21 @@ export function runPurge(
     )
     .run(now);
 
+  // Feedback (gh #39 + Security-Review L-1, 2026-05-14):
+  //   - resolved rows that aged past `feedbackResolvedMs` since their
+  //     resolve-timestamp,
+  //   - open rows that aged past `feedbackOpenMaxMs` since creation
+  //     (these are stale-and-never-actioned; admin has had 2 years
+  //     to look at them, time to let go).
+  // Both predicates are OR'd so a single DELETE covers them.
+  const oldFeedback = db
+    .prepare(
+      `DELETE FROM feedback
+        WHERE (resolved_at IS NOT NULL AND resolved_at < ?)
+           OR (resolved_at IS NULL     AND created_at  < ?)`,
+    )
+    .run(now - retention.feedbackResolvedMs, now - retention.feedbackOpenMaxMs);
+
   return {
     sessions: expiredSessions.changes,
     devicePairings: expiredPairings.changes,
@@ -125,6 +153,7 @@ export function runPurge(
     auditLog: oldAuditLog.changes,
     softDeletedAccounts: softDeleted.changes,
     rateLimitBuckets: expiredBuckets.changes,
+    feedback: oldFeedback.changes,
   };
 }
 

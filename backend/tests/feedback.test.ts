@@ -327,6 +327,41 @@ describe("GET /api/admin/feedback", () => {
     const res = await h.app.inject({ method: "GET", url: "/api/admin/feedback" });
     expect(res.statusCode).toBe(401);
   });
+
+  // Security-Review L-3 (2026-05-14): PATCH audit before-snapshot
+  // must contain the full row context (body, category, rating,
+  // source) — not only the resolved_at diff — so retention-purge
+  // can later sweep the feedback table without losing forensic
+  // context.
+  it("PATCH writes a full-row before-snapshot into the audit log", async () => {
+    const list = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/feedback",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    const target = list.json().items[0];
+    await h.app.inject({
+      method: "PATCH",
+      url: `/api/admin/feedback/${target.id}`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { resolved: true },
+    });
+    const audit = h.db
+      .prepare<[string], { before_json: string; after_json: string }>(
+        "SELECT before_json, after_json FROM audit_log WHERE action = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get("feedback.resolve") as { before_json: string; after_json: string };
+    const before = JSON.parse(audit.before_json);
+    expect(before).toMatchObject({
+      resolved_at: null,
+      source: "dashboard",
+      category: "feature",
+      rating: 4,
+      body: target.body,
+    });
+    const after = JSON.parse(audit.after_json);
+    expect(after.resolved_at).toBeTypeOf("number");
+  });
 });
 
 describe("DELETE /api/admin/feedback/:id", () => {

@@ -110,9 +110,23 @@ export function registerAdminFeedbackRoutes(app: FastifyInstance, db: Db): void 
       if (typeof body.resolved !== "boolean") {
         return bad(reply, 400, "bad-resolved", "resolved must be a boolean");
       }
+      // Security-Review L-3 (2026-05-14): Snapshot the full row in
+      // the audit log, not just `resolved_at`. The feedback table
+      // may be purged later (gh #39 retention), at which point the
+      // audit row becomes the only trace of WHAT was resolved/
+      // reopened by an admin and on what content. Cheap to capture.
       const row = db
-        .prepare<[number], { resolved_at: number | null }>(
-          "SELECT resolved_at FROM feedback WHERE id = ?",
+        .prepare<
+          [number],
+          {
+            category: string;
+            rating: number;
+            body: string;
+            source: string;
+            resolved_at: number | null;
+          }
+        >(
+          "SELECT category, rating, body, source, resolved_at FROM feedback WHERE id = ?",
         )
         .get(fid);
       if (!row) return bad(reply, 404, "not-found", "feedback row not found");
@@ -124,7 +138,13 @@ export function registerAdminFeedbackRoutes(app: FastifyInstance, db: Db): void 
         body.resolved ? "feedback.resolve" : "feedback.reopen",
         "feedback",
         fid,
-        { resolved_at: row.resolved_at },
+        {
+          resolved_at: row.resolved_at,
+          source: row.source,
+          category: row.category,
+          rating: row.rating,
+          body: row.body,
+        },
         { resolved_at: nextResolvedAt },
       );
       return reply.status(200).send({ ok: true, resolvedAt: nextResolvedAt });
