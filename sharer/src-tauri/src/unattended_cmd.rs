@@ -335,6 +335,83 @@ pub async fn unattended_confirm(
     Ok(())
 }
 
+/// Submit feedback from the sharer to the backend (gh #39).
+///
+/// Authenticates via the same device-Bearer-token the heartbeat WSS
+/// uses; backend's `POST /api/feedback` accepts both
+/// `source=dashboard` (session cookie) and `source=sharer` (Bearer).
+/// Only enabled in unattended mode — the webview hides the FAB
+/// otherwise because there is no paired account to attach the
+/// feedback to.
+#[tauri::command]
+pub async fn unattended_submit_feedback(
+    app: AppHandle,
+    category: String,
+    rating: u32,
+    body: String,
+) -> CmdResult<()> {
+    // Validate locally before burning a network round-trip. Same
+    // shape the backend re-validates server-side; we only fail-fast
+    // here to give the UI a snappier error.
+    if !matches!(category.as_str(), "bug" | "feature" | "praise" | "other") {
+        return Err("invalid category".to_string());
+    }
+    if !(1..=5).contains(&rating) {
+        return Err("rating must be 1..5".to_string());
+    }
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Err("body must not be empty".to_string());
+    }
+    if trimmed.len() > 4000 {
+        return Err("body too long (max 4000 chars)".to_string());
+    }
+
+    let dir = app_data_dir(&app)?;
+    let device_id = account::read_device_id(&dir)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Gerät nicht gepaart".to_string())?;
+    let store = KeyringTokenStore::default_for_auffi();
+    let token = store
+        .read()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Token fehlt im Keyring".to_string())?;
+
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("http client: {e}"))?;
+
+    let payload = serde_json::json!({
+        "source": "sharer",
+        "category": category,
+        "rating": rating,
+        "body": trimmed,
+    });
+    let url = format!("{}/api/feedback", backend_http_base());
+    let res = http
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("X-Auffi-Device-Id", &device_id)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Senden fehlgeschlagen: {e}"))?;
+
+    let status = res.status();
+    if !status.is_success() {
+        let body_preview = res
+            .text()
+            .await
+            .unwrap_or_default()
+            .chars()
+            .take(200)
+            .collect::<String>();
+        return Err(format!("Backend {}: {}", status.as_u16(), body_preview));
+    }
+    Ok(())
+}
+
 /// What the forwarder should do with a [`PwCheckOutcome`].
 ///
 /// Split out from `forwarder_loop` so the protocol semantics

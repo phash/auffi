@@ -2,8 +2,10 @@
 // and renders the top-bar nav.
 
 import { BASE_PATH, createRouter, type Route } from "./router.js";
+import { installFeedbackFab } from "./components/feedback-fab.js";
 import { renderAccount } from "./views/account.js";
 import { renderAddDevice } from "./views/add-device.js";
+import { renderAdminFeedback } from "./views/admin-feedback.js";
 import { renderConnectionLog } from "./views/connection-log.js";
 import { renderDeviceDetail } from "./views/device-detail.js";
 import { renderDevices } from "./views/devices.js";
@@ -35,6 +37,11 @@ const routes: Route[] = [
   { pattern: "/devices/:id/log", render: renderConnectionLog },
   // gh #35: account settings.
   { pattern: "/account", navLabel: "Account", render: renderAccount },
+  // gh #39: admin-only feedback inbox. Backend gates with requireAdmin
+  // so a non-admin opening this URL gets a 403-rendered message
+  // inline; the link is therefore safe to add to the nav for ALL
+  // users (admin-only filtering happens server-side).
+  { pattern: "/admin/feedback", navLabel: "Feedback (Admin)", render: renderAdminFeedback },
   { pattern: "*", render: renderNotFound },
 ];
 
@@ -59,3 +66,8 @@ if (!root) {
 
 buildNav(routes);
 createRouter(root, routes).start();
+
+// Feedback FAB is independent of the route; install once. Errors are
+// swallowed (the FAB is a nice-to-have, must not block the dashboard
+// rendering on a backend hiccup).
+void installFeedbackFab().catch(() => {});

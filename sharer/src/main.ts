@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 // Pure UI handlers + Tauri command bindings; safe to import even when
 // the user never enters unattended mode.
 import "./unattended.js";
+import { refreshFeedbackFab } from "./feedback-fab.js";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { load } from "@tauri-apps/plugin-store";
 import type { TrustedPeer } from "./trusted-peers.js";
@@ -841,4 +842,12 @@ renderTrustedPeers().catch(() => {});
 restartSignaling().catch((e: unknown) => {
   setStatus(`Backend nicht erreichbar: ${String(e)}`, "error");
   showReconnect();
+});
+
+// gh #39: feedback FAB. Visibility ties to pair-state — hidden in
+// ad-hoc mode, shown when the device has a token + password set.
+// Refresh on every pair/unpair so the FAB appears/disappears live.
+void refreshFeedbackFab().catch(() => {});
+window.addEventListener("auffi-unattended-state-changed", () => {
+  void refreshFeedbackFab().catch(() => {});
 });

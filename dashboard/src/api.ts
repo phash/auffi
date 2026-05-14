@@ -277,3 +277,70 @@ export function listConnectionLog(
     (qs.toString().length > 0 ? `?${qs}` : "");
   return request(path, { method: "GET" });
 }
+
+// ── Feedback (gh #39) ─────────────────────────────────────────────
+
+export type FeedbackCategory = "bug" | "feature" | "praise" | "other";
+export type FeedbackSource = "dashboard" | "sharer";
+
+export interface FeedbackSubmission {
+  source: FeedbackSource;
+  category: FeedbackCategory;
+  rating: number;
+  body: string;
+}
+
+export function submitFeedback(
+  payload: FeedbackSubmission,
+): Promise<ApiResult<{ ok: true }>> {
+  return request("/api/feedback", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ── Admin feedback (gh #39) ───────────────────────────────────────
+
+export interface AdminFeedbackRow {
+  id: number;
+  accountId: number;
+  accountEmail: string;
+  source: FeedbackSource;
+  category: FeedbackCategory;
+  rating: number;
+  body: string;
+  userAgentHint: string | null;
+  createdAt: number;
+  resolvedAt: number | null;
+}
+
+export interface AdminFeedbackPage {
+  items: AdminFeedbackRow[];
+  nextCursor: number | null;
+}
+
+export function listAdminFeedback(opts: {
+  status?: "open" | "resolved" | "all";
+  cursor?: number;
+  limit?: number;
+} = {}): Promise<ApiResult<AdminFeedbackPage>> {
+  const qs = new URLSearchParams();
+  qs.set("status", opts.status ?? "open");
+  if (opts.cursor !== undefined) qs.set("cursor", String(opts.cursor));
+  if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+  return request(`/api/admin/feedback?${qs}`, { method: "GET" });
+}
+
+export function patchAdminFeedback(
+  id: number,
+  resolved: boolean,
+): Promise<ApiResult<{ ok: true; resolvedAt: number | null }>> {
+  return request(`/api/admin/feedback/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ resolved }),
+  });
+}
+
+export function deleteAdminFeedback(id: number): Promise<ApiResult<{ ok: true }>> {
+  return request(`/api/admin/feedback/${id}`, { method: "DELETE" });
+}

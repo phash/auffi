@@ -18,6 +18,8 @@ import { registerAdminDevicesRoutes } from "./admin/devices.js";
 import { registerAdminAuditRoutes } from "./admin/audit.js";
 import { registerAdminStatsRoutes } from "./admin/stats.js";
 import { registerAdminTimeseriesRoutes } from "./admin/timeseries.js";
+import { registerAdminFeedbackRoutes } from "./admin/feedback.js";
+import { registerFeedbackRoutes } from "./feedback/handlers.js";
 import { bootstrapInitialAdmin } from "./admin/bootstrap.js";
 import { UnattendedRegistry } from "./unattended.js";
 import { UnattendedSessions } from "./unattended_sessions.js";
@@ -266,6 +268,8 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   registerAdminAuditRoutes(app, db);
   registerAdminStatsRoutes(app, db);
   registerAdminTimeseriesRoutes(app, db);
+  registerAdminFeedbackRoutes(app, db);
+  registerFeedbackRoutes(app, db);
 
   // Promote the configured INITIAL_ADMIN_EMAIL on every boot.
   // Idempotent — if the account doesn't exist yet (first deploy), the

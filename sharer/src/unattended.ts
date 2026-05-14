@@ -73,6 +73,12 @@ function setStatusText(text: string): void {
 }
 
 async function refresh(): Promise<void> {
+  // gh #39: every refresh() pass crosses every state-transition the
+  // feedback FAB cares about (mode change, pair, unpair, password
+  // set). Dispatch a custom event so the FAB can re-evaluate
+  // visibility without polling.
+  window.dispatchEvent(new CustomEvent("auffi-unattended-state-changed"));
+
   if (!modeSelect) return;
   const mode = ((await invoke<string>("unattended_get_mode").catch(() => "adhoc")) as ModeChoice);
   modeSelect.value = mode;

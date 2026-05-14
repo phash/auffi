@@ -1158,6 +1158,7 @@ pub fn run() {
             unattended_cmd::unattended_start,
             unattended_cmd::unattended_stop,
             unattended_cmd::unattended_confirm,
+            unattended_cmd::unattended_submit_feedback,
         ])
         // gh #26: tray icon + minimise-to-tray. Built in setup() so
         // the AppHandle is available. The window-close handler reads
