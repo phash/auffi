@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Datenschutzerklärung — Auffi</title>
+    <meta name="description" content="Datenschutzerklärung von Auffi: welche Daten wir warum verarbeiten, wo Server stehen, Retention-Windows, deine Rechte nach DSGVO." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/datenschutz/" />
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="/legal/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="topbar-wordmark" href="/" aria-label="Zur Startseite">Auffi</a>
+      <nav class="topbar-nav" aria-label="Navigation">
+        <a href="/">Viewer</a>
+        <a href="/download/">Download</a>
+        <a href="/impressum/">Impressum</a>
+        <a href="/datenschutz/" aria-current="page">Datenschutz</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Datenschutzerklärung</h1>
+
+      <section>
+        <h2>1. Auf einen Blick</h2>
+        <p>
+          Auffi ist ein Open-Source-Bildschirm-Sharing-Tool. Die folgenden
+          Hinweise erklären, welche personenbezogenen Daten an welcher
+          Stelle erhoben werden, wozu sie dienen und wie lange sie
+          gespeichert bleiben. Auffi ist Privacy-by-Design entworfen:
+          Bildschirminhalte, Maus- und Tastatureingaben sowie übertragene
+          Dateien fließen ausschließlich Ende-zu-Ende verschlüsselt
+          (DTLS-SRTP) direkt zwischen den verbundenen Browsern. Der
+          Auffi-Backend-Server bekommt davon nichts mit.
+        </p>
+      </section>
+
+      <section>
+        <h2>2. Verantwortliche Stelle</h2>
+        <p>
+          Verantwortlich für die Datenverarbeitung auf dieser Website ist:
+        </p>
+        <address>
+          Manuel Rödig<br />
+          Tannenweg 6<br />
+          85405 Nandlstadt<br />
+          Deutschland<br />
+          E-Mail: <a href="mailto:phash@phash.de">phash@phash.de</a>
+        </address>
+      </section>
+
+      <section>
+        <h2>3. Deine Rechte (Art. 15–21 DSGVO)</h2>
+        <ul>
+          <li>Recht auf Auskunft (Art. 15 DSGVO)</li>
+          <li>Recht auf Berichtigung (Art. 16 DSGVO)</li>
+          <li>Recht auf Löschung (Art. 17 DSGVO)</li>
+          <li>Recht auf Einschränkung der Verarbeitung (Art. 18 DSGVO)</li>
+          <li>Recht auf Datenübertragbarkeit (Art. 20 DSGVO)</li>
+          <li>Widerspruchsrecht (Art. 21 DSGVO)</li>
+        </ul>
+        <p>
+          Außerdem hast du das Recht, dich bei der zuständigen
+          Aufsichtsbehörde zu beschweren — im Falle Bayerns das
+          <a
+            href="https://www.lda.bayern.de/"
+            rel="noopener noreferrer"
+            target="_blank"
+            >Bayerische Landesamt für Datenschutzaufsicht</a
+          >.
+        </p>
+      </section>
+
+      <section>
+        <h2>4. Server-Logs (Caddy-Reverse-Proxy)</h2>
+        <p>
+          Bei jedem Zugriff auf <code>auffi.app</code> erfasst der
+          Reverse-Proxy automatisch technische Daten in
+          Server-Log-Dateien:
+        </p>
+        <ul>
+          <li>Browsertyp und -version</li>
+          <li>Betriebssystem</li>
+          <li>Referrer-URL</li>
+          <li>Hostname / IP-Adresse (gekürzt auf die ersten zwei Oktette, z.&nbsp;B. <code>84.xxx</code>)</li>
+          <li>Uhrzeit der Serveranfrage</li>
+        </ul>
+        <p>
+          Eine Zusammenführung dieser Daten mit anderen Datenquellen findet
+          nicht statt. Die Erfassung erfolgt auf Grundlage von Art. 6 Abs. 1
+          lit. f DSGVO (berechtigtes Interesse am sicheren Betrieb).
+          <strong>Aufbewahrung: 14 Tage</strong>, danach automatische
+          Rotation.
+        </p>
+      </section>
+
+      <section>
+        <h2>5. Verbindungs-Vermittlung (WebRTC-Signaling)</h2>
+        <p>
+          Beim Start einer Sharing-Session wird ein 9-stelliger Code
+          generiert. Dieser dient ausschließlich als
+          Kurzzeit-Schlüssel, um die zwei Browser miteinander zu
+          verbinden:
+        </p>
+        <ul>
+          <li>
+            <strong>Code-Lebensdauer:</strong> 10 Minuten, danach
+            serverseitig verworfen. Nach 5 Falscheingaben wird der Code
+            sofort gesperrt.
+          </li>
+          <li>
+            <strong>Vermittlung:</strong> Server tauscht SDP- und
+            ICE-Daten zwischen den Browsern aus. Diese enthalten
+            technische Verbindungs-Metadaten (lokale Netzwerk-Hinweise),
+            keine Inhaltsdaten.
+          </li>
+          <li>
+            <strong>Pixel und Eingaben:</strong> fließen niemals über den
+            Auffi-Server. WebRTC verbindet die Browser direkt; nur wenn
+            beide hinter strikten NATs sitzen, läuft der verschlüsselte
+            Stream durch unseren TURN-Relay (coturn) — auch dort nur
+            transportiert, nicht entschlüsselt.
+          </li>
+          <li>
+            <strong>IP-Pseudonymisierung:</strong> Im Bestätigungsdialog
+            beim Sharer wird nur das gekürzte IP-Prefix
+            (<code>84.xxx</code>) angezeigt, nie die volle Adresse.
+          </li>
+        </ul>
+        <p>
+          Verarbeitungsgrundlage: Art. 6 Abs. 1 lit. b DSGVO
+          (Vertragserfüllung — du forderst aktiv eine Verbindung an).
+        </p>
+      </section>
+
+      <section>
+        <h2>6. Optionales Konto (Unattended Access)</h2>
+        <p>
+          Wer das Dashboard unter <code>auffi.app/dashboard/</code> nutzt,
+          legt ein Konto an. Dabei werden gespeichert:
+        </p>
+        <ul>
+          <li>E-Mail-Adresse</li>
+          <li>
+            Passwort als argon2id-Hash (m = 64 MiB, t = 3, p = 1) —
+            niemals im Klartext
+          </li>
+          <li>Konto-Erstellungs-Zeitstempel</li>
+          <li>Letzter Login-Zeitstempel</li>
+          <li>
+            Geräte-Pairing-Daten: Geräte-ID, Alias, SHA-256-Hash des
+            Geräte-Tokens, Auto-Accept-Flag
+          </li>
+          <li>
+            Verbindungs-Log pro Gerät (Zeitpunkt, IP-Prefix, ob P2P oder
+            TURN, übertragene Bytes)
+          </li>
+          <li>
+            Feedback, das du über den Feedback-Button schickst (Kategorie,
+            Rating, Text, anonymisiertes UA-Hint wie „Chrome/Linux")
+          </li>
+        </ul>
+        <p>
+          Verarbeitungsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Sessions
+          werden über einen HttpOnly-, Secure-, SameSite=Strict-Cookie
+          (<code>__Host-auffi_session</code>) verwaltet — kein
+          Drittanbieter-Tracking. Die DB speichert nur den
+          SHA-256-Hash des Session-Tokens, nie das Klartext-Cookie.
+        </p>
+        <h3>Retention (automatische Löschfristen)</h3>
+        <ul>
+          <li>Session-Cookies: 30 Tage ab letzter Nutzung.</li>
+          <li>
+            E-Mail-Verifikations- und Passwort-Reset-Tokens: bis Verbrauch
+            oder 24 h.
+          </li>
+          <li>Verbindungs-Logs: 30 Tage.</li>
+          <li>
+            Feedback: bearbeitet → 1 Jahr, unbearbeitet → 2 Jahre, danach
+            automatisches Hard-Delete.
+          </li>
+          <li>
+            Audit-Log (admin-side): 1 Jahr.
+          </li>
+          <li>
+            Soft-gelöschte Konten: 30 Tage Karenz, danach Hard-Delete mit
+            FK-Cascade (alle Geräte, Sessions, Logs gehen mit).
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>7. E-Mail-Versand (SMTP)</h2>
+        <p>
+          Für Verify-Mails, Passwort-Resets und E-Mail-Änderungs-Bestätigungen
+          versendet Auffi Transaktions-Mails über <code>mail.mr-development.de</code>
+          (eigener Mailserver in Deutschland, kein Dritt-Provider wie Sendgrid
+          o.&nbsp;ä.). Marketing-Mails versenden wir nicht.
+        </p>
+        <p>
+          Verarbeitungsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Die
+          Empfänger-Adresse wird nach Versand nicht zusätzlich
+          gespeichert; die zugehörige Konto-Spalte ist die einzige
+          Persistenz.
+        </p>
+      </section>
+
+      <section>
+        <h2>8. Cookies</h2>
+        <p>
+          Auffi setzt genau einen technisch notwendigen Cookie:
+        </p>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Zweck</th><th>Lebensdauer</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>__Host-auffi_session</code></td>
+              <td>Login-Sitzung für das Dashboard</td>
+              <td>30 Tage</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Der Cookie ist <code>HttpOnly</code> (kein JavaScript-Zugriff),
+          <code>Secure</code> (nur über HTTPS) und
+          <code>SameSite=Strict</code> (kein Cross-Site-Versand). Das
+          <code>__Host-</code>-Prefix wird vom Browser erzwungen — der
+          Cookie kann nicht von Subdomains überschrieben werden.
+        </p>
+        <p>
+          Da dieser Cookie ausschließlich der vom Nutzer angeforderten
+          Dienstleistung (Login) dient, ist er nach
+          § 25 Abs. 2 Nr. 2 TTDSG einwilligungsfrei.
+        </p>
+      </section>
+
+      <section>
+        <h2>9. Keine Analyse-Tools, keine Tracker</h2>
+        <p>
+          Auf <code>auffi.app</code> läuft kein Google Analytics, kein
+          Matomo, kein Facebook Pixel, keine externen Fonts (keine Google
+          Fonts), keine externen Scripts. Die Content Security Policy
+          erlaubt ausschließlich Ressourcen vom eigenen Origin.
+        </p>
+      </section>
+
+      <section>
+        <h2>10. Eingebundene Dritt-Dienste</h2>
+        <ul>
+          <li>
+            <strong>GitHub</strong> — Links auf das Code-Repository
+            (<code>github.com/phash/auffi</code>). Klick öffnet GitHub in
+            neuem Tab; GitHubs Datenschutzerklärung gilt dort.
+          </li>
+          <li>
+            <strong>Buy me a coffee</strong> — optionaler Spenden-Link im
+            Topbar. Klick öffnet <code>buymeacoffee.com</code> in neuem
+            Tab; deren Datenschutzerklärung gilt dort.
+          </li>
+        </ul>
+        <p>
+          Keine dieser externen Seiten wird automatisch geladen — du
+          klickst aktiv darauf, und erst dann verlässt du
+          <code>auffi.app</code>.
+        </p>
+      </section>
+
+      <section>
+        <h2>11. Datensicherheit</h2>
+        <p>
+          Diese Website nutzt TLS (HTTPS) für die gesamte Übertragung
+          inkl. WebSocket-Signaling. Das Zertifikat wird von Let&apos;s
+          Encrypt automatisch erneuert. Server-Hosting: IONOS VPS in
+          Frankfurt am Main. WebRTC-Streams sind zusätzlich
+          DTLS-SRTP-verschlüsselt.
+        </p>
+      </section>
+
+      <section>
+        <h2>12. Open-Source-Quellcode</h2>
+        <p>
+          Auffi ist 100&nbsp;% Open Source unter der AGPL-3.0. Du kannst
+          jederzeit überprüfen, welche Daten wirklich verarbeitet werden:
+          <a href="https://github.com/phash/auffi" rel="noopener noreferrer" target="_blank"
+            >github.com/phash/auffi</a
+          >. Der vollständige Sicherheits-Audit liegt unter
+          <a
+            href="https://github.com/phash/auffi/blob/main/docs/security-review-2026-05.md"
+            rel="noopener noreferrer"
+            target="_blank"
+            >docs/security-review-2026-05.md</a
+          >.
+        </p>
+      </section>
+
+      <section>
+        <h2>13. Änderungen dieser Erklärung</h2>
+        <p>
+          Bei Änderungen am Funktionsumfang oder den Verarbeitungs-Wegen
+          aktualisieren wir diese Datenschutzerklärung. Die jeweils
+          aktuelle Version ist auf <code>auffi.app/datenschutz/</code>
+          abrufbar.
+        </p>
+        <p>Stand: Mai 2026.</p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        <a href="/impressum/">Impressum</a> ·
+        <a href="/datenschutz/">Datenschutz</a> ·
+        <a href="https://github.com/phash/auffi" rel="noopener noreferrer">GitHub</a> ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE">AGPL-3.0</a>
+      </p>
+    </footer>
+  </body>
+</html>

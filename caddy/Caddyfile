@@ -19,7 +19,7 @@ auffi.app {
         # viewer/index.html (SoftwareApplication + FAQPage). If the
         # JSON-LD content changes, recompute via:
         #   python3 -c "import re,hashlib,base64; html=open('viewer/index.html').read(); [print('sha256-'+base64.b64encode(hashlib.sha256(m.encode()).digest()).decode()) for m in re.findall(r'<script type=\"application/ld\\+json\">(.*?)</script>', html, re.DOTALL)]"
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-2ErilsGCfezC/3HSXBQsD+5EPccqA4X3LiibejMEmSc=' 'sha256-7LkF+yOi6wEh30IB+TdZFpsMjMKySMmxQvP1dy/jFB0='; style-src 'self'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-3C9WFAe/1UG5JwbMxHDh2PTEAcfSHuYsU3ilMgBTApA=' 'sha256-2IlGw8TNEKy88whBnapq1n8sowJ24nlPQYYnhI0kYs8='; style-src 'self'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
     }
 
     # Bot prevention: known scraper UAs get 403.

@@ -1,0 +1,10 @@
+# Auffi — Security-Disclosure-Hinweis (RFC 9116)
+# Sicherheitslücken bitte zuerst privat melden, NICHT als
+# öffentliches GitHub-Issue.
+
+Contact: mailto:phash@phash.de
+Contact: https://github.com/phash/auffi/security/advisories/new
+Expires: 2027-05-14T00:00:00.000Z
+Preferred-Languages: de, en
+Canonical: https://auffi.app/.well-known/security.txt
+Policy: https://github.com/phash/auffi/blob/main/SECURITY.md

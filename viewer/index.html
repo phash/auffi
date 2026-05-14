@@ -19,26 +19,72 @@
     <meta property="og:description" content="Spontane Bildschirmhilfe in drei Klicks. WebRTC P2P-verschlüsselt, ohne Konto, Server in Deutschland." />
     <meta property="og:url" content="https://auffi.app/" />
     <meta property="og:locale" content="de_DE" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Auffi — Bildschirm-Sharing, Open Source" />
     <meta name="twitter:description" content="Spontane Bildschirmhilfe in drei Klicks. P2P, verschlüsselt, ohne Konto." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
 
-    <!-- JSON-LD: SoftwareApplication -->
+    <!-- Theme color (Mobile-URL-Bar Tinting) + Favicons -->
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="128x128" href="/favicon-128x128.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- JSON-LD: SoftwareApplication + Organization (mit postalAddress
+         für Geo-SEO; Google's SERPs nutzen den Address-Block, um
+         Auffi in DACH-Lokal-Suchen sichtbar zu machen). -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Auffi",
-        "applicationCategory": "BusinessApplication",
-        "operatingSystem": "Linux, Windows, macOS",
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
-        "description": "Open-Source-Bildschirm-Sharing mit aktiver Bestätigung, DSGVO-konform und Ende-zu-Ende DTLS-SRTP-verschlüsselt.",
-        "url": "https://auffi.app/",
-        "inLanguage": "de-DE",
-        "author": { "@type": "Person", "name": "Phash", "url": "https://phash.de" },
-        "publisher": { "@type": "Organization", "name": "Phash", "url": "https://phash.de" }
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://auffi.app/#software",
+            "name": "Auffi",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Linux, Windows, macOS",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+            "description": "Open-Source-Bildschirm-Sharing mit aktiver Bestätigung, DSGVO-konform und Ende-zu-Ende DTLS-SRTP-verschlüsselt.",
+            "url": "https://auffi.app/",
+            "inLanguage": "de-DE",
+            "softwareVersion": "0.4.0",
+            "license": "https://github.com/phash/auffi/blob/main/LICENSE",
+            "author": { "@id": "https://auffi.app/#author" },
+            "publisher": { "@id": "https://auffi.app/#org" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://auffi.app/#org",
+            "name": "Phash · Manuel Rödig",
+            "url": "https://phash.de",
+            "email": "phash@phash.de",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "Tannenweg 6",
+              "postalCode": "85405",
+              "addressLocality": "Nandlstadt",
+              "addressRegion": "Bayern",
+              "addressCountry": "DE"
+            },
+            "areaServed": ["DE", "AT", "CH"],
+            "founder": { "@id": "https://auffi.app/#author" }
+          },
+          {
+            "@type": "Person",
+            "@id": "https://auffi.app/#author",
+            "name": "Manuel Rödig",
+            "url": "https://phash.de",
+            "email": "phash@phash.de"
+          }
+        ]
       }
     </script>
 
@@ -77,7 +123,7 @@
             "name": "Kann ich Auffi selbst hosten?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Ja. Der Code ist MIT-lizenziert auf GitHub. Backend, Viewer und Sharer laufen in Docker Compose; die Anleitung steht in ops/README.md."
+              "text": "Ja. Der Code ist AGPL-3.0-lizenziert auf GitHub. Backend, Viewer und Sharer laufen in Docker Compose; die Anleitung steht in ops/README.md."
             }
           }
         ]
@@ -484,6 +530,13 @@
         <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
         — Interesse an einer eigen gehosteten Version?
         <a href="https://phash.de/screenie/" target="_blank" rel="noopener noreferrer">Infos hier</a>.
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
       </span>
     </footer>
 

@@ -1,0 +1,16 @@
+{
+  "name": "Auffi — Bildschirm-Sharing",
+  "short_name": "Auffi",
+  "description": "Sicheres Open-Source-Bildschirm-Sharing mit Fernsteuerung. DSGVO-konform, WebRTC P2P, ohne Konto.",
+  "lang": "de-DE",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#1f6feb",
+  "background_color": "#0d1117",
+  "icons": [
+    { "src": "/favicon-32x32.png",   "sizes": "32x32",   "type": "image/png" },
+    { "src": "/favicon-128x128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "/apple-touch-icon.png", "sizes": "256x256", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
