@@ -434,6 +434,60 @@ describe("/signal unattended connect flow (gh #17)", () => {
     sharer.close();
   });
 
+  // TC C-1 (review 2026-05-13): the unattended viewer-close path
+  // finalises the open connection_log row. The ad-hoc equivalent has
+  // tests in connection-log.test.ts; the unattended branch lives in
+  // a different `peer.on("close")` block (signaling.ts:588) and
+  // previously had no integration coverage.
+  it("viewer closing mid-session finalises connection_log with bytes_relayed=0 (TC C-1)", async () => {
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message"); // needs-password
+
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    await once(sharer, "message"); // pw-check
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    await once(viewer, "message"); // peer-confirmed
+    await once(sharer, "message"); // peer-joined
+
+    // Sharer reports ICE finished → server inserts connection_log row.
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
+    // No reply expected — give the server a tick to commit.
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Confirm the row exists and is open (ended_at null).
+    const before = db
+      .prepare(
+        "SELECT id, ended_at, bytes_relayed FROM connection_log WHERE device_id = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get(deviceId) as { id: number; ended_at: number | null; bytes_relayed: number };
+    expect(before).toBeTruthy();
+    expect(before.ended_at).toBeNull();
+
+    // Viewer drops without sending connection-ended.
+    viewer.close();
+    await new Promise<void>((r) => {
+      if (viewer.readyState === viewer.CLOSED) r();
+      else viewer.once("close", () => r());
+    });
+    // Server's close handler runs on the next tick.
+    await new Promise((r) => setTimeout(r, 30));
+
+    const after = db
+      .prepare(
+        "SELECT ended_at, bytes_relayed FROM connection_log WHERE id = ?",
+      )
+      .get(before.id) as { ended_at: number | null; bytes_relayed: number };
+    expect(after.ended_at).not.toBeNull();
+    expect(after.bytes_relayed).toBe(0);
+
+    sharer.close();
+    // Clean up so subsequent tests don't see this row.
+    db.prepare("DELETE FROM connection_log WHERE id = ?").run(before.id);
+  });
+
   it("ad-hoc flow still works: viewer joins an unknown code → invalid-code (regression)", async () => {
     const viewer = openViewer();
     await new Promise<void>((r) => viewer.once("open", () => r()));
