@@ -444,3 +444,104 @@ describe("/signal unattended connect flow (gh #17)", () => {
     viewer.close();
   });
 });
+
+// ── TC C-5 (review 2026-05-13): DELETE /api/devices/:id while a
+// sharer is WSS-connected force-closes the connection with 4401.
+//
+// The unit tests in unattended.test.ts pin the in-memory registry's
+// evict() in isolation; this exercises the full chain:
+//   sharer authenticates → registry.register(id) →
+//   owner calls DELETE → handler runs registry.evict(id) →
+//   sharer's ws receives close 4401.
+// Without this, a refactor that forgets to plumb the registry into
+// devices/handlers.ts would silently leave the connection alive for
+// the 30 s heartbeat-timeout window.
+
+describe("device DELETE force-closes a live unattended WSS (TC C-5)", () => {
+  let app: FastifyInstance;
+  let url: string;
+  let db: Db;
+  let cookie: string;
+
+  beforeAll(async () => {
+    db = openDb(":memory:");
+    applyMigrations(db, defaultMigrationsDir());
+
+    process.env.REGISTER_RATE_LIMIT_MAX = "1000";
+    process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
+    app = await createServer({ port: 0, host: "127.0.0.1", db });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const addr = app.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    url = `ws://127.0.0.1:${addr.port}/signal`;
+
+    // Mint an account + verified email so /api/auth/login issues a
+    // session cookie.
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "owner-tcc5@example.com", password: "owner-account-pw" },
+    });
+    db.prepare(
+      "UPDATE accounts SET email_verified_at = ? WHERE email = 'owner-tcc5@example.com'",
+    ).run(Date.now());
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "owner-tcc5@example.com", password: "owner-account-pw" },
+    });
+    const sc = login.headers["set-cookie"] as string | string[] | undefined;
+    cookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^__Host-auffi_session=([^;]+)/)![1];
+  });
+
+  afterAll(async () => {
+    await app.close();
+    db.close();
+  });
+
+  it("DELETE on the owner's path closes the sharer's WSS with code 4401", async () => {
+    // Pair + redeem to get a real (device_id, token) pair.
+    const pair = await app.inject({
+      method: "POST",
+      url: "/api/devices/pairing-code",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+    });
+    const { code } = pair.json();
+    const redeem = await app.inject({
+      method: "POST",
+      url: "/api/devices/redeem",
+      payload: { code, alias: "TC-C-5-device" },
+    });
+    const { deviceId, token } = redeem.json();
+
+    // Open the WSS as the freshly-paired sharer.
+    const ws = new WebSocket(url, {
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${token}`,
+        "x-auffi-device-id": deviceId,
+      },
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.once("message", () => resolve()); // unattended-hello → registered
+      ws.once("error", reject);
+    });
+
+    const closePromise = new Promise<{ code: number; reason: string }>((resolve) => {
+      ws.once("close", (code, reasonBuf) => {
+        resolve({ code, reason: reasonBuf.toString() });
+      });
+    });
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+    });
+    expect(del.statusCode).toBe(204);
+
+    const closed = await closePromise;
+    expect(closed.code).toBe(4401);
+    expect(closed.reason).toMatch(/revoked/i);
+  });
+});
