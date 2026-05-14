@@ -434,6 +434,45 @@ describe("/signal unattended connect flow (gh #17)", () => {
     sharer.close();
   });
 
+  // TC C-2 (review 2026-05-13): a sharer that lands its pw-check-
+  // result AFTER the viewer dropped must NOT receive a backend
+  // error frame. The heartbeat treats `error` / `backend-error`
+  // as a fatal disconnect and would force the sharer to reconnect
+  // — collateral damage from a perfectly benign viewer give-up.
+  it("late pw-check-result after viewer drop is silently ignored (TC C-2)", async () => {
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message"); // needs-password
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    await once(sharer, "message"); // pw-check
+
+    // Viewer gives up before the sharer responds.
+    viewer.close();
+    await new Promise<void>((r) => {
+      if (viewer.readyState === viewer.CLOSED) r();
+      else viewer.once("close", () => r());
+    });
+
+    // Collect anything the sharer might receive after the result.
+    const stray: unknown[] = [];
+    const onMessage = (data: Buffer): void => {
+      stray.push(JSON.parse(data.toString()));
+    };
+    sharer.on("message", onMessage);
+
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    // Give the server a generous tick to send (or not send) a reply.
+    await new Promise((r) => setTimeout(r, 80));
+
+    sharer.off("message", onMessage);
+    expect(stray).toEqual([]);
+    // And the sharer's WSS is still open.
+    expect(sharer.readyState).toBe(sharer.OPEN);
+    sharer.close();
+  });
+
   // TC C-1 (review 2026-05-13): the unattended viewer-close path
   // finalises the open connection_log row. The ad-hoc equivalent has
   // tests in connection-log.test.ts; the unattended branch lives in

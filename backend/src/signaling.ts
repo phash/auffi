@@ -236,11 +236,16 @@ export function registerSignaling(
         if (msg.type === "pw-check-result") {
           const sess = sessions.findBySharer(peer);
           if (!sess || sess.state !== "pw-in-flight") {
-            send(peer, {
-              type: "error",
-              code: "bad-message",
-              message: "no pw-check in flight",
-            });
+            // TC C-2 (review 2026-05-13): a sharer that took a long
+            // manual-confirm window can land its result AFTER the
+            // viewer gave up and dropped the WSS (the session is
+            // removed in `peer.on("close")` for the viewer). Don't
+            // surface that as a backend-error frame — the sharer's
+            // heartbeat treats `error`/`backend-error` as a fatal
+            // disconnect and would reconnect, killing every other
+            // queued viewer attempt in the process. Silent drop is
+            // the documented intent (signaling.ts close-handler
+            // comment).
             return;
           }
           if (msg.result === "ok") {
