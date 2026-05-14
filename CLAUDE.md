@@ -47,6 +47,8 @@ cd viewer && npm run test:e2e      # Playwright
 # Sharer (Tauri desktop app)
 cd sharer && npm run tauri:dev     # native window + DevTools
 cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
+cd sharer/src-tauri && cargo test --lib                          # 178 Rust unit tests — note nested dir
+cd sharer/src-tauri && cargo clippy --lib --tests -- -D warnings
 
 # Dashboard (unattended-access SPA — only needed if you're working on the account/device flow)
 cd dashboard && npm run dev        # vite on :5174
@@ -159,7 +161,7 @@ Five load-bearing facts that took the 2026-05-13 deep review (and the M-1/M-2/TC
 - Each component that runs on a server has its own `Dockerfile` (multi-stage build).
 - Root `docker-compose.yml` for local dev (backend + dependencies).
 - Root `docker-compose.prod.yml` for production (backend + coturn + reverse proxy + Let's Encrypt + optional DB).
-- Use **pinned image tags** (`node:20.18-alpine`, never `latest`).
+- Use **pinned image tags** (e.g. `node:22.22.2-alpine3.23` in `backend/Dockerfile`), never `latest`.
 - Health checks defined for every long-running service.
 - No secrets in `Dockerfile` or images. Configuration via env vars from `.env` (gitignored).
 
@@ -176,7 +178,7 @@ TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy c
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc.
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-14: backend 298, sharer-lib 178, viewer 146, dashboard 85. Drops are regressions.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `eslint`, `cargo clippy -- -D warnings`.
 4. Type check passes: `tsc --noEmit`, `cargo check`.
