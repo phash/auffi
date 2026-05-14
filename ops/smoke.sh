@@ -92,6 +92,11 @@ cleanup() {
     rm -f "${STUB_ENV}"
     echo ".env.prod stub removed."
   fi
+  # Remove the local dashboard-dist staging dir (only meaningful between
+  # smoke runs; the real deploy lives on the prod host).
+  if [[ -d "${REPO_ROOT}/dashboard-dist" ]]; then
+    rm -rf "${REPO_ROOT}/dashboard-dist"
+  fi
 }
 trap cleanup EXIT
 
@@ -107,7 +112,7 @@ export CADDY_HTTP_PORT=8080
 export CADDY_HTTPS_PORT=8443
 echo "Smoke ports: HTTP=${CADDY_HTTP_PORT}, HTTPS=${CADDY_HTTPS_PORT}, backend-direct=8081"
 
-# ---------- 1. Build viewer ----------
+# ---------- 1. Build viewer + dashboard ----------
 if [[ "${NO_BUILD}" == "false" ]]; then
   section "Build viewer"
   echo "Running: npm ci && npm run build (viewer)"
@@ -117,10 +122,29 @@ if [[ "${NO_BUILD}" == "false" ]]; then
     npm run build --silent
   )
   echo "Viewer built → viewer/dist/"
+
+  section "Build dashboard"
+  echo "Running: npm ci && npm run build (dashboard)"
+  (
+    cd "${REPO_ROOT}/dashboard"
+    npm ci --silent
+    npm run build --silent
+  )
+  echo "Dashboard built → dashboard/dist/"
+
+  # docker-compose.prod.yml bind-mounts ./dashboard-dist into the
+  # auffi-dashboard nginx sidecar. Mirror dashboard/dist there.
+  rm -rf "${REPO_ROOT}/dashboard-dist"
+  cp -r "${REPO_ROOT}/dashboard/dist" "${REPO_ROOT}/dashboard-dist"
+  echo "Synced dashboard-dist/ ← dashboard/dist/"
 fi
 
 if [[ ! -f "${REPO_ROOT}/viewer/dist/index.html" ]]; then
   echo -e "${RED}ERROR${NC}: viewer/dist/index.html not found. Run without --no-build or build manually."
+  exit 1
+fi
+if [[ ! -f "${REPO_ROOT}/dashboard-dist/index.html" ]]; then
+  echo -e "${RED}ERROR${NC}: dashboard-dist/index.html not found. Run without --no-build or build manually."
   exit 1
 fi
 

@@ -101,6 +101,17 @@ maybe_run "viewer npm run build" \
   bash -c "cd '${REPO_ROOT}/viewer' && npm run build"
 
 # ---------------------------------------------------------------------------
+# Step 3b: Build dashboard (gh #38 — unattended-access SPA)
+# ---------------------------------------------------------------------------
+log_step "Build dashboard (npm ci && npm run build)"
+
+maybe_run "dashboard npm ci" \
+  bash -c "cd '${REPO_ROOT}/dashboard' && npm ci"
+
+maybe_run "dashboard npm run build" \
+  bash -c "cd '${REPO_ROOT}/dashboard' && npm run build"
+
+# ---------------------------------------------------------------------------
 # Step 4: Ensure remote deploy path exists
 # ---------------------------------------------------------------------------
 log_step "Ensure remote deploy path: ${DEPLOY_PATH}"
@@ -188,6 +199,15 @@ maybe_run "rsync viewer/dist → viewer-dist/" \
     "${DEPLOY_PATH}/viewer-dist/" \
     --delete \
     --exclude=/download/
+
+# gh #38: the dashboard service in docker-compose.prod.yml bind-mounts
+# ./dashboard-dist into the auffi-dashboard nginx sidecar. Ship the
+# built SPA there.
+maybe_run "rsync dashboard/dist → dashboard-dist/" \
+  rsync_to \
+    "${REPO_ROOT}/dashboard/dist/" \
+    "${DEPLOY_PATH}/dashboard-dist/" \
+    --delete
 
 # ---------------------------------------------------------------------------
 # Step 7: Populate the viewer-static Docker volume from the synced dist

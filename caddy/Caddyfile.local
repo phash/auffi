@@ -19,6 +19,24 @@ localhost {
         reverse_proxy backend:8080
     }
 
+    # gh #38 — REST API for the dashboard. Same backend container as
+    # /signal; handle (not handle_path) preserves the /api prefix so
+    # Fastify's /api/auth /api/devices /api/me /api/admin routes match.
+    handle /api/* {
+        reverse_proxy backend:8080
+    }
+
+    # gh #38 — dashboard SPA. Bundle is built with base="/dashboard/"
+    # so internal asset references point at /dashboard/assets/...
+    # The dashboard nginx sidecar serves the static dist; Caddy
+    # strips /dashboard/ before proxying so nginx sees /assets/...
+    handle_path /dashboard/* {
+        reverse_proxy dashboard:80
+    }
+    handle /dashboard {
+        redir /dashboard/ permanent
+    }
+
     # Health + readiness probes
     handle /healthz {
         reverse_proxy backend:8080
