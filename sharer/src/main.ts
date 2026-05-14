@@ -65,6 +65,7 @@ const stopStreamingBtn = document.getElementById("stop-streaming-btn")! as HTMLB
 const sendFileBtn = document.getElementById("send-file-btn")! as HTMLButtonElement;
 const reconnectBtnWrap = document.getElementById("reconnect-btn-wrap")!;
 const reconnectBtn = document.getElementById("reconnect-btn")! as HTMLButtonElement;
+const howtoCardEl = document.getElementById("howto-card")!;
 const connTypeInfoEl = document.getElementById("connection-type-info")!;
 const fileOfferDialog = document.getElementById("file-offer-dialog")!;
 const fileOfferText = document.getElementById("file-offer-text")!;
@@ -288,10 +289,13 @@ function hideReconnect(): void {
 
 function showStreamingActions(): void {
   streamingActionsEl.classList.add("visible");
+  // The 3-step "So geht's" recap is noise once a session is live.
+  howtoCardEl.classList.add("hidden");
 }
 
 function hideStreamingActions(): void {
   streamingActionsEl.classList.remove("visible");
+  howtoCardEl.classList.remove("hidden");
   // Clear buffered SDP/ICE — the next session starts fresh
   streamingReady = false;
   pendingOffer = null;
