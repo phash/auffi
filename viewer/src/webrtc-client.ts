@@ -136,6 +136,34 @@ export class ViewerPeer {
     return this.dataHub;
   }
 
+  /**
+   * Total bytes received on the inbound media transport since the
+   * peer-connection opened. Used by the compact status bar (gh #40)
+   * to show live throughput without surfacing the full RTCStatsReport
+   * surface. Returns 0 if the peer is closed or stats unavailable.
+   */
+  async getInboundBytes(): Promise<number> {
+    if (!this.pc) return 0;
+    const report = await this.pc.getStats();
+    let total = 0;
+    report.forEach((stat) => {
+      // Both `inbound-rtp` (video) and `transport` carry bytesReceived
+      // on most browsers. Prefer transport (covers SCTP / DataChannel
+      // bytes too — file transfers should count). Fall back to
+      // inbound-rtp if transport's counter is unavailable.
+      if (stat.type === "transport" && typeof stat.bytesReceived === "number") {
+        total += stat.bytesReceived;
+      }
+    });
+    if (total > 0) return total;
+    report.forEach((stat) => {
+      if (stat.type === "inbound-rtp" && typeof stat.bytesReceived === "number") {
+        total += stat.bytesReceived;
+      }
+    });
+    return total;
+  }
+
   close(): void {
     this.dataHub?.close();
     this.dataHub = null;

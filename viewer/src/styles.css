@@ -237,7 +237,8 @@
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
-        transition: max-width 250ms ease;
+        transition: max-width 250ms ease, padding 200ms ease, gap 200ms ease;
+        position: relative;
       }
 
       /* When a stream is active, expand the card to make the remote
@@ -249,6 +250,78 @@
       #app.streaming .video-wrapper {
         aspect-ratio: 16 / 9;
         width: 100%;
+      }
+
+      /* ── gh #40 Collapse-Toggle + Compact-Status ────────────────────
+         Toggle button: oben rechts im Card, nur während des Streams
+         sichtbar. Klick toggelt #app.compact, das die Brand/Instr/
+         Input/Account-CTA-Sektionen einklappt und nur eine schmale
+         Status-Zeile sichtbar lässt.
+      */
+      .card-toggle {
+        position: absolute;
+        top: 0.625rem;
+        right: 0.625rem;
+        width: 1.875rem;
+        height: 1.875rem;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        background: var(--bg);
+        color: var(--text-secondary, #aaa);
+        cursor: pointer;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        transition: transform 200ms ease, color 150ms ease, border-color 150ms ease;
+        z-index: 2;
+      }
+      #app.streaming .card-toggle { display: inline-flex; }
+      .card-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
+      .card-toggle:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      /* Toggle-Glyph dreht sich um 180° im eingeklappten Zustand —
+         visuelles Signal "klicke mich um wieder auszuklappen". */
+      #app.compact .card-toggle { transform: rotate(180deg); }
+
+      /* Compact-Status-Line: default unsichtbar, im compact-Modus
+         sichtbar als einzelne Zeile. */
+      .compact-status-line {
+        display: none;
+        font-size: 0.875rem;
+        color: var(--text-secondary, #aaa);
+        align-items: center;
+        gap: 0.5rem;
+        padding-right: 2.25rem; /* nicht unter den Toggle laufen */
+      }
+      #app.compact .compact-status-line { display: inline-flex; }
+      .compact-status-line .compact-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #2ea043; /* green = stream läuft */
+        flex-shrink: 0;
+      }
+      .compact-status-line .compact-sep { opacity: 0.5; }
+      #compact-duration,
+      #compact-bytes { font-variant-numeric: tabular-nums; }
+
+      /* Im compact-Modus alle übrigen Card-Kinder bis auf Toggle +
+         Status-Line + Video-Wrapper einklappen. */
+      #app.compact {
+        padding: 0.625rem 1rem;
+        gap: 0.75rem;
+      }
+      #app.compact > .brand,
+      #app.compact > .instruction,
+      #app.compact > .input-group,
+      #app.compact > #status,
+      #app.compact > .reconnect-wrap,
+      #app.compact > #account-cta,
+      #app.compact > #session-summary {
+        display: none !important;
       }
 
       .brand {

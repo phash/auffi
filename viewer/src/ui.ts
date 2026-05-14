@@ -8,6 +8,12 @@ import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
 import { DEFAULT_ZOOM, ZOOM_STEPS, formatZoom, nextZoomLevel } from "./zoom.js";
 import { createIceStateHandler } from "./ice-state-handler.js";
+import { CompactBarController } from "./compact-bar.js";
+
+// gh #40: lazy singleton — initialized in setupUi() once the DOM is
+// ready. Module-level so setVideoStream() (also module-level) can
+// reach it without the closure dance.
+let compactBar: CompactBarController | null = null;
 import {
   SessionTracker,
   formatConnectionType,
@@ -111,6 +117,9 @@ function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): 
     // landing-sections (news + trust) can be hidden via CSS while
     // the video is in the foreground.
     document.body.classList.add("streaming");
+    // gh #40: Compact-Bar starten (Duration-Timer + Bytes-Poll).
+    compactBar?.start();
+    compactBar?.setStatus("Verbindung wird hergestellt …");
     // Prevent any user-initiated PiP from auto-detaching the video.
     if ("disablePictureInPicture" in video) {
       (video as HTMLVideoElement & { disablePictureInPicture: boolean }).disablePictureInPicture = true;
@@ -122,6 +131,7 @@ function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): 
       // Until then the page reads "Verbunden — empfange Stream…" in info
       // (blue) so the spinner overlay and status colour agree.
       setStatus("Stream läuft.", "ok");
+      compactBar?.setStatus("Stream läuft.");
       onFirstFrame?.();
     };
 
@@ -146,6 +156,7 @@ function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): 
     instruction.classList.remove("hidden");
     app.classList.remove("streaming");
     document.body.classList.remove("streaming");
+    compactBar?.stop();
   }
 }
 
@@ -278,6 +289,17 @@ export function bindUI(backendWsUrl: string): void {
 
   let signaling: SignalingClient | null = null;
   let peer: ViewerPeer | null = null;
+  // gh #40: Initialize the module-level compact-bar singleton with a
+  // closure that reads the current `peer`. The Controller doesn't
+  // know about WebRTC — it just polls getBytes() once per second.
+  compactBar = new CompactBarController({
+    app: document.getElementById("app")!,
+    toggle: document.getElementById("card-toggle") as HTMLButtonElement,
+    durationEl: document.getElementById("compact-duration")!,
+    bytesEl: document.getElementById("compact-bytes")!,
+    statusTextEl: document.getElementById("compact-status-text")!,
+    getBytes: async () => (peer ? await peer.getInboundBytes() : 0),
+  });
   let capture: InputCapture | null = null;
   let fileManager: FileTransferManager | null = null;
   let freeTierTimer: FreeTierTimer | null = null;
