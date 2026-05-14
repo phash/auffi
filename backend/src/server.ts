@@ -39,6 +39,16 @@ export type ServerConfig = {
    * handle here.
    */
   db?: Db;
+  /**
+   * Whether to schedule the periodic retention purge. Defaults to
+   * `true` when the server owns the DB (production path) and
+   * `false` when an injected handle is passed (tests). Tests that
+   * specifically need the scheduler can set this to `true` even
+   * with an injected handle — and tests that own the DB but don't
+   * want the timer running can pass `false`. CQ M-31: previously
+   * coupled to `ownsDb` with no override.
+   */
+  startPurgeScheduler?: boolean;
 };
 
 function envNumber(key: string, fallback: number): number {
@@ -268,10 +278,11 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // Periodic retention purge (gh #19): every 6h drop expired
   // sessions / pairings / verifications / resets, age-out connection
   // and audit logs, hard-delete soft-deleted accounts past grace.
-  // Only attach when we own the DB — injected test handles often
-  // close before the timer fires and the resulting "DB is closed"
-  // error would noise the test logs.
-  if (ownsDb) {
+  // Default: on for production (owns its own DB), off for tests
+  // (injected handle), with an explicit `startPurgeScheduler` opt
+  // for cases that need the other side (CQ M-31).
+  const shouldPurge = cfg.startPurgeScheduler ?? ownsDb;
+  if (shouldPurge) {
     const stopPurge = startPurgeScheduler(db, {
       log: (report) => {
         // Don't log when nothing happened; once-per-six-hours of
