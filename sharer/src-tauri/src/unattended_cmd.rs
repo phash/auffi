@@ -10,7 +10,9 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -46,12 +48,22 @@ type CmdResult<T> = Result<T, String>;
 pub struct UnattendedState {
     pub commands: Arc<Mutex<Option<HeartbeatCommands>>>,
     pub lockout: Arc<Mutex<LocalLockout>>,
-    /// `Option<oneshot::Sender<bool>>` set when the sharer is showing
-    /// a manual-confirm prompt to the user and waiting for their
-    /// click. The frontend's `unattended_confirm` command fires
-    /// `true` on accept, `false` on decline. None outside of the
-    /// confirm window.
-    pub pending_confirm: Arc<Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
+    /// Per-attempt `oneshot::Sender<bool>` keyed by a monotonically
+    /// increasing `confirm_id`. The forwarder inserts a sender each
+    /// time it raises a manual-confirm prompt; the frontend echoes
+    /// the `confirm_id` back through `unattended_confirm` so the
+    /// click routes to the right awaiter even when overlapping
+    /// pw-check attempts have queued multiple toasts.
+    ///
+    /// Sec M-1 (review 2026-05-13): the prior shape stored a single
+    /// `Option<Sender>`, which meant a second pw-check would
+    /// implicitly cancel the first AND let a stale user click route
+    /// to the new pending sender. Sec M-2 (same review): waiting for
+    /// the click happened inline in `forwarder_loop`, blocking every
+    /// other event (relays, disconnects) for up to 60 s. With this
+    /// map + the per-attempt spawned waiter task, both bugs go away.
+    pub pending_confirms: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<bool>>>>,
+    pub next_confirm_id: Arc<AtomicU64>,
 }
 
 impl Default for UnattendedState {
@@ -59,7 +71,8 @@ impl Default for UnattendedState {
         Self {
             commands: Arc::new(Mutex::new(None)),
             lockout: Arc::new(Mutex::new(LocalLockout::new())),
-            pending_confirm: Arc::new(Mutex::new(None)),
+            pending_confirms: Arc::new(Mutex::new(HashMap::new())),
+            next_confirm_id: Arc::new(AtomicU64::new(1)),
         }
     }
 }
@@ -193,7 +206,7 @@ pub fn unattended_set_mode(app: AppHandle, mode: String) -> CmdResult<()> {
 
 // ── Heartbeat lifecycle ──────────────────────────────────────────────
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Default)]
 struct UnattendedEvent<'a> {
     kind: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -202,6 +215,20 @@ struct UnattendedEvent<'a> {
     viewer_info: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
+    /// Set only on `needs-confirm`. The frontend echoes this back via
+    /// `unattended_confirm` so the user's click routes to the right
+    /// pending waiter (Sec M-1).
+    #[serde(skip_serializing_if = "Option::is_none", rename = "confirmId")]
+    confirm_id: Option<u64>,
+}
+
+impl<'a> UnattendedEvent<'a> {
+    fn kind(kind: &'a str) -> Self {
+        Self {
+            kind,
+            ..Self::default()
+        }
+    }
 }
 
 /// Start the persistent unattended WSS. Requires the device to be
@@ -251,7 +278,8 @@ pub async fn unattended_start(
     // `unattended_start` would error with "bereits aktiv".
     let app_emit = app.clone();
     let lockout = state.lockout.clone();
-    let pending_confirm = state.pending_confirm.clone();
+    let pending_confirms = state.pending_confirms.clone();
+    let next_confirm_id = state.next_confirm_id.clone();
     let cmd_slot = state.commands.clone();
     let outbound_slot = outbound_state.0.clone();
     let cmds_for_loop = commands.clone();
@@ -260,7 +288,8 @@ pub async fn unattended_start(
         events,
         cmds_for_loop,
         lockout,
-        pending_confirm,
+        pending_confirms,
+        next_confirm_id,
         pw_path,
         cmd_slot,
         outbound_slot,
@@ -289,13 +318,17 @@ pub async fn unattended_stop(
 
 /// Reply to a pending manual-confirm prompt (from a pw-check where
 /// `auto_accept=false`). The frontend's confirm-toast button handlers
-/// call this with `true` on accept and `false` on decline.
+/// call this with the `confirm_id` echoed from the `needs-confirm`
+/// event and `accepted: true`/`false`. A click whose `confirm_id` is
+/// not currently pending (e.g. the user re-clicked after the toast
+/// dialog vanished on timeout) is a silent no-op.
 #[tauri::command]
 pub async fn unattended_confirm(
+    #[allow(non_snake_case)] confirmId: u64,
     accepted: bool,
     state: State<'_, UnattendedState>,
 ) -> CmdResult<()> {
-    let sender = state.pending_confirm.lock().await.take();
+    let sender = state.pending_confirms.lock().await.remove(&confirmId);
     if let Some(s) = sender {
         let _ = s.send(accepted);
     }
@@ -341,7 +374,8 @@ async fn forwarder_loop(
     mut events: mpsc::Receiver<HeartbeatEvent>,
     cmds: mpsc::Sender<HeartbeatCommand>,
     lockout: Arc<Mutex<LocalLockout>>,
-    pending_confirm: Arc<Mutex<Option<tokio::sync::oneshot::Sender<bool>>>>,
+    pending_confirms: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<bool>>>>,
+    next_confirm_id: Arc<AtomicU64>,
     pw_path: PathBuf,
     cmd_slot: Arc<Mutex<Option<HeartbeatCommands>>>,
     outbound_slot: Arc<Mutex<Option<OutboundSink>>>,
@@ -364,10 +398,8 @@ async fn forwarder_loop(
                 let _ = app.emit(
                     "unattended-event",
                     UnattendedEvent {
-                        kind: "connected",
                         device_id: Some(device_id),
-                        viewer_info: None,
-                        reason: None,
+                        ..UnattendedEvent::kind("connected")
                     },
                 );
             }
@@ -388,42 +420,53 @@ async fn forwarder_loop(
                             .await;
                     }
                     PwAction::AwaitConfirm => {
-                        // Park a oneshot, emit to frontend, await the
-                        // user's click. Decline on timeout (60 s per
-                        // spec) so the viewer doesn't hang.
+                        // Sec M-1/M-2 (review 2026-05-13): spawn a
+                        // dedicated waiter task so the forwarder
+                        // loop keeps processing events while the
+                        // user is being asked to confirm. Each
+                        // attempt gets its own confirm_id so the
+                        // user's click — which arrives via
+                        // `unattended_confirm(confirm_id, …)` —
+                        // routes to the right oneshot even when
+                        // multiple toasts are queued.
+                        let confirm_id = next_confirm_id.fetch_add(1, Ordering::Relaxed);
                         let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
-                        *pending_confirm.lock().await = Some(tx);
+                        pending_confirms.lock().await.insert(confirm_id, tx);
                         let _ = app.emit(
                             "unattended-event",
                             UnattendedEvent {
-                                kind: "needs-confirm",
-                                device_id: None,
-                                viewer_info: None,
-                                reason: None,
+                                confirm_id: Some(confirm_id),
+                                ..UnattendedEvent::kind("needs-confirm")
                             },
                         );
-                        let accepted = match tokio::time::timeout(
-                            std::time::Duration::from_secs(60),
-                            rx,
-                        )
-                        .await
-                        {
-                            Ok(Ok(v)) => v,
-                            _ => false, // timeout or sender dropped → decline
-                        };
-                        // Clear pending_confirm in case the timeout
-                        // path beat the user's click.
-                        let _ = pending_confirm.lock().await.take();
-                        let result = if accepted {
-                            heartbeat::PwResult::Ok
-                        } else {
-                            heartbeat::PwResult::Rejected
-                        };
-                        let _ = cmds
-                            .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
-                                result,
-                            }))
-                            .await;
+                        let cmds_for_waiter = cmds.clone();
+                        let pending_for_waiter = pending_confirms.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let accepted =
+                                match tokio::time::timeout(std::time::Duration::from_secs(60), rx)
+                                    .await
+                                {
+                                    Ok(Ok(v)) => v,
+                                    // timeout OR sender dropped (a
+                                    // newer attempt evicted this one) →
+                                    // decline. Without this the viewer
+                                    // would hang for the full 60 s.
+                                    _ => false,
+                                };
+                            // Belt-and-braces cleanup in case the
+                            // confirm command was never invoked.
+                            pending_for_waiter.lock().await.remove(&confirm_id);
+                            let result = if accepted {
+                                heartbeat::PwResult::Ok
+                            } else {
+                                heartbeat::PwResult::Rejected
+                            };
+                            let _ = cmds_for_waiter
+                                .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                                    result,
+                                }))
+                                .await;
+                        });
                     }
                     PwAction::ReplyFail => {
                         let _ = cmds
@@ -436,15 +479,7 @@ async fn forwarder_loop(
                         // Per spec section 6: no reply on local
                         // lockout. Emit a tray-notification event so
                         // the user sees the lockout banner.
-                        let _ = app.emit(
-                            "unattended-event",
-                            UnattendedEvent {
-                                kind: "locked-out",
-                                device_id: None,
-                                viewer_info: None,
-                                reason: None,
-                            },
-                        );
+                        let _ = app.emit("unattended-event", UnattendedEvent::kind("locked-out"));
                     }
                 }
             }
@@ -452,10 +487,8 @@ async fn forwarder_loop(
                 let _ = app.emit(
                     "unattended-event",
                     UnattendedEvent {
-                        kind: "peer-joined",
-                        device_id: None,
                         viewer_info: Some(viewer_info),
-                        reason: None,
+                        ..UnattendedEvent::kind("peer-joined")
                     },
                 );
             }
@@ -463,10 +496,8 @@ async fn forwarder_loop(
                 let _ = app.emit(
                     "unattended-event",
                     UnattendedEvent {
-                        kind: "peer-rejected",
-                        device_id: None,
-                        viewer_info: None,
                         reason: Some(reason),
+                        ..UnattendedEvent::kind("peer-rejected")
                     },
                 );
             }
@@ -480,10 +511,8 @@ async fn forwarder_loop(
                 let _ = app.emit(
                     "unattended-event",
                     UnattendedEvent {
-                        kind: "disconnected",
-                        device_id: None,
-                        viewer_info: None,
                         reason: Some(reason),
+                        ..UnattendedEvent::kind("disconnected")
                     },
                 );
             }
@@ -498,15 +527,7 @@ async fn forwarder_loop(
                 );
             }
             HeartbeatEvent::Revoked => {
-                let _ = app.emit(
-                    "unattended-event",
-                    UnattendedEvent {
-                        kind: "revoked",
-                        device_id: None,
-                        viewer_info: None,
-                        reason: None,
-                    },
-                );
+                let _ = app.emit("unattended-event", UnattendedEvent::kind("revoked"));
                 // Terminal — the heartbeat loop has already returned.
                 // Drop the handle + outbound sink so the next
                 // `unattended_start` doesn't trip the "bereits aktiv"
@@ -515,15 +536,7 @@ async fn forwarder_loop(
                 return;
             }
             HeartbeatEvent::Superseded => {
-                let _ = app.emit(
-                    "unattended-event",
-                    UnattendedEvent {
-                        kind: "superseded",
-                        device_id: None,
-                        viewer_info: None,
-                        reason: None,
-                    },
-                );
+                let _ = app.emit("unattended-event", UnattendedEvent::kind("superseded"));
                 clear_state(&cmd_slot, &outbound_slot).await;
                 return;
             }
@@ -623,6 +636,78 @@ mod tests {
         assert_eq!(action, PwAction::SilentLockout);
         assert_ne!(action, PwAction::ReplyFail);
         assert_ne!(action, PwAction::ReplyOk);
+    }
+
+    // ── pending_confirms routing (Sec M-1) ────────────────────────────
+    //
+    // Per-attempt routing by confirm_id is what makes the spawned
+    // waiter design safe under overlapping pw-check attempts. Pin
+    // the contract: a click for confirm_id=N MUST only fire the
+    // sender registered under N, and removing an unknown id MUST
+    // be a silent no-op.
+
+    #[tokio::test]
+    async fn pending_confirms_routes_click_to_matching_waiter() {
+        let state = UnattendedState::default();
+        let id1 = state.next_confirm_id.fetch_add(1, Ordering::Relaxed);
+        let id2 = state.next_confirm_id.fetch_add(1, Ordering::Relaxed);
+        assert!(id2 > id1, "confirm-ids must be monotonic");
+
+        let (tx1, rx1) = tokio::sync::oneshot::channel::<bool>();
+        let (tx2, rx2) = tokio::sync::oneshot::channel::<bool>();
+        state.pending_confirms.lock().await.insert(id1, tx1);
+        state.pending_confirms.lock().await.insert(id2, tx2);
+
+        // Simulate the user accepting attempt #2 — only tx2 should fire.
+        let sender = state.pending_confirms.lock().await.remove(&id2);
+        sender.unwrap().send(true).unwrap();
+
+        assert!(rx2.await.unwrap());
+        // tx1 is still parked; awaiter on rx1 has not been answered.
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), rx1)
+                .await
+                .is_err(),
+            "rx1 must still be parked when only rx2 was answered"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_confirms_unknown_id_is_silent_noop() {
+        // A click whose confirm_id no longer maps to a pending
+        // sender (e.g. the timeout already evicted it) must NOT
+        // panic and must NOT cross-fire any other waiter.
+        let state = UnattendedState::default();
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        state.pending_confirms.lock().await.insert(99, tx);
+
+        // Pretend the user clicked on id=42 (nothing pending under
+        // that id).
+        let sender = state.pending_confirms.lock().await.remove(&42u64);
+        assert!(sender.is_none());
+
+        // The legitimate id=99 sender is still parked.
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), rx)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_confirms_dropped_sender_collapses_to_decline() {
+        // Sec M-1 contract: when a confirm_id is evicted from the
+        // map without a click (e.g. start_unattended teardown), the
+        // sender drops → the spawned waiter's rx errors → it
+        // replies "rejected". This test pins the underlying
+        // oneshot behaviour we rely on.
+        let state = UnattendedState::default();
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        state.pending_confirms.lock().await.insert(1, tx);
+        // Drop the sender by clearing the map.
+        state.pending_confirms.lock().await.clear();
+        let outcome = rx.await;
+        assert!(outcome.is_err(), "dropped sender must surface as Err");
     }
 
     // ── forwarder state-clear regression (CQ C-1) ─────────────────────

@@ -29,6 +29,13 @@ interface UnattendedEvent {
   reason?: string;
   attempt?: number;
   after_ms?: number;
+  /**
+   * Present only on `needs-confirm` events (Sec M-1). The accept /
+   * decline buttons must echo this back through `unattended_confirm`
+   * so the user's click routes to the right pending waiter even
+   * when overlapping pw-check attempts have queued multiple toasts.
+   */
+  confirmId?: number;
 }
 
 const modeSelect = document.getElementById("unattended-mode-select") as HTMLSelectElement | null;
@@ -200,14 +207,26 @@ unpairBtn?.addEventListener("click", async () => {
   }
 });
 
+// Latest confirm_id we showed the toast for. Each new
+// `needs-confirm` event overwrites it; clicks read from here so a
+// stale click on a stale toast routes to the wrong waiter is
+// impossible (Sec M-1).
+let activeConfirmId: number | null = null;
+
 confirmYes?.addEventListener("click", async () => {
   hide(confirmToast);
-  await invoke("unattended_confirm", { accepted: true }).catch(() => {});
+  const id = activeConfirmId;
+  activeConfirmId = null;
+  if (id === null) return;
+  await invoke("unattended_confirm", { confirmId: id, accepted: true }).catch(() => {});
 });
 
 confirmNo?.addEventListener("click", async () => {
   hide(confirmToast);
-  await invoke("unattended_confirm", { accepted: false }).catch(() => {});
+  const id = activeConfirmId;
+  activeConfirmId = null;
+  if (id === null) return;
+  await invoke("unattended_confirm", { confirmId: id, accepted: false }).catch(() => {});
 });
 
 void listen<UnattendedEvent>("unattended-event", (e) => {
@@ -227,6 +246,7 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       );
       break;
     case "needs-confirm":
+      activeConfirmId = ev.confirmId ?? null;
       show(confirmToast);
       break;
     case "peer-joined":
