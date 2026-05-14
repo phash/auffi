@@ -11,7 +11,7 @@ pkgrel=1
 pkgdesc="Sicheres, Open-Source Bildschirm-Sharing mit Fernsteuerung — DSGVO-konform, WebRTC P2P (Tauri-Desktop-App)"
 arch=('x86_64')
 url="https://auffi.app"
-license=('MIT')
+license=('AGPL-3.0-only')
 
 # Runtime — alles was die fertige Binary lädt:
 #   webkit2gtk-4.1 = Tauri-Webview

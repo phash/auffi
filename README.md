@@ -3,7 +3,7 @@
 **Sicheres, einfaches Screen-Sharing mit Fernsteuerung — wie TeamViewer, nur offen.**
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/phash/auffi/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/phash/auffi)
 
 ---
@@ -231,7 +231,12 @@ Dies ist ein junges Open-Source-Projekt. Feedback und Beiträge sind willkommen.
 
 ## Lizenz
 
-MIT — siehe [LICENSE](LICENSE)
+AGPL-3.0-only — siehe [LICENSE](LICENSE).
+
+Copyleft mit Netzwerk-Klausel: Wer Auffi forked **und** als gehosteten
+Service anbietet, muss seine Modifikationen ebenfalls unter AGPL-3.0
+veröffentlichen. Eigennutzung, Selbst-Hosting im LAN und Forks für
+private Zwecke sind unbeschränkt erlaubt.
 
 ---
 

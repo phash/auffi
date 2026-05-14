@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auffi herunterladen — Linux Desktop-Sharer</title>
+    <meta name="description" content="Download des Auffi-Sharer für Linux. Open Source unter AGPL-3.0. .deb, .rpm und Arch-PKGBUILD verfügbar." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/download/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Auffi herunterladen" />
+    <meta property="og:description" content="Open-Source Bildschirm-Sharing für Linux. AGPL-3.0." />
+    <meta property="og:url" content="https://auffi.app/download/" />
+    <link rel="stylesheet" href="/download/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="topbar-wordmark" href="/" aria-label="Zur Startseite">Auffi</a>
+      <nav class="topbar-nav" aria-label="Navigation">
+        <a href="/">Viewer</a>
+        <a href="/download/" aria-current="page">Download</a>
+        <a href="https://github.com/phash/auffi" rel="noopener noreferrer">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h1>Auffi für Linux herunterladen</h1>
+        <p class="lead">
+          Open-Source-Desktop-App, AGPL-3.0. Ende-zu-Ende verschlüsselt,
+          DSGVO-konform, kein Konto erforderlich. Aktuelle Version
+          <strong>0.3.0</strong>.
+        </p>
+      </section>
+
+      <section class="downloads" aria-labelledby="downloads-heading">
+        <h2 id="downloads-heading">Pakete</h2>
+        <ul class="download-list">
+          <li class="download-item">
+            <div class="download-meta">
+              <h3>Debian / Ubuntu (.deb)</h3>
+              <p>
+                <code>sudo dpkg -i Auffi_0.3.0_amd64.deb</code><br />
+                <span class="size">~ 14 MB · x86_64 · Debian 12+, Ubuntu 22.04+</span>
+              </p>
+            </div>
+            <a class="download-btn" href="/download/Auffi_0.3.0_amd64.deb" download>
+              .deb herunterladen
+            </a>
+          </li>
+
+          <li class="download-item">
+            <div class="download-meta">
+              <h3>Fedora / RHEL (.rpm)</h3>
+              <p>
+                <code>sudo rpm -i Auffi-0.3.0-1.x86_64.rpm</code><br />
+                <span class="size">~ 14 MB · x86_64 · Fedora 40+, RHEL 9+</span>
+              </p>
+            </div>
+            <a class="download-btn" href="/download/Auffi-0.3.0-1.x86_64.rpm" download>
+              .rpm herunterladen
+            </a>
+          </li>
+
+          <li class="download-item">
+            <div class="download-meta">
+              <h3>Arch Linux (PKGBUILD)</h3>
+              <p>
+                <code>
+                  git clone https://github.com/phash/auffi.git<br />
+                  cd auffi/packaging/arch &amp;&amp; makepkg -si
+                </code><br />
+                <span class="size">Baut aus dem Source. Saubere pacman-Integration.</span>
+              </p>
+            </div>
+            <a class="download-btn" href="https://github.com/phash/auffi/blob/main/packaging/arch/PKGBUILD" rel="noopener noreferrer">
+              PKGBUILD ansehen
+            </a>
+          </li>
+
+          <li class="download-item">
+            <div class="download-meta">
+              <h3>Source-Build (jede Distro)</h3>
+              <p>
+                <code>git clone https://github.com/phash/auffi.git</code><br />
+                <span class="size">Volle Build-Anleitung pro Distro in <a href="https://github.com/phash/auffi/blob/main/INSTALL.md">INSTALL.md</a>.</span>
+              </p>
+            </div>
+            <a class="download-btn" href="https://github.com/phash/auffi/blob/main/INSTALL.md" rel="noopener noreferrer">
+              Build-Anleitung
+            </a>
+          </li>
+        </ul>
+
+        <p class="hint">
+          Hinweis: macOS- und Windows-Pakete sind in Arbeit. Bis dahin
+          läuft der Sharer dort nur aus dem Source-Build heraus.
+        </p>
+      </section>
+
+      <section class="release-notes" aria-labelledby="releases-heading">
+        <h2 id="releases-heading">Was ist neu in 0.3.0</h2>
+        <ul class="release-list">
+          <li>
+            <strong>Unattended Access</strong> — Geräte einmal pairen, dann
+            ohne Code aus dem Dashboard verbinden. Auto-Accept oder Geräte-
+            Passwort konfigurierbar pro Gerät.
+          </li>
+          <li>
+            <strong>Wayland-native Capture</strong> — Plasma 6 und GNOME 47+
+            funktionieren nativ via GStreamer/PipeWire, kein XWayland-Fallback
+            mehr.
+          </li>
+          <li>
+            <strong>Feedback-Dialog in der App</strong> — direkt aus dem
+            Sharer (im Unattended-Modus) oder dem Dashboard Bugs und Wünsche
+            einreichen.
+          </li>
+          <li>
+            <strong>Konto + Dashboard</strong> — Geräteliste, Connection-Log,
+            Auto-Accept-Toggle, Geräte-Pairing über
+            <a href="/dashboard/">auffi.app/dashboard/</a>.
+          </li>
+          <li>
+            <strong>Härtungen</strong> — argon2id für Passwörter,
+            <code>__Host-</code>-Session-Cookies, Per-Account-Lockout,
+            HMAC-ephemerale TURN-Credentials. Vollständiger Audit:
+            <a href="https://github.com/phash/auffi/blob/main/docs/security-review-2026-05.md">security-review-2026-05.md</a>.
+          </li>
+        </ul>
+        <p>
+          <a href="https://github.com/phash/auffi/releases" rel="noopener noreferrer">
+            Alle Releases auf GitHub →
+          </a>
+        </p>
+      </section>
+
+      <section class="about" aria-labelledby="about-heading">
+        <h2 id="about-heading">Was ist Auffi?</h2>
+        <p>
+          Auffi ist ein Open-Source-Bildschirm-Sharing-Tool mit Fernsteuerung
+          — TeamViewer-Funktionalität ohne Konto-Pflicht, ohne Tracker, ohne
+          US-Cloud. Der Sharer (diese Desktop-App) teilt einen Bildschirm
+          oder ein Fenster, der Viewer (im Browser) verbindet sich peer-to-
+          peer.
+        </p>
+        <div class="trust-grid">
+          <article>
+            <h3>🔒 Ende-zu-Ende verschlüsselt</h3>
+            <p>WebRTC mit DTLS-SRTP. Der Server vermittelt nur den
+              initialen Handshake — Pixel und Eingaben fließen direkt
+              zwischen den Geräten.</p>
+          </article>
+          <article>
+            <h3>🇩🇪 Server in Deutschland</h3>
+            <p>Hosted in Frankfurt. DSGVO-konform, keine Drittanbieter-
+              Tracker, keine Google Fonts, keine CDN-Pings.</p>
+          </article>
+          <article>
+            <h3>🆓 AGPL-3.0</h3>
+            <p>Quellcode auf GitHub, Forks erlaubt — gehostete Forks
+              müssen ihre Änderungen unter gleicher Lizenz veröffentlichen.</p>
+          </article>
+          <article>
+            <h3>📦 Eigenes Hosting</h3>
+            <p>Docker-Compose-Stack im Repo. Self-Hosting komplett
+              dokumentiert in <a href="https://github.com/phash/auffi/tree/main/ops">ops/</a>.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="repo" aria-labelledby="repo-heading">
+        <h2 id="repo-heading">Quellcode &amp; Mitwirken</h2>
+        <p>
+          Auffi ist 100&nbsp;% Open Source unter
+          <a href="https://github.com/phash/auffi/blob/main/LICENSE">AGPL-3.0</a>.
+          Bug-Reports, Feature-Wünsche und Pull-Requests sind willkommen:
+        </p>
+        <ul>
+          <li><a href="https://github.com/phash/auffi" rel="noopener noreferrer">github.com/phash/auffi</a></li>
+          <li><a href="https://github.com/phash/auffi/issues" rel="noopener noreferrer">Issues</a></li>
+          <li><a href="https://github.com/phash/auffi/blob/main/CLAUDE.md" rel="noopener noreferrer">Coding-Konventionen (CLAUDE.md)</a></li>
+          <li><a href="https://github.com/phash/auffi/blob/main/INSTALL.md" rel="noopener noreferrer">Build-Anleitung (INSTALL.md)</a></li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        und
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE">AGPL-3.0</a>
+      </p>
+    </footer>
+  </body>
+</html>

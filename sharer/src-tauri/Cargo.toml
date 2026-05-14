@@ -2,6 +2,9 @@
 name = "auffi-sharer"
 version = "0.3.0"
 edition = "2021"
+license = "AGPL-3.0-only"
+description = "Auffi — sicheres Open-Source Bildschirm-Sharing mit Fernsteuerung"
+repository = "https://github.com/phash/auffi"
 
 [lib]
 crate-type = ["staticlib", "cdylib", "rlib"]

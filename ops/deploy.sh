@@ -198,7 +198,13 @@ maybe_run "rsync viewer/dist → viewer-dist/" \
     "${REPO_ROOT}/viewer/dist/" \
     "${DEPLOY_PATH}/viewer-dist/" \
     --delete \
-    --exclude=/download/
+    --exclude=/download/*.deb \
+    --exclude=/download/*.rpm \
+    --exclude=/download/*.AppImage \
+    --exclude=/download/*.msi \
+    --exclude=/download/*.dmg \
+    --exclude=/download/*.sh \
+    --exclude=/download/latest.txt
 
 # gh #38: the dashboard service in docker-compose.prod.yml bind-mounts
 # ./dashboard-dist into the auffi-dashboard nginx sidecar. Ship the
