@@ -107,11 +107,9 @@
         </a>
         <a
           id="topbar-download"
-          href="/download/"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="#download"
           class="topbar-btn"
-          aria-label="Sharer herunterladen (öffnet GitHub in neuem Tab)"
+          aria-label="Zum Download-Bereich springen"
         >
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
@@ -304,6 +302,16 @@
         <ul class="news-list">
           <li class="news-item">
             <time class="news-date" datetime="2026-05-14">14. Mai 2026</time>
+            <h3 class="news-title">Sharer-Download für Windows</h3>
+            <p class="news-body">
+              Den Sharer für Windows gibt es jetzt als
+              <a href="#download">direkten Download</a> — keine
+              Installation, keine Anmeldung. Standalone-.exe oder
+              Setup-Installer mit WebView2.
+            </p>
+          </li>
+          <li class="news-item">
+            <time class="news-date" datetime="2026-05-14">14. Mai 2026</time>
             <h3 class="news-title">Konto + Unattended Access</h3>
             <p class="news-body">
               Einmal pairen, dauerhaft verbinden: das neue Dashboard
@@ -330,6 +338,70 @@
             </p>
           </li>
         </ul>
+      </section>
+
+      <!-- Download-Sektion: Sharer für Windows. Beide Varianten
+           (Standalone .exe + NSIS-Installer) verlinken auf das
+           neueste GitHub-Release; die "latest"-URL zeigt automatisch
+           auf die jeweils aktuelle Version, also keine Pflege bei
+           Versions-Bumps notwendig. -->
+      <section id="download" class="download-section" aria-labelledby="download-heading">
+        <h2 id="download-heading">Sharer für Windows herunterladen</h2>
+
+        <p class="download-lede">
+          Du brauchst den Sharer nur, wenn du <strong>deinen eigenen
+          Bildschirm</strong> teilen willst — wer Hilfe leistet, öffnet
+          einfach diese Seite und tippt den Code ein.
+        </p>
+
+        <ul class="download-features">
+          <li><strong>Keine Installation</strong> — Datei doppelklicken, läuft.</li>
+          <li><strong>Keine Daten bei uns</strong> — kein Konto nötig, Bildschirm-Daten fließen direkt P2P.</li>
+          <li><strong>DSGVO-konform</strong> — Server in Deutschland, keine Tracker, keine IPs im Klartext.</li>
+          <li><strong>Open Source (MIT)</strong> — Quellcode auf GitHub einsehbar und auditierbar.</li>
+        </ul>
+
+        <div class="download-buttons">
+          <a
+            class="download-btn-primary"
+            href="https://github.com/phash/auffi/releases/latest/download/auffi-sharer-windows-x64.exe"
+            rel="noopener"
+            aria-label="Auffi Sharer für Windows herunterladen (.exe, ca. 30 MB)"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+              <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+            </svg>
+            Sharer für Windows (.exe)
+          </a>
+
+          <a
+            class="download-btn-secondary"
+            href="https://github.com/phash/auffi/releases/latest/download/auffi-sharer-windows-x64-setup.exe"
+            rel="noopener"
+            aria-label="Setup-Installer für Windows (Fallback mit WebView2-Offline)"
+          >
+            Setup-Installer (mit WebView2)
+          </a>
+
+          <a
+            class="download-btn-secondary"
+            href="https://github.com/phash/auffi/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Alle Releases auf GitHub anzeigen"
+          >
+            Alle Releases
+          </a>
+        </div>
+
+        <p class="download-meta">
+          Standalone-.exe (~30 MB) für Windows 10/11 mit vorinstalliertem
+          WebView2 — auf modernen Systemen Standard. Falls beim Start eine
+          Fehlermeldung erscheint, nutze den Setup-Installer (~150 MB), der
+          die WebView2-Runtime mitinstalliert. Linux- und macOS-Pakete kommen
+          später; bis dahin: <a href="https://github.com/phash/auffi#build-from-source" target="_blank" rel="noopener noreferrer">selbst bauen</a>.
+        </p>
       </section>
 
       <!-- gh #38 — Trust- / Geo-SEO-Sektion. Vier Vertrauens-Signale

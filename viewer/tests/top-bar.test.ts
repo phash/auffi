@@ -19,13 +19,18 @@ describe("Viewer top bar", () => {
     doc = loadDOM();
   });
 
-  it("download button exists with correct href and target=_blank", () => {
+  it("download button is an in-page anchor to the download section", () => {
+    // The download section lives on the same page (#download). Anchor
+    // navigation keeps the user in context (DSGVO/no-install info is
+    // visible alongside the download button) instead of deep-linking
+    // to an external GitHub releases page.
     const btn = doc.getElementById("topbar-download") as HTMLAnchorElement | null;
     expect(btn).not.toBeNull();
-    expect(btn!.href).toMatch(/\/download\/$/);
-    expect(btn!.target).toBe("_blank");
-    expect(btn!.rel).toContain("noopener");
-    expect(btn!.rel).toContain("noreferrer");
+    expect(btn!.getAttribute("href")).toBe("#download");
+    // No target=_blank — anchor scrolls within the same tab.
+    expect(btn!.target).toBe("");
+    // The download section the anchor points to must actually exist.
+    expect(doc.getElementById("download")).not.toBeNull();
   });
 
   it("coffee button exists with correct href and target=_blank", () => {

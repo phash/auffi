@@ -1183,6 +1183,112 @@ body.streaming .landing-sections {
 }
 
 /* ============================================================
+   Download-Sektion — der Sharer-Download mit klarer DSGVO-/
+   No-Install-/No-Data-Aussage direkt am Button.
+   ============================================================ */
+.download-section {
+  width: 100%;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.5rem 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  scroll-margin-top: calc(var(--topbar-height) + 1rem);
+}
+.download-section > h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.download-lede {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.download-lede strong { color: var(--text); font-weight: 600; }
+
+.download-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem 1rem;
+}
+.download-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+.download-features li::before {
+  content: "✓";
+  flex-shrink: 0;
+  color: var(--accent);
+  font-weight: 700;
+  margin-top: 0.0625rem;
+}
+
+.download-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  align-items: center;
+}
+.download-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: 0.625rem 1.125rem;
+  min-height: 44px;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 150ms ease, transform 100ms ease;
+}
+.download-btn-primary:hover { background: var(--accent-hover); }
+.download-btn-primary:active { transform: translateY(1px); }
+
+.download-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 0.875rem;
+  min-height: 38px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.download-btn-secondary:hover { background: var(--bg); border-color: var(--text-secondary); }
+
+.download-meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.download-meta a { color: inherit; text-decoration: underline; }
+
+/* ============================================================
    Trust- / Geo-SEO-Sektion (gh #38) — vier Vertrauens-Kacheln.
    ============================================================ */
 .trust-section {
