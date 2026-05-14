@@ -22,10 +22,16 @@ auffi.app {
         Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-3C9WFAe/1UG5JwbMxHDh2PTEAcfSHuYsU3ilMgBTApA=' 'sha256-2IlGw8TNEKy88whBnapq1n8sowJ24nlPQYYnhI0kYs8='; style-src 'self'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
     }
 
-    # Bot prevention: known scraper UAs get 403.
+    # Bot prevention — Liste enthält NUR eindeutige Angreifer-/
+    # Scrape-Tools, NICHT die generischen Substrings `bot`,
+    # `crawler`, `spider`. Diese drei matchen jeden legit
+    # Search-Engine-Crawler (Googlebot, bingbot, DuckDuckBot,
+    # AhrefsBot, LinkedInBot, Twitterbot, facebookexternalhit …) und
+    # haben in der ursprünglichen Fassung den 2026-05-14-SEO-Outage
+    # ausgelöst — Search Console konnte nicht crawlen.
     # Excludes /healthz and /readyz so deploy-scripts using curl still work.
     @scrapers {
-        header_regexp User-Agent (?i)(scrapy|wget|curl|bot|crawler|spider|headlesschrome|phantomjs|nikto|sqlmap|nmap)
+        header_regexp User-Agent (?i)(scrapy|wget|curl|headlesschrome|phantomjs|nikto|sqlmap|sqlninja|nmap|masscan|metasploit|dirbuster|nuclei|wpscan)
         not path /healthz
         not path /readyz
     }
