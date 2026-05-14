@@ -107,6 +107,10 @@ function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): 
     inputGroup.classList.add("hidden");
     instruction.classList.add("hidden");
     app.classList.add("streaming");
+    // gh #38 — mirror the streaming flag onto <body> so the
+    // landing-sections (news + trust) can be hidden via CSS while
+    // the video is in the foreground.
+    document.body.classList.add("streaming");
     // Prevent any user-initiated PiP from auto-detaching the video.
     if ("disablePictureInPicture" in video) {
       (video as HTMLVideoElement & { disablePictureInPicture: boolean }).disablePictureInPicture = true;
@@ -141,6 +145,7 @@ function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): 
     inputGroup.classList.remove("hidden");
     instruction.classList.remove("hidden");
     app.classList.remove("streaming");
+    document.body.classList.remove("streaming");
   }
 }
 

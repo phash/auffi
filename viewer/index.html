@@ -3,14 +3,108 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Auffi — Viewer</title>
-    
+    <title>Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform</title>
+
+    <!-- SEO basics -->
+    <meta name="description" content="Auffi — sicheres, kostenloses Bildschirm-Sharing mit Fernsteuerung. Open Source, DSGVO-konform, Server in Deutschland. WebRTC P2P, DTLS-SRTP-verschlüsselt. Ohne Konto starten, mit Konto für Unattended Access." />
+    <meta name="keywords" content="Bildschirm teilen, Screen Sharing, Fernwartung, Remote-Support, TeamViewer Alternative, Open Source, DSGVO, WebRTC, Auffi" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="Phash" />
+    <link rel="canonical" href="https://auffi.app/" />
+
+    <!-- Open Graph (Facebook, LinkedIn, …) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
+    <meta property="og:description" content="Spontane Bildschirmhilfe in drei Klicks. WebRTC P2P-verschlüsselt, ohne Konto, Server in Deutschland." />
+    <meta property="og:url" content="https://auffi.app/" />
+    <meta property="og:locale" content="de_DE" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Auffi — Bildschirm-Sharing, Open Source" />
+    <meta name="twitter:description" content="Spontane Bildschirmhilfe in drei Klicks. P2P, verschlüsselt, ohne Konto." />
+
+    <!-- JSON-LD: SoftwareApplication -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Auffi",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Linux, Windows, macOS",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "description": "Open-Source-Bildschirm-Sharing mit aktiver Bestätigung, DSGVO-konform und Ende-zu-Ende DTLS-SRTP-verschlüsselt.",
+        "url": "https://auffi.app/",
+        "inLanguage": "de-DE",
+        "author": { "@type": "Person", "name": "Phash", "url": "https://phash.de" },
+        "publisher": { "@type": "Organization", "name": "Phash", "url": "https://phash.de" }
+      }
+    </script>
+
+    <!-- JSON-LD: FAQ -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Brauche ich ein Konto, um Auffi zu nutzen?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Nein. Für spontane Hilfe reicht ein 9-stelliger Verbindungscode. Ein Konto brauchst du nur für Unattended Access (eigene Geräte permanent gepairt)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Sieht der Server, was ich teile?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Nein. WebRTC verschlüsselt jeden Stream Ende-zu-Ende mit DTLS-SRTP. Der Signaling-Server vermittelt nur den initialen Handshake — Pixel, Mausbewegungen und Dateien fließen direkt zwischen den Browsern."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist Auffi DSGVO-konform?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Ja. Server in Deutschland (IONOS Frankfurt), keine IPs im Klartext gespeichert, keine Tracker, kein Logging von Inhalten. Der vollständige Audit liegt im Repo unter docs/security-review-2026-05.md."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Kann ich Auffi selbst hosten?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Ja. Der Code ist MIT-lizenziert auf GitHub. Backend, Viewer und Sharer laufen in Docker Compose; die Anleitung steht in ops/README.md."
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="top-bar" role="banner">
       <span class="topbar-wordmark" aria-label="Auffi">Auffi</span>
       <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
       <nav class="topbar-actions" aria-label="Links">
+        <a
+          id="topbar-login"
+          href="/dashboard/login"
+          class="topbar-btn"
+          aria-label="Einloggen (Konto)"
+        >
+          <span class="topbar-btn-label">Einloggen</span>
+        </a>
+        <a
+          id="topbar-signup"
+          href="/dashboard/signup"
+          class="topbar-btn topbar-btn-primary"
+          aria-label="Konto anlegen"
+        >
+          <span class="topbar-btn-label">Konto anlegen</span>
+        </a>
         <a
           id="topbar-download"
           href="/download/"
@@ -78,6 +172,25 @@
           Erneut verbinden
         </button>
       </div>
+
+      <!-- gh #38 — sekundärer CTA für Account / Unattended Access.
+           Bleibt unter dem Code-Input damit der Ad-hoc-Flow (Code
+           tippen → Verbinden) der primäre Pfad bleibt. -->
+      <section id="account-cta" class="account-cta" aria-labelledby="account-cta-heading">
+        <h2 id="account-cta-heading" class="account-cta-heading">Regelmäßig im Einsatz?</h2>
+        <p class="account-cta-text">
+          Lege ein Konto an und paire deine Geräte einmalig — die nächste
+          Verbindung läuft ohne Code, direkt aus dem Dashboard.
+        </p>
+        <div class="account-cta-actions">
+          <a href="/dashboard/login" class="account-cta-btn account-cta-btn-secondary">
+            Einloggen
+          </a>
+          <a href="/dashboard/signup" class="account-cta-btn account-cta-btn-primary">
+            Konto anlegen
+          </a>
+        </div>
+      </section>
 
       <section
         id="session-summary"
@@ -159,6 +272,87 @@
         </div>
       </div>
     </main>
+
+    <!-- gh #38 — Landing-Page-Inhalte direkt unter dem Code-Eingabe-
+         Card. Bewusst außerhalb von #app damit sie ihre eigene,
+         breitere max-width bekommen und das Card kompakt bleibt. -->
+    <div class="landing-sections">
+      <!-- gh #38 — News-Sektion. Statisch im Markup gepflegt (s.
+           CLAUDE.md / brainstorming-Entscheidung 2026-05-14). Bei
+           Releases manuell hier oben einen neuen <li> einfügen. -->
+      <section class="news-section" aria-labelledby="news-heading">
+        <h2 id="news-heading">Aktuelles</h2>
+        <ul class="news-list">
+          <li class="news-item">
+            <time class="news-date" datetime="2026-05-14">14. Mai 2026</time>
+            <h3 class="news-title">Konto + Unattended Access</h3>
+            <p class="news-body">
+              Einmal pairen, dauerhaft verbinden: das neue Dashboard
+              verwaltet deine eigenen Geräte mit Auto-Accept und
+              Geräte-Passwort. Konto anlegen, Code-Frage entfällt.
+            </p>
+          </li>
+          <li class="news-item">
+            <time class="news-date" datetime="2026-05-13">13. Mai 2026</time>
+            <h3 class="news-title">Wayland-native Bildschirmerfassung</h3>
+            <p class="news-body">
+              Plasma 6 und GNOME 47 funktionieren jetzt nativ via
+              GStreamer/PipeWire — kein XWayland-Fallback mehr, kein
+              flackerndes Cursor-Bild.
+            </p>
+          </li>
+          <li class="news-item">
+            <time class="news-date" datetime="2026-05-12">12. Mai 2026</time>
+            <h3 class="news-title">Aus Screenie wird Auffi</h3>
+            <p class="news-body">
+              Neuer Name, neue Domain <strong>auffi.app</strong>,
+              gleicher Open-Source-Code. Bestehende Sessions laufen
+              unverändert weiter.
+            </p>
+          </li>
+        </ul>
+      </section>
+
+      <!-- gh #38 — Trust- / Geo-SEO-Sektion. Vier Vertrauens-Signale
+           für Suchmaschinen + Besucher. -->
+      <section class="trust-section" aria-labelledby="trust-heading">
+        <h2 id="trust-heading">Warum Auffi?</h2>
+        <div class="trust-grid">
+          <article class="trust-item">
+            <h3 class="trust-title">🔒 Ende-zu-Ende verschlüsselt</h3>
+            <p class="trust-body">
+              WebRTC mit DTLS-SRTP. Der Server vermittelt nur den
+              initialen Handshake — Bildschirminhalte, Eingaben und
+              Dateien fließen direkt zwischen den Browsern.
+            </p>
+          </article>
+          <article class="trust-item">
+            <h3 class="trust-title">🇩🇪 Server in Deutschland</h3>
+            <p class="trust-body">
+              Hosted auf IONOS-VPS in Frankfurt. DSGVO-konform, keine
+              US-Cloud, keine Drittanbieter-Tracker, keine Google
+              Fonts.
+            </p>
+          </article>
+          <article class="trust-item">
+            <h3 class="trust-title">🆓 Open Source (MIT)</h3>
+            <p class="trust-body">
+              Vollständiger Quellcode auf GitHub. Selbst hosten,
+              auditieren oder forken — Backend, Viewer und Sharer
+              sind dokumentiert.
+            </p>
+          </article>
+          <article class="trust-item">
+            <h3 class="trust-title">👤 Kein Konto nötig</h3>
+            <p class="trust-body">
+              9-stelliger Code, Verbinden, fertig. Konto nur für
+              Unattended Access — also wenn du regelmäßig dieselben
+              Geräte verbindest.
+            </p>
+          </article>
+        </div>
+      </section>
+    </div>
 
     <div id="free-tier-warning-toast" role="alert" aria-live="assertive" aria-atomic="true">
       ⚠ Noch 2 Min Relay-Zeit übrig — Premium kommt bald

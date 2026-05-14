@@ -1,0 +1,11 @@
+# Auffi — Crawler-Hinweise.
+# Statische Inhalte sind frei indizierbar. Backend-Endpunkte (WSS /signal,
+# REST /api/*) sind weder für Suchmaschinen sinnvoll noch für sie gemacht.
+User-agent: *
+Allow: /
+Disallow: /signal
+Disallow: /api/
+Disallow: /dashboard/verify/
+Disallow: /dashboard/reset/
+
+Sitemap: https://auffi.app/sitemap.xml

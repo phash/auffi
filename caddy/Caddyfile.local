@@ -33,9 +33,12 @@ localhost {
     handle_path /dashboard/* {
         reverse_proxy dashboard:80
     }
-    handle /dashboard {
-        redir /dashboard/ permanent
-    }
+    # Normalise the no-slash /dashboard to /dashboard/. Caddy's bare
+    # `handle /dashboard { redir … }` form didn't fire here (Caddy
+    # treated the path as a non-matching path glob), so we use the
+    # named-matcher form which Caddy v2 documents explicitly.
+    @dashboard_no_slash path /dashboard
+    redir @dashboard_no_slash /dashboard/ permanent
 
     # Health + readiness probes
     handle /healthz {

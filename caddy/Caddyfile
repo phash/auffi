@@ -15,7 +15,11 @@ auffi.app {
         X-Frame-Options "DENY"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "no-referrer"
-        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
+        # SHA-256 hashes whitelist the two inline JSON-LD blocks in
+        # viewer/index.html (SoftwareApplication + FAQPage). If the
+        # JSON-LD content changes, recompute via:
+        #   python3 -c "import re,hashlib,base64; html=open('viewer/index.html').read(); [print('sha256-'+base64.b64encode(hashlib.sha256(m.encode()).digest()).decode()) for m in re.findall(r'<script type=\"application/ld\\+json\">(.*?)</script>', html, re.DOTALL)]"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-2ErilsGCfezC/3HSXBQsD+5EPccqA4X3LiibejMEmSc=' 'sha256-7LkF+yOi6wEh30IB+TdZFpsMjMKySMmxQvP1dy/jFB0='; style-src 'self'; connect-src 'self' wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
     }
 
     # Bot prevention: known scraper UAs get 403.
@@ -79,10 +83,13 @@ auffi.app {
     handle_path /dashboard/* {
         reverse_proxy dashboard:80
     }
-    # Bare /dashboard (no trailing slash) → redirect for canonical URL.
-    handle /dashboard {
-        redir /dashboard/ permanent
-    }
+    # Normalise the no-slash /dashboard to /dashboard/. Caddy's
+    # bare `handle /dashboard { redir … }` form did not fire next
+    # to a `handle_path /dashboard/*` block (Caddy treated the
+    # path as a non-matching path glob), so use the named-matcher
+    # form which Caddy v2 documents explicitly.
+    @dashboard_no_slash path /dashboard
+    redir @dashboard_no_slash /dashboard/ permanent
 
     # Health + readiness probes
     handle /healthz {
