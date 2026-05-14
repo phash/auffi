@@ -12,21 +12,23 @@ Three non-negotiable goals that **every** engineering decision should serve. Whe
 
 ## Project Overview
 
-TeamViewer-style screen-sharing tool. Live at `https://auffi.app`. Three components in one monorepo:
+TeamViewer-style screen-sharing tool. Live at `https://auffi.app`. Four components in one monorepo:
 
-- `backend/` — Node.js + Fastify WebSocket signaling server. Dockerized.
+- `backend/` — Node.js + Fastify WebSocket signaling server, REST `/api/*`, better-sqlite3. Dockerized.
 - `viewer/` — Browser-based viewer (Vite + TypeScript). Static build, served by reverse proxy.
-- `sharer/` — Tauri 2 native desktop app (Rust core + Webview UI).
+- `sharer/` — Tauri 2 native desktop app (Rust core + Webview UI). Supports both ad-hoc 9-digit-code flow and unattended-access mode (paired device, persistent WSS, optional `auto_accept`).
+- `dashboard/` — Browser SPA for the unattended-access surface only (Vite + TypeScript). Account signup/verify/login, device pairing codes, device list. Not loaded for the ad-hoc flow.
 
 Target deployment: Linux VPS, **everything runs in Docker** (backend, coturn, reverse proxy, optional DB).
 
 **Wayland capture** goes through GStreamer (`pipewiresrc ! videoconvert ! BGRA ! appsink`) rather than direct `pipewire-rs` — the GStreamer element handles DMA-BUF / modifier negotiation that Plasma 6 rejects on the raw SHM path. See `sharer/src-tauri/src/capture/gst_portal.rs`.
 
 **Entry points:**
-- Backend: `backend/src/index.ts` → `server.ts` (Fastify) → `signaling.ts` (WS rooms)
+- Backend: `backend/src/index.ts` → `server.ts` (Fastify) → `signaling.ts` (WS rooms) + `auth/`, `devices/`, `account/`, `admin/` route modules
 - Viewer: `viewer/src/main.ts` → `ui.ts` (UI wiring) → `webrtc-client.ts` (peer)
-- Sharer: `sharer/src-tauri/src/lib.rs` (Tauri commands) → `capture/mod.rs` (per-OS capture) → `webrtc_peer.rs` (encoder/peer)
-- Cross-component wire format: `docs/protocol.md` — both sides of every message reference this.
+- Sharer: `sharer/src-tauri/src/lib.rs` (Tauri commands) → `capture/mod.rs` (per-OS capture) → `webrtc_peer.rs` (encoder/peer). Unattended path: `heartbeat.rs` (persistent WSS) + `unattended_cmd.rs` (Tauri commands + forwarder loop)
+- Dashboard: `dashboard/src/main.ts` → `router.ts` (history-API SPA) → `views/*.ts`
+- Cross-component wire format: `docs/protocol.md` — both sides of every message reference this. The unattended-access additions (pw-attempt / pw-check / pw-check-result / unattended-hello / `confirmId` routing) are not yet in protocol.md; refer to `backend/src/protocol.ts` and `sharer/src-tauri/src/heartbeat.rs::BackendFrame|SharerFrame` until docs catch up.
 
 Specs and plans live under `docs/superpowers/`.
 
@@ -45,6 +47,11 @@ cd viewer && npm run test:e2e      # Playwright
 # Sharer (Tauri desktop app)
 cd sharer && npm run tauri:dev     # native window + DevTools
 cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
+
+# Dashboard (unattended-access SPA — only needed if you're working on the account/device flow)
+cd dashboard && npm run dev        # vite on :5174
+cd dashboard && npm test           # vitest (jsdom + custom router)
+cd dashboard && npm run build      # static dist/
 
 # Local stack (backend + coturn behind dev Caddy)
 docker compose up --build
@@ -136,6 +143,16 @@ UFW on the prod host is configured to allow `3478/tcp`, `3478/udp`, `5349/tcp`, 
 Today this is gated by an optional `keep_signaling: bool` parameter. If you refactor in this area, audit which lifetimes each caller wants to end before changing behaviour. See `docs/postmortem-2026-05-12-monitor-switch.md` for the bug chain that led to the current shape.
 
 Plasma's `org.freedesktop.portal.ScreenCast` will **not** surface a second dialog while the first source is alive, and routes media unpredictably if two GStreamer/portal pipelines overlap. Tear down the previous `streaming_loop` (and its capturer) before starting a new one — the mpsc switch-channel's close is the canonical shutdown signal for the loop.
+
+### Unattended-Access Footguns
+
+Five load-bearing facts that took the 2026-05-13 deep review (and the M-1/M-2/TC C-2 follow-ups on 2026-05-14) to find:
+
+- **Session cookie is `__Host-auffi_session`, not `auffi_session`** (Sec L-1, `backend/src/auth/sessions.ts`). The `__Host-` prefix is enforced by the browser: cookie MUST have `Secure`, `Path=/`, and NO `Domain` attribute. Subdomains of `auffi.app` cannot forge or overwrite the cookie. Anywhere a test or doc hard-codes the cookie name, it needs the prefix.
+- **`pending_confirms` is a `HashMap<u64, Sender>`, not an `Option<Sender>`** (Sec M-1/M-2, `sharer/src-tauri/src/unattended_cmd.rs`). Each manual-confirm pw-check gets its own monotonic `confirm_id`; the spawned waiter task awaits its own oneshot and replies independently so the forwarder loop is never blocked. The frontend MUST echo `confirmId` from the `needs-confirm` event back through `unattended_confirm` — a click without an id is a silent no-op.
+- **Late `pw-check-result` is silently dropped, not error-reported** (TC C-2, `backend/src/signaling.ts`). A sharer that took a long manual-confirm path can land its result after the viewer gave up. Sending a `bad-message` error here would force the sharer's heartbeat to reconnect (it treats backend-errors as fatal disconnects). Anyone DRY-ing protocol-violation handling MUST keep this branch silent.
+- **Account password gate uses argon2id with `m=64 MiB, t=3, p=1`** (`backend/src/auth/argon.ts`). The sharer's local password hashing in `device_password.rs` mirrors the same params so dashboard-set passwords and CLI-set passwords are wire-compatible. Don't tune one side without the other.
+- **`auth_rate_limit`, `register_rate_limit`, AND `bearer_auth_rate_limit` are three different env-driven caps**. Tests that open many WSS connections from `127.0.0.1` need to set `BEARER_AUTH_RATE_LIMIT_MAX=1000` alongside `REGISTER_RATE_LIMIT_MAX=1000` (Sec H-1). The bearer cap protects argon2-DoS on `/signal`'s upgrade headers.
 
 ## Docker Conventions
 

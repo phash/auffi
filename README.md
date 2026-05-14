@@ -21,9 +21,10 @@ Mausbewegungen oder Dateien — nur den initialen Handshake.
 - 🖥️ Bildschirm teilen via WebRTC (Ende-zu-Ende verschlüsselt, DTLS-SRTP)
 - 🖱️ Maus + Tastatur fernsteuern (vom Viewer aus, mit aktiver Genehmigung)
 - 📁 Bidirektionaler Dateitransfer (Drag-and-Drop, WebRTC DataChannel)
-- 🔢 9-stelliger Code + aktive Bestätigung — kein Konto, keine Registrierung
+- 🔢 9-stelliger Code + aktive Bestätigung — anonym, ohne Konto
 - 🛡️ DSGVO-konform — keine IPs im Klartext gespeichert, keine Tracker, kein Logging von Inhalten
 - 🌐 STUN + TURN für restriktive Netzwerke (hinter CGNAT, Firewalls)
+- 🪪 Optionale Account-Modus mit Geräte-Pairing (Unattended Access) — argon2id-Passwörter, geräte-spezifische Tokens, lokales + serverseitiges Lockout
 
 ---
 
@@ -67,6 +68,13 @@ detaillierte Anleitung: [INSTALL-LINUX.md](INSTALL-LINUX.md)
                 │  Backend (Node.js)  │   ─┐
                 │  - Code-Generator   │    │  Auf IONOS VPS
                 │  - WebSocket-Relay  │    │  (MRD-Cluster)
+                │  - REST /api/*      │    │
+                └──────────┬──────────┘    │
+                           ▲               │
+                           │ HTTPS         │
+                ┌──────────┴──────────┐    │
+                │ Dashboard (Browser) │    │  Konto + Geräteliste
+                │ Vanilla TS, SPA     │    │  (nur Unattended-Modus)
                 └─────────────────────┘    │
                                            │
                 ┌─────────────────────┐    │
@@ -149,6 +157,15 @@ Voraussetzungen für Tauri: Rust, `webkit2gtk-4.1`, `libvpx`. Auf Arch:
 sudo pacman -S webkit2gtk-4.1 libvpx base-devel
 ```
 
+### Dashboard (Konto + Geräteliste, nur Unattended-Modus)
+
+```bash
+cd dashboard
+npm ci
+npm run dev
+# → http://localhost:5174
+```
+
 Detaillierte Pläne und Spezifikationen: [`docs/superpowers/`](docs/superpowers/)
 
 ---
@@ -157,10 +174,13 @@ Detaillierte Pläne und Spezifikationen: [`docs/superpowers/`](docs/superpowers/
 
 | Komponente | Technologie |
 |---|---|
-| Backend | Node.js 22 / Fastify 5 |
-| Viewer | Vite + TypeScript (Vanilla) |
+| Backend | Node.js 22 / Fastify 5 / better-sqlite3 |
+| Viewer | Vite 8 + TypeScript (Vanilla) |
+| Dashboard | Vite 8 + TypeScript (Vanilla SPA) |
 | Sharer | Tauri 2 / Rust 1.84+ |
 | WebRTC | webrtc-rs (libwebrtc) |
+| Auth | argon2id (m=64 MiB, t=3, p=1), `__Host-` session cookies |
+| Wayland-Capture | GStreamer pipewiresrc (Plasma 6 kompatibel) |
 | TURN/STUN | coturn |
 | Reverse Proxy | Caddy |
 | Deployment | Docker Compose |
@@ -172,11 +192,12 @@ Detaillierte Pläne und Spezifikationen: [`docs/superpowers/`](docs/superpowers/
 - **Verschlüsselung:** WebRTC-Streams sind DTLS-SRTP-verschlüsselt (P2P oder via TURN)
 - **Keine Inhalte im Backend:** Signaling-Server sieht nur SDP/ICE-Handshake, nie Pixel oder Events
 - **IPs pseudonymisiert:** Nur das Prefix (`84.xxx`) wird im Bestätigungsdialog angezeigt — niemals die vollständige IP gespeichert
-- **Kein Tracking:** Keine Cookies, kein Analytics, kein Account-System
+- **Kein Tracking:** Keine externen Cookies, kein Analytics, keine Drittanbieter-CDNs
 - **Code-TTL:** 9-stellige Codes verfallen nach 10 Minuten oder nach 5 Fehlversuchen
 - **Aktive Bestätigung:** Sharer muss jede Verbindung explizit annehmen
+- **Account-Sicherheit (Unattended-Modus):** argon2id für Passwörter, `__Host-`-Cookies (HttpOnly + Secure + SameSite=Strict), Per-IP-Rate-Limit auf WSS-Bearer-Auth (Sec H-1), Per-Account-Lockout (5 Fehlversuche / 15 min, Sec H-3), TLS-pinned Session-Tokens (nur sha256 in DB, Sec C-1)
 
-Vollständige Spezifikation: [`docs/superpowers/specs/`](docs/superpowers/specs/)
+Vollständige Spezifikation: [`docs/superpowers/specs/`](docs/superpowers/specs/) — Audit: [`docs/security-review-2026-05.md`](docs/security-review-2026-05.md)
 
 ---
 
@@ -185,20 +206,22 @@ Vollständige Spezifikation: [`docs/superpowers/specs/`](docs/superpowers/specs/
 **Fertig (MVP):**
 - ✅ WebSocket-Signaling-Backend (Node.js/Fastify, Dockerized)
 - ✅ WebRTC Peer-to-Peer Verbindung (Video-Stream + DataChannel)
-- ✅ Bildschirm-Sharing (X11, multi-Monitor)
+- ✅ Bildschirm-Sharing (X11 + Wayland via GStreamer/pipewiresrc, multi-Monitor)
 - ✅ Remote-Maus + Tastatur (Viewer steuert Sharer)
 - ✅ Bidirektionaler Dateitransfer (Drag-and-Drop)
 - ✅ 9-stelliger Code + Bestätigungsdialog
 - ✅ TURN-Fallback via coturn
 - ✅ Production Deployment auf IONOS VPS
+- ✅ Unattended Access mit Konto + Geräte-Pairing (Dashboard, argon2id, Sessions)
+- ✅ Sicherheits-Audit + Postmortems (`docs/security-review-2026-05.md`)
 - ✅ Smoke-Tests + manuelle Testprotokolle
+- ✅ Backend 298 Tests, Sharer 178 Tests, Dashboard 85 Tests, Viewer 146 Tests
 
 **Geplant / In Arbeit:**
-- ❌ Wayland-native Bildschirmerfassung (aktuell: XWayland-Fallback)
 - ❌ Audio-Streaming
-- ❌ macOS + Windows getestet/zertifiziert
+- ❌ macOS + Windows getestet/zertifiziert (Windows-Port-Plan: `docs/superpowers/plans/2026-05-11-windows-sharer-port.md`)
 - ❌ CI/CD Pipeline (GitHub Actions)
-- ❌ Automatisierte End-to-End Tests
+- ❌ Automatisierte End-to-End Tests (Playwright-Suite für Viewer existiert; Sharer fehlt noch)
 - ❌ Windows-Installer / macOS-DMG
 
 Dies ist ein junges Open-Source-Projekt. Feedback und Beiträge sind willkommen.

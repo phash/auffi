@@ -22,3 +22,6 @@ release-bin/
 
 # Local screenshots — manuel's personal capture dir
 screens/
+
+# Claude Code session-local state (lockfile etc.)
+.claude/
