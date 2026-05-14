@@ -80,9 +80,31 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
     const cfg = smtpConfigFromEnv(env);
     if (!cfg) {
       // No SMTP wired up — fall back to capture so signup still works
-      // locally (mail just isn't delivered). The auth handlers log a
-      // fire-and-forget warning so the dev sees it.
-      return captureTransport();
+      // locally (mail just isn't delivered). Wrap the capture transport
+      // so every "sent" mail is also dumped to stderr — that way an
+      // operator who forgot to configure SMTP on prod still has a
+      // grep-able path to extract the verify-link plaintext from
+      // `docker logs`, and an obvious red signal (`[mailer:no-smtp]`)
+      // that mail delivery is broken. Logs are stderr, redacted by
+      // the Fastify pino setup, and not world-readable on the host.
+      const inner = captureTransport();
+      return {
+        async send(opts) {
+          process.stderr.write(
+            `[mailer:no-smtp] to=${opts.to} subject=${JSON.stringify(opts.subject)}\n` +
+              `[mailer:no-smtp] body=\n${opts.text}\n`,
+          );
+          await inner.send(opts);
+        },
+        // Preserve the CaptureTransport-shape so tests + admin tooling
+        // can still inspect the in-memory buffer of "sent" mails.
+        get captured() {
+          return inner.captured;
+        },
+        clear() {
+          inner.clear();
+        },
+      } as MailTransport;
     }
     return smtpTransport(cfg);
   };
