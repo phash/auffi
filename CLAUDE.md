@@ -8,7 +8,9 @@ Three non-negotiable goals that **every** engineering decision should serve. Whe
 
 2. **Verlässliche Verbindung** — The connection survives Wi-Fi blips (10 s ICE-disconnected grace), reuses the same session on reconnect within 30 s, falls back to TURN when P2P is blocked, and tears down predictably when something genuinely failed. The user should never see a stuck "Verbindung wird hergestellt…" without a path forward. Logs use `dbg_log()` so failures are diagnosable post-hoc.
 
-3. **Sichere Kommunikation** — TLS everywhere (Let's Encrypt via Caddy). WebRTC media uses DTLS-SRTP, mandatory. Session codes are server-burned after 5 wrong attempts and TTL-capped at 10 minutes. Sharer always confirms incoming peers (except in the future unattended mode where the device-token + per-device password gate access). TURN credentials are HMAC-ephemeral. No PII in logs, no third-party trackers, argon2id for passwords, SHA-256 for at-rest token hashes. See `docs/security-review-2026-05.md` for the audit.
+3. **Sichere Kommunikation** — TLS everywhere (Let's Encrypt via Caddy). WebRTC media uses DTLS-SRTP, mandatory. Session codes are server-burned after 5 wrong attempts and TTL-capped at 10 minutes. Sharer always confirms incoming peers (except in the future unattended mode where the device-token + per-device password gate access). TURN credentials are HMAC-ephemeral. No PII in logs, no third-party trackers, argon2id for passwords, SHA-256 for at-rest token hashes. See `docs/security-review-2026-05.md` for the audit and `docs/encryption-architecture.md` for the end-to-end crypto-chain walkthrough.
+
+**License:** AGPL-3.0-only (`LICENSE`). Forks that host Auffi as a service MUST publish their modifications under the same license — closes the SaaS-loophole of plain GPL-3.0. When new code lands in `backend/` / `viewer/` / `dashboard/` / `sharer/`, it MUST be AGPL-3.0-compatible (MIT, Apache-2.0, BSD are fine; GPL-2-only or proprietary SDKs are NOT).
 
 ## Project Overview
 
@@ -156,6 +158,17 @@ Five load-bearing facts that took the 2026-05-13 deep review (and the M-1/M-2/TC
 - **Account password gate uses argon2id with `m=64 MiB, t=3, p=1`** (`backend/src/auth/argon.ts`). The sharer's local password hashing in `device_password.rs` mirrors the same params so dashboard-set passwords and CLI-set passwords are wire-compatible. Don't tune one side without the other.
 - **`auth_rate_limit`, `register_rate_limit`, AND `bearer_auth_rate_limit` are three different env-driven caps**. Tests that open many WSS connections from `127.0.0.1` need to set `BEARER_AUTH_RATE_LIMIT_MAX=1000` alongside `REGISTER_RATE_LIMIT_MAX=1000` (Sec H-1). The bearer cap protects argon2-DoS on `/signal`'s upgrade headers.
 
+### AppImage-Build Footguns
+
+Tauri's AppImage-Bundling scheitert zuverlässig auf modernen Arch-Installs aus zwei Gründen — der Wrapper `ops/build-sharer-appimage.sh` umschifft beide. Wer ihn ignoriert und nur `npm run tauri:build` aufruft, bekommt `.deb` und `.rpm`, aber keinen AppImage:
+
+- **`linuxdeploy`'s eingebautes `strip` versteht `.relr.dyn` nicht** (DT_RELR aus modernem binutils). Stirbt an `libxkbcommon`, `libxml2`, `libxslt`, `libyuv`, `libzstd`. Opt-out: `NO_STRIP=1` als env var an den Tauri-Build-Call.
+- **Tauri legt das Icon unter `Auffi.AppDir/usr/share/icons/hicolor/.../auffi-sharer.png` ab, appimagetool sucht es als `Auffi.AppDir/auffi-sharer.png`** (neben der `.desktop`). Workaround: vor der finalen Bundle-Stufe `cp` ans Root.
+
+Beide Workarounds sind im Wrapper-Skript automatisiert (`./ops/build-sharer-appimage.sh`, oder `--finish` für schnelle Iteration auf einem bestehenden AppDir). Bei neuen Tauri- oder linuxdeploy-Releases re-evaluieren — beide Bugs könnten dann obsolet sein.
+
+Hängt unmittelbar von `fuse2` auf dem Build-Host ab (Arch: `sudo pacman -S fuse2`). Ohne libfuse2 startet linuxdeploy als AppImage gar nicht.
+
 ### Caddyfile Footguns
 
 - **Never blanket-block `bot`/`crawler`/`spider` as User-Agent substrings**. The original auffi.app site had `@scrapers { header_regexp User-Agent (?i)(scrapy|bot|crawler|spider|…) }` which matched every legit search-engine crawler (`Googlebot`, `bingbot`, `DuckDuckBot`, `AhrefsBot`, `LinkedInBot`, `Twitterbot`, `facebookexternalhit`…) and returned 403. Search Console couldn't fetch the sitemap; SEO outage from 2026-05-12 to 2026-05-14. The narrow allow-list lives in `caddy/Caddyfile`: scrapy, wget, curl, headlesschrome, phantomjs, nikto, sqlmap, sqlninja, nmap, masscan, metasploit, dirbuster, nuclei, wpscan. The cluster Caddyfile at `/opt/caddyserver/Caddyfile` carries the same fix — keep both in sync when adding new bad-actor signatures.
@@ -184,7 +197,7 @@ TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy c
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-14: backend 298, sharer-lib 178, viewer 146, dashboard 85. Drops are regressions.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-15: backend 329, sharer-lib 178, viewer 161, dashboard 85. Drops are regressions.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `eslint`, `cargo clippy -- -D warnings`.
 4. Type check passes: `tsc --noEmit`, `cargo check`.
