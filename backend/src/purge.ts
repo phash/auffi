@@ -48,6 +48,8 @@ export interface PurgeReport {
   connectionLog: number;
   /** audit_log rows older than retention. */
   auditLog: number;
+  /** audit_log rows pointing at a feedback row being purged this pass. */
+  feedbackAuditCascade: number;
   /** Accounts soft-deleted longer ago than the grace window — hard-deleted. */
   softDeletedAccounts: number;
   /** rate_limit_buckets rows whose lockout is past and counter is zero. */
@@ -135,6 +137,32 @@ export function runPurge(
   //     (these are stale-and-never-actioned; admin has had 2 years
   //     to look at them, time to let go).
   // Both predicates are OR'd so a single DELETE covers them.
+  // Capture the deleted IDs BEFORE the DELETE so the matching audit-log
+  // entries can be swept too — otherwise `feedback.resolve`/`feedback.
+  // reply`/`feedback.delete` rows would keep the full body snapshot in
+  // before_json/after_json for up to `auditLogMs` (1 y) AFTER the
+  // feedback row itself disappeared. That stretched effective retention
+  // past the disclosed feedback windows (DSGVO-M2, code-review
+  // 2026-05-17). Cascade-purge keeps the disclosed promise honest.
+  const feedbackToDelete = db
+    .prepare<[number, number], { id: number }>(
+      `SELECT id FROM feedback
+        WHERE (resolved_at IS NOT NULL AND resolved_at < ?)
+           OR (resolved_at IS NULL     AND created_at  < ?)`,
+    )
+    .all(now - retention.feedbackResolvedMs, now - retention.feedbackOpenMaxMs);
+  let feedbackAuditPurged = 0;
+  if (feedbackToDelete.length > 0) {
+    const placeholders = feedbackToDelete.map(() => "?").join(",");
+    const ids = feedbackToDelete.map((r) => String(r.id));
+    feedbackAuditPurged = db
+      .prepare(
+        `DELETE FROM audit_log
+          WHERE target_type = 'feedback'
+            AND target_id IN (${placeholders})`,
+      )
+      .run(...ids).changes;
+  }
   const oldFeedback = db
     .prepare(
       `DELETE FROM feedback
@@ -154,6 +182,7 @@ export function runPurge(
     softDeletedAccounts: softDeleted.changes,
     rateLimitBuckets: expiredBuckets.changes,
     feedback: oldFeedback.changes,
+    feedbackAuditCascade: feedbackAuditPurged,
   };
 }
 

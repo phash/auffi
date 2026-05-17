@@ -356,6 +356,83 @@ describe("GET /api/admin/feedback", () => {
     expect(res.statusCode).toBe(401);
   });
 
+  // Pagination — limit + cursor combinatorial coverage (code-review CODE-H1,
+  // 2026-05-17). Each test covers one branch of the cursor/limit code path
+  // that was previously unverified.
+
+  it("paginates: limit=2 returns 2 rows + nextCursor pointing at the older boundary", async () => {
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/feedback?limit=2",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.items).toHaveLength(2);
+    expect(body.nextCursor).toBeTypeOf("number");
+    // nextCursor is the id of the LAST (= oldest) row on this page.
+    expect(body.nextCursor).toBe(body.items[1].id);
+  });
+
+  it("cursor: next page returns the remaining rows + nextCursor=null", async () => {
+    const page1 = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/feedback?limit=2",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    const cursor = page1.json().nextCursor;
+    const page2 = await h.app.inject({
+      method: "GET",
+      url: `/api/admin/feedback?limit=2&cursor=${cursor}`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    expect(page2.statusCode).toBe(200);
+    const body = page2.json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].body).toBe("erste idee");
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("rejects bad cursor with 400 bad-cursor", async () => {
+    const cases = ["abc", "-1", "0", "1.5"];
+    for (const c of cases) {
+      const res = await h.app.inject({
+        method: "GET",
+        url: `/api/admin/feedback?cursor=${c}`,
+        headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      });
+      // cursor="0" is parsed as Number(0) which fails the >0 check;
+      // cursor="1.5" is finite but not integer — the validator's
+      // current behaviour accepts non-integer >0 as a bug-flag candidate.
+      // Lock the contract: must be a strict positive integer.
+      expect(res.statusCode, `cursor="${c}"`).toBe(400);
+      expect(res.json().error).toBe("bad-cursor");
+    }
+  });
+
+  it("clamps limit > MAX_LIMIT (200) silently down to 200", async () => {
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/feedback?limit=9999",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    expect(res.statusCode).toBe(200);
+    // Only 3 rows in this fixture, so we just verify no 400. The cap is
+    // applied in code (Math.min(rawLimit, MAX_LIMIT)) — full-fixture
+    // coverage would need seeding 201 rows, overkill.
+    expect(res.json().items.length).toBeLessThanOrEqual(200);
+  });
+
+  it("rejects invalid status with 400 bad-status", async () => {
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/feedback?status=garbage",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("bad-status");
+  });
+
   // Security-Review L-3 (2026-05-14): PATCH audit before-snapshot
   // must contain the full row context (body, category, rating,
   // source) — not only the resolved_at diff — so retention-purge

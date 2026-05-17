@@ -11,8 +11,6 @@
     <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
     <link rel="stylesheet" href="/topbar-footer.css" />
     <link rel="stylesheet" href="/legal/style.css" />
-    <link rel="stylesheet" href="/feedback-fab.css" />
-    <script src="/feedback-fab.js" defer></script>
     <!-- Matomo -->
     <script>
   var _paq = window._paq = window._paq || [];
@@ -357,6 +355,97 @@
           <strong>Aufbewahrung in Matomo: 14 Monate</strong>, danach
           automatische Aggregation auf monatlicher Ebene und Löschung
           der Roh-Daten.
+        </p>
+      </section>
+
+      <section>
+        <h2 id="downloads-counter">9a. Aggregierte Download-Klick-Zaehlung</h2>
+        <p>
+          Auf <code>auffi.app/download/</code> ist neben jedem Download-Button
+          ein „X Downloads"-Badge sichtbar. Diese Zahl kommt aus einem
+          serverseitigen Klick-Zaehler: ein Klick auf einen Download-Button
+          loest ein unauthentifiziertes <code>POST /api/downloads/:asset</code>
+          aus (per Browser-<code>sendBeacon</code>), das einen INT-Zaehler
+          pro Asset-Name in unserer SQLite-DB inkrementiert.
+        </p>
+        <h3>Was erfasst wird</h3>
+        <ul>
+          <li>
+            Asset-Name aus dem Click (z.&nbsp;B. <code>Auffi_0.4.1_amd64.deb</code>)
+          </li>
+          <li>
+            Zaehlerstand (INTEGER) und Aenderungs-Zeitstempel pro Asset
+          </li>
+          <li>
+            IP-Adresse in den Server-Logs (wie bei jeder HTTP-Anfrage) —
+            siehe §4
+          </li>
+        </ul>
+        <h3>Was NICHT erfasst wird</h3>
+        <ul>
+          <li>
+            Kein Bezug zwischen Klick-Event und der speziellen IP/Sitzung —
+            in der <code>download_counts</code>-Tabelle steht nur der
+            aggregierte Zaehler pro Asset, kein einzelner Klick-Eintrag
+          </li>
+          <li>
+            Kein Cookie, kein LocalStorage-Token gesetzt fuer den Counter
+          </li>
+          <li>
+            Kein Tracking ueber mehrere Klicks hinweg
+          </li>
+        </ul>
+        <p>
+          Verarbeitungsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes
+          Interesse an Erfolgsmessung der Download-Page). Eine Widerspruchs-
+          moeglichkeit ist nicht eingerichtet, weil ohne Counter-Erhoehung
+          der Inhalt der Page (das „X Downloads"-Badge) nicht aktuell waere —
+          es handelt sich um aggregierte, nicht-personenbezogene Statistik.
+          <strong>Aufbewahrung:</strong> Zaehler-Datensaetze bleiben dauerhaft;
+          Server-Log-Eintraege mit IP-Praefix entsprechend §4 (14 d, dann
+          rotiert + anonymisiert).
+        </p>
+      </section>
+
+      <section>
+        <h2 id="feedback-fab">9b. Feedback-Symbol (rechts unten)</h2>
+        <p>
+          Auf der Startseite (<code>/</code>), der Download-Seite
+          (<code>/download/</code>) und im Dashboard erscheint rechts
+          unten ein Feedback-Symbol — aber nur fuer eingeloggte Nutzer.
+          Dazu fragt ein JavaScript beim Laden der Seite ueber
+          <code>GET /api/me</code> ab, ob ein gueltiges Session-Cookie
+          vorhanden ist. Diese eine HTTP-Anfrage uebertragt das
+          <code>__Host-auffi_session</code>-Cookie (siehe §8) als
+          Login-Check, sendet aber keine zusaetzlichen Daten und setzt
+          keine neuen Cookies. Bei nicht-eingeloggten Besuchern antwortet
+          der Server mit HTTP 401 und das Symbol bleibt unsichtbar — die
+          Anfrage selbst hinterlaesst nur den ueblichen IP-Praefix-Eintrag
+          im Server-Log (§4).
+        </p>
+        <p>
+          <strong>Auf Impressum und Datenschutz selbst</strong> (also auf
+          dieser Seite und unter <code>/impressum/</code>) wird das Symbol
+          bewusst NICHT geladen — Pflichtseiten ohne aktive Nutzer-Interaktion
+          sollen keine Cookies versenden. Wenn du Feedback zur Rechtstext-
+          Formulierung geben moechtest, nutze bitte
+          <a href="mailto:phash@phash.de">phash@phash.de</a>.
+        </p>
+        <p>
+          Klickst du auf das Symbol, oeffnet sich ein Eingabefeld. Beim
+          Abschicken sendet der Browser einen <code>POST /api/feedback</code>
+          mit deinem Text, dem Session-Cookie, und einem Hinweis auf die
+          Quell-Seite (<code>source="viewer"</code> oder
+          <code>source="dashboard"</code>) sowie der Browser-/OS-Familie
+          (z.&nbsp;B. <code>Chrome/Linux</code>). Verarbeitungsgrundlage:
+          Art. 6 Abs. 1 lit. f DSGVO (Wartung + Verbesserung des Dienstes).
+          Inhalt + Zeitpunkt der Einreichung werden gespeichert und sind
+          nur fuer Admins sichtbar. Antwortet ein Admin, geht die Antwort
+          per E-Mail an die in deinem Konto hinterlegte Adresse (siehe §7).
+          <strong>Aufbewahrung:</strong> 1 Jahr nach Bearbeitung („Erledigt"),
+          spaetestens 2 Jahre nach Einreichung; die Audit-Eintraege ueber
+          Feedback-Aktionen werden gleichzeitig mit dem Feedback selbst
+          geloescht (kein laengeres Audit-Schatten-Leben des Inhalts).
         </p>
       </section>
 

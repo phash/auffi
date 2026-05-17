@@ -181,6 +181,7 @@ describe("runPurge", () => {
       softDeletedAccounts: 0,
       rateLimitBuckets: 0,
       feedback: 0,
+      feedbackAuditCascade: 0,
     });
   });
 
@@ -215,6 +216,47 @@ describe("runPurge", () => {
       .all()
       .map((r) => r.body);
     expect(survivors).toEqual(["recent-open", "recent-resolved"]);
+  });
+
+  it("cascade-purges audit_log entries about feedback rows being purged (DSGVO-M2 fix)", () => {
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, created_at, admin) VALUES (12, 'cascade@test', 'x', ?, 1)",
+    ).run(now);
+    db.prepare(
+      `INSERT INTO feedback
+         (id, account_id, source, category, rating, body, created_at, resolved_at)
+       VALUES (777, 12, 'dashboard', 'feature', 4, 'old-with-audit', ?, ?)`,
+    ).run(now - 400 * DAY, now - 400 * DAY);
+    // Two audit_log rows about that feedback — these should cascade.
+    const auditInsert = db.prepare(
+      `INSERT INTO audit_log
+         (admin_id, action, target_type, target_id, before_json, after_json, created_at, viewer_ip_prefix)
+       VALUES (12, ?, 'feedback', '777', ?, ?, ?, 'xxx')`,
+    );
+    // Use audit timestamps INSIDE the auditLogMs window (1 y) so the
+    // aging purge doesn't sweep them first — we want to verify the
+    // cascade path explicitly, not get the right count by accident.
+    auditInsert.run("feedback.resolve", '{"body":"old-with-audit"}', '{"resolved_at":1}', now - 100 * DAY);
+    auditInsert.run("feedback.reply", '{"reply_body":null}', '{"reply_body":"answer"}', now - 50 * DAY);
+    // Plus an UNRELATED audit row (different target) — must NOT cascade.
+    db.prepare(
+      `INSERT INTO audit_log
+         (admin_id, action, target_type, target_id, before_json, after_json, created_at, viewer_ip_prefix)
+       VALUES (12, 'user.suspend', 'account', '99', NULL, NULL, ?, 'xxx')`,
+    ).run(now - 100 * DAY);
+
+    const report = runPurge(db, now);
+    expect(report.feedback).toBe(1);
+    expect(report.feedbackAuditCascade).toBe(2);
+    // The unrelated account-targeted row survived (would be swept by
+    // auditLogMs=1y aging, not by feedback cascade).
+    const surviving = db
+      .prepare<[], { target_type: string; target_id: string }>(
+        "SELECT target_type, target_id FROM audit_log WHERE created_at > 0",
+      )
+      .all();
+    expect(surviving).toContainEqual({ target_type: "account", target_id: "99" });
+    expect(surviving.find((r) => r.target_type === "feedback")).toBeUndefined();
   });
 
   it("custom feedback retention windows override the default", () => {

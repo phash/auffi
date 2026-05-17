@@ -47,8 +47,14 @@
     // Only count clicks on the GH-releases redirect; skip PKGBUILD /
     // repository links (those don't count as a "download").
     if (href.indexOf("/releases/latest/download/") === -1) return null;
-    var idx = href.lastIndexOf("/");
-    return idx >= 0 ? href.substring(idx + 1) : null;
+    // Strip query + hash BEFORE extracting the last path segment — if
+    // a tracking parameter (?utm_source=…) ever sneaks onto a download
+    // href, the asset name would otherwise become "Auffi_…deb?utm=…"
+    // and silently miss the backend allow-list. Defence against a
+    // class of future copy-paste bugs (code-review CODE-H3, 2026-05-17).
+    var clean = href.split("?")[0].split("#")[0];
+    var idx = clean.lastIndexOf("/");
+    return idx >= 0 ? clean.substring(idx + 1) : null;
   }
 
   function decorateAll(counts) {

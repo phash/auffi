@@ -11,10 +11,18 @@ auffi.app {
     encode zstd gzip
 
     header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Frame-Options "DENY"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "no-referrer"
+        # `>` prefix forces overwrite of any pre-existing value (Caddy's
+        # default semantics is "set only if missing"). Required because
+        # the cluster-Caddy's shared `import security_headers` snippet
+        # ships X-Frame-Options=SAMEORIGIN + Referrer-Policy=
+        # strict-origin-when-cross-origin first; without the override
+        # the per-tenant values below are silently ignored and the
+        # live response carries the weaker shared defaults (security-
+        # review SEC-M1, 2026-05-17).
+        >Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        >X-Frame-Options "DENY"
+        >X-Content-Type-Options "nosniff"
+        >Referrer-Policy "no-referrer"
         # SHA-256 hashes whitelist the three inline <script> blocks in
         # viewer/index.html (SoftwareApplication + FAQPage JSON-LD plus
         # the inline Matomo snippet). If any of those change, recompute

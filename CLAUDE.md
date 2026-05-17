@@ -198,6 +198,16 @@ Hängt unmittelbar von `fuse2` auf dem Build-Host ab (Arch: `sudo pacman -S fuse
 - **Caddy v2 subroute matches routes in declaration order, NOT by matcher specificity** (despite docs hinting otherwise). When a `path_regexp` matcher and a `path` matcher could both match, whichever was textually first wins. Concrete bite: `import dotfile_protection` (which expands to `path_regexp \/\.`) was placed at the top of the auffi.app block, and a later `handle /.well-known/* { reverse_proxy auffi-viewer:80 }` never fired — `/.well-known/security.txt` 403'd. Fix is positional: the `/.well-known/*` handle MUST be inserted BEFORE `import dotfile_protection`.
 - **Four cluster-only Caddyfile patches** that don't live in the repo because the cluster Caddyfile is shared with other tenants: (1) `/api/* → auffi-backend:8080`, (2) `/dashboard/* → auffi-dashboard:80` + `redir /dashboard /dashboard/ permanent`, (3) `/.well-known/* → auffi-viewer:80` placed BEFORE dotfile_protection. Plus the scrapers-regex narrowing. **(4)** Matomo CSP: append `https://musikersuche.org` to `script-src` AND `connect-src` of the `auffi.app {}` block, plus the inline-Matomo-snippet's sha256 hash (currently `sha256-zrNDhMThszjoh7hKKym112SwQTRucbjaJn81UYoRyow=`) in `script-src` — recompute when changing the snippet. In-repo `caddy/Caddyfile` already carries the full set; the cluster file at `/opt/caddyserver/Caddyfile` needs the same patches by hand. If a fresh cluster host gets provisioned, replay the patches in `/tmp/patch_cluster_*.py` (the scripts are kept in `/tmp` on the dev box, not in the repo — same posture as the UFW rules).
 
+### Matomo Cross-Tenant Trust
+
+Die selbst-gehostete Matomo-Instanz auf `musikersuche.org/matomo/` ist eine **separate Anwendung auf demselben VPS**, die unabhängig administriert wird. Konsequenz:
+
+- **Kompromittierung von `musikersuche.org` = Kompromittierung der Auffi-Marketing-Pages** (XSS-equivalent via die `<script src="//musikersuche.org/matomo/matomo.js">`-Injection im Matomo-Snippet). Ein logged-in User auf auffi.app/ würde dann sein `__Host-auffi_session`-Cookie an einen kontrollierten Endpoint leaken (das FAB probet aktiv `/api/me`).
+- **SRI-Pin nicht möglich** weil Matomo seine matomo.js in-place updatet. Acceptable Risk solange wir musikersuche.org selbst administrieren, aber wenn dort jemals ein Dritt-Tenant hinzukommt → harte Mitigation nötig (SRI mit Versions-gepinntem matomo.js, oder Matomo-API durch unseren Backend reverse-proxyen).
+- **DNS-Pin nicht codiert**: wenn `musikersuche.org` jemals den Host wechselt (z.B. CDN), wird daraus ein nicht-disclosed Drittland-Transfer. A-Record sollte stabil zur DE-IP zeigen — wenn ich es jemals ändere, MUSS ich die Datenschutzerklärung §9 + diesen CLAUDE.md-Eintrag aktualisieren UND die script-src in Caddyfile re-evaluieren. Aktuell `musikersuche.org` → IONOS Frankfurt (DE).
+
+(Security-Review SEC-M3 + DSGVO-M5, 2026-05-17.)
+
 ### Cluster-Ops Footguns
 
 Three things that took today's (2026-05-17) Matomo + Feedback deploys to find. They're cluster-deployment-only (don't apply to a standalone-mode `docker-compose.prod.yml` host):
