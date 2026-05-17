@@ -7,6 +7,7 @@ import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
 import { DEFAULT_ZOOM, ZOOM_STEPS, formatZoom, nextZoomLevel } from "./zoom.js";
+import { ZERO_PAN, clampPan, stepPan, type PanState } from "./pan.js";
 import { createIceStateHandler } from "./ice-state-handler.js";
 import { CompactBarController } from "./compact-bar.js";
 
@@ -206,13 +207,27 @@ export function bindUI(backendWsUrl: string): void {
   const zoomResetBtn = document.getElementById("zoom-reset") as HTMLButtonElement | null;
   const zoomLevelLabel = document.getElementById("zoom-level");
   const fullscreenBtn = document.getElementById("fullscreen-btn") as HTMLButtonElement | null;
+  const panOverlay = document.getElementById("pan-overlay");
+  const panUpBtn = document.getElementById("pan-up") as HTMLButtonElement | null;
+  const panDownBtn = document.getElementById("pan-down") as HTMLButtonElement | null;
+  const panLeftBtn = document.getElementById("pan-left") as HTMLButtonElement | null;
+  const panRightBtn = document.getElementById("pan-right") as HTMLButtonElement | null;
+  const panResetBtn = document.getElementById("pan-reset") as HTMLButtonElement | null;
 
   let currentZoom = DEFAULT_ZOOM;
+  let currentPan: PanState = ZERO_PAN;
 
   function applyZoom(): void {
     const remote = document.getElementById("remote-video") as HTMLVideoElement | null;
     if (!remote) return;
+    // Re-clamp pan so a previous offset at higher zoom collapses cleanly
+    // when the user zooms back out (gh #98). At zoom=1 this snaps to (0,0).
+    const wrapperRect = videoWrapper.getBoundingClientRect();
+    currentPan = clampPan(currentPan, currentZoom, wrapperRect.width, wrapperRect.height);
     remote.style.setProperty("--zoom", String(currentZoom));
+    // Translate the video by -pan so positive pan = viewport-shifted-right.
+    remote.style.setProperty("--pan-x", `${-currentPan.panX}px`);
+    remote.style.setProperty("--pan-y", `${-currentPan.panY}px`);
     if (zoomLevelLabel) zoomLevelLabel.textContent = formatZoom(currentZoom);
     if (zoomInBtn) zoomInBtn.disabled = currentZoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1];
     if (zoomOutBtn) zoomOutBtn.disabled = currentZoom <= ZOOM_STEPS[0];
@@ -223,10 +238,31 @@ export function bindUI(backendWsUrl: string): void {
       // "Originalgröße (100 %)" while the button visibly reads 150 %.
       zoomResetBtn.setAttribute("aria-label", `Originalgröße (${formatZoom(currentZoom)})`);
     }
+    if (panOverlay) {
+      const showPan = currentZoom > 1;
+      if (showPan) panOverlay.removeAttribute("hidden");
+      else panOverlay.setAttribute("hidden", "");
+      if (panResetBtn)
+        panResetBtn.disabled = currentPan.panX === 0 && currentPan.panY === 0;
+    }
   }
 
   function resetZoom(): void {
     currentZoom = DEFAULT_ZOOM;
+    currentPan = ZERO_PAN;
+    applyZoom();
+  }
+
+  function pan(dirX: -1 | 0 | 1, dirY: -1 | 0 | 1): void {
+    const wrapperRect = videoWrapper.getBoundingClientRect();
+    currentPan = stepPan(
+      currentPan,
+      currentZoom,
+      wrapperRect.width,
+      wrapperRect.height,
+      dirX,
+      dirY,
+    );
     applyZoom();
   }
 
@@ -242,6 +278,15 @@ export function bindUI(backendWsUrl: string): void {
 
   zoomResetBtn?.addEventListener("click", () => {
     resetZoom();
+  });
+
+  panUpBtn?.addEventListener("click", () => pan(0, -1));
+  panDownBtn?.addEventListener("click", () => pan(0, 1));
+  panLeftBtn?.addEventListener("click", () => pan(-1, 0));
+  panRightBtn?.addEventListener("click", () => pan(1, 0));
+  panResetBtn?.addEventListener("click", () => {
+    currentPan = ZERO_PAN;
+    applyZoom();
   });
 
   function toggleFullscreen(): void {

@@ -19,18 +19,16 @@ describe("Viewer top bar", () => {
     doc = loadDOM();
   });
 
-  it("download button is an in-page anchor to the download section", () => {
-    // The download section lives on the same page (#download). Anchor
-    // navigation keeps the user in context (DSGVO/no-install info is
-    // visible alongside the download button) instead of deep-linking
-    // to an external GitHub releases page.
+  it("download button navigates to the dedicated /download/ page", () => {
+    // /download/ is the canonical multi-platform download page (Windows
+    // + Linux + Source). The old in-page #download anchor was a Windows-
+    // only section and got removed when the unified topbar shipped
+    // (2026-05-17, commit d464f4a).
     const btn = doc.getElementById("topbar-download") as HTMLAnchorElement | null;
     expect(btn).not.toBeNull();
-    expect(btn!.getAttribute("href")).toBe("#download");
-    // No target=_blank — anchor scrolls within the same tab.
+    expect(btn!.getAttribute("href")).toBe("/download/");
+    // No target=_blank — same-tab navigation is the expected default.
     expect(btn!.target).toBe("");
-    // The download section the anchor points to must actually exist.
-    expect(doc.getElementById("download")).not.toBeNull();
   });
 
   it("coffee button exists with correct href and target=_blank", () => {

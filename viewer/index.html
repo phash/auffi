@@ -337,6 +337,23 @@
         </div>
         <button id="disconnect" aria-label="Sitzung beenden">Beenden</button>
         <div id="connection-type" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
+        <div id="pan-overlay" class="pan-overlay" role="group" aria-label="Bildausschnitt verschieben" hidden>
+          <button id="pan-up" type="button" class="pan-btn pan-up" aria-label="Ausschnitt nach oben verschieben" title="Hoch">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 3a1 1 0 0 1 .7.3l4 4a1 1 0 1 1-1.4 1.4L9 6.4V13a1 1 0 1 1-2 0V6.4L4.7 8.7a1 1 0 0 1-1.4-1.4l4-4A1 1 0 0 1 8 3z"/></svg>
+          </button>
+          <button id="pan-left" type="button" class="pan-btn pan-left" aria-label="Ausschnitt nach links verschieben" title="Links">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13 8a1 1 0 0 1-1 1H5.4l2.3 2.3a1 1 0 1 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 1 1 1.4 1.4L5.4 7H12a1 1 0 0 1 1 1z"/></svg>
+          </button>
+          <button id="pan-reset" type="button" class="pan-btn pan-reset" aria-label="Ausschnitt zentrieren" title="Zentrieren">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="8" r="3"/></svg>
+          </button>
+          <button id="pan-right" type="button" class="pan-btn pan-right" aria-label="Ausschnitt nach rechts verschieben" title="Rechts">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 8a1 1 0 0 1 1-1h6.6L8.3 4.7a1 1 0 1 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 1 1-1.4-1.4L10.6 9H4a1 1 0 0 1-1-1z"/></svg>
+          </button>
+          <button id="pan-down" type="button" class="pan-btn pan-down" aria-label="Ausschnitt nach unten verschieben" title="Runter">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 13a1 1 0 0 1-.7-.3l-4-4a1 1 0 1 1 1.4-1.4L7 9.6V3a1 1 0 1 1 2 0v6.6l2.3-2.3a1 1 0 0 1 1.4 1.4l-4 4A1 1 0 0 1 8 13z"/></svg>
+          </button>
+        </div>
         <div id="video-controls" role="toolbar" aria-label="Zoom und Vollbild">
           <button id="zoom-out" type="button" aria-label="Verkleinern" title="Verkleinern">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
