@@ -40,23 +40,25 @@ declare module "fastify" {
 }
 
 /**
- * Extract a coarse IP-prefix from the request. Mirrors the DSGVO-driven
- * convention used in connection_log: only the first two octets of an IPv4
- * (with `.xxx` placeholder) or the first 32 bits of an IPv6.
+ * Extract a coarse IP-prefix from the request for the audit log.
  *
- * Used by writeAudit to record WHERE the admin acted from without
- * persisting the full IP.
+ * IPv4: first two octets (e.g. `84.123.xxx`). Matches `viewer_ip_prefix`
+ * format documented in viewer/public/datenschutz §4 + §6.
+ *
+ * IPv6: first **three** hextets = /48. BGH VI ZR 135/13: ISPs assign a
+ * /64 per customer, so /64 is still personenbezogen. /48 narrows it
+ * back to an ISP-region level. Drops from `~16 quintillion possible
+ * hosts` (/64) to `~1 quintillion possible hosts` (/48) — coarser
+ * geo, less personenbezogen. Code-review DSGVO-M7 (2026-05-17).
  */
 function adminIpPrefix(req: FastifyRequest): string {
   const raw = (req.headers["x-forwarded-for"] as string | undefined) ?? req.ip ?? "";
   const first = raw.split(",")[0]?.trim() ?? "";
   if (!first) return "unknown";
   if (first.includes(":")) {
-    // IPv6 — keep first 4 hextets, redact the rest.
-    const parts = first.split(":").slice(0, 4);
+    const parts = first.split(":").slice(0, 3);
     return `${parts.join(":")}::xxx`;
   }
-  // IPv4 — first two octets + xxx.
   const parts = first.split(".");
   if (parts.length === 4) return `${parts[0]}.${parts[1]}.xxx`;
   return "unknown";

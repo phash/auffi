@@ -55,7 +55,8 @@ export function registerAdminFeedbackRoutes(
       const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, MAX_LIMIT)) : DEFAULT_LIMIT;
 
       const cursor = q.cursor ? Number(q.cursor) : undefined;
-      const cursorOk = cursor === undefined || (Number.isFinite(cursor) && cursor > 0);
+      const cursorOk =
+        cursor === undefined || (Number.isInteger(cursor) && cursor > 0);
       if (!cursorOk) {
         return bad(reply, 400, "bad-cursor", "cursor must be a positive integer");
       }
@@ -183,7 +184,17 @@ export function registerAdminFeedbackRoutes(
    */
   app.post(
     "/api/admin/feedback/:id/reply",
-    { preHandler: [app.requireSession, app.requireAdmin] },
+    {
+      preHandler: [app.requireSession, app.requireAdmin],
+      // Per-route cap on top of the global 1000/min/IP. Each call fires
+      // an SMTP transaction via mail.mr-development.de — without this,
+      // a compromised admin credential could relay-blast the SMTP host
+      // into a blacklist + drag legitimate verify/reset mails with it
+      // (security-review SEC-M2, 2026-05-17). 10/min is generous for
+      // a human admin clicking "Senden" and tight enough to make spam
+      // unattractive.
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+    },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
       const fid = Number(id);

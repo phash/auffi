@@ -136,11 +136,30 @@
     form.appendChild(status);
 
     document.body.appendChild(overlay);
+    // Remember the element that had focus before the modal opened, so we
+    // can return focus to it on close — accessibility default (a11y
+    // CODE-H2, 2026-05-17).
+    const previouslyFocused = document.activeElement;
     ta.focus();
 
     const close = function () {
+      document.removeEventListener("keydown", onKey);
       overlay.remove();
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        try {
+          previouslyFocused.focus();
+        } catch (_) {
+          /* element gone, ignore */
+        }
+      }
     };
+    function onKey(e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      }
+    }
+    document.addEventListener("keydown", onKey);
     overlay.addEventListener("click", function (e) {
       if (e.target === overlay) close();
     });
@@ -159,6 +178,12 @@
       cancelBtn.disabled = true;
       status.textContent = "Sende …";
       status.className = "feedback-modal-status info";
+      // Separate the network-error path (.catch on fetch) from the
+      // HTTP-error path (response.ok=false). Without this split, any
+      // throw inside the .then() — e.g. a future close()-throw — would
+      // surface as a misleading "Netzwerkfehler" toast (code-review
+      // CODE-H4, 2026-05-17).
+      let response;
       fetch("/api/feedback", {
         method: "POST",
         credentials: "same-origin",
@@ -170,31 +195,36 @@
           body: text,
         }),
       })
-        .then(function (r) {
-          if (r.ok) {
-            close();
-            showToast("Danke fuer dein Feedback!");
-          } else {
-            submitBtn.disabled = false;
-            cancelBtn.disabled = false;
-            return r.json().then(
-              function (j) {
-                status.textContent =
-                  (j && j.message) || "Konnte nicht gesendet werden.";
-                status.className = "feedback-modal-status err";
-              },
-              function () {
-                status.textContent = "Konnte nicht gesendet werden.";
-                status.className = "feedback-modal-status err";
-              },
-            );
-          }
-        })
         .catch(function () {
           submitBtn.disabled = false;
           cancelBtn.disabled = false;
           status.textContent = "Netzwerkfehler. Bitte spaeter erneut.";
           status.className = "feedback-modal-status err";
+          return null;
+        })
+        .then(function (r) {
+          if (r === null) return;
+          response = r;
+          if (r.ok) {
+            close();
+            showToast("Danke fuer dein Feedback!");
+            return;
+          }
+          return r.json().then(
+            function (j) {
+              submitBtn.disabled = false;
+              cancelBtn.disabled = false;
+              status.textContent =
+                (j && j.message) || "Konnte nicht gesendet werden.";
+              status.className = "feedback-modal-status err";
+            },
+            function () {
+              submitBtn.disabled = false;
+              cancelBtn.disabled = false;
+              status.textContent = "Konnte nicht gesendet werden.";
+              status.className = "feedback-modal-status err";
+            },
+          );
         });
     });
   }

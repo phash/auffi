@@ -161,7 +161,10 @@ describe("writeAudit IP-prefix shaping", () => {
     h.db.close();
   });
 
-  it("redacts to first 4 hextets for IPv6 + ::xxx tail", async () => {
+  it("redacts to first 3 hextets for IPv6 + ::xxx tail (= /48, DSGVO-M7 fix)", async () => {
+    // BGH VI ZR 135/13 — ISPs assign /64 per customer, so /64 is still
+    // personenbezogen. /48 (3 hextets) is the coarser ISP-region scope
+    // that the audit log uses post-2026-05-17 review.
     const h = await build();
     const c = await h.adminCookie();
     await h.app.inject({
@@ -177,7 +180,7 @@ describe("writeAudit IP-prefix shaping", () => {
         "SELECT viewer_ip_prefix FROM audit_log ORDER BY id DESC LIMIT 1",
       )
       .get();
-    expect(row?.viewer_ip_prefix).toBe("2001:db8:abcd:1234::xxx");
+    expect(row?.viewer_ip_prefix).toBe("2001:db8:abcd::xxx");
     await h.app.close();
     h.db.close();
   });

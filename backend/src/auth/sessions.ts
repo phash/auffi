@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { Db } from "../db.js";
 import { newToken, hashToken } from "./tokens.js";
+import { truncateUserAgent } from "../feedback/user_agent.js";
 
 /**
  * Per the spec §4.3, sessions live 30 days from issuance.
@@ -43,9 +44,14 @@ export function createSession(
   const cookieValue = newToken();
   const tokenHash = hashToken(cookieValue);
   const expiresAt = now + SESSION_TTL_MS;
-  // user_agent_hint is truncated to 200 chars; we record a coarse fingerprint
-  // for the "active sessions" UI later, not the full UA for DSGVO reasons.
-  const uaHint = (userAgent ?? "").slice(0, 200);
+  // user_agent_hint is reduced to "Browser-Family/OS-Family" (e.g.
+  // "Chrome/Linux") via truncateUserAgent — the same reduction the
+  // feedback handler uses. The full UA string (200-char slice) was a
+  // precise fingerprint (version, build-id, platform-patches) that
+  // exceeded the privacy promise in viewer/public/datenschutz §6
+  // ("anonymisiertes UA-Hint wie `Chrome/Linux`") — DSGVO Art. 5
+  // Abs. 1 lit. c (Datenminimierung). Code-review 2026-05-17.
+  const uaHint = truncateUserAgent(userAgent);
 
   db.prepare(
     `INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at, user_agent_hint)

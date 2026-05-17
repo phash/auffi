@@ -10,11 +10,11 @@ repository = "https://github.com/phash/auffi"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "=2.6.1", features = [] }
-cc = "=1.2.25"
+tauri-build = { version = "=2.6.2", features = [] }
+cc = "=1.2.62"
 
 [dependencies]
-tauri = { version = "=2.11.1", features = ["tray-icon"] }
+tauri = { version = "=2.11.2", features = ["tray-icon"] }
 tokio = { version = "=1.52.3", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-tungstenite = { version = "=0.29.0", features = ["rustls-tls-native-roots"] }
 serde = { version = "=1.0.228", features = ["derive"] }
@@ -34,7 +34,7 @@ reqwest = { version = "=0.13.3", default-features = false, features = ["rustls",
 # the graph. We install ring explicitly at process startup in lib.rs.
 # The version is pinned to the same release the rest of the graph
 # resolves to (see Cargo.lock).
-rustls = { version = "=0.23.31", default-features = false, features = ["ring"] }
+rustls = { version = "=0.23.40", default-features = false, features = ["ring"] }
 uuid = { version = "=1.23.1", features = ["v4"] }
 tauri-plugin-store = "=2.4.3"
 tauri-plugin-shell = "=2.3.5"
