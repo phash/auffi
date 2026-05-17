@@ -99,9 +99,15 @@ body { line-height: 1.5; }
   margin-top: 0.25rem;
   font-size: 0.8125rem;
 }
-.download-btn {
+/* Selector intentionally specific (`.container a.download-btn`) so it
+   beats the generic `.container a { color: var(--accent); }` rule —
+   without that, the accent colour wins by specificity and the button
+   text ends up blue-on-blue (invisible). */
+.container a.download-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 11rem;
   padding: 0.625rem 1.25rem;
   background: var(--accent);
   color: #fff;
@@ -112,7 +118,7 @@ body { line-height: 1.5; }
   transition: background 150ms ease;
   white-space: nowrap;
 }
-.download-btn:hover { background: var(--accent-hover); color: #fff; }
+.container a.download-btn:hover { background: var(--accent-hover); color: #fff; }
 .hint {
   margin-top: 1rem;
   font-size: 0.875rem;
