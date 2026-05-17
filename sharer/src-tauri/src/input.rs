@@ -2,6 +2,7 @@ use enigo::{
     Axis, Button as EnigoButton, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings,
 };
 use serde::Deserialize;
+use std::collections::HashSet;
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -25,7 +26,7 @@ pub enum InputEvent {
     },
 }
 
-#[derive(Deserialize, Debug, Clone, Copy)]
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Button {
     Left,
@@ -53,6 +54,18 @@ pub struct InputController {
     width: u32,
     height: u32,
     paused: bool,
+    /// Buttons we've sent a Press for but no matching Release yet. If the
+    /// viewer disconnects mid-click (or the user closes their tab while
+    /// holding a button), the OS otherwise thinks the button is still
+    /// down — the sharer's own clicks then misfire (gh #97). On Drop we
+    /// release everything still tracked here.
+    held_buttons: HashSet<Button>,
+    /// Same idea for held keys — viewer Press without matching Release.
+    /// Keys are stored by their wire `code` (e.g. "ShiftLeft") so the
+    /// Drop path can re-parse them; if `parse_key` fails on a key that
+    /// was already pressed, the release is silently dropped (we only got
+    /// here because the press succeeded, so the parse should round-trip).
+    held_keys: HashSet<String>,
 }
 
 impl InputController {
@@ -65,7 +78,23 @@ impl InputController {
             width,
             height,
             paused: false,
+            held_buttons: HashSet::new(),
+            held_keys: HashSet::new(),
         })
+    }
+
+    /// Test/debug introspection — number of buttons currently tracked
+    /// as held. Used by tests to verify the Press/Release accounting
+    /// without depending on a real OS-level cursor state.
+    #[cfg(test)]
+    pub fn held_buttons_count(&self) -> usize {
+        self.held_buttons.len()
+    }
+
+    /// Test/debug introspection — number of keys currently tracked.
+    #[cfg(test)]
+    pub fn held_keys_count(&self) -> usize {
+        self.held_keys.len()
     }
 
     pub fn set_paused(&mut self, paused: bool) {
@@ -102,6 +131,15 @@ impl InputController {
                     Direction::Release
                 };
                 self.enigo.button(b, dir).map_err(|e| e.to_string())?;
+                // Track only AFTER the enigo call succeeds — if the call
+                // fails the OS doesn't think the button is pressed, so we
+                // mustn't queue a release on Drop for something that never
+                // got pressed.
+                if pressed {
+                    self.held_buttons.insert(button);
+                } else {
+                    self.held_buttons.remove(&button);
+                }
             }
             InputEvent::Scroll { dy, .. } => {
                 let lines = clamp_scroll_lines(dy);
@@ -123,9 +161,42 @@ impl InputController {
                     Direction::Release
                 };
                 self.enigo.key(key, dir).map_err(|e| e.to_string())?;
+                if pressed {
+                    self.held_keys.insert(code);
+                } else {
+                    self.held_keys.remove(&code);
+                }
             }
         }
         Ok(())
+    }
+}
+
+impl Drop for InputController {
+    /// Release every mouse-button and key that we ever sent a Press for
+    /// without a matching Release. Symptom this fixes: viewer disconnects
+    /// while the user was clicking-and-dragging; the OS keeps the button
+    /// down; the sharer's own clicks then read as drag-continuations,
+    /// nothing else can be clicked, only killing the sharer process
+    /// resets the cursor (gh #97).
+    ///
+    /// Errors from enigo are intentionally swallowed — Drop can't
+    /// propagate, and we're tearing down anyway. dbg_log would be
+    /// ideal here but creating a circular dependency on lib.rs for a
+    /// tear-down path is overkill; the eprintln stays best-effort.
+    fn drop(&mut self) {
+        // Snapshot the sets — iterating-while-mutating would borrow-check
+        // fail, and we want the buttons/keys gone afterwards anyway.
+        let buttons: Vec<Button> = self.held_buttons.drain().collect();
+        let keys: Vec<String> = self.held_keys.drain().collect();
+        for button in buttons {
+            let _ = self.enigo.button(map_button(button), Direction::Release);
+        }
+        for code in keys {
+            if let Some(key) = parse_key(&code) {
+                let _ = self.enigo.key(key, Direction::Release);
+            }
+        }
     }
 }
 
@@ -401,6 +472,91 @@ mod tests {
         ctrl.set_paused(true);
         let result = ctrl.apply(InputEvent::MouseMove { x: 0.5, y: 0.5 });
         assert!(result.is_ok(), "paused apply should return Ok");
+    }
+
+    // gh #97: Press without matching Release should be tracked so Drop
+    // can clean up. These tests need a real display because enigo is
+    // not mockable without re-architecting the apply() path.
+
+    #[test]
+    #[ignore]
+    fn held_button_tracked_until_released_with_real_enigo() {
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        assert_eq!(ctrl.held_buttons_count(), 0);
+        ctrl.apply(InputEvent::MouseButton {
+            button: Button::Left,
+            pressed: true,
+        })
+        .unwrap();
+        assert_eq!(ctrl.held_buttons_count(), 1, "press should be tracked");
+        ctrl.apply(InputEvent::MouseButton {
+            button: Button::Left,
+            pressed: false,
+        })
+        .unwrap();
+        assert_eq!(ctrl.held_buttons_count(), 0, "release should clear tracking");
+    }
+
+    #[test]
+    #[ignore]
+    fn paused_press_not_tracked_with_real_enigo() {
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.set_paused(true);
+        ctrl.apply(InputEvent::MouseButton {
+            button: Button::Right,
+            pressed: true,
+        })
+        .unwrap();
+        assert_eq!(
+            ctrl.held_buttons_count(),
+            0,
+            "paused presses are not sent to enigo, so must not be tracked either",
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn drop_releases_held_buttons_with_real_enigo() {
+        // Smoke test for the Drop fix to gh #97 — we can't observe the
+        // OS-level button state from a unit test, but we can at least
+        // verify Drop runs without panicking when there's stuff to clean.
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.apply(InputEvent::MouseButton {
+            button: Button::Left,
+            pressed: true,
+        })
+        .unwrap();
+        ctrl.apply(InputEvent::Key {
+            code: "ShiftLeft".to_string(),
+            pressed: true,
+            modifiers: Modifiers::default(),
+        })
+        .unwrap();
+        assert_eq!(ctrl.held_buttons_count(), 1);
+        assert_eq!(ctrl.held_keys_count(), 1);
+        // Drop runs at end of scope — must not panic.
+        drop(ctrl);
+    }
+
+    #[test]
+    #[ignore]
+    fn held_key_tracked_until_released_with_real_enigo() {
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        assert_eq!(ctrl.held_keys_count(), 0);
+        ctrl.apply(InputEvent::Key {
+            code: "ControlLeft".to_string(),
+            pressed: true,
+            modifiers: Modifiers::default(),
+        })
+        .unwrap();
+        assert_eq!(ctrl.held_keys_count(), 1);
+        ctrl.apply(InputEvent::Key {
+            code: "ControlLeft".to_string(),
+            pressed: false,
+            modifiers: Modifiers::default(),
+        })
+        .unwrap();
+        assert_eq!(ctrl.held_keys_count(), 0);
     }
 
     #[test]
