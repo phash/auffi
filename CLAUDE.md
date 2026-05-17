@@ -26,10 +26,10 @@ Target deployment: Linux VPS, **everything runs in Docker** (backend, coturn, re
 **Wayland capture** goes through GStreamer (`pipewiresrc ! videoconvert ! BGRA ! appsink`) rather than direct `pipewire-rs` — the GStreamer element handles DMA-BUF / modifier negotiation that Plasma 6 rejects on the raw SHM path. See `sharer/src-tauri/src/capture/gst_portal.rs`.
 
 **Entry points:**
-- Backend: `backend/src/index.ts` → `server.ts` (Fastify) → `signaling.ts` (WS rooms) + `auth/`, `devices/`, `account/`, `admin/` route modules
-- Viewer: `viewer/src/main.ts` → `ui.ts` (UI wiring) → `webrtc-client.ts` (peer)
-- Sharer: `sharer/src-tauri/src/lib.rs` (Tauri commands) → `capture/mod.rs` (per-OS capture) → `webrtc_peer.rs` (encoder/peer). Unattended path: `heartbeat.rs` (persistent WSS) + `unattended_cmd.rs` (Tauri commands + forwarder loop)
-- Dashboard: `dashboard/src/main.ts` → `router.ts` (history-API SPA) → `views/*.ts`
+- Backend: `backend/src/index.ts` → `server.ts` (Fastify) → `signaling.ts` (WS rooms) + `auth/`, `devices/`, `account/`, `admin/`, `feedback/`, `downloads/`, `tracking/` route modules. Notable: `admin/feedback.ts` (list/patch/reply/delete; reply persists BEFORE SMTP so transient mail failures keep the typed reply as a draft), `downloads/handlers.ts` (KNOWN_ASSETS-Allow-List — bump per release).
+- Viewer: `viewer/src/main.ts` → `ui.ts` (UI wiring) → `webrtc-client.ts` (peer) + `zoom.ts` + `pan.ts` (pure zoom/pan-state helpers). Static `viewer/public/` ships standalone vanilla-JS overlays (`feedback-fab.js`, `download/counts.js`) that the 4 marketing-pages + dashboard link directly — they live outside the Vite-bundle so the static-pages can use them without TypeScript.
+- Sharer: `sharer/src-tauri/src/lib.rs` (Tauri commands) → `capture/mod.rs` (per-OS capture) → `webrtc_peer.rs` (encoder/peer). Unattended path: `heartbeat.rs` (persistent WSS) + `unattended_cmd.rs` (Tauri commands + forwarder loop). Input pipeline `input.rs` — `InputController` tracks held buttons/keys and releases them in `Drop` (gh #97 fix; otherwise a viewer-disconnect mid-click leaves the OS thinking the button is still down).
+- Dashboard: `dashboard/src/main.ts` → `router.ts` (history-API SPA) → `views/*.ts` (incl. `admin-feedback.ts` with inline-reply UI) + `components/feedback-fab.ts`.
 - Cross-component wire format: `docs/protocol.md` — both sides of every message reference this. The unattended-access additions (pw-attempt / pw-check / pw-check-result / unattended-hello / `confirmId` routing) are not yet in protocol.md; refer to `backend/src/protocol.ts` and `sharer/src-tauri/src/heartbeat.rs::BackendFrame|SharerFrame` until docs catch up.
 
 Specs and plans live under `docs/superpowers/`.
@@ -69,6 +69,22 @@ docker compose up --build
 # Roboto the wordmark falls back to DejaVu and the layout shifts.
 # After deploy, refresh Facebook's cache via the Sharing Debugger.
 rsvg-convert -w 1200 -h 630 ops/og-image.svg -o viewer/public/og-image.png
+
+# Sharer release (Linux only — Windows needs separate build via gh issue)
+# 1) Bump version in sharer/src-tauri/{tauri.conf.json,Cargo.toml}
+# 2) Build .deb + .rpm + .AppImage (AppImage needs the wrapper for the
+#    DT_RELR + icon-path workarounds — see "AppImage-Build Footguns")
+./ops/build-sharer-appimage.sh
+# 3) GH-Release + asset upload
+gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
+  sharer/src-tauri/target/release/bundle/deb/Auffi_X.Y.Z_amd64.deb \
+  sharer/src-tauri/target/release/bundle/rpm/Auffi-X.Y.Z-1.x86_64.rpm \
+  sharer/src-tauri/target/release/bundle/appimage/Auffi_X.Y.Z_amd64.AppImage
+# 4) Bump filenames in viewer/public/download/index.html + the
+#    KNOWN_ASSETS-Set in backend/src/downloads/handlers.ts
+# 5) ./ops/deploy.sh --yes
+# Windows-Builds passieren auf einer separaten Windows-Box (siehe das
+# offene "Windows vX.Y.Z build (sharer)"-GH-Issue-Template).
 ```
 
 ## Rebrand Naming Inconsistencies (Intentional)
@@ -116,7 +132,7 @@ Container names (`auffi-backend`, `auffi-caddy`, `auffi-coturn`, etc.), image na
 - **No logging of PII**: no IPs in plain text in logs (use truncated `84.xxx`), no user content, no session content.
 - **Code TTL enforced server-side**, not just client-side. 10 minutes hard cap.
 - **All persisted state must have a retention policy.** In-memory state is fine; if you add a DB later, document retention.
-- **No third-party trackers** in the viewer. No analytics SDKs, no Google Fonts CDN, no external CSS. Self-host everything. *Exception:* a self-hosted Matomo on the same VPS (`musikersuche.org/matomo/`, Site ID 6) is loaded via `viewer/public/matomo.js` on the four static marketing pages ONLY (`index.html`, `impressum/`, `datenschutz/`, `download/`) — cookieless, DNT-respecting, no `enableLinkTracking`, fires exactly once on initial page-load and never during an active session. The backend additionally fires one server-side `e_c=session&e_a=code_created` event per minted code via `backend/src/tracking/matomo.ts` (ENV-gated by `MATOMO_TRACKER_URL` + `MATOMO_SITE_ID`; absent env = silent no-op). No `cip`/`uid`/`url`/`urlref` is ever sent server-side. Disclosure: `viewer/public/datenschutz/index.html` §9.
+- **No third-party trackers** in the viewer. No analytics SDKs, no Google Fonts CDN, no external CSS. Self-host everything. *Exception:* a self-hosted Matomo on the same VPS (`musikersuche.org/matomo/`, Site ID 6) — **inline `<!-- Matomo -->` snippet** in the four static marketing HTMLs (`viewer/index.html`, `impressum/`, `datenschutz/`, `download/`), cookieless + DNT-respecting, no `enableLinkTracking`, fires exactly once on initial page-load and never during an active session. The snippet's sha256 hash is whitelisted in CSP `script-src` (caddy/Caddyfile + cluster Caddyfile both); recompute via the inline awk-pipeline in `caddy/Caddyfile`'s CSP-comment when changing the snippet. **External `/matomo.js` was tried first (gh #96), then dropped (gh fecd506-era) — Matomo's tracking-code validator only finds inline snippets when it curls the page HTML.** The backend additionally fires one server-side `e_c=session&e_a=code_created` event per minted code via `backend/src/tracking/matomo.ts` (ENV-gated by `MATOMO_TRACKER_URL` + `MATOMO_SITE_ID`; absent env = silent no-op). No `cip`/`uid`/`url`/`urlref` is ever sent server-side. Disclosure: `viewer/public/datenschutz/index.html` §9.
 - **TLS everywhere in production.** No HTTP, no WS. Let's Encrypt via reverse proxy.
 - **Sharer confirmation is mandatory** — never auto-accept incoming peer connections.
 - **WebRTC must use DTLS-SRTP** (default). Don't disable it.
@@ -180,7 +196,15 @@ Hängt unmittelbar von `fuse2` auf dem Build-Host ab (Arch: `sudo pacman -S fuse
 
 - **Never blanket-block `bot`/`crawler`/`spider` as User-Agent substrings**. The original auffi.app site had `@scrapers { header_regexp User-Agent (?i)(scrapy|bot|crawler|spider|…) }` which matched every legit search-engine crawler (`Googlebot`, `bingbot`, `DuckDuckBot`, `AhrefsBot`, `LinkedInBot`, `Twitterbot`, `facebookexternalhit`…) and returned 403. Search Console couldn't fetch the sitemap; SEO outage from 2026-05-12 to 2026-05-14. The narrow allow-list lives in `caddy/Caddyfile`: scrapy, wget, curl, headlesschrome, phantomjs, nikto, sqlmap, sqlninja, nmap, masscan, metasploit, dirbuster, nuclei, wpscan. The cluster Caddyfile at `/opt/caddyserver/Caddyfile` carries the same fix — keep both in sync when adding new bad-actor signatures.
 - **Caddy v2 subroute matches routes in declaration order, NOT by matcher specificity** (despite docs hinting otherwise). When a `path_regexp` matcher and a `path` matcher could both match, whichever was textually first wins. Concrete bite: `import dotfile_protection` (which expands to `path_regexp \/\.`) was placed at the top of the auffi.app block, and a later `handle /.well-known/* { reverse_proxy auffi-viewer:80 }` never fired — `/.well-known/security.txt` 403'd. Fix is positional: the `/.well-known/*` handle MUST be inserted BEFORE `import dotfile_protection`.
-- **Three cluster-only Caddyfile patches** that don't live in the repo because the cluster Caddyfile is shared with other tenants: (1) `/api/* → auffi-backend:8080`, (2) `/dashboard/* → auffi-dashboard:80` + `redir /dashboard /dashboard/ permanent`, (3) `/.well-known/* → auffi-viewer:80` placed BEFORE dotfile_protection. Plus the scrapers-regex narrowing. **(4)** Matomo CSP: append `https://musikersuche.org` to both `script-src` and `connect-src` of the `auffi.app {}` block so `/matomo.js` can load matomo.js from the same VPS and POST tracking pings (in-repo `caddy/Caddyfile` already carries this — the cluster file at `/opt/caddyserver/Caddyfile` needs the same patch by hand). If a fresh cluster host gets provisioned, replay the patches in `/tmp/patch_cluster_*.py` (the scripts are kept in `/tmp` on the dev box, not in the repo — same posture as the UFW rules).
+- **Four cluster-only Caddyfile patches** that don't live in the repo because the cluster Caddyfile is shared with other tenants: (1) `/api/* → auffi-backend:8080`, (2) `/dashboard/* → auffi-dashboard:80` + `redir /dashboard /dashboard/ permanent`, (3) `/.well-known/* → auffi-viewer:80` placed BEFORE dotfile_protection. Plus the scrapers-regex narrowing. **(4)** Matomo CSP: append `https://musikersuche.org` to `script-src` AND `connect-src` of the `auffi.app {}` block, plus the inline-Matomo-snippet's sha256 hash (currently `sha256-zrNDhMThszjoh7hKKym112SwQTRucbjaJn81UYoRyow=`) in `script-src` — recompute when changing the snippet. In-repo `caddy/Caddyfile` already carries the full set; the cluster file at `/opt/caddyserver/Caddyfile` needs the same patches by hand. If a fresh cluster host gets provisioned, replay the patches in `/tmp/patch_cluster_*.py` (the scripts are kept in `/tmp` on the dev box, not in the repo — same posture as the UFW rules).
+
+### Cluster-Ops Footguns
+
+Three things that took today's (2026-05-17) Matomo + Feedback deploys to find. They're cluster-deployment-only (don't apply to a standalone-mode `docker-compose.prod.yml` host):
+
+- **Cluster reverse-proxy is `caddy-proxy`** (image `caddy-custom:2.11.2-ratelimit`), NOT `auffi-caddy`. The latter only exists in standalone mode. `docker exec auffi-caddy …` will fail with "No such container" on cluster hosts. Use `docker exec caddy-proxy …` instead. The Caddyfile path is `/opt/caddyserver/Caddyfile` on the host (bind-mounted into the container).
+- **Cluster Caddyfile has `admin off`** (line 6), so `docker exec caddy-proxy caddy reload --config /etc/caddy/Caddyfile` fails with `connect: connection refused` on the admin-API port 2019. The only reload path is `docker restart caddy-proxy` (~3 s connection blip — acceptable for a tenant-shared host but document the blip if you're scheduling it). Always `docker exec caddy-proxy caddy validate --config /etc/caddy/Caddyfile` BEFORE the restart so a syntax error doesn't take auffi.app offline.
+- **`docker compose restart backend` does NOT re-read `.env.prod`.** `restart` recycles the existing container with its existing env-snapshot from start-time. New env-vars (e.g. adding `SMTP_FROM=…` or `MATOMO_*`) require `docker compose -f docker-compose.prod.yml -f docker-compose.cluster.yml --env-file .env.prod up -d --force-recreate --no-deps backend`. The deploy script does the right thing on full deploys; only manual env tweaks have this trap.
 
 ## Docker Conventions
 
@@ -204,7 +228,7 @@ TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy c
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-15: backend 329, sharer-lib 178, viewer 161, dashboard 85. Drops are regressions. **As of 2026-05-17: backend regressed to 328/329 — one test is failing; identify it via `cd backend && npm test` (no `--silent`) and either fix it or document why before claiming "tests pass".**)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-17: backend 359, sharer-lib 178 (+ 6 `#[ignore]` Display-requiring), viewer 172, dashboard 90. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `eslint`, `cargo clippy -- -D warnings`.
 4. Type check passes: `tsc --noEmit`, `cargo check`.
