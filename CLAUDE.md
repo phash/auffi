@@ -62,6 +62,13 @@ docker compose up --build
 
 # Production deploy (to musikersuche@musikersuche.org:/opt/screenie)
 ./ops/deploy.sh                    # idempotent — builds, transfers, starts
+
+# OG-image rebuild (Facebook/Twitter share preview)
+# Source: ops/og-image.svg → viewer/public/og-image.png
+# Needs: rsvg-convert + Roboto Black font (Arch: `ttf-roboto`); without
+# Roboto the wordmark falls back to DejaVu and the layout shifts.
+# After deploy, refresh Facebook's cache via the Sharing Debugger.
+rsvg-convert -w 1200 -h 630 ops/og-image.svg -o viewer/public/og-image.png
 ```
 
 ## Rebrand Naming Inconsistencies (Intentional)
@@ -197,7 +204,7 @@ TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy c
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-15: backend 329, sharer-lib 178, viewer 161, dashboard 85. Drops are regressions.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-15: backend 329, sharer-lib 178, viewer 161, dashboard 85. Drops are regressions. **As of 2026-05-17: backend regressed to 328/329 — one test is failing; identify it via `cd backend && npm test` (no `--silent`) and either fix it or document why before claiming "tests pass".**)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `eslint`, `cargo clippy -- -D warnings`.
 4. Type check passes: `tsc --noEmit`, `cargo check`.
