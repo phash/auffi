@@ -14,15 +14,14 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
-  // Linux 0.4.1 — released 2026-05-17, contains the #97 input-cleanup fix.
+  // 0.4.1 — released 2026-05-17, contains the #97 input-cleanup fix.
   "Auffi_0.4.1_amd64.deb",
   "Auffi-0.4.1-1.x86_64.rpm",
   "Auffi_0.4.1_amd64.AppImage",
-  // Windows still on 0.4.0 until Windows-Claude builds 0.4.1 (see #100).
-  // Filenames without a version stamp are stable across releases.
+  // Portable .exe + NSIS setup carry no version stamp — stable across releases.
   "auffi-sharer-windows-x64.exe",
   "auffi-sharer-windows-x64-setup.exe",
-  "Auffi_0.4.0_x64_en-US.msi",
+  "Auffi_0.4.1_x64_en-US.msi",
 ]);
 
 export function registerDownloadRoutes(app: FastifyInstance, db: Db): void {
