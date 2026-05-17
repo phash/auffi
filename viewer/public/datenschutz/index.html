@@ -9,17 +9,31 @@
     <link rel="canonical" href="https://auffi.app/datenschutz/" />
     <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="/topbar-footer.css" />
     <link rel="stylesheet" href="/legal/style.css" />
     <script src="/matomo.js" defer></script>
   </head>
   <body>
-    <header class="topbar">
-      <a class="topbar-wordmark" href="/" aria-label="Zur Startseite">Auffi</a>
-      <nav class="topbar-nav" aria-label="Navigation">
-        <a href="/">Viewer</a>
-        <a href="/download/">Download</a>
-        <a href="/impressum/">Impressum</a>
-        <a href="/datenschutz/" aria-current="page">Datenschutz</a>
+    <header id="top-bar" role="banner">
+      <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
+      <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Einloggen (Konto)">
+          <span class="topbar-btn-label">Einloggen</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Konto anlegen">
+          <span class="topbar-btn-label">Konto anlegen</span>
+        </a>
+        <a id="topbar-download" href="/download/" class="topbar-btn" aria-label="Sharer herunterladen">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-btn-label">Sharer herunterladen</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
       </nav>
     </header>
 
@@ -391,13 +405,22 @@
       </section>
     </main>
 
-    <footer class="site-footer">
-      <p>
-        <a href="/impressum/">Impressum</a> ·
-        <a href="/datenschutz/">Datenschutz</a> ·
-        <a href="https://github.com/phash/auffi" rel="noopener noreferrer">GitHub</a> ·
-        <a href="https://github.com/phash/auffi/blob/main/LICENSE">AGPL-3.0</a>
-      </p>
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        und
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+      </span>
     </footer>
   </body>
 </html>
