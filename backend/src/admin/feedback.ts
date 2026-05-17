@@ -1,9 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
+import type { FeedbackMailer } from "../email/mailer.js";
 import { writeAudit } from "./middleware.js";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+const MAX_REPLY_LENGTH = 4000;
 
 interface FeedbackRow {
   id: number;
@@ -16,13 +18,21 @@ interface FeedbackRow {
   user_agent_hint: string | null;
   created_at: number;
   resolved_at: number | null;
+  reply_body: string | null;
+  replied_at: number | null;
+  replied_by: number | null;
+  reply_sent_at: number | null;
 }
 
 function bad(reply: FastifyReply, status: number, code: string, message: string) {
   return reply.status(status).send({ error: code, message });
 }
 
-export function registerAdminFeedbackRoutes(app: FastifyInstance, db: Db): void {
+export function registerAdminFeedbackRoutes(
+  app: FastifyInstance,
+  db: Db,
+  mailer: FeedbackMailer,
+): void {
   /**
    * GET /api/admin/feedback?status=open|resolved|all&cursor=<id>&limit=<n>
    *
@@ -61,7 +71,8 @@ export function registerAdminFeedbackRoutes(app: FastifyInstance, db: Db): void 
       const sql =
         `SELECT f.id, f.account_id, a.email AS account_email,
                 f.source, f.category, f.rating, f.body,
-                f.user_agent_hint, f.created_at, f.resolved_at
+                f.user_agent_hint, f.created_at, f.resolved_at,
+                f.reply_body, f.replied_at, f.replied_by, f.reply_sent_at
            FROM feedback f
            JOIN accounts a ON a.id = f.account_id
           WHERE 1=1${statusFilter}${cursorPredicate}
@@ -87,6 +98,10 @@ export function registerAdminFeedbackRoutes(app: FastifyInstance, db: Db): void 
           userAgentHint: r.user_agent_hint,
           createdAt: r.created_at,
           resolvedAt: r.resolved_at,
+          replyBody: r.reply_body,
+          repliedAt: r.replied_at,
+          repliedBy: r.replied_by,
+          replySentAt: r.reply_sent_at,
         })),
         nextCursor,
       });
@@ -148,6 +163,125 @@ export function registerAdminFeedbackRoutes(app: FastifyInstance, db: Db): void 
         { resolved_at: nextResolvedAt },
       );
       return reply.status(200).send({ ok: true, resolvedAt: nextResolvedAt });
+    },
+  );
+
+  /**
+   * POST /api/admin/feedback/:id/reply — admin replies inline.
+   *
+   * The reply is stored in the row (reply_body + replied_at + replied_by)
+   * BEFORE we attempt SMTP — that way a transient mail failure leaves the
+   * reply persisted as a draft the admin can re-send without re-typing.
+   * `reply_sent_at` is set only after SMTP confirms acceptance; the
+   * response payload reports both `replyAt` and `sentAt` (nullable) so
+   * the UI can render "draft saved, send retry pending" vs "delivered".
+   *
+   * Replying auto-resolves an open row (admin did the work — separate
+   * resolve click would be busywork). Already-resolved rows aren't
+   * touched; re-replying to a resolved row is allowed and overwrites
+   * the previous reply (audit log captures the change).
+   */
+  app.post(
+    "/api/admin/feedback/:id/reply",
+    { preHandler: [app.requireSession, app.requireAdmin] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const fid = Number(id);
+      if (!Number.isInteger(fid) || fid <= 0) {
+        return bad(reply, 400, "bad-id", "id must be a positive integer");
+      }
+      const body = (req.body ?? {}) as { reply?: unknown };
+      if (typeof body.reply !== "string") {
+        return bad(reply, 400, "bad-reply", "reply must be a string");
+      }
+      const replyText = body.reply.trim();
+      if (replyText.length === 0) {
+        return bad(reply, 400, "bad-reply", "reply must not be empty");
+      }
+      if (replyText.length > MAX_REPLY_LENGTH) {
+        return bad(
+          reply,
+          400,
+          "reply-too-long",
+          `reply must be ≤${MAX_REPLY_LENGTH} characters`,
+        );
+      }
+      const row = db
+        .prepare<
+          [number],
+          {
+            id: number;
+            body: string;
+            account_email: string;
+            reply_body: string | null;
+            replied_at: number | null;
+            resolved_at: number | null;
+          }
+        >(
+          `SELECT f.id, f.body, a.email AS account_email,
+                  f.reply_body, f.replied_at, f.resolved_at
+             FROM feedback f
+             JOIN accounts a ON a.id = f.account_id
+            WHERE f.id = ?`,
+        )
+        .get(fid);
+      if (!row) return bad(reply, 404, "not-found", "feedback row not found");
+
+      const now = Date.now();
+      const adminId = req.account!.id;
+      const nextResolvedAt = row.resolved_at ?? now;
+      db.prepare(
+        `UPDATE feedback
+            SET reply_body = ?, replied_at = ?, replied_by = ?,
+                reply_sent_at = NULL, resolved_at = ?
+          WHERE id = ?`,
+      ).run(replyText, now, adminId, nextResolvedAt, fid);
+
+      writeAudit(
+        db,
+        req,
+        "feedback.reply",
+        "feedback",
+        fid,
+        {
+          reply_body: row.reply_body,
+          replied_at: row.replied_at,
+          resolved_at: row.resolved_at,
+        },
+        {
+          reply_body: replyText,
+          replied_at: now,
+          resolved_at: nextResolvedAt,
+        },
+      );
+
+      let sentAt: number | null = null;
+      let sendError: string | null = null;
+      try {
+        await mailer.sendReply({
+          to: row.account_email,
+          originalBody: row.body,
+          replyText,
+        });
+        sentAt = Date.now();
+        db.prepare("UPDATE feedback SET reply_sent_at = ? WHERE id = ?").run(
+          sentAt,
+          fid,
+        );
+      } catch (err) {
+        sendError = (err as Error).message;
+        req.log.warn(
+          { err: sendError, feedbackId: fid },
+          "feedback reply email send failed (reply persisted as draft)",
+        );
+      }
+
+      return reply.status(200).send({
+        ok: true,
+        replyAt: now,
+        sentAt,
+        sendError: sendError ?? undefined,
+      });
     },
   );
 

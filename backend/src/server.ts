@@ -267,7 +267,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // the volume-mounted default at /var/lib/auffi/auffi.db) and apply
   // migrations every boot — idempotent if no new files appear.
 
-  const { mailer, accountMailer } = mailerFromEnv();
+  const { mailer, accountMailer, feedbackMailer } = mailerFromEnv();
 
   decorateRequireSession(app, db);
   decorateRequireAdmin(app, db);
@@ -280,7 +280,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   registerAdminAuditRoutes(app, db);
   registerAdminStatsRoutes(app, db);
   registerAdminTimeseriesRoutes(app, db);
-  registerAdminFeedbackRoutes(app, db);
+  registerAdminFeedbackRoutes(app, db, feedbackMailer);
   registerFeedbackRoutes(app, db);
 
   // Promote the configured INITIAL_ADMIN_EMAIL on every boot.

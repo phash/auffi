@@ -81,3 +81,42 @@ export function resetPasswordTemplate(link: string): TemplateContent {
 export function emailChangeTemplate(link: string): TemplateContent {
   return { subject: EMAIL_CHANGE_SUBJECT, text: applyLink(EMAIL_CHANGE_BODY, link) };
 }
+
+const FEEDBACK_REPLY_SUBJECT = "Antwort auf dein Auffi-Feedback";
+
+/**
+ * Reply to user-submitted feedback. Quotes the user's original message
+ * so they can place the answer in context without scrolling back through
+ * their own send-folder. Both texts are user-generated; we trust them
+ * because the plain-text mail body cannot inject markup, and the SMTP
+ * transport already redacts the recipient on error.
+ */
+export function feedbackReplyTemplate(
+  originalBody: string,
+  replyText: string,
+): TemplateContent {
+  const quoted = originalBody
+    .split(/\r?\n/)
+    .map((line) => `> ${line}`)
+    .join("\n");
+  const text = `Hallo,
+
+du hast vor einiger Zeit Feedback zu Auffi eingereicht — hier die Antwort
+darauf:
+
+${replyText}
+
+────────────────────────────────────────────────────────────
+Dein urspruengliches Feedback:
+
+${quoted}
+────────────────────────────────────────────────────────────
+
+Falls du nachfragen oder weitere Punkte einreichen moechtest, klick im
+Dashboard auf das Feedback-Symbol unten rechts.
+
+— Auffi
+https://auffi.app
+`;
+  return { subject: FEEDBACK_REPLY_SUBJECT, text };
+}
