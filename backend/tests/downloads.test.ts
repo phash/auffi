@@ -34,7 +34,7 @@ describe("GET /api/downloads", () => {
   });
 
   it("reflects incremented counts after POSTs", async () => {
-    const asset = "Auffi_0.4.1_amd64.deb";
+    const asset = "Auffi_0.4.2_amd64.deb";
     for (let i = 0; i < 3; i++) {
       await h.app.inject({ method: "POST", url: `/api/downloads/${asset}` });
     }
@@ -65,7 +65,7 @@ describe("POST /api/downloads/:asset", () => {
   });
 
   it("increments from 0 to 1 on first click and returns the new count", async () => {
-    const asset = "Auffi-0.4.1-1.x86_64.rpm";
+    const asset = "Auffi-0.4.2-1.x86_64.rpm";
     const res = await h.app.inject({
       method: "POST",
       url: `/api/downloads/${asset}`,
@@ -79,7 +79,7 @@ describe("POST /api/downloads/:asset", () => {
   });
 
   it("increments monotonically on repeated clicks (no UPSERT bug)", async () => {
-    const asset = "Auffi_0.4.1_amd64.AppImage";
+    const asset = "Auffi_0.4.2_amd64.AppImage";
     for (let i = 1; i <= 5; i++) {
       const res = await h.app.inject({
         method: "POST",
@@ -121,7 +121,7 @@ describe("POST /api/downloads/:asset", () => {
   it("does not require auth — counters are public-write by design", async () => {
     const res = await h.app.inject({
       method: "POST",
-      url: "/api/downloads/Auffi_0.4.1_amd64.deb",
+      url: "/api/downloads/Auffi_0.4.2_amd64.deb",
     });
     expect(res.statusCode).toBe(200);
   });
