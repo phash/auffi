@@ -5,7 +5,7 @@ import { findSession, readSessionCookie } from "../auth/sessions.js";
 import { truncateUserAgent } from "./user_agent.js";
 
 const ALLOWED_CATEGORIES = ["bug", "feature", "praise", "other"] as const;
-const ALLOWED_SOURCES = ["dashboard", "sharer"] as const;
+const ALLOWED_SOURCES = ["dashboard", "sharer", "viewer"] as const;
 const BODY_MAX_LEN = 4000;
 
 type Category = (typeof ALLOWED_CATEGORIES)[number];
@@ -75,7 +75,10 @@ function parseSubmitBody(body: SubmitBody):
   | { error: { error: string; message: string } } {
   if (typeof body.source !== "string" || !ALLOWED_SOURCES.includes(body.source as Source)) {
     return {
-      error: { error: "bad-source", message: "source must be 'dashboard' or 'sharer'" },
+      error: {
+        error: "bad-source",
+        message: "source must be 'dashboard', 'sharer', or 'viewer'",
+      },
     };
   }
   if (
@@ -131,10 +134,11 @@ async function resolveAccountId(
   req: FastifyRequest,
   source: Source,
 ): Promise<number | null> {
-  if (source === "dashboard") {
-    // Manual session lookup — we can't use the `requireSession`
-    // preHandler because the same route also serves sharer Bearer
-    // auth (no cookie). The preHandler would 401 those.
+  if (source === "dashboard" || source === "viewer") {
+    // Both UIs authenticate via the same __Host-auffi_session cookie —
+    // the only difference is which page the feedback came FROM, which
+    // is purely admin-visible metadata. Manual session lookup because
+    // the route also serves the sharer Bearer-auth path (no cookie).
     const cookie = readSessionCookie(req);
     if (!cookie) return null;
     const sess = findSession(db, cookie);

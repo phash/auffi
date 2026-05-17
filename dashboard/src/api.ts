@@ -281,7 +281,7 @@ export function listConnectionLog(
 // ── Feedback (gh #39) ─────────────────────────────────────────────
 
 export type FeedbackCategory = "bug" | "feature" | "praise" | "other";
-export type FeedbackSource = "dashboard" | "sharer";
+export type FeedbackSource = "dashboard" | "sharer" | "viewer";
 
 export interface FeedbackSubmission {
   source: FeedbackSource;
@@ -312,6 +312,10 @@ export interface AdminFeedbackRow {
   userAgentHint: string | null;
   createdAt: number;
   resolvedAt: number | null;
+  replyBody: string | null;
+  repliedAt: number | null;
+  repliedBy: number | null;
+  replySentAt: number | null;
 }
 
 export interface AdminFeedbackPage {
@@ -343,4 +347,22 @@ export function patchAdminFeedback(
 
 export function deleteAdminFeedback(id: number): Promise<ApiResult<{ ok: true }>> {
   return request(`/api/admin/feedback/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Reply to a feedback row. The backend persists the reply (so a SMTP
+ * outage doesn't lose the typed text) and tries to send the email; the
+ * response reports both `replyAt` (always set on 200) and `sentAt`
+ * (null if SMTP failed — see `sendError`).
+ */
+export function replyAdminFeedback(
+  id: number,
+  reply: string,
+): Promise<
+  ApiResult<{ ok: true; replyAt: number; sentAt: number | null; sendError?: string }>
+> {
+  return request(`/api/admin/feedback/${id}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ reply }),
+  });
 }

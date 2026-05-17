@@ -7,24 +7,30 @@ import { decorateRequireAdmin } from "../src/admin/middleware.js";
 import { registerAuthRoutes } from "../src/auth/handlers.js";
 import { registerFeedbackRoutes } from "../src/feedback/handlers.js";
 import { registerAdminFeedbackRoutes } from "../src/admin/feedback.js";
-import { captureTransport } from "../src/email/transport.js";
-import { buildAuthMailer } from "../src/email/mailer.js";
+import { captureTransport, type CaptureTransport } from "../src/email/transport.js";
+import { buildAuthMailer, buildFeedbackMailer } from "../src/email/mailer.js";
 import { hashPassword } from "../src/auth/argon.js";
 
-async function build(): Promise<{ app: FastifyInstance; db: Db }> {
+async function build(): Promise<{
+  app: FastifyInstance;
+  db: Db;
+  feedbackTransport: CaptureTransport;
+}> {
   const db = openDb(":memory:");
   applyMigrations(db, defaultMigrationsDir());
   const transport = captureTransport();
+  const feedbackTransport = captureTransport();
   const mailer = buildAuthMailer({ dashboardUrl: "https://t/", transport });
+  const feedbackMailer = buildFeedbackMailer({ transport: feedbackTransport });
   const app = Fastify();
   await app.register(rateLimit, { global: false });
   decorateRequireSession(app, db);
   decorateRequireAdmin(app, db);
   registerAuthRoutes(app, { db, mailer });
   registerFeedbackRoutes(app, db);
-  registerAdminFeedbackRoutes(app, db);
+  registerAdminFeedbackRoutes(app, db, feedbackMailer);
   await app.ready();
-  return { app, db };
+  return { app, db, feedbackTransport };
 }
 
 describe("POST /api/feedback (dashboard / session-cookie path)", () => {
@@ -131,6 +137,28 @@ describe("POST /api/feedback (dashboard / session-cookie path)", () => {
       expect(res.statusCode).toBe(400);
       expect(res.json().error).toBe("bad-body");
     }
+  });
+
+  it("accepts source='viewer' from the marketing-page FAB (same session-auth as dashboard)", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/feedback",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: {
+        source: "viewer",
+        category: "feature",
+        rating: 5,
+        body: "Bitte einen Dark-Mode-Toggle ueber dem Code-Eingabefeld.",
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    const row = h.db
+      .prepare(
+        "SELECT source, body FROM feedback ORDER BY id DESC LIMIT 1",
+      )
+      .get() as { source: string; body: string };
+    expect(row.source).toBe("viewer");
+    expect(row.body).toContain("Dark-Mode-Toggle");
   });
 
   it("trims whitespace from the body before storing", async () => {
@@ -450,6 +478,266 @@ describe("DELETE /api/admin/feedback/:id", () => {
       headers: { cookie: `__Host-auffi_session=${userCookie}` },
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe("POST /api/admin/feedback/:id/reply", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  let adminCookie: string;
+  let userCookie: string;
+  let feedbackId: number;
+
+  beforeEach(async () => {
+    h = await build();
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "bob@example.com", password: "bob-pw-12345" },
+    });
+    const userLogin = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "bob@example.com", password: "bob-pw-12345" },
+    });
+    userCookie = (userLogin.headers["set-cookie"] as string).match(
+      /^__Host-auffi_session=([^;]+)/,
+    )![1];
+    await h.app.inject({
+      method: "POST",
+      url: "/api/feedback",
+      headers: { cookie: `__Host-auffi_session=${userCookie}` },
+      payload: {
+        source: "dashboard",
+        category: "bug",
+        rating: 3,
+        body: "Beim Klick auf Verbinden passiert nichts.",
+      },
+    });
+    feedbackId = (
+      h.db.prepare("SELECT id FROM feedback ORDER BY id DESC LIMIT 1").get() as {
+        id: number;
+      }
+    ).id;
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "admin3@example.com", password: "admin-pw-12345" },
+    });
+    h.db.prepare("UPDATE accounts SET admin = 1 WHERE email = 'admin3@example.com'").run();
+    const adminLogin = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "admin3@example.com", password: "admin-pw-12345" },
+    });
+    adminCookie = (adminLogin.headers["set-cookie"] as string).match(
+      /^__Host-auffi_session=([^;]+)/,
+    )![1];
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("happy path: persists reply, sends email, marks resolved, returns sentAt", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { reply: "Versuch's mal mit Strg+Shift+R, fixed in 0.4.1." },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ok).toBe(true);
+    expect(body.replyAt).toBeTypeOf("number");
+    expect(body.sentAt).toBeTypeOf("number");
+    expect(body.sendError).toBeUndefined();
+
+    const row = h.db
+      .prepare<
+        [number],
+        {
+          reply_body: string;
+          replied_at: number;
+          replied_by: number;
+          reply_sent_at: number;
+          resolved_at: number;
+        }
+      >(
+        "SELECT reply_body, replied_at, replied_by, reply_sent_at, resolved_at FROM feedback WHERE id = ?",
+      )
+      .get(feedbackId)!;
+    expect(row.reply_body).toBe("Versuch's mal mit Strg+Shift+R, fixed in 0.4.1.");
+    expect(row.replied_at).toBeTypeOf("number");
+    expect(row.reply_sent_at).toBeTypeOf("number");
+    expect(row.resolved_at).toBeTypeOf("number");
+
+    expect(h.feedbackTransport.captured).toHaveLength(1);
+    const mail = h.feedbackTransport.captured[0];
+    expect(mail.to).toBe("bob@example.com");
+    expect(mail.subject).toMatch(/Antwort.*Auffi-Feedback/);
+    expect(mail.text).toContain("Versuch's mal mit Strg+Shift+R");
+    expect(mail.text).toContain("> Beim Klick auf Verbinden passiert nichts.");
+  });
+
+  it("trims the reply before storing", async () => {
+    await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { reply: "   gefixed!   \n" },
+    });
+    const row = h.db
+      .prepare<[number], { reply_body: string }>(
+        "SELECT reply_body FROM feedback WHERE id = ?",
+      )
+      .get(feedbackId)!;
+    expect(row.reply_body).toBe("gefixed!");
+  });
+
+  it("rejects empty / whitespace-only / non-string / oversized reply", async () => {
+    const cases = [
+      { payload: { reply: "" }, why: "empty" },
+      { payload: { reply: "   \n  " }, why: "whitespace" },
+      { payload: {}, why: "missing key" },
+      { payload: { reply: 42 }, why: "non-string" },
+      { payload: { reply: "x".repeat(4001) }, why: "oversized" },
+    ];
+    for (const c of cases) {
+      const res = await h.app.inject({
+        method: "POST",
+        url: `/api/admin/feedback/${feedbackId}/reply`,
+        headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+        payload: c.payload,
+      });
+      expect(res.statusCode, `case "${c.why}"`).toBe(400);
+    }
+    expect(h.feedbackTransport.captured).toHaveLength(0);
+  });
+
+  it("returns 404 for unknown feedback id", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/admin/feedback/99999/reply",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { reply: "hallo" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 403 for non-admin, 401 for anonymous", async () => {
+    const nonAdmin = await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      headers: { cookie: `__Host-auffi_session=${userCookie}` },
+      payload: { reply: "hi" },
+    });
+    expect(nonAdmin.statusCode).toBe(403);
+    const anon = await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      payload: { reply: "hi" },
+    });
+    expect(anon.statusCode).toBe(401);
+  });
+
+  it("auto-resolves an open row on reply", async () => {
+    expect(
+      (h.db.prepare("SELECT resolved_at FROM feedback WHERE id = ?").get(
+        feedbackId,
+      ) as { resolved_at: number | null }).resolved_at,
+    ).toBeNull();
+    await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { reply: "thx" },
+    });
+    expect(
+      (h.db.prepare("SELECT resolved_at FROM feedback WHERE id = ?").get(
+        feedbackId,
+      ) as { resolved_at: number | null }).resolved_at,
+    ).toBeTypeOf("number");
+  });
+
+  it("preserves the original resolved_at when replying to an already-resolved row", async () => {
+    // Pre-resolve via PATCH.
+    await h.app.inject({
+      method: "PATCH",
+      url: `/api/admin/feedback/${feedbackId}`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { resolved: true },
+    });
+    const originalResolvedAt = (
+      h.db.prepare("SELECT resolved_at FROM feedback WHERE id = ?").get(
+        feedbackId,
+      ) as { resolved_at: number }
+    ).resolved_at;
+    await new Promise((r) => setTimeout(r, 5));
+    await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { reply: "Nachtrag" },
+    });
+    const after = (
+      h.db.prepare("SELECT resolved_at FROM feedback WHERE id = ?").get(
+        feedbackId,
+      ) as { resolved_at: number }
+    ).resolved_at;
+    expect(after).toBe(originalResolvedAt);
+  });
+
+  it("persists reply but leaves reply_sent_at NULL when SMTP fails", async () => {
+    // Swap the transport's send to throw — captures the M-1 footgun:
+    // SMTP outage MUST NOT lose the admin's typed reply.
+    const originalSend = h.feedbackTransport.send;
+    h.feedbackTransport.send = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+    try {
+      const res = await h.app.inject({
+        method: "POST",
+        url: `/api/admin/feedback/${feedbackId}/reply`,
+        headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+        payload: { reply: "tut mir leid" },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.replyAt).toBeTypeOf("number");
+      expect(body.sentAt).toBeNull();
+      expect(body.sendError).toBe("ECONNREFUSED");
+      const row = h.db
+        .prepare<
+          [number],
+          { reply_body: string; replied_at: number; reply_sent_at: number | null }
+        >("SELECT reply_body, replied_at, reply_sent_at FROM feedback WHERE id = ?")
+        .get(feedbackId)!;
+      expect(row.reply_body).toBe("tut mir leid");
+      expect(row.replied_at).toBeTypeOf("number");
+      expect(row.reply_sent_at).toBeNull();
+    } finally {
+      h.feedbackTransport.send = originalSend;
+    }
+  });
+
+  it("audit log captures the reply transition (before+after)", async () => {
+    await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { reply: "danke fuer das Feedback" },
+    });
+    const audit = h.db
+      .prepare<[string], { before_json: string; after_json: string }>(
+        "SELECT before_json, after_json FROM audit_log WHERE action = ? ORDER BY id DESC LIMIT 1",
+      )
+      .get("feedback.reply")!;
+    const before = JSON.parse(audit.before_json);
+    expect(before.reply_body).toBeNull();
+    expect(before.replied_at).toBeNull();
+    const after = JSON.parse(audit.after_json);
+    expect(after.reply_body).toBe("danke fuer das Feedback");
+    expect(after.replied_at).toBeTypeOf("number");
   });
 });
 

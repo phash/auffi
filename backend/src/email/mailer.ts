@@ -2,6 +2,7 @@ import type { AuthMailer } from "../auth/handlers.js";
 import type { AccountMailer } from "../account/me.js";
 import {
   emailChangeTemplate,
+  feedbackReplyTemplate,
   resetPasswordTemplate,
   verifyEmailTemplate,
 } from "./templates.js";
@@ -11,6 +12,19 @@ import {
   smtpConfigFromEnv,
   smtpTransport,
 } from "./transport.js";
+
+/**
+ * Mails fired when an admin replies to user feedback in the dashboard.
+ * Separated from `AuthMailer` / `AccountMailer` so the admin-feedback
+ * module doesn't accidentally inherit unrelated mail surfaces.
+ */
+export interface FeedbackMailer {
+  sendReply(opts: {
+    to: string;
+    originalBody: string;
+    replyText: string;
+  }): Promise<void>;
+}
 
 /**
  * Default link base used when DASHBOARD_URL is unset. Self-hosted
@@ -61,6 +75,15 @@ export function buildAccountMailer(cfg: MailerConfig): AccountMailer {
   };
 }
 
+export function buildFeedbackMailer(cfg: { transport: MailTransport }): FeedbackMailer {
+  return {
+    async sendReply({ to, originalBody, replyText }) {
+      const { subject, text } = feedbackReplyTemplate(originalBody, replyText);
+      await cfg.transport.send({ to, subject, text });
+    },
+  };
+}
+
 /**
  * Resolve the appropriate transport from env vars:
  *  - NODE_ENV=test or missing SMTP_* → in-memory capture
@@ -72,6 +95,7 @@ export function buildAccountMailer(cfg: MailerConfig): AccountMailer {
 export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
   mailer: AuthMailer;
   accountMailer: AccountMailer;
+  feedbackMailer: FeedbackMailer;
   transport: MailTransport;
 } {
   const dashboardUrl = env.DASHBOARD_URL?.trim() || DEFAULT_DASHBOARD_URL;
@@ -112,6 +136,7 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
   return {
     mailer: buildAuthMailer({ dashboardUrl, transport }),
     accountMailer: buildAccountMailer({ dashboardUrl, transport }),
+    feedbackMailer: buildFeedbackMailer({ transport }),
     transport,
   };
 }

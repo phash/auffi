@@ -1,0 +1,162 @@
+/* Auffi — Floating Feedback Action Button + Modal.
+   Linked from the 4 marketing pages alongside feedback-fab.js.
+   Inherits --accent / --bg / --card-bg / --text from topbar-footer.css
+   (loaded first), so colors track theme changes there. */
+
+.feedback-fab {
+  position: fixed;
+  right: 1.25rem;
+  bottom: calc(var(--footer-height, 44px) + 1rem);
+  z-index: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-family: var(--font);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  transition: background 150ms ease, transform 150ms ease;
+}
+.feedback-fab:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+.feedback-fab:focus-visible {
+  outline: 3px solid rgba(31, 111, 235, 0.45);
+  outline-offset: 2px;
+}
+@media (max-width: 480px) {
+  .feedback-fab-label {
+    display: none;
+  }
+  .feedback-fab {
+    padding: 0.625rem;
+  }
+}
+
+/* Modal overlay + card */
+.feedback-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 700;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.feedback-modal {
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  width: 100%;
+  max-width: 32rem;
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+.feedback-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.feedback-modal-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.feedback-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.125rem 0.5rem;
+  color: var(--text-secondary);
+}
+.feedback-modal-close:hover { color: var(--text); }
+
+.feedback-modal-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.feedback-modal-label {
+  display: grid;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.feedback-modal-label textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.625rem;
+  resize: vertical;
+  min-height: 6rem;
+}
+.feedback-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.feedback-modal-btn {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+}
+.feedback-modal-btn:hover { background: var(--bg); }
+.feedback-modal-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.feedback-modal-btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+.feedback-modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.feedback-modal-status {
+  margin: 0;
+  font-size: 0.8125rem;
+  min-height: 1.2em;
+}
+.feedback-modal-status.err { color: #c5453a; }
+.feedback-modal-status.info { color: var(--text-secondary); }
+
+/* Toast after successful send */
+.feedback-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: calc(var(--footer-height, 44px) + 4.5rem);
+  z-index: 800;
+  background: var(--accent);
+  color: #fff;
+  padding: 0.625rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  animation: feedback-toast-in 200ms ease-out;
+}
+@keyframes feedback-toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
