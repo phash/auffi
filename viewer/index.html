@@ -130,11 +130,9 @@
       }
     </script>
     <!-- Reichweitenmessung: self-hosted Matomo, cookielos, DNT-respektierend.
-         Snippet inline (statt extern /matomo.js) damit Matomos
-         Tracking-Code-Validator das Markup beim Page-Fetch findet.
-         Bei Änderung sha256-Hash in caddy/Caddyfile + cluster-Caddyfile
-         neu berechnen:
-           printf '%s' "$(awk '/<!-- Matomo -->/{f=1;next}/<!-- End Matomo Code -->/{f=0}f' viewer/index.html | sed '1d;$d')" | openssl dgst -sha256 -binary | openssl base64 -A
+         Snippet inline (statt extern) damit Matomos Tracking-Code-
+         Validator das Markup beim Page-Fetch findet. Hash-Recompute-
+         Anleitung steht in caddy/Caddyfile (Kommentar überm CSP-Header).
          Datenschutz: /datenschutz/ -->
     <!-- Matomo -->
     <script>
