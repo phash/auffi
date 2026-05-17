@@ -417,3 +417,66 @@ button.primary:disabled {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+
+/* Read-only display of the admin's existing reply.
+   The "Mail-Versand fehlgeschlagen"-Badge gets the err-colour via the
+   sendStatus string check in the renderer (no separate class needed
+   because it's already embedded in the strong tag). */
+.feedback-admin-reply-shown {
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+}
+.feedback-admin-reply-header {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.375rem;
+}
+.feedback-admin-reply-body {
+  white-space: pre-wrap;
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+/* Inline reply panel — shown when admin clicks "Antworten". */
+.feedback-admin-reply-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 0.625rem;
+}
+.feedback-admin-reply-label {
+  display: grid;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.feedback-admin-reply-textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  min-height: 5rem;
+}
+.feedback-admin-reply-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.feedback-admin-reply-status {
+  margin: 0;
+  font-size: 0.8125rem;
+  min-height: 1.2em;
+}
+.feedback-admin-reply-status.err { color: #c5453a; }
+.feedback-admin-reply-status.info { color: var(--text-secondary); }
