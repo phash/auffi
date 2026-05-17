@@ -281,7 +281,7 @@ export function listConnectionLog(
 // ── Feedback (gh #39) ─────────────────────────────────────────────
 
 export type FeedbackCategory = "bug" | "feature" | "praise" | "other";
-export type FeedbackSource = "dashboard" | "sharer";
+export type FeedbackSource = "dashboard" | "sharer" | "viewer";
 
 export interface FeedbackSubmission {
   source: FeedbackSource;

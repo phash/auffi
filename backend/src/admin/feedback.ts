@@ -11,7 +11,7 @@ interface FeedbackRow {
   id: number;
   account_id: number;
   account_email: string;
-  source: "dashboard" | "sharer";
+  source: "dashboard" | "sharer" | "viewer";
   category: "bug" | "feature" | "praise" | "other";
   rating: number;
   body: string;

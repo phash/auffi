@@ -139,6 +139,28 @@ describe("POST /api/feedback (dashboard / session-cookie path)", () => {
     }
   });
 
+  it("accepts source='viewer' from the marketing-page FAB (same session-auth as dashboard)", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/feedback",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: {
+        source: "viewer",
+        category: "feature",
+        rating: 5,
+        body: "Bitte einen Dark-Mode-Toggle ueber dem Code-Eingabefeld.",
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    const row = h.db
+      .prepare(
+        "SELECT source, body FROM feedback ORDER BY id DESC LIMIT 1",
+      )
+      .get() as { source: string; body: string };
+    expect(row.source).toBe("viewer");
+    expect(row.body).toContain("Dark-Mode-Toggle");
+  });
+
   it("trims whitespace from the body before storing", async () => {
     await h.app.inject({
       method: "POST",
