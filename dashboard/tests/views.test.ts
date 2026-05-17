@@ -99,7 +99,20 @@ describe("renderSignup", () => {
   });
   afterEach(() => _setApiClientForTests(null));
 
-  it("shows the success message and locks the form after a successful signup", async () => {
+  it("after a successful signup, sets sessionStorage flag + invokes navigation", async () => {
+    // jsdom seals window.location and refuses both Object.defineProperty
+    // and vi.spyOn on .assign. Replace the whole `location` getter with
+    // a stub object — only `assign` is observed; everything else is
+    // irrelevant for this test.
+    const navigateMock = vi.fn();
+    const origLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { assign: navigateMock, href: origLocation.href },
+    });
+    window.sessionStorage.removeItem("auffi:signup-toast");
+
     const root = makeRoot();
     renderSignup(root, {
       path: "/signup",
@@ -112,9 +125,17 @@ describe("renderSignup", () => {
     (root.querySelector("#signup-password") as HTMLInputElement).value = "verysecret1";
     form.dispatchEvent(new Event("submit", { cancelable: true }));
     await flush();
-    const success = root.querySelector('[role="status"]') as HTMLElement;
-    expect(success.textContent).toContain("Bestätigungs-Mail unterwegs");
-    expect((root.querySelector("#signup-email") as HTMLInputElement).disabled).toBe(true);
+
+    expect(window.sessionStorage.getItem("auffi:signup-toast")).toBe("1");
+    expect(navigateMock).toHaveBeenCalledWith("/");
+
+    // Restore original location.
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: origLocation,
+    });
+    window.sessionStorage.removeItem("auffi:signup-toast");
   });
 
   it("shows 'email-taken' friendly message on 409", async () => {

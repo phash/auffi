@@ -1,5 +1,6 @@
 import "./styles.css";
 import { bindUI } from "./ui.js";
+import { showSignupToastIfFlagged } from "./signup-toast.js";
 
 function deriveBackendWsUrl(): string {
   const explicit = import.meta.env.VITE_BACKEND_WS;
@@ -17,3 +18,4 @@ function deriveBackendWsUrl(): string {
 }
 
 bindUI(deriveBackendWsUrl());
+showSignupToastIfFlagged();

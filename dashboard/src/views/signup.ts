@@ -77,13 +77,18 @@ export const renderSignup: RouteRenderer = (root: HTMLElement, _ctx: RouteContex
     submit.disabled = false;
     submit.textContent = "Account anlegen";
     if (res.ok) {
-      // Lock the form so the user can't double-submit before the
-      // mail arrives. The Anmelden-Link bleibt klickbar.
-      emailInput.disabled = true;
-      pwInput.disabled = true;
-      submit.disabled = true;
-      successBox.textContent =
-        "Bestätigungs-Mail unterwegs. Klick auf den Link in der Mail, um die Adresse zu bestätigen.";
+      // Set a one-shot flag the viewer reads on its next load + navigate
+      // back to the main page. The viewer (auffi.app/) renders a
+      // dismissible toast via signup-toast.ts. Same sessionStorage scope
+      // because dashboard + viewer share the auffi.app origin.
+      try {
+        window.sessionStorage.setItem("auffi:signup-toast", "1");
+      } catch (_) {
+        /* sessionStorage disabled — proceed without the toast */
+      }
+      // Full navigation (not history.pushState) — leaves the dashboard
+      // SPA entirely and lands in the viewer's Vite-bundle.
+      window.location.assign("/");
       return;
     }
     if (res.code === "email-taken") {
