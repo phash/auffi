@@ -64,8 +64,8 @@
         <p class="lead">
           Open-Source-Desktop-App, AGPL-3.0. Ende-zu-Ende verschlüsselt,
           DSGVO-konform, kein Konto erforderlich. Aktuelle Version
-          <strong>0.4.0</strong>. Alle Builds liegen auf
-          <a href="https://github.com/phash/auffi/releases/tag/v0.4.0" rel="noopener noreferrer">GitHub Releases</a>.
+          <strong>0.4.1</strong> (Linux) bzw. <strong>0.4.0</strong> (Windows — Update folgt). Alle Builds liegen auf
+          <a href="https://github.com/phash/auffi/releases/tag/v0.4.1" rel="noopener noreferrer">GitHub Releases</a>.
         </p>
       </section>
 
@@ -121,11 +121,11 @@
             <div class="download-meta">
               <h3>Debian / Ubuntu (.deb)</h3>
               <p>
-                <code>sudo dpkg -i Auffi_0.4.0_amd64.deb</code><br />
+                <code>sudo dpkg -i Auffi_0.4.1_amd64.deb</code><br />
                 <span class="size">~ 14 MB · x86_64 · Debian 12+, Ubuntu 22.04+</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.0_amd64.deb">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.1_amd64.deb">
               Download
             </a>
           </li>
@@ -133,11 +133,11 @@
             <div class="download-meta">
               <h3>Fedora / RHEL (.rpm)</h3>
               <p>
-                <code>sudo rpm -i Auffi-0.4.0-1.x86_64.rpm</code><br />
+                <code>sudo rpm -i Auffi-0.4.1-1.x86_64.rpm</code><br />
                 <span class="size">~ 14 MB · x86_64 · Fedora 40+, RHEL 9+</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi-0.4.0-1.x86_64.rpm">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi-0.4.1-1.x86_64.rpm">
               Download
             </a>
           </li>
@@ -145,11 +145,11 @@
             <div class="download-meta">
               <h3>AppImage (distroübergreifend)</h3>
               <p>
-                <code>chmod +x Auffi_0.4.0_amd64.AppImage &amp;&amp; ./Auffi_0.4.0_amd64.AppImage</code><br />
+                <code>chmod +x Auffi_0.4.1_amd64.AppImage &amp;&amp; ./Auffi_0.4.1_amd64.AppImage</code><br />
                 <span class="size">~ 117 MB · x86_64 · läuft auf jeder glibc-Distro mit PipeWire.</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.0_amd64.AppImage">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.1_amd64.AppImage">
               Download
             </a>
           </li>
@@ -197,7 +197,19 @@
       </section>
 
       <section class="release-notes" aria-labelledby="releases-heading">
-        <h2 id="releases-heading">Was ist neu in 0.4.0</h2>
+        <h2 id="releases-heading">Was ist neu</h2>
+        <h3>0.4.1 (2026-05-17) — nur Linux, Windows folgt</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Fix für Sharer-Steuerung-Lockup</strong>: nach dem Trennen
+            der Browser-Verbindung blieb auf Sharer-Seite eine evtl. noch
+            gehaltene Maustaste „gedrückt", das eigene Klicken war
+            danach unbrauchbar bis der Sharer-Prozess komplett beendet
+            wurde. Behoben durch automatisches Release-on-Drop in der
+            Input-Pipeline (<a href="https://github.com/phash/auffi/issues/97">#97</a>).
+          </li>
+        </ul>
+        <h3>0.4.0 (2026-05-14)</h3>
         <ul class="release-list">
           <li>
             <strong>Unattended Access</strong> — Geräte einmal pairen, dann
