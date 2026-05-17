@@ -151,4 +151,25 @@ describe("SessionStore", () => {
     const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
     expect(store.recordFailedAttempt("000-000-000")).toBe(false);
   });
+
+  it("invokes onCodeCreated after a successful mint", () => {
+    let calls = 0;
+    const store = new SessionStore({
+      ttlMs: 600_000,
+      maxAttempts: 5,
+      onCodeCreated: () => {
+        calls += 1;
+      },
+    });
+    store.registerSharer({ id: "s1" } as unknown as object);
+    store.registerSharer({ id: "s2" } as unknown as object);
+    expect(calls).toBe(2);
+  });
+
+  it("does NOT invoke onCodeCreated when no callback configured", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    expect(() =>
+      store.registerSharer({ id: "s1" } as unknown as object)
+    ).not.toThrow();
+  });
 });

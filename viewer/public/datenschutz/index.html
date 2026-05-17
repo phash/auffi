@@ -10,6 +10,7 @@
     <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
     <link rel="stylesheet" href="/legal/style.css" />
+    <script src="/matomo.js" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -241,12 +242,91 @@
       </section>
 
       <section>
-        <h2>9. Keine Analyse-Tools, keine Tracker</h2>
+        <h2>9. Reichweitenmessung (selbstgehostetes Matomo)</h2>
         <p>
-          Auf <code>auffi.app</code> läuft kein Google Analytics, kein
-          Matomo, kein Facebook Pixel, keine externen Fonts (keine Google
-          Fonts), keine externen Scripts. Die Content Security Policy
-          erlaubt ausschließlich Ressourcen vom eigenen Origin.
+          Um zu verstehen, wie Menschen <code>auffi.app</code> finden und
+          ob der Dienst überhaupt genutzt wird, betreiben wir eine
+          <strong>selbstgehostete Matomo-Instanz auf demselben deutschen
+          Server</strong> (<code>musikersuche.org/matomo/</code>, IONOS
+          Frankfurt). Keine externen Analyse-Dienste, kein Google
+          Analytics, kein Facebook Pixel, keine externen Fonts (keine
+          Google Fonts), keine externen Scripts außer der eigenen
+          Matomo-Instanz.
+        </p>
+        <h3>Was erfasst wird</h3>
+        <ul>
+          <li>
+            <strong>Aufrufe der statischen Seiten</strong> —
+            Startseite, Impressum, Datenschutz, Download
+          </li>
+          <li>
+            <strong>Herkunft des Aufrufs</strong> — Suchmaschine,
+            Direktaufruf oder Backlink (kein Klick-Tracking innerhalb der
+            Seite)
+          </li>
+          <li>
+            <strong>Grobe Geo-Region</strong> — abgeleitet aus der vor der
+            Speicherung anonymisierten IP (letzte zwei Oktette
+            verworfen, z.&nbsp;B. <code>84.xxx.xxx.xxx</code>); aus dem
+            Rest lässt sich nur das Land grob bestimmen
+          </li>
+          <li>
+            <strong>Browser- und Betriebssystem-Familie</strong> (z.&nbsp;B.
+            „Chrome / Linux") — zur Sicherstellung der Kompatibilität
+          </li>
+          <li>
+            <strong>Aggregierte Backend-Zählung</strong> — wie oft ein
+            Verbindungscode generiert wurde. Diese Zählung fließt ohne
+            jeden Bezug zur konkreten Person, IP oder Sitzung in Matomo
+            ein und dient ausschließlich der Messung der Nutzungsmenge.
+          </li>
+        </ul>
+        <h3>Was NICHT erfasst wird</h3>
+        <ul>
+          <li>Mausbewegungen, Scroll-Verhalten, Klicks innerhalb der Seite</li>
+          <li>
+            Eingaben (insbesondere keine Verbindungs-Codes, keine
+            Passwörter, keine Formularfeld-Inhalte)
+          </li>
+          <li>
+            Inhalt der Bildschirm-Sitzungen — die werden Ende-zu-Ende
+            zwischen den Browsern verschlüsselt und tangieren weder
+            Matomo noch unseren Server
+          </li>
+          <li>
+            Aktivität während einer laufenden Verbindung — das
+            Matomo-Script wird nur beim initialen Laden der Marketing-
+            und Legal-Seiten ausgeführt
+          </li>
+        </ul>
+        <h3>Technische Privacy-Maßnahmen</h3>
+        <ul>
+          <li>
+            <strong>Cookielos</strong> — Matomo läuft im
+            <code>disableCookies</code>-Modus. Es werden keine
+            Tracking-Cookies gesetzt; nach § 25 TTDSG einwilligungsfrei.
+          </li>
+          <li>
+            <strong>IP-Anonymisierung</strong> — die letzten zwei Oktette
+            der IP werden auf Matomo-Seite verworfen, bevor irgendetwas
+            gespeichert wird.
+          </li>
+          <li>
+            <strong>Do-Not-Track respektiert</strong> — sendet dein
+            Browser das DNT-Header (Firefox-Setting „Websites mitteilen,
+            dass meine Aktivitäten nicht verfolgt werden sollen",
+            entsprechende Brave-/Tor-/Safari-Defaults), wird gar nichts
+            erfasst.
+          </li>
+        </ul>
+        <p>
+          Verarbeitungsgrundlage: Art. 6 Abs. 1 lit. f DSGVO
+          (berechtigtes Interesse an aggregierter Reichweitenmessung zur
+          Weiterentwicklung des Dienstes). Du kannst der Erfassung
+          jederzeit per DNT-Browser-Einstellung widersprechen.
+          <strong>Aufbewahrung in Matomo: 14 Monate</strong>, danach
+          automatische Aggregation auf monatlicher Ebene und Löschung
+          der Roh-Daten.
         </p>
       </section>
 

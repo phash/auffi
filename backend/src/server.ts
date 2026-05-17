@@ -24,6 +24,7 @@ import { bootstrapInitialAdmin } from "./admin/bootstrap.js";
 import { UnattendedRegistry } from "./unattended.js";
 import { UnattendedSessions } from "./unattended_sessions.js";
 import { startPurgeScheduler } from "./purge.js";
+import { matomoTrackerFromEnv } from "./tracking/matomo.js";
 
 export type ServerConfig = {
   port: number;
@@ -172,7 +173,18 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     },
   });
 
-  const store = new SessionStore({ ttlMs: env.sessionTtlMs, maxAttempts: env.maxFailedAttempts });
+  // Aggregate "are we being used" counter — fires on every successful
+  // code mint. ENV-gated (MATOMO_TRACKER_URL + MATOMO_SITE_ID); when the
+  // env vars are absent the tracker is a silent no-op. Carries no PII —
+  // see src/tracking/matomo.ts and viewer/public/datenschutz.
+  const matomo = matomoTrackerFromEnv();
+  const store = new SessionStore({
+    ttlMs: env.sessionTtlMs,
+    maxAttempts: env.maxFailedAttempts,
+    onCodeCreated: () => {
+      void matomo.trackCodeCreated();
+    },
+  });
   const registerCounts: Map<string, RateLimitEntry> = new Map();
   // Unattended-sharer registry: shared between the signaling handler
   // (which registers on a verified bearer auth) and the device DELETE
