@@ -25,7 +25,17 @@ export type Session = {
   confirmed: boolean;
 };
 
-export type StoreConfig = { ttlMs: number; maxAttempts: number };
+export type StoreConfig = {
+  ttlMs: number;
+  maxAttempts: number;
+  /**
+   * Called fire-and-forget after every successful code mint. Used for
+   * aggregate "are we being used" counters (see tracking/matomo.ts).
+   * MUST NOT throw — the store does not catch it because the contract
+   * is that this is a no-op observer. Default: undefined.
+   */
+  onCodeCreated?: () => void;
+};
 
 export class SessionStore {
   private sessions = new Map<string, Session>();
@@ -57,6 +67,7 @@ export class SessionStore {
     };
     this.sessions.set(code, session);
     this.byPeer.set(sharer, code);
+    this.cfg.onCodeCreated?.();
     return { code, session };
   }
 
