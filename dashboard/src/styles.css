@@ -75,6 +75,28 @@ body {
   text-decoration: none;
 }
 
+/* Direkter Sprung in den Viewer aus dem Dashboard-Topbar — User können
+   so jederzeit von der Geräte-Verwaltung zurück zur Ad-hoc-Code-
+   Eingabe wechseln, ohne den Footer-Link erst suchen zu müssen
+   (Feature-Request 2026-05-17). */
+.topbar-viewer-link {
+  margin-left: auto;
+  padding: 0.375rem 0.875rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.topbar-viewer-link:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
 #dashboard-nav {
   display: flex;
   gap: 0.75rem;
