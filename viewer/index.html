@@ -130,10 +130,27 @@
       }
     </script>
     <!-- Reichweitenmessung: self-hosted Matomo, cookielos, DNT-respektierend.
-         Quelle: /matomo.js (siehe viewer/public/matomo.js). Feuert genau
-         einmal beim Laden der Landing- oder Legal-Seiten — NICHT während
-         aktiver Sessions. Datenschutz: /datenschutz/ -->
-    <script src="/matomo.js" defer></script>
+         Snippet inline (statt extern /matomo.js) damit Matomos
+         Tracking-Code-Validator das Markup beim Page-Fetch findet.
+         Bei Änderung sha256-Hash in caddy/Caddyfile + cluster-Caddyfile
+         neu berechnen:
+           printf '%s' "$(awk '/<!-- Matomo -->/{f=1;next}/<!-- End Matomo Code -->/{f=0}f' viewer/index.html | sed '1d;$d')" | openssl dgst -sha256 -binary | openssl base64 -A
+         Datenschutz: /datenschutz/ -->
+    <!-- Matomo -->
+    <script>
+  var _paq = window._paq = window._paq || [];
+  _paq.push(['disableCookies']);
+  _paq.push(['setDoNotTrack', true]);
+  _paq.push(['trackPageView']);
+  (function() {
+    var u="//musikersuche.org/matomo/";
+    _paq.push(['setTrackerUrl', u+'matomo.php']);
+    _paq.push(['setSiteId', '6']);
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+    <!-- End Matomo Code -->
   </head>
   <body>
     <header id="top-bar" role="banner">
