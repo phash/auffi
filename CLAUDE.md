@@ -85,6 +85,32 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 # 5) ./ops/deploy.sh --yes
 # Windows-Builds passieren auf einer separaten Windows-Box (siehe das
 # offene "Windows vX.Y.Z build (sharer)"-GH-Issue-Template).
+#
+# IMPORTANT — Mixed-platform-release-Gotcha:
+# Sobald vX.Y.Z released ist, zeigt /releases/latest/download/... auf
+# die NEUE Tag. Solange Windows-Assets noch nicht hochgeladen sind
+# (Windows-Build pending), wuerden die 3 Windows-Download-Buttons auf
+# /download/ als 404 antworten. Workaround: in viewer/public/download/
+# index.html die 3 Windows-hrefs temporaer auf
+#   /releases/download/v<PREVIOUS>/...
+# explizit pinnen (statt /releases/latest/download/...). Sobald
+# Windows-Sync-Commit landet: wieder auf /latest/ zurueckstellen.
+# Beispiel: Commit f34a445 (pin auf v0.4.1) + 5be400b (zurueck auf
+# latest fuer v0.4.2).
+
+# Admin-Promote auf prod — sqlite3-Binary ist NICHT im backend-Image,
+# also via Node + better-sqlite3 (ist schon installiert) auf der DB
+# unter /var/lib/auffi/auffi.db. SQLite-WAL ist sicher fuer einen
+# einzelnen Live-Writer, der UPDATE ist atomic; Backend muss NICHT
+# gestoppt werden.
+ssh musikersuche@musikersuche.org 'docker exec auffi-backend node -e "
+const Database = require(\"better-sqlite3\");
+const db = new Database(\"/var/lib/auffi/auffi.db\");
+const before = db.prepare(\"SELECT id, email, admin FROM accounts WHERE email = ?\").get(\"EMAIL_HIER\");
+console.log(\"before:\", JSON.stringify(before));
+db.prepare(\"UPDATE accounts SET admin = 1 WHERE email = ?\").run(\"EMAIL_HIER\");
+const after = db.prepare(\"SELECT id, email, admin FROM accounts WHERE email = ?\").get(\"EMAIL_HIER\");
+console.log(\"after :\", JSON.stringify(after));"'
 ```
 
 ## Rebrand Naming Inconsistencies (Intentional)
