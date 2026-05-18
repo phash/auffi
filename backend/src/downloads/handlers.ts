@@ -14,16 +14,15 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
-  // 0.4.2 Linux — released 2026-05-17, contains the aws-lc-sys + rustls-
-  // webpki CVE-Patches (RUSTSEC-2026-0046/0047/0048/0049/0098/0099/0104).
+  // 0.4.2 — released 2026-05-17 (Linux) + 2026-05-18 (Windows-sync via
+  // #103). Contains the aws-lc-sys + rustls-webpki CVE-Patches
+  // (RUSTSEC-2026-0046/0047/0048/0049/0098/0099/0104).
   "Auffi_0.4.2_amd64.deb",
   "Auffi-0.4.2-1.x86_64.rpm",
   "Auffi_0.4.2_amd64.AppImage",
-  // Portable .exe + NSIS setup carry no version stamp — stable across releases.
   "auffi-sharer-windows-x64.exe",
   "auffi-sharer-windows-x64-setup.exe",
-  // MSI still 0.4.1 until Windows-Claude builds 0.4.2 (separate gh issue).
-  "Auffi_0.4.1_x64_en-US.msi",
+  "Auffi_0.4.2_x64_en-US.msi",
 ]);
 
 export function registerDownloadRoutes(app: FastifyInstance, db: Db): void {
