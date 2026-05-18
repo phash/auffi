@@ -261,6 +261,70 @@ Three things that took today's (2026-05-17) Matomo + Feedback deploys to find. T
 
 TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy cert volume to `turn-certs-staged`.
 
+## Daily Backup
+
+Cron-Job auf prod (installiert 2026-05-18): `15 4 * * * /opt/screenie/ops/backup.sh >> /opt/backup/auffi/backup.log 2>&1`. Script-Quelle im Repo: `ops/backup.sh`. Wird bei jedem `./ops/deploy.sh` automatisch nach `/opt/screenie/ops/backup.sh` gerollt (separate `maybe_run`-Schritte). Für Ad-hoc-Runs ohne Deploy: `./ops/maintenance.sh backup`. Das Backup-Log liegt nur auf prod (`/opt/backup/auffi/backup.log`) — bei starkem Wachstum mit `logrotate` aufräumen.
+
+**Was gesichert wird, jede Nacht 04:15:**
+- `/var/lib/auffi/auffi.db` — konsistenter Snapshot via `better-sqlite3 .backup()` (Online-Backup-API, kein Backend-Stop nötig, WAL-Inhalt wird mit eingerechnet). Output: `auffi-db_YYYY-MM-DD_HHMMSS.db.gz`.
+- Cluster-Caddy-Volumes `caddyserver_caddy_data` + `caddyserver_caddy_config` (Let's-Encrypt-Account + ausgestellte TLS-Certs für auffi.app, www.auffi.app, turn.auffi.app — UND Certs anderer Cluster-Tenants, weil das Volume shared ist). Output: `auffi-caddy_YYYY-MM-DD_HHMMSS.tar.gz`. **Wichtig:** im Cluster-Modus liegen die echten LE-Certs hier, NICHT im `screenie_caddy-data`-Volume — das ist im Cluster-Setup tot (siehe "Cluster-Ops Footguns" oben).
+
+**Retention:** 7 Tage (`find -mtime +7 -delete`). Zielordner `/opt/backup/auffi/` rolling, max ~14 Dateien (7×DB + 7×Caddy) + `backup.log`.
+
+**Was NICHT gesichert wird:** `viewer-static` / `dashboard-dist` (fallen aus `./ops/deploy.sh`), `turn-certs` (vom `turn-cert-stage`-Sidecar aus caddy-data abgeleitet), Container-Images (liegen in der GH-Release).
+
+**Restore — SQLite-DB** (atomic via Volume-mounted ephemeral Container — vermeidet `docker cp` auf einen gestoppten Container und braucht kein sudo auf dem Host):
+```bash
+# 0) Auf dem Prod-Host (oder via SSH dort):
+TS=2026-05-18_041501   # gewünschter Backup-Timestamp
+cd /opt/backup/auffi
+gunzip -kc auffi-db_${TS}.db.gz > /tmp/restore.db   # -k = keep .gz
+# 1) Backend stoppen (Cluster-overlay nutzen wenn aktiv):
+docker compose -f /opt/screenie/docker-compose.prod.yml \
+  -f /opt/screenie/docker-compose.cluster.yml \
+  --env-file /opt/screenie/.env.prod stop backend
+# 2) Atomic-mv im Volume via ephemerer Container — alpine mountet das
+#    Volume, sieht die Live-DB unter /db/, schreibt die wiederhergestellte
+#    Version atomar dorthin.
+docker run --rm -v screenie_auffi-db:/db -v /tmp:/src alpine:3 sh -c '
+  cp /db/auffi.db /db/auffi.db.bak-$(date +%s) &&
+  cp /src/restore.db /db/auffi.db &&
+  rm -f /db/auffi.db-wal /db/auffi.db-shm
+'
+# 3) Backend starten:
+docker compose -f /opt/screenie/docker-compose.prod.yml \
+  -f /opt/screenie/docker-compose.cluster.yml \
+  --env-file /opt/screenie/.env.prod start backend
+# 4) /tmp/restore.db löschen (PII!).
+rm -f /tmp/restore.db
+```
+
+**Restore — Caddy-Certs (auffi-only):** das Tarball enthält Certs aller Cluster-Tenants. Beispiel-Pfad-Struktur:
+```
+./data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/auffi.app/auffi.app.{crt,key,json}
+./data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/www.auffi.app/...
+./data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/turn.auffi.app/...
+```
+```bash
+TS=2026-05-18_041501
+mkdir -p /tmp/caddy-restore && cd /tmp/caddy-restore
+tar xzf /opt/backup/auffi/auffi-caddy_${TS}.tar.gz
+# Nur Auffi-relevante Subordner in das LIVE-Cluster-Volume zurücktragen:
+docker run --rm \
+  -v "$(pwd)/data/caddy/certificates/acme-v02.api.letsencrypt.org-directory:/src:ro" \
+  -v caddyserver_caddy_data:/dst alpine:3 sh -c '
+    mkdir -p /dst/caddy/certificates/acme-v02.api.letsencrypt.org-directory &&
+    cp -a /src/auffi.app /src/www.auffi.app /src/turn.auffi.app \
+      /dst/caddy/certificates/acme-v02.api.letsencrypt.org-directory/
+'
+# caddy-proxy neu laden (admin-API ist off, also restart — 3s blip,
+# cluster-shared, siehe Cluster-Ops Footguns):
+docker restart caddy-proxy
+rm -rf /tmp/caddy-restore
+```
+
+Optionaler off-site Sync via `BACKUP_REMOTE_TARGET=user@host:/backups/auffi/` env-var (rsync, im Script bereits eingebaut, aktuell nicht gesetzt). User stellt den SSH-Key out-of-band bereit — kein Key im Repo.
+
 ## Definition of "Done" per Task
 
 A task is done when **all** of these hold:

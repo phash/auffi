@@ -193,6 +193,16 @@ maybe_run "rsync .env.prod.example" \
     "${REPO_ROOT}/.env.prod.example" \
     "${DEPLOY_PATH}/"
 
+# ops/backup.sh wird vom Daily-Cron auf prod aufgerufen
+# (15 4 * * * /opt/screenie/ops/backup.sh ...) und vom maintenance.sh-
+# Subcommand `backup`. Sicherstellen, dass `ops/`-Zielordner existiert.
+maybe_run "ensure remote ops/ exists" \
+  remote "mkdir -p '${DEPLOY_PATH}/ops'"
+maybe_run "rsync ops/backup.sh" \
+  rsync_to \
+    "${REPO_ROOT}/ops/backup.sh" \
+    "${DEPLOY_PATH}/ops/backup.sh"
+
 maybe_run "rsync viewer/dist → viewer-dist/" \
   rsync_to \
     "${REPO_ROOT}/viewer/dist/" \

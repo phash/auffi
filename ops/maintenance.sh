@@ -26,6 +26,7 @@ Subcommands:
   restart [service]       Restart one service (or all if omitted).
   down                    Stop all services (volumes are NOT removed). Requires confirmation.
   up                      Start all services.
+  backup                  Run the daily DB + caddy-data backup on prod (writes to /opt/backup/auffi/, 7-day retention).
   backup-certs            Tar up the turn-certs volume to ~/auffi-backups/certs-<date>.tar.gz.
   cert-info               Show TLS certificate expiry for main and TURN domains.
   secret-rotate           Rotate TURN_SHARED_SECRET: generate new, update .env.prod, restart affected services.
@@ -93,14 +94,24 @@ case "${SUBCOMMAND}" in
     log_ok "Services running"
     ;;
 
+  backup)
+    log_step "Running daily backup on ${DEPLOY_SSH}"
+    # ops/backup.sh wird beim deploy mit nach DEPLOY_PATH transferiert.
+    remote "${DEPLOY_PATH}/ops/backup.sh"
+    log_ok "Backup finished — siehe /opt/backup/auffi/backup.log auf dem Host"
+    ;;
+
   backup-certs)
     BACKUP_DIR="~/auffi-backups"
     DATE="$(date +%Y-%m-%d)"
     BACKUP_FILE="${BACKUP_DIR}/certs-${DATE}.tar.gz"
     log_step "Backing up turn-certs volume to ${BACKUP_FILE}"
     remote "mkdir -p '${BACKUP_DIR}'"
+    # Volume-Prefix `screenie_` ergibt sich aus dem Compose-Project-Namen
+    # (DEPLOY_PATH=/opt/screenie); siehe CLAUDE.md "Rebrand Naming
+    # Inconsistencies".
     remote "docker run --rm \
-      -v screenshare_turn-certs:/certs:ro \
+      -v screenie_turn-certs:/certs:ro \
       -v '${BACKUP_DIR}':/backup \
       busybox tar czf '/backup/certs-${DATE}.tar.gz' /certs"
     log_ok "Cert backup written to ${DEPLOY_SSH}:${BACKUP_FILE}"
