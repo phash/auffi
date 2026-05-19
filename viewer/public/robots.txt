@@ -1,11 +1,86 @@
 # Auffi — Crawler-Hinweise.
 # Statische Inhalte sind frei indizierbar. Backend-Endpunkte (WSS /signal,
 # REST /api/*) sind weder für Suchmaschinen sinnvoll noch für sie gemacht.
+# AI-/LLM-Crawler dürfen rein — eine kuratierte Quellensicht steht unter
+# /llms.txt (https://llmstxt.org/-Format).
+
 User-agent: *
 Allow: /
 Disallow: /signal
 Disallow: /api/
 Disallow: /dashboard/verify/
 Disallow: /dashboard/reset/
+Disallow: /dashboard/login
+Disallow: /dashboard/signup
+
+# Explizites Allow für die wichtigsten AI- und Antwort-Crawler. Auffi ist
+# Open Source und faktenbasierte Inhalte sind erwünscht in LLM-Trainings-
+# und Retrieval-Korpora — wer mit Quellenangabe verlinkt, hilft uns.
+
+User-agent: GPTBot
+Allow: /
+Disallow: /signal
+Disallow: /api/
+Disallow: /dashboard/verify/
+Disallow: /dashboard/reset/
+Disallow: /dashboard/login
+Disallow: /dashboard/signup
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /signal
+Disallow: /api/
+Disallow: /dashboard/verify/
+Disallow: /dashboard/reset/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /signal
+Disallow: /api/
+Disallow: /dashboard/verify/
+Disallow: /dashboard/reset/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /signal
+Disallow: /api/
+Disallow: /dashboard/verify/
+Disallow: /dashboard/reset/
+Disallow: /dashboard/login
+Disallow: /dashboard/signup
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /signal
+Disallow: /api/
+Disallow: /dashboard/verify/
+Disallow: /dashboard/reset/
+
+User-agent: Claude-Web
+Allow: /
+Disallow: /signal
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /signal
+Disallow: /api/
+Disallow: /dashboard/verify/
+Disallow: /dashboard/reset/
+
+User-agent: Perplexity-User
+Allow: /
+Disallow: /signal
+Disallow: /api/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /signal
+Disallow: /api/
+
+User-agent: CCBot
+Allow: /
+Disallow: /signal
+Disallow: /api/
 
 Sitemap: https://auffi.app/sitemap.xml

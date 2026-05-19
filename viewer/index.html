@@ -201,6 +201,12 @@
     </header>
 
     <main id="app">
+      <!-- Primärer Page-Heading für Screen-Reader und Suchmaschinen.
+           Visuell verborgen, weil der App-UI-Flow ohne explizite
+           Headline beginnt (Brand + Code-Input führen direkt zum
+           Verbinden-Klick). -->
+      <h1 class="visually-hidden">Auffi — sicheres Bildschirm-Sharing aus Deutschland, Open Source und DSGVO-konform</h1>
+
       <!-- gh #40: kompakte Status-Zeile, sichtbar nur wenn das Card
            während eines Streams eingeklappt ist (#app.compact). -->
       <div id="compact-status-line" class="compact-status-line" role="status" aria-live="polite">
@@ -445,7 +451,7 @@
           <li><strong>Keine Installation</strong> — Datei doppelklicken, läuft.</li>
           <li><strong>Keine Daten bei uns</strong> — kein Konto nötig, Bildschirm-Daten fließen direkt P2P.</li>
           <li><strong>DSGVO-konform</strong> — Server in Deutschland, keine Tracker, keine IPs im Klartext.</li>
-          <li><strong>Open Source (MIT)</strong> — Quellcode auf GitHub einsehbar und auditierbar.</li>
+          <li><strong>Open Source (AGPL-3.0)</strong> — Quellcode auf GitHub einsehbar und auditierbar.</li>
         </ul>
 
         <div class="download-buttons">
@@ -514,7 +520,7 @@
             </p>
           </article>
           <article class="trust-item">
-            <h3 class="trust-title">🆓 Open Source (MIT)</h3>
+            <h3 class="trust-title">🆓 Open Source (AGPL-3.0)</h3>
             <p class="trust-body">
               Vollständiger Quellcode auf GitHub. Selbst hosten,
               auditieren oder forken — Backend, Viewer und Sharer

@@ -212,3 +212,18 @@ body {
   outline-offset: 2px;
   border-radius: 2px;
 }
+
+/* SR-only utility: rendert das Element für Screen-Reader und SEO-
+   Crawler ohne sichtbare Box. Standard a11y-Pattern. Wird u.a. von
+   download/index.html (h2 "Pakete") genutzt. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
