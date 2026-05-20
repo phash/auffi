@@ -2,9 +2,11 @@
 
 **Sicheres, einfaches Screen-Sharing mit Fernsteuerung — wie TeamViewer, nur offen.**
 
+[![Latest Release](https://img.shields.io/github/v/release/phash/auffi?label=release)](https://github.com/phash/auffi/releases/latest)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/phash/auffi/actions)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/phash/auffi)
+[![Changelog](https://img.shields.io/badge/changelog-keep--a--changelog-orange)](CHANGELOG.md)
 
 ---
 
@@ -50,7 +52,8 @@ curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-li
 ```
 
 Oder manuell aus den [Releases](https://github.com/phash/auffi/releases) herunterladen —
-detaillierte Anleitung inkl. Arch-PKGBUILD: [INSTALL.md](INSTALL.md)
+detaillierte Anleitung inkl. Arch-PKGBUILD: [INSTALL.md](INSTALL.md).
+Was sich pro Version geändert hat, steht im [CHANGELOG](CHANGELOG.md).
 
 ---
 
