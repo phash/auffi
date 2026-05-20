@@ -67,6 +67,27 @@ pub struct BgraFrame {
     pub pts_us: u64,
 }
 
+// ── Stop-signal helper ──────────────────────────────────────────────────────
+
+/// Returns `true` when the capture worker thread should exit, either because
+/// the owner sent an explicit stop OR because the sender was dropped — the
+/// latter is the canonical Drop signal from `ScreenCapturer::_stop` /
+/// `StopHandle`.
+///
+/// Pre-fix this check was inlined as `stop_rx.try_recv().is_ok()` in each
+/// backend. `try_recv()` returns `Ok(_)` only on an actual message;
+/// `Err(Disconnected)` (all senders dropped) was missed, so the loop never
+/// broke when `disconnect_streaming` tore the capturer down. On Windows the
+/// runaway loop kept creating and destroying WGC `GraphicsCaptureSession`s
+/// at 30 fps, which DWM rendered as a persistent system-cursor flicker
+/// until the sharer process exited.
+pub(super) fn stop_signaled(stop_rx: &mpsc::Receiver<()>) -> bool {
+    matches!(
+        stop_rx.try_recv(),
+        Ok(_) | Err(mpsc::TryRecvError::Disconnected)
+    )
+}
+
 // ── Backend selection helper ────────────────────────────────────────────────
 
 /// The backend variant selected for this process invocation.
@@ -397,5 +418,35 @@ mod tests {
         assert_eq!(val["y"], 0);
         assert_eq!(val["width"], 2560);
         assert_eq!(val["height"], 1440);
+    }
+
+    #[test]
+    fn stop_signaled_false_when_sender_alive_and_no_message() {
+        let (_tx, rx) = mpsc::sync_channel::<()>(1);
+        assert!(
+            !stop_signaled(&rx),
+            "alive sender with empty channel must not look like a stop"
+        );
+    }
+
+    #[test]
+    fn stop_signaled_true_after_explicit_send() {
+        let (tx, rx) = mpsc::sync_channel::<()>(1);
+        tx.send(()).expect("send into empty bounded channel");
+        assert!(stop_signaled(&rx));
+    }
+
+    #[test]
+    fn stop_signaled_true_when_sender_dropped() {
+        // This is the canonical Drop path: the capturer goes out of scope,
+        // its `_stop_tx` is dropped, the worker must observe Disconnected
+        // and exit. The pre-fix `try_recv().is_ok()` check missed this
+        // path entirely and left the WGC capture loop running forever.
+        let (tx, rx) = mpsc::sync_channel::<()>(1);
+        drop(tx);
+        assert!(
+            stop_signaled(&rx),
+            "dropped sender must be observed as stop — otherwise capture leaks past disconnect_streaming"
+        );
     }
 }

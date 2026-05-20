@@ -95,7 +95,7 @@ impl X11Capturer {
                 let interval = std::time::Duration::from_millis(33); // ~30 fps
                 let start = std::time::Instant::now();
                 loop {
-                    if stop_rx.try_recv().is_ok() {
+                    if super::stop_signaled(&stop_rx) {
                         break;
                     }
 
@@ -128,8 +128,15 @@ impl X11Capturer {
                     let bgra = convert_to_bgra(image.data, image.depth);
                     let frame = BgraFrame { data: bgra, pts_us };
 
-                    if tx.try_send(frame).is_err() {
-                        // Receiver is full or dropped; drop this frame.
+                    match tx.try_send(frame) {
+                        Ok(()) => {}
+                        Err(mpsc::TrySendError::Full(_)) => {
+                            // Encoder behind — drop this frame, keep capturing.
+                        }
+                        Err(mpsc::TrySendError::Disconnected(_)) => {
+                            // Consumer gone — nothing left to feed.
+                            break;
+                        }
                     }
 
                     std::thread::sleep(interval);
