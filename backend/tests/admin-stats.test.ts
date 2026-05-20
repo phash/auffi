@@ -69,16 +69,19 @@ function seedData(db: Db): void {
      VALUES ('222-222-222', 1, 'D2', 'dummy', ?, NULL)`,
   ).run(now);
 
-  // Today's connection log
-  const todayStart = new Date(now).setUTCHours(8, 0, 0, 0); // safely "today"
+  // Today's connection log. Seed-Zeit muss BEIDES erfüllen: >= today_start
+  // (00:00 UTC) UND <= now. "now - 10s" passt immer, außer in der ersten
+  // Sekunde nach UTC-Mitternacht — vernachlässigbar. Vorherige Version
+  // nutzte 08:00 UTC und failed wenn der Test vor 08:00 UTC lief.
+  const seedTime = now - 10_000;
   db.prepare(
     `INSERT INTO connection_log (device_id, started_at, viewer_ip_prefix, connection_type, bytes_relayed)
      VALUES ('111-111-111', ?, '84.xxx', 'p2p', 0)`,
-  ).run(todayStart);
+  ).run(seedTime);
   db.prepare(
     `INSERT INTO connection_log (device_id, started_at, viewer_ip_prefix, connection_type, bytes_relayed)
      VALUES ('111-111-111', ?, '84.xxx', 'relay', 1000)`,
-  ).run(todayStart + 1000);
+  ).run(seedTime + 1000);
 }
 
 describe("GET /api/admin/stats", () => {
