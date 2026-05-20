@@ -502,26 +502,37 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 16: Image-Prune auf prod (keep last 3 + :latest)
-# ---------------------------------------------------------------------------
-if [[ "${SKIP_IMAGE_PRUNE}" == "true" ]]; then
-  log_step "Image-Prune übersprungen (--skip-image-prune)"
-else
-  log_step "Image-Prune auf prod (keep last 3 + :latest)"
-  maybe_run "Prune old backend images" \
-    remote "docker images --filter 'reference=auffi-backend' --format '{{.Tag}}' \
-      | grep -v '^latest$' \
-      | tail -n +4 \
-      | xargs -r -I{} docker rmi 'auffi-backend:{}' >/dev/null 2>&1 || true"
-fi
-
-# ---------------------------------------------------------------------------
-# Step 17: Deploy-Log-Append
+# Step 16: Deploy-Log-Append (VOR dem Prune — der Prune nutzt das Log als
+# Source-of-Truth für die zu behaltenden SHAs).
 # ---------------------------------------------------------------------------
 log_step "Deploy-Log-Append (${DEPLOY_LOG_REMOTE})"
 
 maybe_run "Append deploy entry" \
   deploy_log_append "${APP_VERSION}" "${NOTES}"
+
+# ---------------------------------------------------------------------------
+# Step 17: Image-Prune auf prod (keep last-3-unique-SHAs aus deploy-log + :latest)
+# Frühere Variante nutzte `docker images | tail -n +4` was bei ungenau
+# definierter Sortierung gerne den JUST-deployten Tag erwischt hat (siehe
+# Smoke 2026-05-20: nach Build prunte der Step den frischen :SHA gleich
+# wieder, sodass --rollback auf diesen SHA scheiterte).
+# ---------------------------------------------------------------------------
+if [[ "${SKIP_IMAGE_PRUNE}" == "true" ]]; then
+  log_step "Image-Prune übersprungen (--skip-image-prune)"
+else
+  log_step "Image-Prune (keep last 3 unique SHAs aus deploy-log + :latest)"
+  maybe_run "Prune old backend images" \
+    remote "set -e; \
+      KEEP_LIST=\$(tail -n 20 '${DEPLOY_LOG_REMOTE}' 2>/dev/null \
+        | awk -F'\t' '{print \$2}' \
+        | awk '!seen[\$0]++' \
+        | tail -n 3); \
+      KEEP_REGEX='^latest$'; \
+      for sha in \${KEEP_LIST}; do KEEP_REGEX=\"\${KEEP_REGEX}|^\${sha}$\"; done; \
+      docker images --filter 'reference=auffi-backend' --format '{{.Tag}}' \
+        | grep -E -v \"\${KEEP_REGEX}\" \
+        | xargs -r -I{} docker rmi 'auffi-backend:{}' >/dev/null 2>&1 || true"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 18: Report
