@@ -1,6 +1,7 @@
 import "./styles.css";
 import { bindUI } from "./ui.js";
 import { showSignupToastIfFlagged } from "./signup-toast.js";
+import { attachNotchHandler, focusCodeInput } from "./notch-connect.js";
 
 function deriveBackendWsUrl(): string {
   const explicit = import.meta.env.VITE_BACKEND_WS;
@@ -19,3 +20,16 @@ function deriveBackendWsUrl(): string {
 
 bindUI(deriveBackendWsUrl());
 showSignupToastIfFlagged();
+
+// gh #104 — Notch-CTA: weicher Scroll + Fokus auf das Code-Eingabefeld.
+// Greift auch wenn die Seite mit `#code`-Fragment geladen wird, weil eine
+// Marketing-Subpage (impressum/datenschutz/download) auf `/#code` linkt.
+{
+  const notchEl = document.getElementById("notch-connect");
+  const codeEl = document.getElementById("code");
+  const codeInput = codeEl instanceof HTMLInputElement ? codeEl : null;
+  attachNotchHandler(notchEl, codeInput);
+  if (codeInput && window.location.hash === "#code") {
+    focusCodeInput(codeInput, false);
+  }
+}

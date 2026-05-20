@@ -14,9 +14,15 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
-  // 0.4.2 — released 2026-05-17 (Linux) + 2026-05-18 (Windows-sync via
-  // #103). Contains the aws-lc-sys + rustls-webpki CVE-Patches
-  // (RUSTSEC-2026-0046/0047/0048/0049/0098/0099/0104).
+  // 0.4.3 — released 2026-05-20 (Linux). Windows-Build folgt asynchron
+  // (siehe verlinktes "Windows v0.4.3 build (sharer)"-Issue). Bis dahin
+  // bleiben die Windows-Hrefs in download/index.html explizit auf v0.4.2
+  // gepinnt; die hier gelisteten Windows-Asset-Namen sind versions-
+  // agnostisch und werden vom Counter weiter benutzt.
+  "Auffi_0.4.3_amd64.deb",
+  "Auffi-0.4.3-1.x86_64.rpm",
+  "Auffi_0.4.3_amd64.AppImage",
+  // 0.4.2 — gehalten für Windows-Pin + Backwards-Counter-Persistenz.
   "Auffi_0.4.2_amd64.deb",
   "Auffi-0.4.2-1.x86_64.rpm",
   "Auffi_0.4.2_amd64.AppImage",

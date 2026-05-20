@@ -69,14 +69,16 @@
       </nav>
     </header>
 
+    <a class="topbar-notch" href="/#code" aria-label="Zur Verbindungscode-Eingabe auf der Hauptseite">Verbinden</a>
+
     <main class="container">
       <section class="hero">
         <h1>Auffi-Sharer herunterladen</h1>
         <p class="lead">
           Open-Source-Desktop-App, AGPL-3.0. Ende-zu-Ende verschlüsselt,
           DSGVO-konform, kein Konto erforderlich. Aktuelle Version
-          <strong>0.4.2</strong>. Alle Builds liegen auf
-          <a href="https://github.com/phash/auffi/releases/tag/v0.4.2" rel="noopener noreferrer">GitHub Releases</a>.
+          <strong>0.4.3</strong>. Alle Builds liegen auf
+          <a href="https://github.com/phash/auffi/releases/tag/v0.4.3" rel="noopener noreferrer">GitHub Releases</a>.
         </p>
       </section>
 
@@ -94,7 +96,7 @@
                 <span class="size">~ 30 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/auffi-sharer-windows-x64-setup.exe">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/download/v0.4.2/auffi-sharer-windows-x64-setup.exe">
               Download
             </a>
           </li>
@@ -107,7 +109,7 @@
                 <span class="size">~ 30 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/auffi-sharer-windows-x64.exe">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/download/v0.4.2/auffi-sharer-windows-x64.exe">
               Download
             </a>
           </li>
@@ -120,11 +122,17 @@
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.2_x64_en-US.msi">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/download/v0.4.2/Auffi_0.4.2_x64_en-US.msi">
               Download
             </a>
           </li>
         </ul>
+
+        <!-- Mixed-platform-release: Windows v0.4.3 build pending auf
+             separater Windows-Box (siehe CLAUDE.md). Windows-hrefs sind
+             daher explizit auf v0.4.2 gepinnt; sobald Windows-Sync-Commit
+             landet zurück auf /releases/latest/download/. -->
+
 
         <h3 class="platform-heading">Linux</h3>
         <ul class="download-list">
@@ -132,11 +140,11 @@
             <div class="download-meta">
               <h3>Debian / Ubuntu (.deb)</h3>
               <p>
-                <code>sudo dpkg -i Auffi_0.4.2_amd64.deb</code><br />
+                <code>sudo dpkg -i Auffi_0.4.3_amd64.deb</code><br />
                 <span class="size">~ 14 MB · x86_64 · Debian 12+, Ubuntu 22.04+</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.2_amd64.deb">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.3_amd64.deb">
               Download
             </a>
           </li>
@@ -144,11 +152,11 @@
             <div class="download-meta">
               <h3>Fedora / RHEL (.rpm)</h3>
               <p>
-                <code>sudo rpm -i Auffi-0.4.2-1.x86_64.rpm</code><br />
+                <code>sudo rpm -i Auffi-0.4.3-1.x86_64.rpm</code><br />
                 <span class="size">~ 14 MB · x86_64 · Fedora 40+, RHEL 9+</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi-0.4.2-1.x86_64.rpm">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi-0.4.3-1.x86_64.rpm">
               Download
             </a>
           </li>
@@ -156,11 +164,11 @@
             <div class="download-meta">
               <h3>AppImage (distroübergreifend)</h3>
               <p>
-                <code>chmod +x Auffi_0.4.2_amd64.AppImage &amp;&amp; ./Auffi_0.4.2_amd64.AppImage</code><br />
+                <code>chmod +x Auffi_0.4.3_amd64.AppImage &amp;&amp; ./Auffi_0.4.3_amd64.AppImage</code><br />
                 <span class="size">~ 117 MB · x86_64 · läuft auf jeder glibc-Distro mit PipeWire.</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.2_amd64.AppImage">
+            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.3_amd64.AppImage">
               Download
             </a>
           </li>
@@ -209,6 +217,15 @@
 
       <section class="release-notes" aria-labelledby="releases-heading">
         <h2 id="releases-heading">Was ist neu</h2>
+        <h3>0.4.3 (2026-05-20)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Markanter „Verbinden"-Notch</strong> oben mittig auf
+            der Webseite — schneller Sprung zur Code-Eingabe, auch von
+            den Unterseiten (Impressum, Datenschutz, Download)
+            (<a href="https://github.com/phash/auffi/issues/104">#104</a>).
+          </li>
+        </ul>
         <h3>0.4.2 (2026-05-17)</h3>
         <ul class="release-list">
           <li>

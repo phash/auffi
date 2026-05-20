@@ -164,6 +164,58 @@ body {
   }
 }
 
+/* gh #104 — "Notch"-CTA mittig unter der Topbar. Hängt wie eine
+   markante Zunge aus dem fixierten Header heraus und führt auf der
+   Hauptseite zur Code-Eingabe, auf Marketing-Subpages zurück zur
+   Startseite. Position: fixed, damit der Notch beim Scrollen sichtbar
+   bleibt. z-index oberhalb der Topbar selbst (500), damit Hover-/
+   Focus-Schatten den Topbar-Rand überlappen können. */
+.topbar-notch {
+  position: fixed;
+  top: var(--topbar-height);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 501;
+  height: 36px;
+  padding: 0 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  border: none;
+  border-radius: 0 0 14px 14px;
+  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.35);
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  -webkit-appearance: none;
+  outline: none;
+}
+
+.topbar-notch:hover {
+  background: var(--accent-hover);
+  transform: translateX(-50%) translateY(2px);
+  box-shadow: 0 6px 16px rgba(31, 111, 235, 0.45);
+}
+
+.topbar-notch:focus-visible {
+  outline: 3px solid rgba(31, 111, 235, 0.4);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .topbar-notch {
+    height: 32px;
+    padding: 0 1rem;
+    font-size: 0.85rem;
+  }
+}
+
 #site-footer {
   position: fixed;
   left: 0;
