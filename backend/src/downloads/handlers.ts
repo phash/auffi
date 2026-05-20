@@ -14,15 +14,21 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
-  // 0.4.3 — released 2026-05-20 (Linux). Windows-Build folgt asynchron
-  // (siehe verlinktes "Windows v0.4.3 build (sharer)"-Issue). Bis dahin
-  // bleiben die Windows-Hrefs in download/index.html explizit auf v0.4.2
-  // gepinnt; die hier gelisteten Windows-Asset-Namen sind versions-
-  // agnostisch und werden vom Counter weiter benutzt.
+  // 0.4.4 — released 2026-05-20. Windows-Cursor-Flicker-Fix (persistent
+  // WGC capture session) + X11/Win capturer-Disconnect-Leak-Fix. Naming
+  // wechselt auf das Tauri-Standard-NSIS/MSI-Schema (`Auffi_0.4.4_x64-
+  // setup.exe` statt vorher `auffi-sharer-windows-x64-setup.exe`); der
+  // portable Windows .exe ist diesmal nicht dabei.
+  "Auffi_0.4.4_amd64.deb",
+  "Auffi-0.4.4-1.x86_64.rpm",
+  "Auffi_0.4.4_amd64.AppImage",
+  "Auffi_0.4.4_x64-setup.exe",
+  "Auffi_0.4.4_x64_en-US.msi",
+  // 0.4.3 + 0.4.2 — gehalten für Counter-Persistenz (Klicks aus älteren
+  // Sessions bleiben sichtbar) und Backwards-Compat von gecachten URLs.
   "Auffi_0.4.3_amd64.deb",
   "Auffi-0.4.3-1.x86_64.rpm",
   "Auffi_0.4.3_amd64.AppImage",
-  // 0.4.2 — gehalten für Windows-Pin + Backwards-Counter-Persistenz.
   "Auffi_0.4.2_amd64.deb",
   "Auffi-0.4.2-1.x86_64.rpm",
   "Auffi_0.4.2_amd64.AppImage",
