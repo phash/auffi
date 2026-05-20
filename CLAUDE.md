@@ -61,7 +61,12 @@ cd dashboard && npm run build      # static dist/
 docker compose up --build
 
 # Production deploy (to musikersuche@musikersuche.org:/opt/screenie)
-./ops/deploy.sh                    # idempotent — builds, transfers, starts
+./ops/deploy.sh                    # idempotent — Tests + Build + Transfer + Compose-Up + Config-Restart + Health + Image-Prune + Deploy-Log
+./ops/deploy.sh --yes              # ohne Confirm (Diff-Preview wird trotzdem gezeigt)
+./ops/deploy.sh --skip-tests       # Tests überspringen (selten — nur bei Test-Infra-Issues)
+./ops/deploy.sh --notes "X"        # Note in /opt/screenie/.deploy-log
+./ops/deploy.sh --dry-run          # zeigt alle Schritte, kein Side-Effect
+./ops/deploy.sh --rollback         # auf vorletzten SHA aus dem Deploy-Log zurück
 
 # OG-image rebuild (Facebook/Twitter share preview)
 # Source: ops/og-image.svg → viewer/public/og-image.png
@@ -324,6 +329,30 @@ rm -rf /tmp/caddy-restore
 ```
 
 Optionaler off-site Sync via `BACKUP_REMOTE_TARGET=user@host:/backups/auffi/` env-var (rsync, im Script bereits eingebaut, aktuell nicht gesetzt). User stellt den SSH-Key out-of-band bereit — kein Key im Repo.
+
+## Deploy-Skript-Robustheit
+
+`./ops/deploy.sh` (Refactor 2026-05-20) macht weit mehr als rsync + compose up. Was passiert in welcher Reihenfolge:
+
+1. **flock auf `/tmp/auffi-deploy.lock`** — verhindert parallele Deploys.
+2. **Trap-Cleanup** für lokale Image-Tarballs auch bei Abort.
+3. **Pre-flight nginx -t** auf `nginx/auffi-viewer.conf` + `auffi-dashboard.conf` via ephemerem nginx-Container, **caddy validate** auf `caddy/Caddyfile` (standalone only). Kaputte Configs scheitern HIER, nicht erst beim Container-Start.
+4. **Pre-deploy Tests**: viewer + backend (~25s). Sharer-Tests bewusst draußen (Desktop-App, separater Release-Flow, cargo cold-build dauert ~5min). Override via `--skip-tests`.
+5. **Diff-Preview**: liest letzten SHA aus `/opt/screenie/.deploy-log`, zeigt `git log <last>..HEAD --oneline` + `git diff --stat <last>..HEAD`. Confirm vor dem Deploy (Skip mit `--yes`).
+6. **Build backend** — übersprungen wenn `auffi-backend:${SHA}` bereits remote existiert (`docker image inspect`-Check). Spart bei Re-Deploys den 60s-Build.
+7. **Build viewer + dashboard** — `npm ci` wird übersprungen wenn `package-lock.json`-Hash gleich dem letzten Build (`.deploy-cache-hash` in `node_modules/`). `npm run build` läuft immer (ist eh schnell).
+8. **Image-Transfer** (skipped wenn schon remote), Tarball-Cleanup via Trap.
+9. **Config-Hash-Diff**: sha256 von `nginx/*.conf`, `coturn/turnserver.conf.tmpl`, `caddy/Caddyfile` lokal vs prod. Geänderte Configs → Service-Restart-Liste.
+10. **rsync** der Configs + Compose + Dist + ops/backup.sh.
+11. **`docker compose up -d --remove-orphans`** — recreatet bei Image-/Compose-Spec-Änderung.
+12. **Service-Restart** für die in Schritt 9 markierten Container — **fixt den Single-File-Bind-Mount-Stale-Bug**, wo nginx-Config-Updates ohne Container-Restart nicht aktiv werden (kennen wir aus dem 2026-05-19-Soft-404-Fix).
+13. **Health-Checks**: `/healthz`, `/`, `/llms.txt`, `/robots.txt`, `/sitemap.xml`, plus eine 404-URL die als 404 zurückkommen MUSS. Eine Abweichung scheitert den Deploy (hardfail).
+14. **Image-Prune** auf prod: `docker rmi` aller `auffi-backend:*`-Tags außer den 3 neuesten + `:latest`. Override mit `--skip-image-prune`.
+15. **Deploy-Log-Append** an `/opt/screenie/.deploy-log` (Format: `ISO8601-UTC\tsha\tdeployer@host\tnotes`).
+
+**Rollback** (`./ops/deploy.sh --rollback`): liest vorletzten SHA aus Deploy-Log, prüft dass dessen Image noch da ist, setzt `APP_VERSION` in `.env.prod` um, retagged `:latest`, `compose up -d`, Health-Check. Voraussetzung: das alte Image war noch nicht vom Prune erwischt — also nutzbar für die letzten 3 Deploys.
+
+**Wenn ein Restart-Trigger fehlt**: Service-Restart-Liste in Schritt 9 ist allowlist-basiert. Wenn ein NEUER bind-mounteter File-Pfad hinzukommt, der einen Container-Restart braucht (zB ein neuer `nginx/something.conf`), MUSS er in Schritt 9 in `deploy.sh` ergänzt werden. Sonst landet die neue Config zwar via rsync auf prod, der Container bleibt aber an der alten Inode hängen.
 
 ## Definition of "Done" per Task
 

@@ -129,3 +129,144 @@ maybe_run() {
     "$@"
   fi
 }
+
+# ---------------------------------------------------------------------------
+# Concurrency lock — eine Deploy-Instanz gleichzeitig.
+# Nutzt flock auf einem festen Pfad in /tmp. FD 9 ist arbiträr aber
+# stabil; im Subshell-Trap weiter unten wird er nicht freigegeben, das
+# erledigt der Kernel beim Exit des Skript-Prozesses.
+# ---------------------------------------------------------------------------
+DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/auffi-deploy.lock}"
+
+acquire_deploy_lock() {
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    log_dry "acquire_deploy_lock (skipped in dry-run)"
+    return 0
+  fi
+  exec 9>"${DEPLOY_LOCK_FILE}"
+  if ! flock -n 9; then
+    log_error "Another deploy is in progress (lock: ${DEPLOY_LOCK_FILE}). Wait or remove the lock if stale."
+    exit 1
+  fi
+  log_info "Acquired deploy lock (${DEPLOY_LOCK_FILE})"
+}
+
+# ---------------------------------------------------------------------------
+# Cleanup-Register — Files die ein Trap beim Exit aufräumen soll.
+# Wird primär für lokale Image-Tarballs verwendet, die bei einem Abort
+# sonst in /tmp leaken.
+# ---------------------------------------------------------------------------
+CLEANUP_FILES=()
+register_cleanup_file() {
+  CLEANUP_FILES+=("$1")
+}
+
+_do_cleanup() {
+  local rc=$?
+  for f in "${CLEANUP_FILES[@]:-}"; do
+    [[ -n "${f}" ]] && rm -f "${f}" 2>/dev/null || true
+  done
+  return "${rc}"
+}
+
+install_cleanup_trap() {
+  trap _do_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+# ---------------------------------------------------------------------------
+# Hash-basierter File-Diff zwischen lokalem File und Remote-Pfad.
+# Returns 0 (true) wenn sich etwas geändert hat ODER Remote-File fehlt.
+# Returns 1 (false) wenn identisch.
+# ---------------------------------------------------------------------------
+file_changed_on_remote() {
+  local local_file="$1"
+  local remote_file="$2"
+  if [[ ! -f "${local_file}" ]]; then
+    log_warn "Local file missing: ${local_file}"
+    return 0
+  fi
+  local local_hash remote_hash
+  local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+  remote_hash=$(remote "sha256sum '${remote_file}' 2>/dev/null | awk '{print \$1}'" 2>/dev/null || true)
+  [[ "${local_hash}" != "${remote_hash}" ]]
+}
+
+# ---------------------------------------------------------------------------
+# Lokale Config-Validation via ephemere Container.
+# nginx_validate_local validiert einen einzelnen conf-Snippet, der ins
+# default /etc/nginx/conf.d/ gemountet wird. caddy_validate_local nimmt
+# einen kompletten Caddyfile.
+# ---------------------------------------------------------------------------
+nginx_validate_local() {
+  local conf_file="$1"
+  if [[ ! -f "${conf_file}" ]]; then
+    log_error "nginx validate: file not found: ${conf_file}"
+    return 1
+  fi
+  local out
+  if ! out=$(docker run --rm \
+      -v "${conf_file}:/etc/nginx/conf.d/default.conf:ro" \
+      nginx:1.29-alpine nginx -t 2>&1); then
+    log_error "nginx -t failed for ${conf_file}:"
+    printf '%s\n' "${out}" >&2
+    return 1
+  fi
+  log_ok "nginx -t ok: $(basename "${conf_file}")"
+}
+
+caddy_validate_local() {
+  local caddyfile="$1"
+  if [[ ! -f "${caddyfile}" ]]; then
+    log_error "caddy validate: file not found: ${caddyfile}"
+    return 1
+  fi
+  local out
+  if ! out=$(docker run --rm \
+      -v "${caddyfile}:/etc/caddy/Caddyfile:ro" \
+      caddy:2.10.0-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
+    log_error "caddy validate failed for ${caddyfile}:"
+    printf '%s\n' "${out}" >&2
+    return 1
+  fi
+  log_ok "caddy validate ok: $(basename "${caddyfile}")"
+}
+
+# ---------------------------------------------------------------------------
+# Remote-Image-Check — true wenn ${tag} schon als geladenes Image existiert.
+# Wird verwendet um Build + Transfer zu überspringen wenn nichts neues da ist.
+# ---------------------------------------------------------------------------
+remote_image_exists() {
+  local image="$1"
+  remote "docker image inspect '${image}' >/dev/null 2>&1"
+}
+
+# ---------------------------------------------------------------------------
+# Deploy-Log — append-only Datei auf prod mit Geschichte aller Deploys.
+# Format pro Zeile: ISO8601-UTC TAB sha TAB deployer TAB notes
+# ---------------------------------------------------------------------------
+DEPLOY_LOG_REMOTE="${DEPLOY_LOG_REMOTE:-${DEPLOY_PATH:-/opt/screenie}/.deploy-log}"
+
+deploy_log_append() {
+  local sha="$1"
+  local notes="${2:-}"
+  local who; who="$(whoami)@$(hostname -s)"
+  local stamp; stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # Tab-separated. Notes: tab/newline/single-quote stripped — letzteres
+  # damit die remote single-quote-Quoting nicht bricht.
+  local clean_notes; clean_notes=$(printf '%s' "${notes}" | tr -d "\t\n'")
+  local line; line=$(printf '%s\t%s\t%s\t%s' "${stamp}" "${sha}" "${who}" "${clean_notes}")
+  remote "printf '%s\n' '${line}' >> '${DEPLOY_LOG_REMOTE}'"
+}
+
+deploy_log_last_sha() {
+  # Echo'd auf stdout; leer wenn kein Log existiert oder leer ist.
+  remote "tail -n 1 '${DEPLOY_LOG_REMOTE}' 2>/dev/null | awk -F'\t' '{print \$2}'" || true
+}
+
+deploy_log_previous_sha() {
+  # Vorletzte Zeile — für Rollback.
+  remote "tail -n 2 '${DEPLOY_LOG_REMOTE}' 2>/dev/null | head -n 1 | awk -F'\t' '{print \$2}'" || true
+}
