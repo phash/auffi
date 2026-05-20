@@ -493,7 +493,10 @@ if [[ "${DRY_RUN}" == "false" ]]; then
   check_url_status "https://${DEPLOY_DOMAIN}/llms.txt" "200"
   check_url_status "https://${DEPLOY_DOMAIN}/robots.txt" "200"
   check_url_status "https://${DEPLOY_DOMAIN}/sitemap.xml" "200"
-  check_url_status "https://${DEPLOY_DOMAIN}/.deploy-smoketest-$$" "404"
+  # Smoke-404 mit URL OHNE führenden Dot, weil die Caddy-dotfile_protection-
+  # Regel (siehe CLAUDE.md "Caddyfile Footguns") alle /. -Pfade mit 403
+  # blockt — was zwar kein 404 ist, aber semantisch auch "nicht da".
+  check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "404"
 else
   log_dry "skip health checks in dry-run"
 fi
