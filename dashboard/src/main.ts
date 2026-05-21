@@ -6,6 +6,7 @@ import { installFeedbackFab } from "./components/feedback-fab.js";
 import { renderAccount } from "./views/account.js";
 import { renderAddDevice } from "./views/add-device.js";
 import { renderAdminFeedback } from "./views/admin-feedback.js";
+import { renderAdminStats } from "./views/admin-stats.js";
 import { renderConnectionLog } from "./views/connection-log.js";
 import { renderDeviceDetail } from "./views/device-detail.js";
 import { renderDevices } from "./views/devices.js";
@@ -42,6 +43,11 @@ const routes: Route[] = [
   // inline; the link is therefore safe to add to the nav for ALL
   // users (admin-only filtering happens server-side).
   { pattern: "/admin/feedback", navLabel: "Feedback (Admin)", render: renderAdminFeedback },
+  // gh stats: admin-only operational overview — user counts, device
+  // counts, connection counts, code-mint counts. Same admin-route
+  // pattern: backend guards with requireAdmin, the view shows an
+  // inline notice on 403 so the link is safe for ALL users in the nav.
+  { pattern: "/admin/stats", navLabel: "Stats (Admin)", render: renderAdminStats },
   { pattern: "*", render: renderNotFound },
 ];
 

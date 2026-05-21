@@ -366,3 +366,55 @@ export function replyAdminFeedback(
     body: JSON.stringify({ reply }),
   });
 }
+
+// ── Admin Stats ─────────────────────────────────────────────────────
+// Spiegelt das Server-Schema aus backend/src/admin/stats.ts. Wenn das
+// Backend-Schema sich ändert, BEIDE Stellen synchron halten — der
+// `import type` aus dem Backend würde die backend→dashboard-Grenze
+// brechen, deshalb hier dupliziert (so wie alle anderen API-Typen
+// im File).
+
+export interface AdminStats {
+  users: {
+    total: number;
+    verified: number;
+    suspended: number;
+    active_24h: number;
+    active_7d: number;
+    active_30d: number;
+    new_24h: number;
+    new_7d: number;
+  };
+  devices: {
+    total: number;
+    online_now: number;
+    paired_24h: number;
+  };
+  connections: {
+    today: number;
+    week: number;
+    p2p_today: number;
+    relay_today: number;
+    relay_bytes_today: number;
+  };
+  system: {
+    db_size_bytes: number;
+    uptime_seconds: number;
+  };
+}
+
+export interface AdminCodeStats {
+  total: number;
+  last24h: number;
+  last7d: number;
+  last30d: number;
+  perDay: Array<{ day: string; count: number }>;
+}
+
+export function fetchAdminStats(): Promise<ApiResult<AdminStats>> {
+  return request("/api/admin/stats", { method: "GET" });
+}
+
+export function fetchAdminCodeStats(): Promise<ApiResult<AdminCodeStats>> {
+  return request("/api/admin/stats/codes", { method: "GET" });
+}
