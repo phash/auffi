@@ -20,6 +20,12 @@ Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
   `/api/downloads/file/:asset`, optional `?tag=vX.Y.Z` zum Pinnen). Per-
   Version-Counter inkrementiert serverseitig — kein Client-JS-Hop mehr.
 
+### Behoben
+
+- **HEAD-Requests bumpen den Download-Counter nicht mehr** und fetchen
+  den Upstream nicht. Link-Preview-Crawler und Uptime-Checks zählen
+  jetzt nicht mehr als echte Downloads.
+
 ## [0.4.4] — 2026-05-20
 
 ### Behoben

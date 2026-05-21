@@ -15,16 +15,14 @@ import type { Db } from "../db.js";
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
   // 0.4.5 — released 2026-05-21. Update-Notifier + Download-Proxy
-  // (Downloads laufen jetzt direkt über auffi.app, Counter wird
-  // server-side beim Stream-Start gebumpt). Linux-only; Windows-Builds
-  // (Setup/MSI/portable) bleiben vorerst auf v0.4.4 gepinnt via
-  // ?tag=v0.4.4 in den download/-Hrefs, bis der Windows-Build von der
-  // separaten Build-Box nachrollt.
+  // (Downloads laufen direkt über auffi.app, Counter wird server-side
+  // beim Stream-Start gebumpt). Linux + Windows ab dem ersten Tag.
   "Auffi_0.4.5_amd64.deb",
   "Auffi-0.4.5-1.x86_64.rpm",
   "Auffi_0.4.5_amd64.AppImage",
-  // 0.4.4 — Windows-Hrefs sind via ?tag=v0.4.4 gepinnt; Linux-Einträge
-  // gehalten für Counter-Persistenz (alte Klicks bleiben sichtbar).
+  "Auffi_0.4.5_x64-setup.exe",
+  "Auffi_0.4.5_x64_en-US.msi",
+  // 0.4.4 — Counter-Persistenz; Hrefs gibt's nicht mehr in download/.
   "Auffi_0.4.4_amd64.deb",
   "Auffi-0.4.4-1.x86_64.rpm",
   "Auffi_0.4.4_amd64.AppImage",
@@ -171,6 +169,17 @@ export function registerDownloadRoutes(
         return reply
           .status(400)
           .send({ error: "invalid-tag", message: "tag must match vMAJOR.MINOR.PATCH" });
+      }
+
+      // HEAD-Short-Circuit: link-preview-Crawler oder Monitoring sollen
+      // weder den Download-Counter bumpen noch die volle Datei aus dem
+      // Upstream durchstreamen. Real-Downloads kommen über GET. Headers
+      // entsprechen einem hypothetischen erfolgreichen GET, damit
+      // `curl -I` und Uptime-Checker korrekt informiert sind.
+      if (req.method === "HEAD") {
+        reply.header("content-type", "application/octet-stream");
+        reply.header("content-disposition", `attachment; filename="${asset}"`);
+        return reply.status(200).send();
       }
 
       const upstream = await upstreamFetcher(asset, tag);

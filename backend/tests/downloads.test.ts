@@ -244,4 +244,44 @@ describe("GET /api/downloads/file/:asset (stream-through proxy)", () => {
     await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
     expect(receivedTag).toBeUndefined();
   });
+
+  it("HEAD does NOT increment the counter and does NOT fetch upstream", async () => {
+    // A scraper or link-preview crawler hitting HEAD shouldn't inflate
+    // the per-asset counter or burn proxy-bandwidth. Real download =
+    // GET only.
+    let upstreamCalled = false;
+    h = await build(async () => {
+      upstreamCalled = true;
+      return new Response(payload, { status: 200 });
+    });
+    const res = await h.app.inject({
+      method: "HEAD",
+      url: `/api/downloads/file/${asset}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(upstreamCalled).toBe(false);
+    const row = h.db
+      .prepare("SELECT count FROM download_counts WHERE asset_name = ?")
+      .get(asset) as { count: number } | undefined;
+    expect(row?.count ?? 0).toBe(0);
+  });
+
+  it("HEAD still sets attachment headers so monitoring tools see the right Content-Disposition", async () => {
+    h = await build(okFetcher());
+    const res = await h.app.inject({
+      method: "HEAD",
+      url: `/api/downloads/file/${asset}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toBe(`attachment; filename="${asset}"`);
+  });
+
+  it("HEAD on an unknown asset still 404s (allow-list applies before HEAD short-circuit)", async () => {
+    h = await build(okFetcher());
+    const res = await h.app.inject({
+      method: "HEAD",
+      url: "/api/downloads/file/totally-unknown-asset.deb",
+    });
+    expect(res.statusCode).toBe(404);
+  });
 });
