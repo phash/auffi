@@ -11,21 +11,10 @@
     <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
     <link rel="stylesheet" href="/topbar-footer.css" />
     <link rel="stylesheet" href="/legal/style.css" />
-    <!-- Matomo -->
-    <script>
-  var _paq = window._paq = window._paq || [];
-  _paq.push(['disableCookies']);
-  _paq.push(['setDoNotTrack', true]);
-  _paq.push(['trackPageView']);
-  (function() {
-    var u="//musikersuche.org/matomo/";
-    _paq.push(['setTrackerUrl', u+'matomo.php']);
-    _paq.push(['setSiteId', '6']);
-    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-  })();
-</script>
-    <!-- End Matomo Code -->
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in, gh review 2026-05-21) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <!-- End Matomo -->
 
     <script type="application/ld+json">
       {
@@ -283,16 +272,32 @@
       </section>
 
       <section>
-        <h2>9. Reichweitenmessung (selbstgehostetes Matomo)</h2>
+        <h2 id="matomo">9. Reichweitenmessung (selbstgehostetes Matomo)</h2>
         <p>
           Um zu verstehen, wie Menschen <code>auffi.app</code> finden und
-          ob der Dienst überhaupt genutzt wird, betreiben wir eine
+          ob der Dienst &uuml;berhaupt genutzt wird, betreiben wir eine
           <strong>selbstgehostete Matomo-Instanz auf demselben deutschen
           Server</strong> (<code>musikersuche.org/matomo/</code>, IONOS
           Frankfurt). Keine externen Analyse-Dienste, kein Google
           Analytics, kein Facebook Pixel, keine externen Fonts (keine
-          Google Fonts), keine externen Scripts außer der eigenen
+          Google Fonts), keine externen Scripts au&szlig;er der eigenen
           Matomo-Instanz.
+        </p>
+        <p>
+          <strong>Opt-in via Banner.</strong> Beim ersten Besuch der
+          Marketing-Seiten erscheint unten ein Hinweis mit zwei Buttons:
+          „Statistik OK" und „Ablehnen". Erst nach „Statistik OK" wird
+          die Matomo-Datei nachgeladen und ein Seitenaufruf gez&auml;hlt;
+          „Ablehnen" speichert lokal eine Ablehnung im
+          <code>localStorage</code>, der Banner verschwindet, kein Matomo
+          wird je geladen. Diese Entscheidung gilt browser-weit f&uuml;r
+          alle Auffi-Seiten und kann jederzeit zur&uuml;ckgesetzt werden,
+          indem du in deinem Browser den
+          <code>auffi_matomo_consent</code>-Eintrag im
+          <code>localStorage</code> l&ouml;schst — beim n&auml;chsten Besuch
+          erscheint der Banner dann wieder. Hat dein Browser
+          <em>Do-Not-Track</em> (DNT) aktiviert, wird Matomo gar nicht
+          erst angeboten — wir lesen das Signal still und tracken nicht.
         </p>
         <h3>Was erfasst wird</h3>
         <ul>
@@ -316,10 +321,17 @@
             „Chrome / Linux") — zur Sicherstellung der Kompatibilität
           </li>
           <li>
-            <strong>Aggregierte Backend-Zählung</strong> — wie oft ein
-            Verbindungscode generiert wurde. Diese Zählung fließt ohne
-            jeden Bezug zur konkreten Person, IP oder Sitzung in Matomo
-            ein und dient ausschließlich der Messung der Nutzungsmenge.
+            <strong>Aggregierte Backend-Z&auml;hlung</strong> — wie oft ein
+            Verbindungscode generiert wurde. Diese Z&auml;hlung wird auf
+            zwei Wegen gepflegt: einerseits flie&szlig;t sie ohne jeden Bezug
+            zur konkreten Person, IP oder Sitzung in Matomo ein;
+            andererseits speichern wir in unserer SQLite-DB
+            (Tabelle <code>code_events</code>) pro generiertem Code
+            einen reinen Millisekunden-Timestamp ohne Code-Wert, ohne
+            IP, ohne User-ID. Beide dienen ausschlie&szlig;lich der Messung
+            der aggregierten Nutzungsmenge. Aufbewahrung der DB-Eintr&auml;ge:
+            <strong>365 Tage</strong>, danach automatische L&ouml;schung
+            durch den Retention-Cron.
           </li>
         </ul>
         <h3>Was NICHT erfasst wird</h3>
@@ -343,9 +355,12 @@
         <h3>Technische Privacy-Maßnahmen</h3>
         <ul>
           <li>
-            <strong>Cookielos</strong> — Matomo läuft im
+            <strong>Cookielos</strong> — Matomo l&auml;uft im
             <code>disableCookies</code>-Modus. Es werden keine
-            Tracking-Cookies gesetzt; nach § 25 TTDSG einwilligungsfrei.
+            Tracking-Cookies gesetzt. Trotzdem holen wir aktiv deine
+            Einwilligung (siehe Banner oben) — wir folgen damit der
+            strengeren Auslegung von § 25 TTDSG durch den LfDI
+            Niedersachsen und gehen auf Nummer sicher.
           </li>
           <li>
             <strong>IP-Anonymisierung</strong> — die letzten zwei Oktette
@@ -375,16 +390,19 @@
         <h2 id="downloads-counter">9a. Aggregierte Download-Klick-Zaehlung</h2>
         <p>
           Auf <code>auffi.app/download/</code> ist neben jedem Download-Button
-          ein „X Downloads"-Badge sichtbar. Diese Zahl kommt aus einem
-          serverseitigen Klick-Zaehler: ein Klick auf einen Download-Button
-          loest ein unauthentifiziertes <code>POST /api/downloads/:asset</code>
-          aus (per Browser-<code>sendBeacon</code>), das einen INT-Zaehler
-          pro Asset-Name in unserer SQLite-DB inkrementiert.
+          ein „X Downloads"-Badge sichtbar. Seit Mai 2026 laufen die
+          Downloads selbst direkt &uuml;ber unseren Server: ein Klick auf einen
+          Download-Button l&ouml;st ein <code>GET&nbsp;/api/downloads/file/:asset</code>
+          aus, das die Datei aus dem GitHub-Release abruft und durch unseren
+          Server an deinen Browser durchleitet. Beim Start dieses Streams
+          (nicht beim blo&szlig;en Anzeigen der Seite) wird der INT-Z&auml;hler
+          <code>download_counts</code> pro Asset-Name in unserer SQLite-DB um
+          eins erh&ouml;ht.
         </p>
         <h3>Was erfasst wird</h3>
         <ul>
           <li>
-            Asset-Name aus dem Click (z.&nbsp;B. <code>Auffi_0.4.1_amd64.deb</code>)
+            Asset-Name aus der URL (z.&nbsp;B. <code>Auffi_0.4.5_amd64.deb</code>)
           </li>
           <li>
             Zaehlerstand (INTEGER) und Aenderungs-Zeitstempel pro Asset
@@ -397,15 +415,20 @@
         <h3>Was NICHT erfasst wird</h3>
         <ul>
           <li>
-            Kein Bezug zwischen Klick-Event und der speziellen IP/Sitzung —
+            Kein Bezug zwischen Download und der speziellen IP/Sitzung —
             in der <code>download_counts</code>-Tabelle steht nur der
-            aggregierte Zaehler pro Asset, kein einzelner Klick-Eintrag
+            aggregierte Z&auml;hler pro Asset, kein einzelner Download-Eintrag
           </li>
           <li>
-            Kein Cookie, kein LocalStorage-Token gesetzt fuer den Counter
+            Kein Cookie, kein LocalStorage-Token gesetzt f&uuml;r den Counter
           </li>
           <li>
-            Kein Tracking ueber mehrere Klicks hinweg
+            Kein Tracking &uuml;ber mehrere Downloads hinweg
+          </li>
+          <li>
+            HEAD-Requests (z.&nbsp;B. von Link-Preview-Crawlern oder Uptime-
+            Monitoring) erh&ouml;hen den Z&auml;hler nicht — nur tats&auml;chlich
+            gestartete Downloads werden gez&auml;hlt
           </li>
         </ul>
         <p>

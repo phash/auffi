@@ -134,21 +134,10 @@
          Validator das Markup beim Page-Fetch findet. Hash-Recompute-
          Anleitung steht in caddy/Caddyfile (Kommentar überm CSP-Header).
          Datenschutz: /datenschutz/ -->
-    <!-- Matomo -->
-    <script>
-  var _paq = window._paq = window._paq || [];
-  _paq.push(['disableCookies']);
-  _paq.push(['setDoNotTrack', true]);
-  _paq.push(['trackPageView']);
-  (function() {
-    var u="//musikersuche.org/matomo/";
-    _paq.push(['setTrackerUrl', u+'matomo.php']);
-    _paq.push(['setSiteId', '6']);
-    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-  })();
-</script>
-    <!-- End Matomo Code -->
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in, gh review 2026-05-21) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <!-- End Matomo -->
 
     <!-- Feedback FAB (logged-in users only — probes /api/me first). -->
     <link rel="stylesheet" href="/feedback-fab.css" />
