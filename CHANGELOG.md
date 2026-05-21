@@ -5,6 +5,21 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.4.5] — 2026-05-21
+
+### Hinzugefügt
+
+- **Update-Notifier im Sharer.** Beim App-Start ein einmaliger Check
+  gegen die GitHub-Releases-API; wenn eine neuere Version verfügbar
+  ist, erscheint ein blauer Banner mit Link auf
+  [auffi.app/download/](https://auffi.app/download/). Bei Netzwerk-
+  oder Parse-Fehler bleibt der Banner versteckt — kein „konnte nicht
+  prüfen"-Toast.
+- **Download-Proxy via `auffi.app`.** Statt auf GitHub-Releases zu
+  redirecten, streamt der Backend die Asset-Bytes direkt durch (Route
+  `/api/downloads/file/:asset`, optional `?tag=vX.Y.Z` zum Pinnen). Per-
+  Version-Counter inkrementiert serverseitig — kein Client-JS-Hop mehr.
+
 ## [0.4.4] — 2026-05-20
 
 ### Behoben
@@ -74,6 +89,7 @@ Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
   Per-Account-Lockout, HMAC-ephemerale TURN-Credentials. Vollständiger
   Audit: [docs/security-review-2026-05.md](docs/security-review-2026-05.md).
 
+[0.4.5]: https://github.com/phash/auffi/releases/tag/v0.4.5
 [0.4.4]: https://github.com/phash/auffi/releases/tag/v0.4.4
 [0.4.3]: https://github.com/phash/auffi/releases/tag/v0.4.3
 [0.4.2]: https://github.com/phash/auffi/releases/tag/v0.4.2

@@ -77,8 +77,10 @@
         <p class="lead">
           Open-Source-Desktop-App, AGPL-3.0. Ende-zu-Ende verschlüsselt,
           DSGVO-konform, kein Konto erforderlich. Aktuelle Version
-          <strong>0.4.4</strong>. Alle Builds liegen auf
-          <a href="https://github.com/phash/auffi/releases/tag/v0.4.4" rel="noopener noreferrer">GitHub Releases</a>.
+          <strong>0.4.5</strong> — Downloads laufen direkt über
+          <code>auffi.app</code>.
+          <a href="https://github.com/phash/auffi" rel="noopener noreferrer">Source auf GitHub</a>
+          · <a href="https://github.com/phash/auffi/releases/tag/v0.4.5" rel="noopener noreferrer">Release-Notes</a>.
         </p>
       </section>
 
@@ -96,7 +98,7 @@
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.4_x64-setup.exe">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.4_x64-setup.exe?tag=v0.4.4">
               Download
             </a>
           </li>
@@ -109,7 +111,7 @@
                 <span class="size">~ 30 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/auffi-sharer-windows-x64.exe">
+            <a class="download-btn" href="/api/downloads/file/auffi-sharer-windows-x64.exe?tag=v0.4.4">
               Download
             </a>
           </li>
@@ -122,7 +124,7 @@
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.4_x64_en-US.msi">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.4_x64_en-US.msi?tag=v0.4.4">
               Download
             </a>
           </li>
@@ -135,11 +137,11 @@
             <div class="download-meta">
               <h3>Debian / Ubuntu (.deb)</h3>
               <p>
-                <code>sudo dpkg -i Auffi_0.4.4_amd64.deb</code><br />
+                <code>sudo dpkg -i Auffi_0.4.5_amd64.deb</code><br />
                 <span class="size">~ 14 MB · x86_64 · Debian 12+, Ubuntu 22.04+</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.4_amd64.deb">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.5_amd64.deb">
               Download
             </a>
           </li>
@@ -147,11 +149,11 @@
             <div class="download-meta">
               <h3>Fedora / RHEL (.rpm)</h3>
               <p>
-                <code>sudo rpm -i Auffi-0.4.4-1.x86_64.rpm</code><br />
+                <code>sudo rpm -i Auffi-0.4.5-1.x86_64.rpm</code><br />
                 <span class="size">~ 14 MB · x86_64 · Fedora 40+, RHEL 9+</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi-0.4.4-1.x86_64.rpm">
+            <a class="download-btn" href="/api/downloads/file/Auffi-0.4.5-1.x86_64.rpm">
               Download
             </a>
           </li>
@@ -159,11 +161,11 @@
             <div class="download-meta">
               <h3>AppImage (distroübergreifend)</h3>
               <p>
-                <code>chmod +x Auffi_0.4.4_amd64.AppImage &amp;&amp; ./Auffi_0.4.4_amd64.AppImage</code><br />
+                <code>chmod +x Auffi_0.4.5_amd64.AppImage &amp;&amp; ./Auffi_0.4.5_amd64.AppImage</code><br />
                 <span class="size">~ 117 MB · x86_64 · läuft auf jeder glibc-Distro mit PipeWire.</span>
               </p>
             </div>
-            <a class="download-btn" href="https://github.com/phash/auffi/releases/latest/download/Auffi_0.4.4_amd64.AppImage">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.5_amd64.AppImage">
               Download
             </a>
           </li>
@@ -212,6 +214,21 @@
 
       <section class="release-notes" aria-labelledby="releases-heading">
         <h2 id="releases-heading">Was ist neu</h2>
+        <h3>0.4.5 (2026-05-21)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Update-Notifier im Sharer</strong> — beim Start prüft
+            der Sharer einmal die GitHub-Releases-API; wenn eine neuere
+            Version verfügbar ist, erscheint ein blauer Banner mit
+            „Jetzt herunterladen"-Link auf diese Seite.
+          </li>
+          <li>
+            <strong>Downloads laufen direkt über auffi.app</strong> — der
+            Backend streamt die Release-Assets durch, statt auf GitHub
+            zu redirecten. Per-Version-Download-Statistik bleibt erhalten
+            und wird jetzt server-side gezählt (kein Client-JS mehr nötig).
+          </li>
+        </ul>
         <h3>0.4.4 (2026-05-20)</h3>
         <ul class="release-list">
           <li>

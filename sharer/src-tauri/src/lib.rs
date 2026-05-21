@@ -16,6 +16,7 @@ mod pw_check;
 mod signaling;
 mod turn_config;
 mod unattended_cmd;
+mod update_check;
 mod webrtc_peer;
 
 /// Resolve the destination path for `dbg_log()` writes.
@@ -1159,6 +1160,7 @@ pub fn run() {
             unattended_cmd::unattended_stop,
             unattended_cmd::unattended_confirm,
             unattended_cmd::unattended_submit_feedback,
+            update_check::check_for_update,
         ])
         // gh #26: tray icon + minimise-to-tray. Built in setup() so
         // the AppHandle is available. The window-close handler reads

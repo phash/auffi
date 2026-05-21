@@ -11,6 +11,7 @@ import type { TrustedPeer } from "./trusted-peers.js";
 import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted-peers.js";
 import { friendlyMonitorLabel } from "./monitor-display.js";
 import { setupTabs } from "./tabs.js";
+import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-banner.js";
 
 interface FileOfferPayload {
   id: string;
@@ -855,3 +856,32 @@ void refreshFeedbackFab().catch(() => {});
 window.addEventListener("auffi-unattended-state-changed", () => {
   void refreshFeedbackFab().catch(() => {});
 });
+
+// Update-Notifier: einmaliger Check beim Start. Bei Fehlern (Netzwerk
+// down, GH-API rate-limit, Parse-Problem) gibt der Rust-Command
+// `available: false` zurück — Banner bleibt versteckt, kein Toast,
+// keine sichtbare Warnung. Nächster Start fragt erneut.
+{
+  const banner = document.getElementById("update-banner");
+  const versionEl = document.getElementById("update-banner-version");
+  const downloadBtn = document.getElementById("update-banner-download");
+  const dismissBtn = document.getElementById("update-banner-dismiss");
+  if (banner && versionEl && downloadBtn && dismissBtn) {
+    invoke<UpdateInfo>("check_for_update")
+      .then((info) => {
+        attachBannerHandlers({
+          banner,
+          dismissBtn,
+          downloadBtn,
+          downloadUrl: info.download_url,
+          openUrl: (url) => openUrl(url),
+        });
+        if (info.available) {
+          showBanner(banner, versionEl, info.latest);
+        }
+      })
+      .catch(() => {
+        /* silent — Update-Hinweis ist nice-to-have, nicht load-blocking */
+      });
+  }
+}

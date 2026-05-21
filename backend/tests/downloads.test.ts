@@ -4,12 +4,14 @@ import rateLimit from "@fastify/rate-limit";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { registerDownloadRoutes, KNOWN_ASSETS } from "../src/downloads/handlers.js";
 
-async function build(): Promise<{ app: FastifyInstance; db: Db }> {
+async function build(
+  upstreamFetcher?: (asset: string) => Promise<Response>,
+): Promise<{ app: FastifyInstance; db: Db }> {
   const db = openDb(":memory:");
   applyMigrations(db, defaultMigrationsDir());
   const app = Fastify();
   await app.register(rateLimit, { global: false });
-  registerDownloadRoutes(app, db);
+  registerDownloadRoutes(app, db, upstreamFetcher ? { upstreamFetcher } : undefined);
   await app.ready();
   return { app, db };
 }
@@ -124,5 +126,122 @@ describe("POST /api/downloads/:asset", () => {
       url: "/api/downloads/Auffi_0.4.2_amd64.deb",
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe("GET /api/downloads/file/:asset (stream-through proxy)", () => {
+  const asset = "Auffi_0.4.4_amd64.deb";
+  const payload = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0x03]);
+
+  function okFetcher(): (asset: string, tag?: string) => Promise<Response> {
+    return async () =>
+      new Response(payload, {
+        status: 200,
+        headers: {
+          "content-type": "application/octet-stream",
+          "content-length": String(payload.byteLength),
+        },
+      });
+  }
+
+  let h: Awaited<ReturnType<typeof build>>;
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("404s on assets not in the allow-list — without calling upstream", async () => {
+    let upstreamCalled = false;
+    h = await build(async (_asset, _tag) => {
+      upstreamCalled = true;
+      return new Response("nope", { status: 200 });
+    });
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/downloads/file/../etc/passwd",
+    });
+    // 404 here, not 200 — proxy must not echo upstream when the asset
+    // name fails the allow-list check.
+    expect(res.statusCode).toBe(404);
+    expect(upstreamCalled).toBe(false);
+  });
+
+  it("streams the upstream body verbatim and sets attachment headers", async () => {
+    h = await build(okFetcher());
+    const res = await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toBe(`attachment; filename="${asset}"`);
+    expect(res.headers["content-length"]).toBe(String(payload.byteLength));
+    expect(new Uint8Array(res.rawPayload)).toEqual(payload);
+  });
+
+  it("increments the per-asset counter exactly once on success", async () => {
+    h = await build(okFetcher());
+    await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    const after = h.db
+      .prepare("SELECT count FROM download_counts WHERE asset_name = ?")
+      .get(asset) as { count: number } | undefined;
+    expect(after?.count).toBe(1);
+    await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    const again = h.db
+      .prepare("SELECT count FROM download_counts WHERE asset_name = ?")
+      .get(asset) as { count: number };
+    expect(again.count).toBe(2);
+  });
+
+  it("returns 502 and does NOT increment the counter when upstream fails", async () => {
+    h = await build(async (_asset, _tag) => new Response("not found", { status: 404 }));
+    const res = await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    expect(res.statusCode).toBe(502);
+    const row = h.db
+      .prepare("SELECT count FROM download_counts WHERE asset_name = ?")
+      .get(asset) as { count: number } | undefined;
+    // Either the row never got inserted, or its count is still 0. Both
+    // are valid "did not increment" outcomes.
+    expect(row?.count ?? 0).toBe(0);
+  });
+
+  it("forwards a valid ?tag=vX.Y.Z to the upstream fetcher", async () => {
+    let receivedTag: string | undefined = undefined;
+    h = await build(async (_asset, tag) => {
+      receivedTag = tag;
+      return new Response(payload, {
+        status: 200,
+        headers: { "content-length": String(payload.byteLength) },
+      });
+    });
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/downloads/file/${asset}?tag=v0.4.4`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(receivedTag).toBe("v0.4.4");
+  });
+
+  it("rejects a non-semver tag with 400 — defence against URL injection", async () => {
+    let upstreamCalled = false;
+    h = await build(async () => {
+      upstreamCalled = true;
+      return new Response(payload, { status: 200 });
+    });
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/downloads/file/${asset}?tag=../../etc/passwd`,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(upstreamCalled).toBe(false);
+  });
+
+  it("uses latest (tag undefined) when ?tag= is absent", async () => {
+    let receivedTag: string | undefined = "sentinel";
+    h = await build(async (_asset, tag) => {
+      receivedTag = tag;
+      return new Response(payload, {
+        status: 200,
+        headers: { "content-length": String(payload.byteLength) },
+      });
+    });
+    await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    expect(receivedTag).toBeUndefined();
   });
 });

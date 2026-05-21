@@ -1,13 +1,14 @@
 /* Auffi — /download/ Count-Decoration.
  *
  * On page load: GET /api/downloads, decorate each .download-item with a
- * "X Downloads"-Badge. On click of any .download-btn: fire-and-forget
- * POST /api/downloads/:asset, then continue the navigation normally
- * (browser already loaded the GH-redirect, the POST is best-effort and
- * never blocks the click).
+ * "X Downloads"-Badge. Click-tracking is handled server-side by the
+ * /api/downloads/file/:asset proxy route (it bumps the counter as part
+ * of the actual file-stream), so this script no longer needs to fire
+ * a separate POST on click.
  *
- * Asset name is derived from the href (last path segment of the GH
- * release URL). Vanilla JS so the file works outside the Vite bundle.
+ * Asset name is derived from the href (last path segment of the
+ * /api/downloads/file/ URL). Vanilla JS so the file works outside the
+ * Vite bundle.
  */
 
 (function () {
@@ -19,34 +20,13 @@
         decorateAll(data.counts);
       })
       .catch(function () { /* silent — counter is decoration, not load-blocking */ });
-
-    // Click-tracking: intercept .download-btn clicks. We don't
-    // preventDefault — the browser still navigates to GitHub. The POST
-    // is fire-and-forget; the body is a no-op on failure.
-    document.querySelectorAll(".download-btn[href]").forEach(function (a) {
-      a.addEventListener("click", function () {
-        var asset = assetFromHref(a.getAttribute("href"));
-        if (!asset) return;
-        // sendBeacon is the canonical fire-and-forget API — survives
-        // page navigation in a way that plain fetch() may not.
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon("/api/downloads/" + encodeURIComponent(asset));
-        } else {
-          fetch("/api/downloads/" + encodeURIComponent(asset), {
-            method: "POST",
-            keepalive: true,
-            credentials: "same-origin",
-          }).catch(function () {});
-        }
-      });
-    });
   }
 
   function assetFromHref(href) {
     if (!href) return null;
-    // Only count clicks on the GH-releases redirect; skip PKGBUILD /
-    // repository links (those don't count as a "download").
-    if (href.indexOf("/releases/latest/download/") === -1) return null;
+    // Only decorate the proxy-route URLs; skip PKGBUILD / repository
+    // links (those aren't tracked as downloads).
+    if (href.indexOf("/api/downloads/file/") === -1) return null;
     // Strip query + hash BEFORE extracting the last path segment — if
     // a tracking parameter (?utm_source=…) ever sneaks onto a download
     // href, the asset name would otherwise become "Auffi_…deb?utm=…"
@@ -54,7 +34,7 @@
     // class of future copy-paste bugs (code-review CODE-H3, 2026-05-17).
     var clean = href.split("?")[0].split("#")[0];
     var idx = clean.lastIndexOf("/");
-    return idx >= 0 ? clean.substring(idx + 1) : null;
+    return idx >= 0 ? decodeURIComponent(clean.substring(idx + 1)) : null;
   }
 
   function decorateAll(counts) {
