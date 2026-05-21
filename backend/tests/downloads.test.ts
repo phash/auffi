@@ -284,4 +284,20 @@ describe("GET /api/downloads/file/:asset (stream-through proxy)", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("forces Content-Type application/octet-stream regardless of upstream — MIME-confusion defence", async () => {
+    // Upstream lies about its content type (text/html). Proxy must
+    // override so a malformed upstream-2xx-with-HTML-body never
+    // reaches the browser as HTML.
+    h = await build(async () =>
+      new Response(payload, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    );
+    const res = await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("application/octet-stream");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
 });

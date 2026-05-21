@@ -197,11 +197,19 @@ export function registerDownloadRoutes(
               SET count = count + 1, updated_at = excluded.updated_at`,
       ).run(asset, now);
 
-      reply.header(
-        "content-type",
-        upstream.headers.get("content-type") ?? "application/octet-stream",
-      );
+      // Force `application/octet-stream` independent of upstream's
+      // Content-Type — defence-in-depth gegen MIME-Confusion. Sollte
+      // GitHubs S3-CDN jemals einen 2xx mit text/html-Body liefern
+      // (Edge-Case: CDN-Fehler-Page mit 200-Statuscode), würde der
+      // Browser ihn als HTML rendern wenn wir den Header
+      // weiterleiten. Attachment-Disposition + octet-stream zwingt
+      // den Download-Pfad immer, egal was der Upstream sagt.
+      reply.header("content-type", "application/octet-stream");
       reply.header("content-disposition", `attachment; filename="${asset}"`);
+      // Plus expliziter nosniff fuer die direkte Antwort — der Caddy-
+      // Reverse-Proxy setzt das ohnehin global, aber doppelt haelt
+      // besser und macht den Schutz auf der Route sichtbar.
+      reply.header("x-content-type-options", "nosniff");
       const len = upstream.headers.get("content-length");
       if (len) reply.header("content-length", len);
 
