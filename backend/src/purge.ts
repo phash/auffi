@@ -15,6 +15,12 @@ export interface PurgeRetention {
   /** audit_log rows older than this are deleted. */
   auditLogMs: number;
   /**
+   * code_events rows older than this are deleted. Diese Tabelle ist
+   * non-PII (nur Timestamps) — Retention dient nur dazu, die Tabelle
+   * klein zu halten und entspricht der disclosed auditLog-Retention.
+   */
+  codeEventsMs: number;
+  /**
    * Feedback (gh #39): resolved rows past `resolved_at + this` get
    * hard-deleted; open rows past `created_at + feedbackOpenMaxMs` go
    * too. Two windows because resolved feedback is mostly historical
@@ -29,6 +35,7 @@ export const DEFAULT_RETENTION: PurgeRetention = {
   softDeletedAccountsGraceMs: 30 * 24 * 60 * 60 * 1000, // 30 d
   connectionLogMs: 30 * 24 * 60 * 60 * 1000, // 30 d
   auditLogMs: 365 * 24 * 60 * 60 * 1000, // 1 y
+  codeEventsMs: 365 * 24 * 60 * 60 * 1000, // 1 y
   feedbackResolvedMs: 365 * 24 * 60 * 60 * 1000, // 1 y
   feedbackOpenMaxMs: 2 * 365 * 24 * 60 * 60 * 1000, // 2 y
 };
@@ -48,6 +55,8 @@ export interface PurgeReport {
   connectionLog: number;
   /** audit_log rows older than retention. */
   auditLog: number;
+  /** code_events rows older than retention. */
+  codeEvents: number;
   /** audit_log rows pointing at a feedback row being purged this pass. */
   feedbackAuditCascade: number;
   /** Accounts soft-deleted longer ago than the grace window — hard-deleted. */
@@ -111,6 +120,10 @@ export function runPurge(
   const oldAuditLog = db
     .prepare("DELETE FROM audit_log WHERE created_at < ?")
     .run(now - retention.auditLogMs);
+
+  const oldCodeEvents = db
+    .prepare("DELETE FROM code_events WHERE created_at < ?")
+    .run(now - retention.codeEventsMs);
 
   // Hard-delete accounts past the soft-delete grace window. The FK
   // cascades to sessions, devices, audit_log refs (admin_id SET NULL),
@@ -179,6 +192,7 @@ export function runPurge(
     pendingEmailChanges: expiredEmailChanges.changes,
     connectionLog: oldConnLog.changes,
     auditLog: oldAuditLog.changes,
+    codeEvents: oldCodeEvents.changes,
     softDeletedAccounts: softDeleted.changes,
     rateLimitBuckets: expiredBuckets.changes,
     feedback: oldFeedback.changes,

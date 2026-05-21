@@ -178,6 +178,7 @@ describe("runPurge", () => {
       pendingEmailChanges: 0,
       connectionLog: 0,
       auditLog: 0,
+      codeEvents: 0,
       softDeletedAccounts: 0,
       rateLimitBuckets: 0,
       feedback: 0,
@@ -292,6 +293,24 @@ describe("runPurge", () => {
     // With a 3-day retention it must be deleted.
     expect(
       runPurge(db, now, { ...DEFAULT_RETENTION, connectionLogMs: 3 * DAY }).connectionLog,
+    ).toBe(1);
+  });
+
+  it("purges code_events older than retention, keeps fresh ones", () => {
+    db.prepare("INSERT INTO code_events (created_at) VALUES (?)").run(now - 400 * DAY);
+    db.prepare("INSERT INTO code_events (created_at) VALUES (?)").run(now - 100 * DAY);
+    expect(runPurge(db, now).codeEvents).toBe(1);
+    const remaining = (
+      db.prepare("SELECT COUNT(*) AS n FROM code_events").get() as { n: number }
+    ).n;
+    expect(remaining).toBe(1);
+  });
+
+  it("respects custom codeEvents retention window", () => {
+    db.prepare("INSERT INTO code_events (created_at) VALUES (?)").run(now - 5 * DAY);
+    expect(runPurge(db, now).codeEvents).toBe(0);
+    expect(
+      runPurge(db, now, { ...DEFAULT_RETENTION, codeEventsMs: 3 * DAY }).codeEvents,
     ).toBe(1);
   });
 });

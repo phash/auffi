@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { statSync } from "node:fs";
 import type { Db } from "../db.js";
+import { queryCodeStats } from "../tracking/code_events.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * ONE_DAY_MS;
@@ -162,5 +163,15 @@ export function registerAdminStatsRoutes(app: FastifyInstance, db: Db): void {
       cache = { stats, expiresAt: now + STATS_CACHE_TTL_MS };
       return stats;
     },
+  );
+
+  // Code-Mint-Statistik — DB-Quelle, unabhaengig von Matomo. Liefert
+  // total + windowed (24h/7d/30d) + perDay-Buckets fuer die letzten
+  // 30 Tage. Kein Caching: Tabelle ist klein und Admins fragen selten
+  // an, da reicht ein direktes COUNT.
+  app.get(
+    "/api/admin/stats/codes",
+    { preHandler: [app.requireSession, app.requireAdmin] },
+    async () => queryCodeStats(db, Date.now()),
   );
 }

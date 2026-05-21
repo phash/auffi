@@ -26,6 +26,7 @@ import { UnattendedRegistry } from "./unattended.js";
 import { UnattendedSessions } from "./unattended_sessions.js";
 import { startPurgeScheduler } from "./purge.js";
 import { matomoTrackerFromEnv } from "./tracking/matomo.js";
+import { recordCodeCreated } from "./tracking/code_events.js";
 
 export type ServerConfig = {
   port: number;
@@ -183,6 +184,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     ttlMs: env.sessionTtlMs,
     maxAttempts: env.maxFailedAttempts,
     onCodeCreated: () => {
+      // DB ist die verlaessliche Single-Source-of-Truth fuer die
+      // "wie oft wurde ein Code gemintet"-Statistik. Matomo bleibt als
+      // sekundaerer Sink dabei (Aggregat-Dashboard ohne SQL-Zugang).
+      recordCodeCreated(db, Date.now());
       void matomo.trackCodeCreated();
     },
   });
