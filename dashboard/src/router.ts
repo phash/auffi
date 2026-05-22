@@ -68,6 +68,14 @@ export interface Route {
   /** Optional human label shown in the nav (omit for routes that
    * don't appear in the top-bar nav like /verify/:token). */
   navLabel?: string;
+  /**
+   * Mark routes that require admin privileges. When set, the router
+   * substitutes the admin-403 view if `isAdmin()` returns false at
+   * render-time, and `buildNav` hides the link altogether. This is
+   * UX-only — the backend still enforces with `requireAdmin` on every
+   * admin endpoint (gh #53).
+   */
+  adminOnly?: boolean;
   render: RouteRenderer;
 }
 
@@ -135,11 +143,30 @@ export interface Router {
   stop(): void;
 }
 
+export interface CreateRouterOptions {
+  /**
+   * Provider for the current admin state. Called on every render so
+   * the state reflects an up-to-date probe (e.g. a logout invalidates
+   * admin-only views immediately). When omitted, admin gating is
+   * disabled (admin-only routes always render).
+   */
+  isAdmin?: () => boolean;
+  /**
+   * Renderer for the 403 "kein Admin"-Seite. Substituted in place of
+   * the matched route's renderer when `adminOnly` AND `!isAdmin()`.
+   * When omitted, the route renders normally and the backend's
+   * `requireAdmin` is the only gate (returning a friendly inline 403
+   * from the view itself).
+   */
+  renderAdminForbidden?: RouteRenderer;
+}
+
 export function createRouter(
   root: HTMLElement,
   routes: Route[],
   history: History = window.history,
   location: Location = window.location,
+  options: CreateRouterOptions = {},
 ): Router {
   // Register this instance as the active singleton so module-level
   // `navigate(path)` works from any view without threading the
@@ -163,7 +190,23 @@ export function createRouter(
       params: match.params,
       query: new URLSearchParams(location.search),
     };
-    match.route.render(root, ctx);
+    // Admin-gate: when the matched route is admin-only and the
+    // current state isn't admin, render the friendly 403 view instead
+    // of the route's normal renderer. Backend still enforces with
+    // requireAdmin so this branch is purely UX.
+    const useForbidden =
+      match.route.adminOnly === true &&
+      options.isAdmin !== undefined &&
+      !options.isAdmin();
+    if (useForbidden && options.renderAdminForbidden) {
+      options.renderAdminForbidden(root, ctx);
+    } else {
+      match.route.render(root, ctx);
+    }
+    // Notify subscribers (e.g. nav active-state highlighter) that the
+    // page just (re-)rendered. Custom event keeps the router decoupled
+    // from the nav module.
+    window.dispatchEvent(new CustomEvent("dashboard:rendered", { detail: { path } }));
   };
 
   const onPopState = (): void => render();

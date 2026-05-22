@@ -78,6 +78,19 @@ describe("GET /api/me", () => {
     expect(body.id).toBe(1);
     expect(body.emailVerifiedAt).toBeNull();
     expect(body.pendingEmail).toBeNull();
+    expect(body.admin).toBe(false);
+  });
+
+  it("reports admin=true for admins (dashboard nav-gate dependency, gh #53)", async () => {
+    const c = await h.cookie();
+    h.db.prepare("UPDATE accounts SET admin = 1 WHERE id = 1").run();
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${c}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().admin).toBe(true);
   });
 
   it("returns 401 without a session", async () => {

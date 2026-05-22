@@ -194,6 +194,12 @@ Three load-bearing settings that took the 2026-05-13 connectivity chain to find.
 
 UFW on the prod host is configured to allow `3478/tcp`, `3478/udp`, `5349/tcp`, `5349/udp`, and `49152-65535/udp` (TURN relay-port range). This isn't tracked in the repo — UFW state is host-local. If a fresh host gets provisioned, replay the `ufw allow …` commands listed in `docs/postmortem-2026-05-13-connectivity.md`.
 
+**TURN auf TCP 443 — dokumentierter Gap (#90 closed 2026-05-22).** Manche Corporate-Firewalls erlauben nur outbound 80 + 443. coturn auf `5349/tcp` ist dort blockiert → Verbindung scheitert mangels Relay. Tailscale + Jitsi laufen aus dem Grund auf `:443`. Wir tun das **nicht**, weil:
+- `443/tcp` gehört dem Cluster-Caddy (shared mit anderen Tenants — kein unilateraler Eingriff möglich)
+- SNI-Routing via Caddy-`layer4` braucht Custom-Caddy-Build oder haproxy-Sidecar — substantial infra
+- Eine zweite öffentliche IPv4 auf der IONOS-VPS kostet extra + bedient nur Edge-Case-User
+Mitigation für die betroffene User-Gruppe: Tailscale/WireGuard-Overlay vorschlagen ODER #93 (direct-connect-mode für Power-User mit bekannter IP) abwarten. Bei sehr hohem Corporate-Bedarf re-evaluieren — dann am ehesten haproxy-l4 als Sidecar.
+
 ### Sharer Teardown Has Multiple Intents
 
 `disconnect_streaming` looks like one function but is called from three distinct intents and each wants a different subset of state torn down:

@@ -148,3 +148,96 @@ describe("navigate (module-level singleton)", () => {
     expect(window.location.pathname).toBe(BASE_PATH + "/");
   });
 });
+
+// gh #53 — adminOnly route gating. The router substitutes the
+// forbidden-renderer for adminOnly routes when isAdmin() is false,
+// and renders the route normally when isAdmin() is true. Backend's
+// requireAdmin remains the real gate; this branch is UX-only.
+describe("admin-only route gating (gh #53)", () => {
+  it("renders the matched view when isAdmin()===true", () => {
+    let rendered = "";
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/admin/feedback",
+        adminOnly: true,
+        render: () => {
+          rendered = "feedback";
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/admin/feedback");
+    const r = createRouter(root, rs, undefined, undefined, {
+      isAdmin: () => true,
+      renderAdminForbidden: () => {
+        rendered = "forbidden";
+      },
+    });
+    r.start();
+    expect(rendered).toBe("feedback");
+    r.stop();
+  });
+
+  it("substitutes renderAdminForbidden when isAdmin()===false", () => {
+    let rendered = "";
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/admin/feedback",
+        adminOnly: true,
+        render: () => {
+          rendered = "feedback";
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/admin/feedback");
+    const r = createRouter(root, rs, undefined, undefined, {
+      isAdmin: () => false,
+      renderAdminForbidden: () => {
+        rendered = "forbidden";
+      },
+    });
+    r.start();
+    expect(rendered).toBe("forbidden");
+    r.stop();
+  });
+
+  it("leaves non-admin routes alone even when isAdmin()===false", () => {
+    let rendered = "";
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/devices",
+        render: () => {
+          rendered = "devices";
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/devices");
+    const r = createRouter(root, rs, undefined, undefined, {
+      isAdmin: () => false,
+      renderAdminForbidden: () => {
+        rendered = "forbidden";
+      },
+    });
+    r.start();
+    expect(rendered).toBe("devices");
+    r.stop();
+  });
+
+  it("dispatches dashboard:rendered after every render (nav-active-highlighter hook)", () => {
+    const events: string[] = [];
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      { pattern: "/", render: () => undefined },
+      { pattern: "/devices", render: () => undefined },
+    ];
+    window.addEventListener("dashboard:rendered", () => events.push("rendered"));
+    window.history.pushState({}, "", BASE_PATH + "/");
+    const r = createRouter(root, rs);
+    r.start(); // initial render → 1 event
+    navigate("/devices"); // navigation → 2 events
+    expect(events.length).toBe(2);
+    r.stop();
+  });
+});

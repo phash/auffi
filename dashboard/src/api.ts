@@ -230,6 +230,13 @@ export interface Me {
   email: string;
   emailVerifiedAt: number | null;
   createdAt: number;
+  /**
+   * Whether the authenticated account has admin privileges. Used by the
+   * dashboard nav-gate (#53) to decide whether to show admin links and
+   * by router.ts to gate /admin/* routes — backend still enforces with
+   * requireAdmin on every admin endpoint, this flag is UX-only.
+   */
+  admin: boolean;
   pendingEmail: string | null;
   pendingEmailExpiresAt: number | null;
 }
@@ -417,4 +424,106 @@ export function fetchAdminStats(): Promise<ApiResult<AdminStats>> {
 
 export function fetchAdminCodeStats(): Promise<ApiResult<AdminCodeStats>> {
   return request("/api/admin/stats/codes", { method: "GET" });
+}
+
+// ── Admin Users ─────────────────────────────────────────────────────
+// Backend in backend/src/admin/users.ts — keep both in sync. Status
+// filter chips correspond to the four `status=`-query values plus the
+// "alle"-default (no `status` param).
+
+export type AdminUserStatus = "active" | "suspended" | "unverified" | "admin";
+
+export interface AdminUserListItem {
+  id: number;
+  email: string;
+  admin: boolean;
+  suspended_at: number | null;
+  email_verified_at: number | null;
+  created_at: number;
+  device_count: number;
+  last_login_at: number | null;
+}
+
+export interface AdminUserListPage {
+  items: AdminUserListItem[];
+  next_cursor: string | null;
+}
+
+export function listAdminUsers(opts: {
+  status?: AdminUserStatus;
+  q?: string;
+  cursor?: string;
+  limit?: number;
+} = {}): Promise<ApiResult<AdminUserListPage>> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set("status", opts.status);
+  if (opts.q && opts.q.trim()) qs.set("q", opts.q.trim());
+  if (opts.cursor) qs.set("cursor", opts.cursor);
+  if (opts.limit !== undefined) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString();
+  return request(`/api/admin/users${suffix ? `?${suffix}` : ""}`, { method: "GET" });
+}
+
+export interface AdminUserDevice {
+  id: string;
+  alias: string;
+  last_seen_at: number | null;
+  online: boolean;
+}
+
+export interface AdminUserConnection {
+  id: number;
+  device_id: string;
+  started_at: number;
+  ended_at: number | null;
+  connection_type: string;
+  bytes_relayed: number;
+}
+
+export interface AdminUserAudit {
+  id: number;
+  admin_id: number;
+  action: string;
+  created_at: number;
+  before_json: string | null;
+  after_json: string | null;
+}
+
+export interface AdminUserDetail {
+  id: number;
+  email: string;
+  admin: boolean;
+  suspended_at: number | null;
+  email_verified_at: number | null;
+  created_at: number;
+  devices: AdminUserDevice[];
+  recent_connections: AdminUserConnection[];
+  recent_audits: AdminUserAudit[];
+}
+
+export function getAdminUser(id: number): Promise<ApiResult<AdminUserDetail>> {
+  return request(`/api/admin/users/${id}`, { method: "GET" });
+}
+
+export type AdminUserAction = "suspend" | "unsuspend" | "promote" | "demote";
+
+export function patchAdminUser(
+  id: number,
+  action: AdminUserAction,
+  reason: string,
+): Promise<ApiResult<{ ok: true }>> {
+  return request(`/api/admin/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action, reason }),
+  });
+}
+
+export function deleteAdminUser(
+  id: number,
+  reason: string,
+): Promise<ApiResult<{ ok: true }>> {
+  return request(`/api/admin/users/${id}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
 }

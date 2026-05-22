@@ -67,9 +67,10 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
             email: string;
             email_verified_at: number | null;
             created_at: number;
+            admin: number;
           }
         >(
-          `SELECT id, email, email_verified_at, created_at
+          `SELECT id, email, email_verified_at, created_at, admin
              FROM accounts WHERE id = ? AND deleted_at IS NULL`,
         )
         .get(req.account!.id);
@@ -87,6 +88,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         email: account.email,
         emailVerifiedAt: account.email_verified_at,
         createdAt: account.created_at,
+        admin: account.admin === 1,
         pendingEmail: pending?.new_email ?? null,
         pendingEmailExpiresAt: pending?.expires_at ?? null,
       });
