@@ -5,6 +5,7 @@
 // link to land on /verify/:token.
 
 import { signup } from "../api.js";
+import { wrapPasswordField } from "../components/password-field.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
 import { friendlyAuthError } from "./login.js";
 
@@ -65,7 +66,7 @@ export const renderSignup: RouteRenderer = (root: HTMLElement, _ctx: RouteContex
   loginLink.textContent = "Schon registriert? Anmelden";
   links.appendChild(loginLink);
 
-  form.append(emailLabel, emailInput, pwLabel, pwInput, submit, errorBox, successBox);
+  form.append(emailLabel, emailInput, pwLabel, wrapPasswordField(pwInput), submit, errorBox, successBox);
 
   form.addEventListener("submit", async (e: SubmitEvent) => {
     e.preventDefault();

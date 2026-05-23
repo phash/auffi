@@ -1,40 +1,115 @@
-/* Shared topbar + footer for the static marketing pages
-   (impressum, datenschutz, download).
-   The SPA (viewer/index.html) ships an identical copy of these rules
-   via Vite (see viewer/src/styles.css). When changing one, change both. */
+/* ============================================================
+ * AUFFI · SHARED MARKETING TOPBAR + FOOTER · ENGINEERING-BRIEF
+ * ============================================================
+ * Used by impressum/, datenschutz/, download/. The SPA at
+ * viewer/index.html ships an identical token-set + components via
+ * Vite (viewer/src/styles.css). Keep both in sync when changing
+ * visual rules; HTML class names are stable across the SPA + the
+ * static-page set so the same selectors apply.
+ *
+ * Aesthetic mirrors the dashboard (ink-on-paper engineering brief,
+ * amber action accent, IBM Plex Sans + Plex Mono, square corners,
+ * sharp rules). Fonts are self-hosted under /fonts/. */
 
+/* ── @font-face ──────────────────────────────────────────────── */
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/fonts/IBMPlexSans-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/fonts/IBMPlexSans-SemiBold.woff2") format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/fonts/IBMPlexMono-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/fonts/IBMPlexMono-Medium.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+
+/* ── Design tokens ───────────────────────────────────────────── */
 :root {
-  --accent: #1f6feb;
-  --accent-hover: #1a5ecb;
-  --bg: #f0f2f5;
-  --card-bg: #ffffff;
-  --text: #1a1d23;
-  --text-secondary: #5a6070;
-  --border: #e2e5ea;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --topbar-height: 52px;
-  --footer-height: 44px;
+  --paper: #f5f1e6;
+  --paper-edge: #ebe5d4;
+  --ink: #14110d;
+  --ink-soft: #4a443a;
+  --rule: #14110d;
+  --edge: #ddd5c0;
+  --amber: #f3a300;
+  --amber-deep: #c98300;
+  --amber-ink: #1a1408;
+  --cyan: #0e4c9c;
+  --error: #a83b3b;
+  --warning: #b7791f;
+
+  /* Legacy bridges so view-inline-styles + the Vite-bundled SPA
+     can read the same names. */
+  --bg: var(--paper);
+  --card-bg: var(--paper);
+  --surface: var(--paper-edge);
+  --text: var(--ink);
+  --text-secondary: var(--ink-soft);
+  --border: var(--edge);
+  --accent: var(--amber);
+  --accent-hover: var(--amber-deep);
+
+  --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font: var(--font-sans);
+  --topbar-height: 56px;
+  --footer-height: 48px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1117;
-    --card-bg: #161b22;
-    --text: #e6edf3;
-    --text-secondary: #8b949e;
-    --border: #30363d;
+    --paper: #0e0c08;
+    --paper-edge: #1a1610;
+    --ink: #ece6d4;
+    --ink-soft: #9a9281;
+    --rule: #ece6d4;
+    --edge: #2a241b;
+    --amber: #f4b73a;
+    --amber-deep: #ffd166;
+    --amber-ink: #0e0c08;
+    --cyan: #66a9ff;
+    --error: #d65a5a;
+    --warning: #e2a648;
   }
 }
 
 body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
+  font-family: var(--font-sans);
+  background: var(--paper);
+  color: var(--ink);
   margin: 0;
-  padding-top: calc(var(--topbar-height) + 1rem);
+  padding-top: calc(var(--topbar-height) + 1.5rem);
   padding-bottom: calc(var(--footer-height) + 1rem);
+  background-image: radial-gradient(rgba(20, 17, 13, 0.04) 1px, transparent 1px);
+  background-size: 6px 6px;
+  background-attachment: fixed;
+  line-height: 1.55;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image: radial-gradient(rgba(236, 230, 212, 0.025) 1px, transparent 1px);
+  }
 }
 
+a {
+  color: var(--cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 100ms ease;
+}
+a:hover { border-bottom-color: var(--cyan); }
+
+/* ── Topbar — solid paper, sharp 2px ink rule, NO backdrop-blur ── */
 #top-bar {
   position: fixed;
   top: 0;
@@ -45,177 +120,181 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1rem;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--border);
-  gap: 0.75rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  #top-bar {
-    background: rgba(13, 17, 23, 0.85);
-  }
+  padding: 0 1.5rem;
+  background: var(--paper);
+  border-bottom: 2px solid var(--rule);
+  gap: 1rem;
 }
 
 .topbar-wordmark {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--accent);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--amber-ink);
+  background: var(--amber);
+  padding: 0.1875rem 0.5rem 0.125rem;
   white-space: nowrap;
   flex-shrink: 0;
   text-decoration: none;
+  border-bottom: none;
 }
+.topbar-wordmark:hover { border-bottom: none; background: var(--amber-deep); }
 
 .topbar-tagline {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
-  text-align: center;
+  text-align: left;
+  padding-left: 0.5rem;
 }
-
-@media (max-width: 480px) {
-  .topbar-tagline {
-    display: none;
-  }
+@media (max-width: 580px) {
+  .topbar-tagline { display: none; }
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.375rem;
   flex-shrink: 0;
 }
 
+/* Topbar buttons: ink-outline default, ALL CAPS mono tracked,
+   square corners. Three variants: default (outline), primary
+   (ink-outline emphasised), coffee (amber-filled). */
 .topbar-btn {
-  font-family: var(--font);
-  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 500;
-  padding: 0.375rem 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.4375rem 0.75rem;
   min-height: 32px;
-  border: 1.5px solid var(--border);
-  border-radius: 100px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
   text-decoration: none;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
-  background: var(--card-bg);
-  color: var(--text);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  background: var(--paper);
+  color: var(--ink);
   -webkit-appearance: none;
   outline: none;
 }
-
 .topbar-btn:focus-visible {
-  outline: 3px solid rgba(31, 111, 235, 0.4);
+  outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
-
 .topbar-btn:hover {
-  background: var(--bg);
-  border-color: var(--text-secondary);
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
 }
 
 .topbar-btn-coffee {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--amber);
+  border-color: var(--ink);
+  color: var(--amber-ink);
 }
 .topbar-btn-coffee:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  color: #fff;
+  background: var(--amber-deep);
+  border-color: var(--ink);
+  color: var(--amber-ink);
 }
 
 .topbar-btn-primary {
-  color: var(--accent);
-  border-color: var(--accent);
+  background: var(--paper);
+  border-color: var(--ink);
+  color: var(--ink);
+  font-weight: 500;
 }
 .topbar-btn-primary:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
-.topbar-btn-label {
-  display: inline;
-}
+.topbar-btn-label { display: inline; }
 
 @media (max-width: 380px) {
-  .topbar-btn-label {
-    display: none;
-  }
-  .topbar-btn {
-    padding: 0.375rem 0.5rem;
-  }
+  .topbar-btn-label { display: none; }
+  .topbar-btn { padding: 0.4375rem 0.5rem; }
 }
 
 @media (max-width: 720px) {
   #topbar-download .topbar-btn-label,
-  #topbar-coffee .topbar-btn-label {
-    display: none;
-  }
+  #topbar-coffee .topbar-btn-label { display: none; }
 }
 
-/* gh #104 — "Notch"-CTA mittig unter der Topbar. Hängt wie eine
-   markante Zunge aus dem fixierten Header heraus und führt auf der
-   Hauptseite zur Code-Eingabe, auf Marketing-Subpages zurück zur
-   Startseite. Position: fixed, damit der Notch beim Scrollen sichtbar
-   bleibt. z-index oberhalb der Topbar selbst (500), damit Hover-/
-   Focus-Schatten den Topbar-Rand überlappen können. */
+/* ── Notch CTA — engineering-margin-tab feel. Sharp, amber-on-ink,
+     no rounded bottom; instead a "torn-paper" hint via subtle inset
+     shadow + the section-name label inside. Hover slides it down a
+     pixel (note-tab being pulled out of a binder). ── */
 .topbar-notch {
   position: fixed;
   top: var(--topbar-height);
   left: 50%;
   transform: translateX(-50%);
   z-index: 501;
-  height: 36px;
-  padding: 0 1.25rem;
+  height: 32px;
+  padding: 0 1.125rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent);
-  color: #fff;
-  font-family: var(--font);
-  font-size: 0.9rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  gap: 0.5em;
+  background: var(--amber);
+  color: var(--amber-ink);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   text-decoration: none;
   border: none;
-  border-radius: 0 0 14px 14px;
-  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.35);
+  border-bottom: 1px solid var(--ink);
+  border-left: 1px solid var(--ink);
+  border-right: 1px solid var(--ink);
+  border-radius: 0;
   cursor: pointer;
-  transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+  transition: transform 150ms ease, background 120ms ease;
   -webkit-appearance: none;
   outline: none;
 }
-
+.topbar-notch::before {
+  content: "▌";
+  color: var(--amber-ink);
+  font-size: 1em;
+  margin-right: 0.25em;
+  line-height: 1;
+}
 .topbar-notch:hover {
-  background: var(--accent-hover);
+  background: var(--amber-deep);
   transform: translateX(-50%) translateY(2px);
-  box-shadow: 0 6px 16px rgba(31, 111, 235, 0.45);
 }
-
 .topbar-notch:focus-visible {
-  outline: 3px solid rgba(31, 111, 235, 0.4);
-  outline-offset: 2px;
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
 }
-
 @media (max-width: 480px) {
   .topbar-notch {
-    height: 32px;
-    padding: 0 1rem;
-    font-size: 0.85rem;
+    height: 30px;
+    padding: 0 0.875rem;
+    font-size: 0.625rem;
   }
 }
 
+/* ── Footer — slim mono band, paper bg, no blur ── */
 #site-footer {
   position: fixed;
   left: 0;
@@ -226,16 +305,18 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: 1.25rem;
   flex-wrap: wrap;
-  padding: 0.5rem 1rem;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-top: 1px solid var(--border);
-  font-size: 0.8125rem;
+  padding: 0.5rem 1.5rem;
+  background: var(--paper);
+  border-top: 2px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   line-height: 1.4;
-  color: var(--text-secondary);
+  color: var(--ink-soft);
   text-align: center;
 }
 
@@ -243,31 +324,24 @@ body {
   white-space: nowrap;
 }
 
-@media (prefers-color-scheme: dark) {
-  #site-footer {
-    background: rgba(13, 17, 23, 0.85);
-  }
-}
-
 #site-footer a {
-  color: var(--accent);
+  color: var(--ink-soft);
   text-decoration: none;
   font-weight: 500;
+  border-bottom: 1px solid transparent;
 }
-
 #site-footer a:hover {
-  text-decoration: underline;
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
-
 #site-footer a:focus-visible {
-  outline: 2px solid rgba(31, 111, 235, 0.4);
+  outline: 2px solid var(--amber);
   outline-offset: 2px;
-  border-radius: 2px;
 }
 
-/* SR-only utility: rendert das Element für Screen-Reader und SEO-
-   Crawler ohne sichtbare Box. Standard a11y-Pattern. Wird u.a. von
-   download/index.html (h2 "Pakete") genutzt. */
+/* ── Accessibility utility — visually-hidden text for screen readers
+     + SEO crawlers; standard a11y pattern. Used by download/index.html
+     ("Pakete"-h2) among others. ── */
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -278,4 +352,184 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ============================================================
+   Marketing-page content typography. Pages that import this CSS
+   (impressum/, datenschutz/, download/) render long-form prose
+   in plain <h1>..<h3>, <p>, <ul>, <code>. Engineering-brief
+   typography conventions: amber ▌-marker on headings, mono code,
+   tabular-aligned list bullets via custom counter-style.
+   ============================================================ */
+main.container {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+h1 { font-size: 1.875rem; margin-bottom: 0.625rem; }
+h2 { font-size: 1.125rem; margin-top: 2.25rem; margin-bottom: 0.625rem; }
+h2::before {
+  content: "▌ ";
+  color: var(--amber);
+  font-weight: 400;
+}
+h3 { font-size: 1rem; margin-top: 1.25rem; margin-bottom: 0.375rem; color: var(--ink-soft); font-weight: 600; }
+h3.platform-heading {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-top: 1px solid var(--ink);
+  padding-top: 0.875rem;
+  margin-top: 2rem;
+}
+
+p, li { font-size: 0.9375rem; color: var(--ink); line-height: 1.6; }
+p { margin: 0 0 0.875rem; }
+p.lead { font-size: 1.0625rem; color: var(--ink); }
+p.hint {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  border-left: 3px solid var(--amber);
+  padding: 0.5rem 0.875rem;
+  margin: 1.25rem 0;
+}
+
+ul, ol { margin: 0 0 1.25rem 1.25rem; padding: 0; }
+li { margin-bottom: 0.375rem; }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--paper-edge);
+  border: 1px solid var(--edge);
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0;
+}
+
+strong { color: var(--ink); font-weight: 600; }
+
+section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--edge);
+}
+section:first-of-type { border-top: none; padding-top: 0; }
+
+/* ============================================================
+   /download/ — package list. The HTML uses the same <ul class=
+   "download-list"> / <li class="download-item"> + .download-btn
+   structure across Windows + Linux blocks.
+   ============================================================ */
+.download-list {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+.download-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--edge);
+}
+.download-item:last-child { border-bottom: none; }
+.download-meta {
+  flex: 1;
+}
+.download-meta h3 {
+  margin: 0 0 0.375rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.download-meta p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.download-meta .size {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+.download-btn {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.5625rem 1.125rem;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--amber);
+  color: var(--amber-ink);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: center;
+  transition: background 120ms ease;
+  border-bottom: 1px solid var(--ink);
+}
+.download-btn:hover {
+  background: var(--amber-deep);
+  border-bottom-color: var(--ink);
+}
+.download-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.download-count {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  margin-top: 0.375rem;
+}
+
+/* /download/ release-notes section: amber ruler between versions */
+.release-list { list-style: none; margin: 0; padding: 0; }
+.release-list li {
+  padding: 0.375rem 0 0.375rem 1.5rem;
+  border-left: 2px solid var(--amber);
+  margin-bottom: 0.625rem;
+  font-size: 0.9375rem;
+}
+
+/* Numeric prefix on h3 release headings */
+.release-notes h3 {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  margin-top: 1.5rem;
+  margin-bottom: 0.625rem;
+  text-transform: none;
+}
+.release-notes h3::before {
+  content: "▌ ";
+  color: var(--amber);
+}
+
+@media (max-width: 580px) {
+  .download-item { flex-direction: column; }
+  .download-btn { align-self: flex-start; }
 }

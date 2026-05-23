@@ -11,6 +11,7 @@
 //                          high-friction; we route to /login on success.
 
 import { deleteMe, getMe, patchMe, type Me } from "../api.js";
+import { wrapPasswordField } from "../components/password-field.js";
 import { formatAbsolute } from "../format.js";
 import { navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
@@ -104,7 +105,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   emailPwInput.type = "password";
   emailPwInput.id = "acc-email-current-pw";
   emailPwInput.autocomplete = "current-password";
-  emailForm.appendChild(emailPwInput);
+  emailForm.appendChild(wrapPasswordField(emailPwInput));
 
   const emailSubmit = document.createElement("button");
   emailSubmit.type = "submit";
@@ -186,7 +187,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   pwCurInput.type = "password";
   pwCurInput.id = "acc-current-pw";
   pwCurInput.autocomplete = "current-password";
-  pwForm.appendChild(pwCurInput);
+  pwForm.appendChild(wrapPasswordField(pwCurInput));
 
   const pwNewLabel = document.createElement("label");
   pwNewLabel.htmlFor = "acc-new-pw";
@@ -197,7 +198,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   pwNewInput.id = "acc-new-pw";
   pwNewInput.autocomplete = "new-password";
   pwNewInput.minLength = 8;
-  pwForm.appendChild(pwNewInput);
+  pwForm.appendChild(wrapPasswordField(pwNewInput));
 
   const pwSubmit = document.createElement("button");
   pwSubmit.type = "submit";
@@ -287,7 +288,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   dPwInput.type = "password";
   dPwInput.id = "acc-delete-pw";
   dPwInput.autocomplete = "current-password";
-  dForm.appendChild(dPwInput);
+  dForm.appendChild(wrapPasswordField(dPwInput));
 
   const dSubmit = document.createElement("button");
   dSubmit.type = "submit";

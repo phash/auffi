@@ -4,6 +4,7 @@
 // parser.
 
 import { login } from "../api.js";
+import { wrapPasswordField } from "../components/password-field.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
@@ -60,7 +61,7 @@ export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext
   links.appendChild(signup);
   links.appendChild(forgot);
 
-  form.append(emailLabel, emailInput, pwLabel, pwInput, submit, errorBox);
+  form.append(emailLabel, emailInput, pwLabel, wrapPasswordField(pwInput), submit, errorBox);
 
   form.addEventListener("submit", async (e: SubmitEvent) => {
     e.preventDefault();

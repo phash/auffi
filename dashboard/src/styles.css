@@ -1231,6 +1231,50 @@ a.kpi-tile:hover::after {
    ============================================================ */
 
 /* ============================================================
+   Password field with eye-toggle (gh frontend-design 2026-05-23)
+   ============================================================ */
+.password-wrap {
+  position: relative;
+  width: 100%;
+}
+.password-wrap input[type="password"],
+.password-wrap input[type="text"] {
+  padding-right: 2.625rem;
+}
+.password-toggle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--edge);
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 0;
+  transition: color 100ms ease, background 100ms ease;
+}
+.password-toggle:hover {
+  color: var(--amber);
+  background: var(--paper-edge);
+}
+.password-toggle:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+.password-toggle[aria-pressed="true"] {
+  color: var(--ink);
+}
+.password-toggle[aria-pressed="true"]:hover {
+  color: var(--amber-deep);
+}
+
+/* ============================================================
    Misc utility — `<a>` styled as a back-link / quiet link.
    Used by device-detail and admin-user-detail "← Zurück"-links.
    ============================================================ */

@@ -417,6 +417,42 @@
 
       .btn-row { display: flex; gap: 0.5rem; }
 
+      /* ── Password eye-toggle (mirror of dashboard/src/components/
+         password-field.ts). Wraps a password input with an absolute-
+         positioned button on the right; click toggles input.type
+         between password and text. ── */
+      .password-wrap { position: relative; width: 100%; }
+      .password-wrap input[type="password"],
+      .password-wrap input[type="text"] {
+        padding-right: 2.625rem;
+      }
+      .password-toggle {
+        position: absolute;
+        right: 0;
+        top: 0;
+        height: 100%;
+        width: 2.25rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        border-left: 1px solid var(--border);
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 0;
+        transition: color 100ms ease, background 100ms ease;
+      }
+      .password-toggle:hover {
+        color: var(--accent);
+        background: var(--surface);
+      }
+      .password-toggle:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+      }
+      .password-toggle[aria-pressed="true"] { color: var(--text); }
+
       /* ── Buttons base ── */
       .btn {
         font-family: var(--font);

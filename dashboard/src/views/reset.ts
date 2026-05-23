@@ -3,6 +3,7 @@
 // step 3), so the user is logged out everywhere except this tab.
 
 import { resetPassword } from "../api.js";
+import { wrapPasswordField } from "../components/password-field.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
 import { friendlyAuthError } from "./login.js";
 
@@ -66,7 +67,7 @@ export const renderReset: RouteRenderer = (root: HTMLElement, ctx: RouteContext)
   successBox.style.fontSize = "0.9375rem";
   successBox.style.marginTop = "0.5rem";
 
-  form.append(pwLabel, pwInput, pw2Label, pw2Input, submit, errorBox, successBox);
+  form.append(pwLabel, wrapPasswordField(pwInput), pw2Label, wrapPasswordField(pw2Input), submit, errorBox, successBox);
 
   const linksHolder = document.createElement("p");
   linksHolder.style.marginTop = "0.75rem";

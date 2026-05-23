@@ -8,6 +8,78 @@
 // (b) call the Tauri commands on button click, (c) subscribe to
 // `unattended-event` payloads and surface them to the user.
 
+const PASSWORD_TOGGLE_SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * Wrap a password input with an eye-toggle button so users can
+ * verify what they typed before submitting. Mirror of the dashboard
+ * helper at dashboard/src/components/password-field.ts — duplicated
+ * here because the sharer's webview bundle is separate.
+ */
+function wrapPasswordWithEyeToggle(input: HTMLInputElement): void {
+  if (!input.parentElement) return;
+  if (input.parentElement.classList.contains("password-wrap")) return;
+  const wrap = document.createElement("div");
+  wrap.className = "password-wrap";
+  input.parentElement.insertBefore(wrap, input);
+  wrap.appendChild(input);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "password-toggle";
+  btn.setAttribute("aria-label", "Passwort anzeigen");
+  btn.setAttribute("aria-pressed", "false");
+  btn.appendChild(makePasswordToggleIcon(false));
+  btn.addEventListener("click", () => {
+    const visible = input.type === "text";
+    if (visible) {
+      input.type = "password";
+      btn.setAttribute("aria-label", "Passwort anzeigen");
+      btn.setAttribute("aria-pressed", "false");
+    } else {
+      input.type = "text";
+      btn.setAttribute("aria-label", "Passwort verstecken");
+      btn.setAttribute("aria-pressed", "true");
+    }
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    btn.appendChild(makePasswordToggleIcon(!visible));
+  });
+  wrap.appendChild(btn);
+}
+
+function makePasswordToggleIcon(slashed: boolean): SVGElement {
+  const svg = document.createElementNS(PASSWORD_TOGGLE_SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.75");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const lens = document.createElementNS(PASSWORD_TOGGLE_SVG_NS, "path");
+  lens.setAttribute(
+    "d",
+    "M1.5 12s4-7 10.5-7 10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z",
+  );
+  svg.appendChild(lens);
+  const pupil = document.createElementNS(PASSWORD_TOGGLE_SVG_NS, "circle");
+  pupil.setAttribute("cx", "12");
+  pupil.setAttribute("cy", "12");
+  pupil.setAttribute("r", "3");
+  svg.appendChild(pupil);
+  if (slashed) {
+    const line = document.createElementNS(PASSWORD_TOGGLE_SVG_NS, "line");
+    line.setAttribute("x1", "3");
+    line.setAttribute("y1", "3");
+    line.setAttribute("x2", "21");
+    line.setAttribute("y2", "21");
+    svg.appendChild(line);
+  }
+  return svg;
+}
+
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -49,6 +121,7 @@ const pairStatus = document.getElementById("unattended-pair-status") as HTMLElem
 const pwInput = document.getElementById("unattended-pw-input") as HTMLInputElement | null;
 const pwBtn = document.getElementById("unattended-pw-btn") as HTMLButtonElement | null;
 const pwStatus = document.getElementById("unattended-pw-status") as HTMLElement | null;
+if (pwInput) wrapPasswordWithEyeToggle(pwInput);
 const deviceIdEl = document.getElementById("unattended-device-id") as HTMLElement | null;
 const statusEl = document.getElementById("unattended-status") as HTMLElement | null;
 const startBtn = document.getElementById("unattended-start-btn") as HTMLButtonElement | null;
