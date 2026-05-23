@@ -1,34 +1,34 @@
 /* Auffi — Matomo-Consent-Banner styling.
-   Engineering-Brief recast (paper/ink/amber, mono caps, square corners,
-   8px hard drop-shadow). Tokens come from topbar-footer.css (which is
-   imported on the marketing-subpages); the SPA's viewer/src/styles.css
-   bundles them too. */
+   Engineering-Brief slim full-width bar that sits between the page-
+   content area and the footer. Takes its own vertical line so it
+   never overlays content (an earlier floating-card variant covered
+   readable text mid-page; the visual audit on 2026-05-23 caught it).
 
-/* When the banner is mounted, the body gets enough extra
-   padding-bottom that the bottommost page-content paragraph is
-   not hidden under it. JS toggles `.matomo-consent-shown` on
-   <body> on mount and removes it on dismiss/opt-in. */
+   Tokens come from topbar-footer.css (loaded first on the marketing
+   subpages) or from the SPA bundle on viewer/index.html. */
+
+/* When the banner is mounted, body padding-bottom grows enough to
+   clear the bar + the footer. JS toggles `.matomo-consent-shown`
+   on <body> on mount + removes it on dismiss/opt-in. */
 body.matomo-consent-shown {
-  padding-bottom: calc(var(--footer-height, 48px) + 11rem);
+  padding-bottom: calc(var(--footer-height, 48px) + 5rem);
 }
 
 .matomo-consent-banner {
   position: fixed;
-  left: 50%;
-  bottom: calc(var(--footer-height, 48px) + 0.875rem);
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  bottom: var(--footer-height, 48px);
   z-index: 600;
-  max-width: min(640px, calc(100vw - 2rem));
   background: var(--paper, #f5f1e6);
   color: var(--ink, #14110d);
-  border: 2px solid var(--ink, #14110d);
-  border-left: 4px solid var(--amber, #f3a300);
-  border-radius: 0;
-  box-shadow: 6px 6px 0 0 var(--ink, #14110d);
-  padding: 0.875rem 1rem;
+  border-top: 2px solid var(--ink, #14110d);
+  padding: 0.625rem 1.5rem;
   display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
   font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
 }
 
@@ -36,17 +36,22 @@ body.matomo-consent-shown {
   .matomo-consent-banner {
     background: var(--paper, #0e0c08);
     color: var(--ink, #ece6d4);
-    border-color: var(--ink, #ece6d4);
-    border-left-color: var(--amber, #f4b73a);
-    box-shadow: 6px 6px 0 0 var(--ink, #ece6d4);
+    border-top-color: var(--ink, #ece6d4);
   }
 }
 
 .matomo-consent-text {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--ink, #14110d);
+  flex: 1;
+  min-width: 16rem;
+}
+.matomo-consent-text::before {
+  content: "▌ ";
+  color: var(--amber, #f3a300);
+  font-weight: 500;
 }
 
 .matomo-consent-link {
@@ -58,8 +63,7 @@ body.matomo-consent-shown {
 .matomo-consent-actions {
   display: flex;
   gap: 0.375rem;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .matomo-consent-btn {
@@ -68,13 +72,14 @@ body.matomo-consent-shown {
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 0.5rem 0.875rem;
+  padding: 0.4375rem 0.875rem;
   border-radius: 0;
   border: 1px solid var(--ink, #14110d);
   background: var(--paper, #f5f1e6);
   color: var(--ink, #14110d);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
+  white-space: nowrap;
 }
 
 .matomo-consent-btn:hover {
@@ -99,13 +104,21 @@ body.matomo-consent-shown {
   color: var(--amber-ink, #1a1408);
 }
 
-/* Narrow viewports — make actions full-width so both buttons get a
-   tappable target. */
-@media (max-width: 480px) {
-  .matomo-consent-actions {
-    justify-content: stretch;
+/* Narrow viewports — text wraps above the buttons, padding-bottom
+   on body grows accordingly so the wrapped two-row bar still
+   clears all page content. */
+@media (max-width: 580px) {
+  .matomo-consent-banner {
+    padding: 0.5rem 1rem;
+    gap: 0.5rem;
+    flex-direction: column;
+    align-items: stretch;
   }
-  .matomo-consent-btn {
-    flex: 1;
+  .matomo-consent-text { min-width: 0; }
+  .matomo-consent-actions {
+    justify-content: flex-end;
+  }
+  body.matomo-consent-shown {
+    padding-bottom: calc(var(--footer-height, 48px) + 8rem);
   }
 }
