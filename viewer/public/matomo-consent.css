@@ -4,6 +4,14 @@
    imported on the marketing-subpages); the SPA's viewer/src/styles.css
    bundles them too. */
 
+/* When the banner is mounted, the body gets enough extra
+   padding-bottom that the bottommost page-content paragraph is
+   not hidden under it. JS toggles `.matomo-consent-shown` on
+   <body> on mount and removes it on dismiss/opt-in. */
+body.matomo-consent-shown {
+  padding-bottom: calc(var(--footer-height, 48px) + 11rem);
+}
+
 .matomo-consent-banner {
   position: fixed;
   left: 50%;

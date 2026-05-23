@@ -99,7 +99,7 @@
     no.textContent = "Ablehnen";
     no.addEventListener("click", function () {
       writeConsent("no");
-      banner.remove();
+      dismissBanner(banner);
     });
 
     var ok = document.createElement("button");
@@ -108,7 +108,7 @@
     ok.textContent = "Statistik OK";
     ok.addEventListener("click", function () {
       writeConsent("ok");
-      banner.remove();
+      dismissBanner(banner);
       loadMatomo();
     });
 
@@ -121,6 +121,15 @@
   function showBanner() {
     if (document.getElementById("matomo-consent-banner")) return;
     document.body.appendChild(buildBanner());
+    // Reserve vertical space at the bottom of the page so the
+    // fixed-positioned banner doesn't overlap the last paragraph
+    // of content. CSS rule lives in matomo-consent.css.
+    document.body.classList.add("matomo-consent-shown");
+  }
+
+  function dismissBanner(banner) {
+    banner.remove();
+    document.body.classList.remove("matomo-consent-shown");
   }
 
   /**
