@@ -4,23 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Auffi — Dashboard</title>
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/dashboard/">Auffi</a>
+      <div class="topbar-meta">
+        <a class="brand" href="/dashboard/">
+          <span class="brand-mark">AUFFI</span><span class="brand-sep">/</span><span class="brand-section">DASHBOARD</span>
+        </a>
+        <a class="topbar-viewer-link" href="/" aria-label="Zur Hauptseite (Viewer)">
+          Hauptseite&nbsp;↗
+        </a>
+      </div>
       <nav id="dashboard-nav" aria-label="Dashboard navigation"></nav>
-      <a class="topbar-viewer-link" href="/" aria-label="Zur Hauptseite (Viewer)">
-        Hauptseite →
-      </a>
     </header>
     <main id="dashboard-root" role="main">
       <p class="loading">Lade …</p>
     </main>
     <footer class="site-footer" role="contentinfo">
-      <span>
-        Auffi · <a href="/" target="_self">Viewer</a> ·
-        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+      <span class="footer-mark">AUFFI / 2026</span>
+      <span class="footer-rule" aria-hidden="true"></span>
+      <span class="footer-links">
+        <a href="/" target="_self">Viewer</a>
+        <span aria-hidden="true">·</span>
+        <a href="/datenschutz/">Datenschutz</a>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
       </span>
     </footer>
     <script type="module" src="/src/main.ts"></script>

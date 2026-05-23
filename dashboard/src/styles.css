@@ -1,56 +1,151 @@
-/* Dashboard CSS variables — kept in sync with viewer/src/styles.css
-   so a follow-up extraction into a shared CSS file (gh #28 + #38)
-   can land without visual drift. Light is default; dark via the
-   prefers-color-scheme media block matches the viewer + sharer
-   conventions. */
+/* ============================================================
+ * AUFFI · DASHBOARD · ENGINEERING-BRIEF
+ * ============================================================
+ * Aesthetic: ink-on-paper engineering brief. Warm cream paper,
+ * deep ink, safety-amber as the single saturated action accent.
+ * Sharp horizontal rules instead of soft card shadows. Numeric
+ * data lives in IBM Plex Mono with tabular-nums; section labels
+ * in tracked-out small-caps mono. CSS counters number the nav
+ * items [01]..[NN] like a table of contents.
+ *
+ * Fonts are self-hosted (/fonts/IBMPlex*.woff2) per the no-third-
+ * party-CDN rule in CLAUDE.md.
+ *
+ * Class names are preserved verbatim from the prior visual era so
+ * the existing vitest+jsdom selectors keep passing — visuals are
+ * the only thing that changed. */
 
+/* ── @font-face ──────────────────────────────────────────────── */
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/fonts/IBMPlexSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/fonts/IBMPlexSans-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/fonts/IBMPlexMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("/fonts/IBMPlexMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Design tokens ───────────────────────────────────────────── */
 :root {
-  --accent: #1f6feb;
-  --accent-hover: #1a5ecb;
-  --accent-active: #164faa;
-  --bg: #f0f2f5;
-  --card-bg: #ffffff;
-  --surface: #f6f8fa;
-  --text: #1a1d23;
-  --text-secondary: #5a6070;
-  --border: #e2e5ea;
-  --shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
-  --radius: 12px;
-  --font:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --success: #2da44e;
-  --error: #cf222e;
-  --warning: #d29922;
+  /* Paper-and-ink palette */
+  --paper: #f5f1e6;             /* warm cream, primary bg */
+  --paper-edge: #ebe5d4;        /* slightly darker, for surface insets */
+  --ink: #14110d;               /* near-black, slightly warm */
+  --ink-soft: #4a443a;          /* secondary text */
+  --rule: #14110d;              /* same as ink — for the thick horizontal rules */
+  --edge: #ddd5c0;              /* hairline borders */
+
+  /* Action accents */
+  --amber: #f3a300;             /* safety-tape yellow, primary action color */
+  --amber-deep: #c98300;        /* hover state */
+  --amber-ink: #1a1408;         /* contrast text on amber bg */
+  --cyan: #0e4c9c;              /* blueprint-cyan, for links + active markers */
+  --cyan-deep: #093c80;
+
+  /* Status */
+  --signal-on: #2e7d32;         /* online dot, success */
+  --signal-off: #95897a;        /* offline dot, muted */
+  --error: #a83b3b;             /* destructive */
+  --error-deep: #862828;
+  --warning: #b7791f;           /* amber-warning text */
+
+  /* Legacy variable bridges — view code reads these names, so map
+     them to the new palette to avoid touching the views. */
+  --bg: var(--paper);
+  --card-bg: var(--paper);
+  --surface: var(--paper-edge);
+  --text: var(--ink);
+  --text-secondary: var(--ink-soft);
+  --border: var(--edge);
+  --shadow: none;
+  --radius: 0;
+  --accent: var(--amber);
+  --accent-hover: var(--amber-deep);
+  --accent-active: var(--amber-deep);
+  --success: var(--signal-on);
+
+  /* Typography */
+  --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font: var(--font-sans);
+
+  /* Spacing primitives — a half-baked 4px grid is the engineering norm */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1117;
-    --card-bg: #161b22;
-    --surface: #21262d;
-    --text: #e6edf3;
-    --text-secondary: #8b949e;
-    --border: #30363d;
-    --shadow:
-      0 2px 12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --paper: #0e0c08;
+    --paper-edge: #1a1610;
+    --ink: #ece6d4;
+    --ink-soft: #9a9281;
+    --rule: #ece6d4;
+    --edge: #2a241b;
+    --amber: #f4b73a;
+    --amber-deep: #ffd166;
+    --amber-ink: #0e0c08;
+    --cyan: #66a9ff;
+    --cyan-deep: #8cc1ff;
+    --signal-on: #71c285;
+    --signal-off: #6e6557;
+    --error: #d65a5a;
+    --error-deep: #f07474;
+    --warning: #e2a648;
   }
 }
 
-*,
-*::before,
-*::after {
+/* ── Resets + base ───────────────────────────────────────────── */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html,
-body {
+html, body {
   height: 100%;
-  font-family: var(--font);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
   font-size: 16px;
-  color: var(--text);
-  background: var(--bg);
+  line-height: 1.5;
+  /* Subtle paper grain — radial-gradient noise dots on the cream, faint
+     enough to read as texture not pattern. Removed in dark mode to
+     keep the inky background calm. */
+  background-image:
+    radial-gradient(rgba(20, 17, 13, 0.04) 1px, transparent 1px);
+  background-size: 6px 6px;
+  background-attachment: fixed;
+}
+@media (prefers-color-scheme: dark) {
+  html, body {
+    background-image:
+      radial-gradient(rgba(236, 230, 212, 0.025) 1px, transparent 1px);
+  }
 }
 
 body {
@@ -59,360 +154,542 @@ body {
   min-height: 100vh;
 }
 
+a {
+  color: var(--cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 100ms ease;
+}
+a:hover { border-bottom-color: var(--cyan); }
+
+/* ── Topbar — two rows: meta strip (brand + viewer link) on top,
+     numbered nav strip below. Sharp 2px ink rule separates them. ── */
 .topbar {
+  background: var(--paper);
+  border-bottom: 2px solid var(--rule);
+  position: relative;
+  z-index: 10;
+}
+
+.topbar-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.875rem 1.25rem;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--edge);
 }
 
 .brand {
-  font-weight: 700;
-  font-size: 1.125rem;
-  color: var(--text);
-  text-decoration: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-bottom: none;
+}
+.brand:hover { border-bottom: none; }
+.brand-mark {
+  /* Solid amber block behind the wordmark — the engineering-tape feel */
+  background: var(--amber);
+  color: var(--amber-ink);
+  padding: 0.1875rem 0.4375rem 0.125rem;
+  letter-spacing: 0.12em;
+}
+.brand-sep {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+.brand-section {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: 0.18em;
 }
 
-/* Direkter Sprung in den Viewer aus dem Dashboard-Topbar — User können
-   so jederzeit von der Geräte-Verwaltung zurück zur Ad-hoc-Code-
-   Eingabe wechseln, ohne den Footer-Link erst suchen zu müssen
-   (Feature-Request 2026-05-17). */
 .topbar-viewer-link {
-  margin-left: auto;
-  padding: 0.375rem 0.875rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  color: var(--accent);
-  text-decoration: none;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--ink);
+  border-bottom-color: var(--ink);
   white-space: nowrap;
-  transition: background 150ms ease, border-color 150ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 .topbar-viewer-link:hover {
-  background: var(--bg);
-  border-color: var(--accent);
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
 }
 
+/* Numbered nav — CSS counter writes [01], [02], ... before each link.
+   The numeric tag is the conceit; without it the row reads as ordinary
+   tabs and loses the engineering-document register. */
 #dashboard-nav {
   display: flex;
-  gap: 0.75rem;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 var(--space-6);
+  counter-reset: nav;
+  flex-wrap: wrap;
 }
 
 #dashboard-nav a {
-  color: var(--text-secondary);
-  text-decoration: none;
-  padding: 0.375rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.9375rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  padding: 0.625rem var(--space-3) 0.5rem 0;
+  margin-right: 1.25rem;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  border: none;
+  border-bottom: 2px solid transparent;
+  text-transform: none;
+  transition: color 120ms ease, border-bottom-color 120ms ease;
 }
-
+#dashboard-nav a::before {
+  counter-increment: nav;
+  content: "[" counter(nav, decimal-leading-zero) "]";
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  transition: color 120ms ease;
+}
 #dashboard-nav a:hover {
-  background: var(--surface);
-  color: var(--text);
+  color: var(--ink);
+  border-bottom-color: transparent;
 }
-
+#dashboard-nav a:hover::before { color: var(--ink); }
 #dashboard-nav a.active {
-  background: var(--accent);
-  color: #fff;
+  color: var(--ink);
+  border-bottom-color: var(--amber);
+  background: transparent;
 }
+#dashboard-nav a.active::before { color: var(--amber); }
 
+/* ── Main content well — generous gutter, capped width, paper bg ── */
 main {
   flex: 1;
-  padding: 1.5rem 1.25rem;
-  max-width: 64rem;
+  padding: var(--space-8) var(--space-6) var(--space-8);
+  max-width: 72rem;
   margin: 0 auto;
   width: 100%;
 }
 
+/* ── Card — no shadow, no radius. A card is just an ink-ruled
+     section block with a numbered header marker via ::before on
+     its h1/h2. The mono "▌" left-rail picks up the engineering
+     feel without yelling. ── */
 .card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  background: transparent;
+  border: none;
+  border-top: 2px solid var(--rule);
+  padding: var(--space-6) 0 var(--space-6);
+  margin-bottom: var(--space-2);
 }
+.card:first-child { border-top: none; padding-top: 0; }
 
 .card h1,
 .card h2 {
-  font-size: 1.125rem;
-  margin-bottom: 0.75rem;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 1.0625rem;
+  letter-spacing: 0;
+  color: var(--ink);
+  margin: 0 0 var(--space-4);
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+}
+.card h1 {
+  font-size: 1.5rem;
+  letter-spacing: -0.005em;
+  margin-bottom: var(--space-4);
+}
+.card h1::before,
+.card h2::before {
+  content: "▌";
+  color: var(--amber);
+  font-size: 1em;
+  line-height: 1;
 }
 
+/* Status / muted text ── */
+.loading {
+  color: var(--ink-soft);
+  text-align: left;
+  padding: var(--space-6) 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.loading::before {
+  content: "···";
+  margin-right: 0.5em;
+  color: var(--amber);
+  letter-spacing: 0.2em;
+}
+.error {
+  color: var(--error);
+  font-size: 0.9375rem;
+  margin: var(--space-2) 0;
+  font-family: var(--font-mono);
+  border-left: 3px solid var(--error);
+  padding-left: 0.75rem;
+}
+.muted {
+  color: var(--ink-soft);
+}
+
+/* ── Forms ── */
 label {
   display: block;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: var(--space-2);
 }
 
 input[type="text"],
 input[type="email"],
-input[type="password"] {
+input[type="password"],
+input[type="search"],
+textarea,
+select {
   width: 100%;
-  padding: 0.5rem 0.625rem;
-  font-size: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  margin-bottom: 0.75rem;
+  padding: 0.5625rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--amber);
+  box-shadow: inset 0 -2px 0 var(--amber);
+}
+textarea { resize: vertical; min-height: 5rem; }
+
+/* ── Buttons ──
+   Three variants:
+     <button class="primary">  — amber-filled, ALL CAPS, mono tracked
+     <button class="danger">   — error-red filled
+     <button class="btn">      — ink-outline, hover-inverts
+     <a class="btn primary">   — anchor-styled-as-button (admin-403)
+*/
+button {
+  font-family: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.2;
 }
 
 button.primary,
 .btn.primary {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 0.5rem 0.875rem;
-  border-radius: 6px;
-  font-size: 0.9375rem;
-  cursor: pointer;
+  background: var(--amber);
+  color: var(--amber-ink);
+  border: 1px solid var(--amber);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.5625rem 1rem;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-
 button.primary:hover,
 .btn.primary:hover {
-  background: var(--accent-hover);
+  background: var(--amber-deep);
+  border-color: var(--amber-deep);
 }
-
-button.primary:disabled {
-  opacity: 0.6;
+button.primary:disabled,
+.btn.primary:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
+  background: var(--amber);
+  border-color: var(--amber);
 }
 
-/* gh #54 — destructive variant for admin actions (suspend / delete /
-   demote). Same shape as button.primary; red instead of accent.
-   Also applies on .btn.danger (anchor-as-button). */
 button.danger,
 .btn.danger {
-  background: var(--error, #cf222e);
-  color: #fff;
-  border: none;
-  padding: 0.5rem 0.875rem;
-  border-radius: 6px;
-  font-size: 0.9375rem;
-  cursor: pointer;
+  background: var(--error);
+  color: var(--paper);
+  border: 1px solid var(--error);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.5625rem 1rem;
 }
 button.danger:hover,
-.btn.danger:hover { background: #a40e1a; }
-button.danger:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn.danger:hover {
+  background: var(--error-deep);
+  border-color: var(--error-deep);
+}
+button.danger:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* Default "secondary" button (used by Cancel in modals, "← back"
-   links rendered as buttons). Outline-style. */
 button.btn,
 .btn {
   background: transparent;
-  color: var(--text);
-  border: 1.5px solid var(--border);
-  padding: 0.4375rem 0.875rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  font-family: inherit;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  padding: 0.5rem 0.875rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
+  transition: background 120ms ease, color 120ms ease;
 }
 button.btn:hover, .btn:hover {
-  background: var(--surface);
-  border-color: var(--text-secondary);
+  background: var(--ink);
+  color: var(--paper);
 }
-button.btn:disabled, .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.loading {
-  color: var(--text-secondary);
-  text-align: center;
-  padding: 2rem 0;
+button.btn:disabled, .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+button.btn:hover:disabled, .btn:hover:disabled {
+  background: transparent;
+  color: var(--ink);
 }
 
-.error {
-  color: var(--error);
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
+button:focus-visible,
+.btn:focus-visible,
+.admin-users-chip:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
 }
 
+/* ── Footer — narrow ink rail at the bottom, mono mark + thin rule ── */
 .site-footer {
-  padding: 1rem 1.25rem;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  text-align: center;
-  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  border-top: 2px solid var(--rule);
+  background: var(--paper);
 }
-
+.footer-mark { color: var(--ink); }
+.footer-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--edge);
+}
+.footer-links { display: flex; gap: 0.625rem; align-items: center; }
 .site-footer a {
-  color: var(--text-secondary);
-  text-decoration: underline;
+  color: var(--ink-soft);
+  border-bottom: 1px solid transparent;
+}
+.site-footer a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
 
 /* ============================================================
-   Feedback FAB + Modal + Toast (gh #39)
+   Feedback FAB + Modal + Toast (gh #39) — engineered to match
+   the new aesthetic; same class names, new shape.
    ============================================================ */
 .feedback-fab {
   position: fixed;
-  right: 1.25rem;
-  bottom: 1.25rem;
+  right: var(--space-6);
+  bottom: var(--space-6);
   width: 3rem;
   height: 3rem;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  border: none;
+  border-radius: 0;
+  background: var(--amber);
+  color: var(--amber-ink);
+  border: 2px solid var(--ink);
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
-  transition: background 150ms ease, transform 150ms ease;
+  transition: transform 120ms ease;
 }
-.feedback-fab:hover {
-  background: var(--accent-hover, var(--accent));
-  transform: translateY(-1px);
-}
-.feedback-fab:focus-visible {
-  outline: 3px solid rgba(31, 111, 235, 0.4);
-  outline-offset: 2px;
-}
+.feedback-fab:hover { transform: translate(-2px, -2px); box-shadow: 2px 2px 0 0 var(--ink); }
+.feedback-fab:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
 
 .feedback-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(20, 17, 13, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  padding: 1rem;
+  padding: var(--space-4);
 }
 .feedback-modal {
-  background: var(--card-bg, #fff);
-  color: var(--text);
-  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
-  border: 1px solid var(--border);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: 8px 8px 0 0 var(--ink);
 }
 .feedback-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 2px solid var(--rule);
+  background: var(--ink);
+  color: var(--paper);
 }
 .feedback-modal-header h2 {
   margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper);
 }
 .feedback-modal-close {
   background: transparent;
   border: none;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   line-height: 1;
-  color: var(--text-secondary, #888);
+  color: var(--paper);
   cursor: pointer;
   padding: 0.25rem 0.5rem;
 }
-.feedback-modal-close:hover { color: var(--text); }
+.feedback-modal-close:hover { color: var(--amber); }
 .feedback-modal-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem 1.25rem 1.25rem;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6) var(--space-6);
 }
 .feedback-field {
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: var(--space-2);
 }
 .feedback-field-label {
-  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   font-weight: 500;
-  color: var(--text-secondary, #aaa);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
 .feedback-select,
 .feedback-modal-form textarea {
-  font-family: var(--font);
+  font-family: var(--font-sans);
   font-size: 0.9375rem;
-  padding: 0.5rem 0.625rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
+  padding: 0.5625rem 0.75rem;
+  border-radius: 0;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
 }
-.feedback-modal-form textarea {
-  resize: vertical;
-  min-height: 4.5rem;
-}
+.feedback-modal-form textarea { resize: vertical; min-height: 4.5rem; }
 .feedback-rating-field { border: none; padding: 0; margin: 0; }
 .feedback-rating { display: inline-flex; gap: 0.25rem; }
 .feedback-star {
   background: transparent;
   border: none;
   font-size: 1.5rem;
-  color: var(--border);
+  color: var(--edge);
   cursor: pointer;
   padding: 0.125rem 0.25rem;
   line-height: 1;
   transition: color 100ms ease;
 }
-.feedback-star:hover, .feedback-star.active { color: #f5a623; }
-.feedback-star:focus-visible {
-  outline: 2px solid rgba(31, 111, 235, 0.4);
-  outline-offset: 1px;
-}
+.feedback-star:hover, .feedback-star.active { color: var(--amber); }
+.feedback-star:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 .feedback-modal-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   justify-content: flex-end;
-  margin-top: 0.25rem;
+  margin-top: var(--space-1);
 }
 .feedback-btn {
-  font-family: var(--font);
-  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  color: var(--text);
+  border-radius: 0;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
   cursor: pointer;
 }
-.feedback-btn:hover { background: var(--bg); }
+.feedback-btn:hover { background: var(--ink); color: var(--paper); }
 .feedback-btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--amber);
+  border-color: var(--ink);
+  color: var(--amber-ink);
 }
-.feedback-btn-primary:hover { background: var(--accent-hover, var(--accent)); }
-.feedback-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.feedback-btn-primary:hover { background: var(--amber-deep); color: var(--amber-ink); }
+.feedback-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .feedback-modal-status {
   margin: 0;
-  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
   min-height: 1.25rem;
-  color: var(--text-secondary);
+  color: var(--ink-soft);
 }
-.feedback-modal-status.err { color: var(--error, #d33); }
-.feedback-modal-status.info { color: var(--text-secondary); }
+.feedback-modal-status.err { color: var(--error); }
+.feedback-modal-status.info { color: var(--ink-soft); }
 
 .feedback-toast {
   position: fixed;
-  right: 1.25rem;
+  right: var(--space-6);
   bottom: 5rem;
-  background: var(--card-bg, #fff);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 0;
   padding: 0.625rem 1rem;
-  font-size: 0.875rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   z-index: 200;
   animation: feedback-toast-in 200ms ease both;
 }
@@ -426,345 +703,546 @@ button.btn:disabled, .btn:disabled { opacity: 0.6; cursor: not-allowed; }
    ============================================================ */
 .feedback-admin-tabs {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 0;
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--edge);
 }
 .feedback-admin-tab {
-  padding: 0.375rem 0.875rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+  padding: 0.5rem var(--space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--ink-soft);
   cursor: pointer;
-  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
+.feedback-admin-tab:hover { color: var(--ink); }
 .feedback-admin-tab.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  color: var(--ink);
+  border-bottom-color: var(--amber);
+  background: transparent;
 }
 .feedback-admin-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 .feedback-admin-card {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem 1.25rem;
-  background: var(--card-bg);
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--ink);
+  border-radius: 0;
+  padding: var(--space-4) var(--space-6);
+  background: var(--paper);
 }
-.feedback-admin-card.resolved { opacity: 0.65; }
+.feedback-admin-card.resolved {
+  border-left-color: var(--edge);
+  opacity: 0.7;
+}
 .feedback-admin-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: var(--space-2);
   align-items: center;
 }
 .feedback-admin-meta .category {
   padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  border: 1px solid var(--ink);
+  color: var(--ink);
 }
-.feedback-admin-meta .rating { color: #f5a623; }
+.feedback-admin-meta .rating { color: var(--amber); letter-spacing: 0; }
 .feedback-admin-body {
   white-space: pre-wrap;
-  margin: 0 0 0.75rem;
+  margin: 0 0 var(--space-3);
   font-size: 0.9375rem;
+  color: var(--ink);
 }
 .feedback-admin-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
-
-/* Read-only display of the admin's existing reply.
-   The "Mail-Versand fehlgeschlagen"-Badge gets the err-colour via the
-   sendStatus string check in the renderer (no separate class needed
-   because it's already embedded in the strong tag). */
 .feedback-admin-reply-shown {
-  margin: 0.75rem 0 0.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg);
-  border-left: 3px solid var(--accent);
-  border-radius: 4px;
+  margin: var(--space-3) 0 var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper-edge);
+  border-left: 3px solid var(--amber);
+  border-radius: 0;
 }
 .feedback-admin-reply-header {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: var(--space-2);
 }
 .feedback-admin-reply-body {
   white-space: pre-wrap;
   margin: 0;
   font-size: 0.9375rem;
 }
-
-/* Inline reply panel — shown when admin clicks "Antworten". */
 .feedback-admin-reply-panel {
-  margin-top: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0;
   display: grid;
-  gap: 0.625rem;
+  gap: var(--space-3);
 }
 .feedback-admin-reply-label {
   display: grid;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
 .feedback-admin-reply-textarea {
   width: 100%;
-  font-family: inherit;
+  font-family: var(--font-sans);
   font-size: 0.9375rem;
-  padding: 0.5rem 0.625rem;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
+  padding: 0.5625rem 0.75rem;
+  border-radius: 0;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
   resize: vertical;
   min-height: 5rem;
 }
 .feedback-admin-reply-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 .feedback-admin-reply-status {
   margin: 0;
-  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
   min-height: 1.2em;
+  color: var(--ink-soft);
 }
-.feedback-admin-reply-status.err { color: #c5453a; }
-.feedback-admin-reply-status.info { color: var(--text-secondary); }
+.feedback-admin-reply-status.err { color: var(--error); }
+.feedback-admin-reply-status.info { color: var(--ink-soft); }
 
-/* ── Admin Stats view ───────────────────────────────────────────── */
+/* ============================================================
+   Admin Stats — definition list with engineering-brief spacing
+   ============================================================ */
 .stat-grid {
   display: grid;
   grid-template-columns: max-content 1fr;
-  column-gap: 1rem;
-  row-gap: 0.375rem;
+  column-gap: var(--space-6);
+  row-gap: 0.4375rem;
   margin: 0;
 }
 .stat-grid dt {
-  color: var(--text-secondary);
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 400;
+  padding-top: 0.0625rem;
 }
 .stat-grid dd {
   margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
+
+/* perDay horizontal bar list — kept ultra-spare. The amber bar
+   width encodes the count, the mono label + count anchor it. */
 .perday-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 .perday-row {
   display: grid;
-  grid-template-columns: 6.5rem 1fr 3rem;
+  grid-template-columns: 6.5rem 1fr 3.5rem;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-.perday-day { color: var(--text-secondary); font-size: 0.8125rem; }
-.perday-bar {
-  height: 14px;
-  background: var(--accent, #1f6feb);
-  border-radius: 3px;
-  min-width: 2px;
+.perday-day {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
 }
-.perday-count { text-align: right; font-size: 0.875rem; }
+.perday-bar {
+  height: 10px;
+  background: var(--amber);
+  border-radius: 0;
+  min-width: 2px;
+  position: relative;
+}
+.perday-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-right: 1px solid var(--ink);
+  pointer-events: none;
+}
+.perday-count {
+  text-align: right;
+  font-size: 0.875rem;
+  color: var(--ink);
+  font-weight: 500;
+}
 
-/* ── #54: Admin overview KPI tiles ──────────────────────────────── */
+/* ============================================================
+   Admin Overview — KPI tiles. Big mono number, label below.
+   Tiles that link to a sub-page get a hover affordance.
+   ============================================================ */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.875rem;
-  margin: 0.75rem 0;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0;
+  margin: var(--space-3) 0;
+  border-top: 1px solid var(--edge);
+  border-left: 1px solid var(--edge);
 }
 .kpi-tile {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.875rem 1rem;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6) var(--space-4);
+  background: var(--paper);
+  border-right: 1px solid var(--edge);
+  border-bottom: 1px solid var(--edge);
+  border-top: none;
+  border-left: none;
+  border-radius: 0;
   text-decoration: none;
   color: inherit;
-  transition: border-color 120ms ease, transform 120ms ease;
+  position: relative;
+  transition: background 120ms ease;
 }
+a.kpi-tile { color: inherit; border-bottom: none; }
 a.kpi-tile:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
+  background: var(--paper-edge);
+  border-bottom: 1px solid var(--edge);
+}
+a.kpi-tile::after {
+  content: "↗";
+  position: absolute;
+  right: var(--space-4);
+  top: var(--space-3);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  transition: color 120ms ease, transform 120ms ease;
+}
+a.kpi-tile:hover::after {
+  color: var(--amber);
+  transform: translate(2px, -2px);
 }
 .kpi-label {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
   font-weight: 500;
 }
 .kpi-value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1;
 }
 .kpi-sublabel {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
 }
+
 .admin-quicknav {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0;
+  counter-reset: quick;
 }
+.admin-quicknav li {
+  border-top: 1px solid var(--edge);
+}
+.admin-quicknav li:last-child { border-bottom: 1px solid var(--edge); }
 .admin-quicknav a {
-  color: var(--accent);
-  text-decoration: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  color: var(--ink);
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
 }
-.admin-quicknav a:hover { text-decoration: underline; }
+.admin-quicknav a::before {
+  counter-increment: quick;
+  content: "[" counter(quick, decimal-leading-zero) "]";
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.admin-quicknav a:hover { color: var(--amber-deep); border: none; }
+.admin-quicknav a:hover::before { color: var(--amber); }
 
-/* ── #54: Admin users table + filter chips ──────────────────────── */
+/* ============================================================
+   Admin Users — table + filter chips + search
+   ============================================================ */
 .admin-users-controls {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 0.875rem;
+  margin-bottom: var(--space-4);
 }
 .admin-users-search {
   flex: 1;
   min-width: 14rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--card-bg);
-  color: var(--text);
+  padding: 0.5625rem 0.75rem;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
   font-size: 0.9375rem;
+}
+.admin-users-search:focus {
+  outline: none;
+  border-color: var(--amber);
+  box-shadow: inset 0 -2px 0 var(--amber);
 }
 .admin-users-chips {
   display: flex;
-  gap: 0.375rem;
+  gap: 0;
   flex-wrap: wrap;
+  border: 1px solid var(--ink);
 }
 .admin-users-chip {
-  font-family: inherit;
-  font-size: 0.8125rem;
-  padding: 0.3125rem 0.75rem;
-  border: 1.5px solid var(--border);
-  border-radius: 100px;
-  background: transparent;
-  color: var(--text);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-right: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink-soft);
   cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
 }
+.admin-users-chip:last-child { border-right: none; }
+.admin-users-chip:hover { color: var(--ink); }
 .admin-users-chip.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
+  background: var(--ink);
+  color: var(--amber);
 }
+
 .admin-users-table {
   width: 100%;
   border-collapse: collapse;
+  font-family: var(--font-sans);
   font-size: 0.875rem;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
 }
 .admin-users-table th,
 .admin-users-table td {
-  padding: 0.5rem 0.625rem;
+  padding: 0.625rem var(--space-3);
   text-align: left;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--edge);
+  vertical-align: middle;
 }
+.admin-users-table tbody tr:last-child td { border-bottom: none; }
 .admin-users-table tr.row-clickable { cursor: pointer; }
-.admin-users-table tr.row-clickable:hover { background: var(--surface); }
+.admin-users-table tr.row-clickable:hover { background: var(--paper-edge); }
 .admin-users-table th {
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  color: var(--ink-soft);
   font-weight: 500;
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--ink);
+}
+.admin-users-table td:first-child {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 .admin-users-load-more {
   display: block;
   width: 100%;
-  margin-top: 0.75rem;
-  padding: 0.5rem;
-  background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: 6px;
+  margin-top: var(--space-3);
+  padding: 0.625rem;
+  background: transparent;
+  border: 1px dashed var(--ink);
+  border-radius: 0;
   cursor: pointer;
-  font: inherit;
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  transition: background 120ms ease, color 120ms ease;
 }
+.admin-users-load-more:hover {
+  background: var(--ink);
+  color: var(--paper);
+  border-style: solid;
+}
+.admin-users-load-more:disabled { opacity: 0.5; cursor: progress; }
+
+/* Status badges — square-cornered tags, mono. */
 .user-badge {
   display: inline-block;
+  font-family: var(--font-mono);
   font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   padding: 0.125rem 0.4375rem;
-  border-radius: 100px;
-  border: 1px solid var(--border);
-  margin-right: 0.25rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  border-radius: 0;
+  border: 1px solid var(--ink);
+  margin-right: var(--space-1);
+  font-weight: 500;
 }
-.user-badge-admin { background: var(--accent); color: #fff; border-color: var(--accent); }
-.user-badge-suspended { background: #cf222e; color: #fff; border-color: #cf222e; }
-.user-badge-unverified { background: #d29922; color: #1a1d23; border-color: #d29922; }
+.user-badge-admin {
+  background: var(--amber);
+  color: var(--amber-ink);
+  border-color: var(--ink);
+}
+.user-badge-suspended {
+  background: var(--error);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.user-badge-unverified {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--ink);
+  border-style: dashed;
+}
 
-/* ── #54: Confirm-modal for destructive admin actions ───────────── */
+/* ============================================================
+   Confirm-with-Reason Modal (gh #54)
+   ============================================================ */
 .admin-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(20, 17, 13, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
 }
 .admin-modal {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem 1.375rem;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  padding: var(--space-6) var(--space-6);
   width: min(28rem, calc(100vw - 2rem));
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  gap: var(--space-3);
+  box-shadow: 8px 8px 0 0 var(--ink);
 }
 .admin-modal h2 {
   margin: 0;
-  font-size: 1.0625rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.admin-modal h2::before {
+  content: "/ ";
+  color: var(--amber);
 }
 .admin-modal-reason {
   width: 100%;
-  min-height: 4.5rem;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: inherit;
+  min-height: 5rem;
+  padding: 0.5625rem 0.75rem;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
   font-size: 0.875rem;
   resize: vertical;
 }
+.admin-modal-reason:focus {
+  outline: none;
+  border-color: var(--amber);
+  box-shadow: inset 0 -2px 0 var(--amber);
+}
 .admin-modal-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   justify-content: flex-end;
+  margin-top: var(--space-2);
 }
 .admin-modal-error {
   color: var(--error);
-  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
   margin: 0;
+}
+
+/* ============================================================
+   Numeric-prefix helper for category headers — the
+   admin views call h2 with the category label; the ::before
+   already covers it from the .card h1/h2 rule above. Section
+   counts on the right are added inline by views — no special
+   styling needed beyond the muted tone.
+   ============================================================ */
+
+/* ============================================================
+   Misc utility — `<a>` styled as a back-link / quiet link.
+   Used by device-detail and admin-user-detail "← Zurück"-links.
+   ============================================================ */
+a.muted {
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid transparent;
+}
+a.muted:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
