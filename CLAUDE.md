@@ -27,9 +27,9 @@ Target deployment: Linux VPS, **everything runs in Docker** (backend, coturn, re
 
 **Entry points:**
 - Backend: `backend/src/index.ts` → `server.ts` (Fastify) → `signaling.ts` (WS rooms) + `auth/`, `devices/`, `account/`, `admin/`, `feedback/`, `downloads/`, `tracking/` route modules. Notable: `admin/feedback.ts` (list/patch/reply/delete; reply persists BEFORE SMTP so transient mail failures keep the typed reply as a draft), `admin/stats.ts` (`/api/admin/stats` + `/api/admin/stats/codes`), `downloads/handlers.ts` (KNOWN_ASSETS-Allow-List — bump per release; `/api/downloads/file/:asset[?tag=vX.Y.Z]`-Stream-Proxy s. Download-Proxy-Footguns), `tracking/matomo.ts` (server-side code_created Matomo POST), `tracking/code_events.ts` (per-mint DB-Row in `code_events`-Tabelle, 365 d Retention via `purge.ts`).
-- Viewer: `viewer/src/main.ts` → `ui.ts` (UI wiring) → `webrtc-client.ts` (peer) + `zoom.ts` + `pan.ts` (pure zoom/pan-state helpers). Plus `notch-connect.ts` (Verbinden-Notch in der Topbar) und `matomo-consent-decision.ts` (pure Decision-Table für den Consent-Banner). Static `viewer/public/` ships standalone vanilla-JS overlays (`feedback-fab.js`, `download/counts.js`, `matomo-consent.{js,css}`) that the 4 marketing-pages + dashboard link directly — they live outside the Vite-bundle so the static-pages can use them without TypeScript.
-- Sharer: `sharer/src-tauri/src/lib.rs` (Tauri commands) → `capture/mod.rs` (per-OS capture) → `webrtc_peer.rs` (encoder/peer). Unattended path: `heartbeat.rs` (persistent WSS) + `unattended_cmd.rs` (Tauri commands + forwarder loop). Input pipeline `input.rs` — `InputController` tracks held buttons/keys and releases them in `Drop` (gh #97 fix; otherwise a viewer-disconnect mid-click leaves the OS thinking the button is still down). Update-Notifier: `update_check.rs` (Tauri command `check_for_update`, GitHub-Releases-API gegen `CARGO_PKG_VERSION`) + `sharer/src/update-banner.ts` (UI-Banner mit „Jetzt herunterladen"-Link auf auffi.app/download/).
-- Dashboard: `dashboard/src/main.ts` → `router.ts` (history-API SPA) → `views/*.ts` (incl. `admin-feedback.ts` mit inline-reply UI, `admin-stats.ts` mit Users/Devices/Connections/Code-Mints inkl. perDay-Bar-Chart). Admin-Section (#53/#54): `admin-nav.ts` (`visibleRoutes` + `updateActiveNav` + `isAdminGatedPath` als pure Helper), `views/admin-overview.ts` (KPI-Tiles), `views/admin-users.ts` (Filter-Chips + cursor-Pagination + debounced Search), `views/admin-user-detail.ts` (Suspend/Promote/Delete + Audit-Trail), `views/admin-403.ts` (friendly "kein Admin"-Seite), `components/confirm-with-reason.ts` (reusable destruktives-Confirm-Modal, geteilte Convention für alle Admin-Aktionen). Plus `components/feedback-fab.ts`.
+- Viewer: `viewer/src/main.ts` → `ui.ts` (UI wiring) → `webrtc-client.ts` (peer) + `zoom.ts` + `pan.ts` (pure zoom/pan-state helpers). Plus `notch-connect.ts` (Verbinden-Notch in der Topbar) und `matomo-consent-decision.ts` (pure Decision-Table für den Consent-Banner). Static `viewer/public/` ships standalone vanilla-JS overlays (`feedback-fab.js`, `download/counts.js`, `matomo-consent.{js,css}`) that the 4 marketing-pages + dashboard link directly — they live outside the Vite-bundle so the static-pages can use them without TypeScript. Self-hosted IBM Plex woff2-Fonts (4 files, ~76 KB latin-subset) liegen unter `viewer/public/fonts/` (separate Kopie vom dashboard, beide nginx-Container haben eigene Asset-Sets). Visual-Audit-Playwright-Spec unter `viewer/tests/e2e/visual-audit.spec.ts` (Screenshots gegen prod, siehe Quick-Commands).
+- Sharer: `sharer/src-tauri/src/lib.rs` (Tauri commands) → `capture/mod.rs` (per-OS capture) → `webrtc_peer.rs` (encoder/peer). Unattended path: `heartbeat.rs` (persistent WSS) + `unattended_cmd.rs` (Tauri commands + forwarder loop). Input pipeline `input.rs` — `InputController` tracks held buttons/keys and releases them in `Drop` (gh #97 fix; otherwise a viewer-disconnect mid-click leaves the OS thinking the button is still down). Update-Notifier: `update_check.rs` (Tauri command `check_for_update`, GitHub-Releases-API gegen `CARGO_PKG_VERSION`) + `sharer/src/update-banner.ts` (UI-Banner mit „Jetzt herunterladen"-Link auf auffi.app/download/). Password-Eye-Toggle ist inline in `sharer/src/unattended.ts` dupliziert (`wrapPasswordWithEyeToggle()`) — sharer-Webview-Bundle ist separat vom dashboard, kann den Helper nicht importieren.
+- Dashboard: `dashboard/src/main.ts` → `router.ts` (history-API SPA) → `views/*.ts` (incl. `admin-feedback.ts` mit inline-reply UI, `admin-stats.ts` mit Users/Devices/Connections/Code-Mints inkl. perDay-Bar-Chart). Admin-Section (#53/#54): `admin-nav.ts` (`visibleRoutes` + `updateActiveNav` + `isAdminGatedPath` als pure Helper), `views/admin-overview.ts` (KPI-Tiles), `views/admin-users.ts` (Filter-Chips + cursor-Pagination + debounced Search), `views/admin-user-detail.ts` (Suspend/Promote/Delete + Audit-Trail), `views/admin-403.ts` (friendly "kein Admin"-Seite), `components/confirm-with-reason.ts` (reusable destruktives-Confirm-Modal, geteilte Convention für alle Admin-Aktionen), `components/password-field.ts` (`wrapPasswordField()`-Helper für Eye-Toggle auf allen Passwort-Inputs, ID + name + value bleiben unverändert damit Tests nicht brechen). Plus `components/feedback-fab.ts`. Self-hosted IBM Plex woff2-Fonts (4 Files) unter `dashboard/public/fonts/` — eigene Kopie vom Viewer weil separater nginx-Container.
 - Cross-component wire format: `docs/protocol.md` — both sides of every message reference this. The unattended-access additions (pw-attempt / pw-check / pw-check-result / unattended-hello / `confirmId` routing) are not yet in protocol.md; refer to `backend/src/protocol.ts` and `sharer/src-tauri/src/heartbeat.rs::BackendFrame|SharerFrame` until docs catch up.
 
 Specs and plans live under `docs/superpowers/`.
@@ -45,6 +45,11 @@ cd backend && npm test             # vitest
 cd viewer && npm run dev           # vite on :5173
 cd viewer && npm run build         # static dist/
 cd viewer && npm run test:e2e      # Playwright
+
+# Visual-Audit gegen live prod (24 Screenshots in /tmp/visual-audit/):
+# 7 Pages × {light, dark, mobile} + Password-Toggle-Flow + Notch-Click + Matomo-Banner.
+# Nach jedem Design-Pass laufen lassen, dann die PNGs via Read-Tool durchgehen.
+cd viewer && npx playwright test tests/e2e/visual-audit.spec.ts --workers=1
 
 # Sharer (Tauri desktop app)
 cd sharer && npm run tauri:dev     # native window + DevTools
@@ -254,6 +259,29 @@ Drei zusammenhängende Konventionen für Admin-only-UI im Dashboard, gh #53/#54.
 
 `/api/me.admin: boolean` ist seit 2026-05-22 die einzige Quelle für die client-side-isAdmin-Entscheidung. Anonymous-User (401) und Network-Errors collapsen beide zu `isAdmin=false` (UX-safe default). Sessions vor dem Bump können das Feld fehlend haben — TypeScript-Client behandelt `undefined` korrekt als false. Backend's `requireAdmin` ist davon unabhängig (liest `account.admin` direkt aus DB pro Request).
 
+### Engineering-Brief Aesthetic (Design-System)
+
+Seit dem Redesign 2026-05-23 (commits `4a323dd` + `b8688f7`) tragen alle 4 UI-Surfaces dasselbe Engineering-Brief / technical-document Aesthetic. Vier Eigenschaften, die nicht per Zufall stabil bleiben — wer hier was ändert, sollte das vollständige Set anfassen oder konsistent NICHT anfassen:
+
+- **Drei CSS-Surfaces in Sync** (+ 2 Satelliten): `dashboard/src/styles.css`, `viewer/src/styles.css`, `viewer/public/topbar-footer.css` (für die 3 statischen Marketing-Subpages). Satelliten: `viewer/public/matomo-consent.css`, `viewer/public/feedback-fab.css`. Wenn sich Design-Tokens ändern, MUSS in allen 5 Files dasselbe Token-Set gelten — keine Vite-Variable-Sharing, weil die Marketing-Pages außerhalb des Vite-Bundles geladen werden.
+- **Design-Tokens**: `--paper: #f5f1e6` (Background-Cream), `--ink: #14110d` (fast-Schwarz), `--amber: #f3a300` (single saturated Accent für Buttons + Marker), `--cyan: #0e4c9c` (nur Links + Focus-Outlines, NICHT für UI-Akzente). Legacy-Bridges: `--bg`/`--accent`/`--card-bg`/`--text` mappen auf die neuen Tokens, damit alte CSS-Klassen-User (Test-Snapshots, externe Snippets) nicht brechen. Dark-Mode via `@media (prefers-color-scheme: dark)` invertiert paper↔ink, amber bleibt.
+- **Self-hosted IBM Plex (latin-subset)**: 4 woff2-Files (`IBMPlexSans-Regular.woff2`, `-SemiBold.woff2`, `IBMPlexMono-Regular.woff2`, `-Medium.woff2`, ~76 KB total) liegen unter `viewer/public/fonts/` UND `dashboard/public/fonts/` (eigene Kopien — separate nginx-Container, kein shared Volume). Keine Google-Fonts-CDN per CLAUDE.md-no-Tracker-Rule. Wenn neue Plex-Varianten gebraucht werden: latin-Subset von `https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans/files/` (oder Mono-Pendant), beide Kopien gleich halten.
+- **Class-Name-Preservation**: Beim Rewrite wurden NULL Klassennamen + IDs umbenannt, nur Visuals recast. Konsequenz: existierende Tests + Selektoren (Playwright, vitest jsdom-Queries) bleiben grün. Wenn neue Komponenten dazukommen, gerne neue Klassen — aber bestehende NICHT umbenennen ohne den vollen Test-Tree neu zu syncen.
+
+Visuelle Marker, an denen man das System erkennt: square corners überall, 1.5–2px sharp ink-rules statt soft-shadows, mono tracked-Caps für Labels/Sektion-Header, amber ▌-Glyph als Heading-Marker (`h2::before { content: "▌ "; color: var(--amber); }`), CSS-counter-basierte `[01]`-`[02]`-Nav-Nummerierung im Dashboard.
+
+### Fixed-Position-Overlay darf Content nicht hiden
+
+Allgemeines UI-Pattern, das beim Matomo-Consent-Banner (audit 2026-05-23) schmerzhaft aufschlug. Ein `position: fixed; bottom: 0`-Overlay (Banner, Toast, Cookie-Hinweis…) verdeckt by-default Content unten — beim Matomo-Banner ursprünglich als floating-Card am rechten unteren Rand, der mid-page-Paragraphen überlagerte und im Visual-Audit nicht zu übersehen war.
+
+**Funktionierende Pattern (am Matomo-Banner exerziert)**:
+
+- **Slim full-width Bar statt floating Card** — `left: 0; right: 0; bottom: var(--footer-height, 48px); border-top: 2px solid ink`. Nimmt eigene horizontale Linie ein, hat keine Z-Achse-Überlappung mit Content.
+- **Body-padding-Reservierung beim Mount, Cleanup beim Dismiss** — JS toggled `.matomo-consent-shown` (oder semantisch passende Klasse) auf `<body>`; CSS-Regel `body.<klasse> { padding-bottom: calc(footer + 5rem) }` (Desktop) bzw. `+8rem` für narrow viewports wo der Bar in zwei Reihen wrappt. Wichtig: Cleanup MUSS sowohl Banner-DOM-Node entfernen ALS auch die Klasse vom Body — sonst bleibt nach Dismiss ein leerer Padding-Block am Page-Footer.
+- **Visual-Audit zur Erkennung** — Mid-page-overlays mit nur einem Smoke-Test zu fangen ist schwer, weil Tests gerne am Page-Top scrollen. Der `viewer/tests/e2e/visual-audit.spec.ts` (24 Screenshots inkl. Matomo-Banner-Spec) sieht es sofort. Nach jedem Overlay-Patch durchlaufen lassen.
+
+Anwendbar auf jedes künftige fixed-bottom-Overlay (Floor-Action-Bar im Mobile-View, Save-Toast, etc.).
+
 ### Caddyfile Footguns
 
 - **Never blanket-block `bot`/`crawler`/`spider` as User-Agent substrings**. The original auffi.app site had `@scrapers { header_regexp User-Agent (?i)(scrapy|bot|crawler|spider|…) }` which matched every legit search-engine crawler (`Googlebot`, `bingbot`, `DuckDuckBot`, `AhrefsBot`, `LinkedInBot`, `Twitterbot`, `facebookexternalhit`…) and returned 403. Search Console couldn't fetch the sitemap; SEO outage from 2026-05-12 to 2026-05-14. The narrow allow-list lives in `caddy/Caddyfile`: scrapy, wget, curl, headlesschrome, phantomjs, nikto, sqlmap, sqlninja, nmap, masscan, metasploit, dirbuster, nuclei, wpscan. The cluster Caddyfile at `/opt/caddyserver/Caddyfile` carries the same fix — keep both in sync when adding new bad-actor signatures.
@@ -389,7 +417,7 @@ Optionaler off-site Sync via `BACKUP_REMOTE_TARGET=user@host:/backups/auffi/` en
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-22: backend 386, sharer-lib 188 (+ 6 `#[ignore]` Display-requiring), viewer 191, dashboard 114. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-05-23: backend 386, sharer-lib 188 (+ 6 `#[ignore]` Display-requiring), viewer 191, dashboard 122, sharer-js 34. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `eslint`, `cargo clippy -- -D warnings`.
 4. Type check passes: `tsc --noEmit`, `cargo check`.
