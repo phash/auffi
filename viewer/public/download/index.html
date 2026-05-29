@@ -11,6 +11,16 @@
     <meta property="og:title" content="Auffi herunterladen" />
     <meta property="og:description" content="Open-Source Bildschirm-Sharing für Windows und Linux. AGPL-3.0." />
     <meta property="og:url" content="https://auffi.app/download/" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Auffi herunterladen" />
+    <meta name="twitter:description" content="Open-Source Bildschirm-Sharing für Windows und Linux. AGPL-3.0." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
     <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
     <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
@@ -20,6 +30,51 @@
     <link rel="stylesheet" href="/feedback-fab.css" />
     <script src="/feedback-fab.js" defer></script>
     <script src="/download/counts.js" defer></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "Auffi",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Windows, Linux, macOS",
+            "softwareVersion": "0.5.0",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+            "license": "https://github.com/phash/auffi/blob/main/LICENSE",
+            "downloadUrl": "https://auffi.app/download/",
+            "url": "https://auffi.app/",
+            "sameAs": ["https://github.com/phash/auffi"],
+            "inLanguage": "de-DE"
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Auf welchen Plattformen läuft der Auffi-Sharer?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Windows 10/11 (.exe-Installer, portable .exe, MSI) und Linux (.deb, .rpm, AppImage, Arch-PKGBUILD). macOS folgt — bis dahin per Source-Build." }
+              },
+              {
+                "@type": "Question",
+                "name": "Muss die hilfeleistende Person etwas installieren?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Nein. Wer hilft, öffnet nur auffi.app im Browser und tippt den 9-stelligen Code. Den Sharer braucht nur, wer den eigenen Bildschirm teilen möchte." }
+              },
+              {
+                "@type": "Question",
+                "name": "Ist der Download kostenlos?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Ja, komplett kostenlos und Open Source unter AGPL-3.0. Kein Konto, keine Testphase, keine In-App-Käufe." }
+              },
+              {
+                "@type": "Question",
+                "name": "Laufen die Downloads über GitHub oder über auffi.app?",
+                "acceptedAnswer": { "@type": "Answer", "text": "Über auffi.app: der Server streamt die Release-Dateien durch, damit keine IP an Dritte geht. Quellcode und Releases liegen zusätzlich auf GitHub." }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in, gh review 2026-05-21) -->
     <link rel="stylesheet" href="/matomo-consent.css" />
     <script src="/matomo-consent.js" defer></script>

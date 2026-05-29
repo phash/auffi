@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Best-effort IndexNow submission — notifies Bing (and thereby ChatGPT Search,
+# which uses Bing's index) of changed/new URLs. Key file must be live at
+# https://auffi.app/${KEY}.txt. Safe to run anytime; never fails a pipeline.
+set -u
+KEY="175972328cee2b184e026d4b88f7429d"
+HOST="auffi.app"
+URLS=(
+  "https://auffi.app/"
+  "https://auffi.app/download/"
+  "https://auffi.app/vergleich/teamviewer/"
+)
+body=$(printf '{"host":"%s","key":"%s","keyLocation":"https://%s/%s.txt","urlList":[%s]}' \
+  "$HOST" "$KEY" "$HOST" "$KEY" \
+  "$(printf '"%s",' "${URLS[@]}" | sed 's/,$//')")
+curl -sS -m 15 -X POST "https://api.indexnow.org/indexnow" \
+  -H "Content-Type: application/json" -d "$body" \
+  -o /dev/null -w "IndexNow → HTTP %{http_code}\n" || echo "IndexNow ping failed (non-fatal)"

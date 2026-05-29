@@ -7,7 +7,6 @@
 
     <!-- SEO basics -->
     <meta name="description" content="Auffi — sicheres, kostenloses Bildschirm-Sharing mit Fernsteuerung. Open Source, DSGVO-konform, Server in Deutschland. WebRTC P2P, DTLS-SRTP-verschlüsselt. Ohne Konto starten, mit Konto für Unattended Access." />
-    <meta name="keywords" content="Bildschirm teilen, Screen Sharing, Fernwartung, Remote-Support, TeamViewer Alternative, Open Source, DSGVO, WebRTC, Auffi" />
     <meta name="robots" content="index, follow" />
     <meta name="author" content="Phash" />
     <link rel="canonical" href="https://auffi.app/" />
@@ -57,6 +56,8 @@
             "inLanguage": "de-DE",
             "softwareVersion": "0.5.0",
             "license": "https://github.com/phash/auffi/blob/main/LICENSE",
+            "downloadUrl": "https://auffi.app/download/",
+            "sameAs": ["https://github.com/phash/auffi"],
             "author": { "@id": "https://auffi.app/#author" },
             "publisher": { "@id": "https://auffi.app/#org" }
           },
@@ -129,11 +130,10 @@
         ]
       }
     </script>
-    <!-- Reichweitenmessung: self-hosted Matomo, cookielos, DNT-respektierend.
-         Snippet inline (statt extern) damit Matomos Tracking-Code-
-         Validator das Markup beim Page-Fetch findet. Hash-Recompute-
-         Anleitung steht in caddy/Caddyfile (Kommentar überm CSP-Header).
-         Datenschutz: /datenschutz/ -->
+    <!-- Reichweitenmessung: self-hosted Matomo, cookielos, DNT-respektierend,
+         opt-in via Consent-Banner. Loader extern via /matomo-consent.js
+         (siehe unten) — kein Inline-Snippet, daher kein CSP-Hash nötig.
+         Datenschutz: /datenschutz/ §9. -->
     <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in, gh review 2026-05-21) -->
@@ -534,6 +534,10 @@
             </p>
           </article>
         </div>
+        <p class="trust-compare-link">
+          Wechselst du von TeamViewer?
+          <a href="/vergleich/teamviewer/">Auffi vs TeamViewer im Vergleich →</a>
+        </p>
       </section>
     </div>
 
