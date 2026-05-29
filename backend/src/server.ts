@@ -219,6 +219,11 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
 
   // Sec H-1: per-IP cap on WSS Bearer-auth attempts (argon2-DoS gate).
   const bearerCounts: Map<string, RateLimitEntry> = new Map();
+  // Same idea for the feedback route's sharer-Bearer (argon2) branch. Declared
+  // here (not inside registerFeedbackRoutes) so it can be swept alongside the
+  // signaling maps below — otherwise it would grow one entry per source IP for
+  // the process lifetime.
+  const feedbackBearerCounts: Map<string, RateLimitEntry> = new Map();
   const attemptCounts = registerSignaling(
     app,
     store,
@@ -234,7 +239,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
 
   const sweepHandle = setInterval(() => {
     const now = Date.now();
-    for (const map of [attemptCounts, registerCounts, bearerCounts]) {
+    for (const map of [attemptCounts, registerCounts, bearerCounts, feedbackBearerCounts]) {
       for (const [key, entry] of map) {
         if (entry.resetAt < now) map.delete(key);
       }
@@ -302,6 +307,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
       windowMs: env.feedbackBearerRateLimitWindowMs,
       max: env.feedbackBearerRateLimitMax,
     },
+    bearerCounts: feedbackBearerCounts,
   });
   registerDownloadRoutes(app, db);
 
