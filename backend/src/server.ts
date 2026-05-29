@@ -83,6 +83,10 @@ function readEnvConfig() {
     // CPU exhaustion attempts.
     bearerAuthRateLimitWindowMs: envNumber("BEARER_AUTH_RATE_LIMIT_WINDOW_MS", 60_000),
     bearerAuthRateLimitMax: envNumber("BEARER_AUTH_RATE_LIMIT_MAX", 10),
+    // Separate, tighter cap for the argon2-bearing sharer-Bearer branch of
+    // POST /api/feedback. A human submits feedback a handful of times at most.
+    feedbackBearerRateLimitWindowMs: envNumber("FEEDBACK_BEARER_RATE_LIMIT_WINDOW_MS", 60_000),
+    feedbackBearerRateLimitMax: envNumber("FEEDBACK_BEARER_RATE_LIMIT_MAX", 5),
     allowedOrigins: envList("ALLOWED_ORIGINS", [
       "http://localhost:5173",
       "http://localhost:5174",
@@ -293,7 +297,12 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   registerAdminStatsRoutes(app, db);
   registerAdminTimeseriesRoutes(app, db);
   registerAdminFeedbackRoutes(app, db, feedbackMailer);
-  registerFeedbackRoutes(app, db);
+  registerFeedbackRoutes(app, db, {
+    bearerRateLimit: {
+      windowMs: env.feedbackBearerRateLimitWindowMs,
+      max: env.feedbackBearerRateLimitMax,
+    },
+  });
   registerDownloadRoutes(app, db);
 
   // Promote the configured INITIAL_ADMIN_EMAIL on every boot.

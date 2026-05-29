@@ -3,10 +3,40 @@ import type { Db } from "../db.js";
 import { parseBearerAuth, verifyBearerAuth } from "../unattended.js";
 import { findSession, readSessionCookie } from "../auth/sessions.js";
 import { truncateUserAgent } from "./user_agent.js";
+import {
+  checkIpRateLimit,
+  type RateLimitConfig,
+  type RateLimitEntry,
+} from "../rate-limit.js";
 
 const ALLOWED_CATEGORIES = ["bug", "feature", "praise", "other"] as const;
 const ALLOWED_SOURCES = ["dashboard", "sharer", "viewer"] as const;
 const BODY_MAX_LEN = 4000;
+
+// The sharer-Bearer branch of resolveAccountId runs argon2.verify (~250 ms
+// CPU). The route's 20/min/IP cap is generous for a human filling out a form
+// but a weak brake on an argon2-DoS, so the Bearer path gets its own tighter
+// per-IP cap — mirroring the signaling bearer_auth_rate_limit (Sec H-1). The
+// cookie path (cheap SHA-256 lookup) is intentionally NOT gated by this.
+const DEFAULT_BEARER_RATE_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 5 };
+
+export interface FeedbackRoutesOptions {
+  /** Per-IP cap on the argon2-bearing sharer-Bearer path. */
+  bearerRateLimit?: RateLimitConfig;
+  /** Injectable bucket store (tests pass their own). */
+  bearerCounts?: Map<string, RateLimitEntry>;
+}
+
+type ResolveResult =
+  | { ok: true; accountId: number }
+  | { ok: false; status: 401 | 429; error: string; message: string };
+
+const NO_AUTH: ResolveResult = {
+  ok: false,
+  status: 401,
+  error: "no-auth",
+  message: "login or device-bearer required",
+};
 
 type Category = (typeof ALLOWED_CATEGORIES)[number];
 type Source = (typeof ALLOWED_SOURCES)[number];
@@ -26,7 +56,13 @@ interface SubmitBody {
  * Anonymous posts are rejected — the schema requires an account ref,
  * and we don't want to invite spam from the open WSS surface.
  */
-export function registerFeedbackRoutes(app: FastifyInstance, db: Db): void {
+export function registerFeedbackRoutes(
+  app: FastifyInstance,
+  db: Db,
+  opts: FeedbackRoutesOptions = {},
+): void {
+  const bearerCfg = opts.bearerRateLimit ?? DEFAULT_BEARER_RATE_LIMIT;
+  const bearerCounts = opts.bearerCounts ?? new Map<string, RateLimitEntry>();
   app.post(
     "/api/feedback",
     {
@@ -43,12 +79,11 @@ export function registerFeedbackRoutes(app: FastifyInstance, db: Db): void {
       }
       const { source, category, rating, text } = validation;
 
-      const accountId = await resolveAccountId(db, req, source);
-      if (accountId === null) {
-        return reply
-          .status(401)
-          .send({ error: "no-auth", message: "login or device-bearer required" });
+      const resolved = await resolveAccountId(db, req, source, bearerCounts, bearerCfg);
+      if (!resolved.ok) {
+        return reply.status(resolved.status).send({ error: resolved.error, message: resolved.message });
       }
+      const accountId = resolved.accountId;
 
       // Security-Review L-2 (2026-05-14): UA wird auf
       // `Browser-Family/OS-Family` reduziert — die volle UA wäre ein
@@ -133,26 +168,37 @@ async function resolveAccountId(
   db: Db,
   req: FastifyRequest,
   source: Source,
-): Promise<number | null> {
+  bearerCounts: Map<string, RateLimitEntry>,
+  bearerCfg: RateLimitConfig,
+): Promise<ResolveResult> {
   if (source === "dashboard" || source === "viewer") {
     // Both UIs authenticate via the same __Host-auffi_session cookie —
     // the only difference is which page the feedback came FROM, which
     // is purely admin-visible metadata. Manual session lookup because
     // the route also serves the sharer Bearer-auth path (no cookie).
     const cookie = readSessionCookie(req);
-    if (!cookie) return null;
+    if (!cookie) return NO_AUTH;
     const sess = findSession(db, cookie);
-    return sess?.accountId ?? null;
+    if (!sess) return NO_AUTH;
+    return { ok: true, accountId: sess.accountId };
   }
   // source === "sharer"
   const auth = parseBearerAuth(req.headers as Record<string, string | string[] | undefined>);
-  if (!auth || auth === "malformed") return null;
+  if (!auth || auth === "malformed") return NO_AUTH;
+  // Gate the argon2 verify behind a per-IP cap so a flood of Bearer feedback
+  // POSTs can't exhaust CPU (Sec H-1, mirrors the signaling bearer cap). The
+  // check is BEFORE verifyBearerAuth so the expensive hash never runs once a
+  // client is over budget.
+  if (!checkIpRateLimit(req.ip ?? "unknown", bearerCounts, bearerCfg)) {
+    return { ok: false, status: 429, error: "rate-limited", message: "too many auth attempts, slow down" };
+  }
   const ok = await verifyBearerAuth(db, auth);
-  if (!ok) return null;
+  if (!ok) return NO_AUTH;
   const dev = db
     .prepare<[string], { owner_account_id: number }>(
       "SELECT owner_account_id FROM devices WHERE id = ?",
     )
     .get(auth.deviceId);
-  return dev?.owner_account_id ?? null;
+  if (!dev) return NO_AUTH;
+  return { ok: true, accountId: dev.owner_account_id };
 }
