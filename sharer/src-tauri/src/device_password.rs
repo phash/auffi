@@ -15,12 +15,6 @@
 //! string format — params travel with the hash, so changing them later
 //! does not invalidate existing entries.
 
-// This module is wired in by upcoming issues #21 (account/pairing) and
-// #24 (pw-check handler). Keeping the public surface stable so those
-// issues are diff-small; until they land, suppress the dead-code lint
-// at the module level.
-#![allow(dead_code)]
-
 use std::fs;
 use std::io;
 use std::path::Path;

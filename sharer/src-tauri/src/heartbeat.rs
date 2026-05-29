@@ -19,10 +19,6 @@
 //! `pw-check-result`, SDP/ICE relay frames, and connection-log
 //! reports back through the same socket.
 
-// Wired into the Tauri builder by gh #20 (mode toggle); until then the
-// pub surface is dead-code-allowed.
-#![allow(dead_code)]
-
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -168,11 +164,17 @@ pub enum BackendFrame {
 pub enum SharerFrame {
     #[serde(rename = "pw-check-result")]
     PwCheckResult { result: PwResult },
+    // The unattended heartbeat path does not yet emit connection telemetry —
+    // the ad-hoc signaling path does (feeding connection_log + the free-tier
+    // relay cap). These wire shapes are defined and serialization-tested so
+    // the wiring is a small diff; constructing them is tracked in gh #109.
+    #[allow(dead_code)]
     #[serde(rename = "connection-started")]
     ConnectionStarted {
         #[serde(rename = "connectionType")]
         connection_type: ConnectionType,
     },
+    #[allow(dead_code)]
     #[serde(rename = "connection-ended")]
     ConnectionEnded {
         #[serde(rename = "bytesRelayed")]

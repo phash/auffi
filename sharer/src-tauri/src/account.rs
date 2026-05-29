@@ -16,10 +16,6 @@
 //! but the local wipe is unconditional and idempotent. The user can
 //! always re-pair with a fresh code.
 
-// Wired in by gh #20 (mode toggle UI) and gh #23 (heartbeat). Keep the
-// pub surface dead-code-allowed until those land.
-#![allow(dead_code)]
-
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};

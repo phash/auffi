@@ -8,8 +8,6 @@
 //! into the String-error shape Tauri expects, (c) hold the
 //! heartbeat handle + lockout state across calls.
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
