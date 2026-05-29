@@ -17,8 +17,17 @@ ops/.env.deploy
 # Local act secrets — never commit credentials
 .secrets
 
-# Locally-staged release artefacts (binaries, not source)
+# Locally-staged release artefacts (binaries, not source). packaging/ holds
+# Windows .exe/.msi build outputs that are uploaded to the GitHub release;
+# packaging/arch/PKGBUILD is the only tracked thing under it.
 release-bin/
+packaging/*.exe
+packaging/*.msi
+packaging/Version_*/
+
+# Playwright run artefacts — traces/screenshots, never source
+test-results/
+viewer/test-results/
 
 # Local screenshots — manuel's personal capture dir
 screens/
