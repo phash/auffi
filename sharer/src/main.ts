@@ -132,7 +132,9 @@ async function replayPendingSignaling(): Promise<void> {
 // ── Persistent store ────────────────────────────────────────────────────────
 
 async function getStore() {
-  return load("auffi-settings.json", { autoSave: true });
+  // `defaults: {}` seeds no keys — identical runtime behaviour to omitting it,
+  // but @tauri-apps/plugin-store's StoreOptions types `defaults` as required.
+  return load("auffi-settings.json", { autoSave: true, defaults: {} });
 }
 
 async function loadTrustedPeers(): Promise<TrustedPeer[]> {

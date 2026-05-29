@@ -6,9 +6,12 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
-      // main.ts is the Tauri-API wiring layer — exercised only inside the
-      // real desktop runtime, not unit-testable in vitest.
-      exclude: ["src/main.ts"],
+      // The Tauri-API / DOM wiring layers — exercised only inside the real
+      // desktop webview runtime (DOM construction + `invoke()` round-trips),
+      // not unit-testable in vitest. Same rationale as the viewer's excluded
+      // ui.ts/main.ts. The testable pure helpers (tabs, monitor-display,
+      // trusted-peers, update-banner) stay measured and sit at ~100%.
+      exclude: ["src/main.ts", "src/feedback-fab.ts", "src/unattended.ts", "src/vite-env.d.ts"],
       thresholds: {
         lines: 70,
         branches: 70,
