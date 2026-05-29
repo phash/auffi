@@ -68,10 +68,10 @@
         <p class="lead">
           Open-Source-Desktop-App, AGPL-3.0. Ende-zu-Ende verschlüsselt,
           DSGVO-konform, kein Konto erforderlich. Aktuelle Version
-          <strong>0.4.5</strong> — Downloads laufen direkt über
+          <strong>0.5.0</strong> — Downloads laufen direkt über
           <code>auffi.app</code>.
           <a href="https://github.com/phash/auffi" rel="noopener noreferrer">Source auf GitHub</a>
-          · <a href="https://github.com/phash/auffi/releases/tag/v0.4.5" rel="noopener noreferrer">Release-Notes</a>.
+          · <a href="https://github.com/phash/auffi/releases/tag/v0.5.0" rel="noopener noreferrer">Release-Notes</a>.
         </p>
       </section>
 
@@ -89,7 +89,7 @@
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.5_x64-setup.exe">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_x64-setup.exe">
               Download
             </a>
           </li>
@@ -111,11 +111,11 @@
               <h3>MSI-Paket</h3>
               <p>
                 Für Domain-Deployment via GPO / Intune. Silent-Install per
-                <code>msiexec /i Auffi_0.4.5_x64_en-US.msi /qn</code>.<br />
+                <code>msiexec /i Auffi_0.5.0_x64_en-US.msi /qn</code>.<br />
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.5_x64_en-US.msi">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_x64_en-US.msi">
               Download
             </a>
           </li>
@@ -128,11 +128,11 @@
             <div class="download-meta">
               <h3>Debian / Ubuntu (.deb)</h3>
               <p>
-                <code>sudo dpkg -i Auffi_0.4.5_amd64.deb</code><br />
+                <code>sudo dpkg -i Auffi_0.5.0_amd64.deb</code><br />
                 <span class="size">~ 14 MB · x86_64 · Debian 12+, Ubuntu 22.04+</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.5_amd64.deb">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_amd64.deb">
               Download
             </a>
           </li>
@@ -140,11 +140,11 @@
             <div class="download-meta">
               <h3>Fedora / RHEL (.rpm)</h3>
               <p>
-                <code>sudo rpm -i Auffi-0.4.5-1.x86_64.rpm</code><br />
+                <code>sudo rpm -i Auffi-0.5.0-1.x86_64.rpm</code><br />
                 <span class="size">~ 14 MB · x86_64 · Fedora 40+, RHEL 9+</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi-0.4.5-1.x86_64.rpm">
+            <a class="download-btn" href="/api/downloads/file/Auffi-0.5.0-1.x86_64.rpm">
               Download
             </a>
           </li>
@@ -152,11 +152,11 @@
             <div class="download-meta">
               <h3>AppImage (distroübergreifend)</h3>
               <p>
-                <code>chmod +x Auffi_0.4.5_amd64.AppImage &amp;&amp; ./Auffi_0.4.5_amd64.AppImage</code><br />
+                <code>chmod +x Auffi_0.5.0_amd64.AppImage &amp;&amp; ./Auffi_0.5.0_amd64.AppImage</code><br />
                 <span class="size">~ 117 MB · x86_64 · läuft auf jeder glibc-Distro mit PipeWire.</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.4.5_amd64.AppImage">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_amd64.AppImage">
               Download
             </a>
           </li>
@@ -205,6 +205,22 @@
 
       <section class="release-notes" aria-labelledby="releases-heading">
         <h2 id="releases-heading">Was ist neu</h2>
+        <h3>0.5.0 (2026-05-29)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Sicherheits- &amp; UX-Review</strong> — TURN-Relay
+            gegen SSRF gehärtet, verständliche deutsche Fehlermeldungen
+            beim Verbinden, kein Endlos-Spinner mehr (Connect-Timeout +
+            Abbrechen-Button), und die Download-Buttons laufen jetzt auch
+            auf der Startseite über <code>auffi.app</code> statt direkt
+            zu GitHub.
+          </li>
+          <li>
+            <strong>Keine Verhaltensänderung am Sharer selbst</strong> —
+            die App enthält nur Typ-Fixes und Aufräumarbeiten; Linux und
+            Windows aus demselben Stand gebaut.
+          </li>
+        </ul>
         <h3>0.4.5 (2026-05-21)</h3>
         <ul class="release-list">
           <li>
