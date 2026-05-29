@@ -6,6 +6,8 @@
 // grant a grace window before declaring the session lost. `failed` and
 // `closed` still tear down immediately because they are terminal.
 
+import { t } from "./i18n.js";
+
 export type StatusKind = "ok" | "err" | "info";
 
 export interface IceStateCallbacks {
@@ -45,22 +47,22 @@ export function createIceStateHandler(
   function handle(state: RTCIceConnectionState): void {
     if (state === "failed" || state === "closed") {
       clearTimer_();
-      cb.teardown("Verbindung verloren.", "err", true);
+      cb.teardown(t("ice.lost"), "err", true);
       return;
     }
     if (state === "disconnected") {
       if (timer !== null) return;
-      cb.setStatus("Verbindung instabil — versuche, sie wiederherzustellen…", "info");
+      cb.setStatus(t("ice.unstable"), "info");
       timer = setTimer(() => {
         timer = null;
-        cb.teardown("Verbindung verloren.", "err", true);
+        cb.teardown(t("ice.lost"), "err", true);
       }, graceMs);
       return;
     }
     if (state === "connected" || state === "completed") {
       if (timer !== null) {
         clearTimer_();
-        cb.setStatus("Stream läuft.", "ok");
+        cb.setStatus(t("status.streamRunning"), "ok");
       }
     }
   }

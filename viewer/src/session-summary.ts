@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 // Per-session metadata for the post-stream summary card (gh #73).
 // Tracks only what the user can act on: how long the session ran, how it
 // was routed, and any files that came down. The tracker is the source of
@@ -75,7 +76,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function formatConnectionType(type: ConnectionType | null): string {
-  if (type === "p2p") return "Direkt (peer-to-peer)";
-  if (type === "relay") return "Über Relay-Server";
-  return "Unbekannt";
+  if (type === "p2p") return t("summary.connDirect");
+  if (type === "relay") return t("summary.connRelay");
+  return t("summary.connUnknown");
 }

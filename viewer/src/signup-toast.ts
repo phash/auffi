@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 /**
  * One-shot toast that fires when the user just completed signup in the
  * dashboard (`/dashboard/signup`) and was redirected back to the main
@@ -54,10 +55,10 @@ function mountToast(): void {
   const text = document.createElement("div");
   text.className = "signup-confirm-text";
   const strong = document.createElement("strong");
-  strong.textContent = "Konto angelegt — bitte E-Mail-Eingang prüfen.";
+  strong.textContent = t("signup.created");
   const para = document.createElement("p");
   para.textContent =
-    "Wir haben dir einen Bestätigungs-Link an deine Adresse geschickt. Erst nach Klick auf den Link kannst du dich einloggen.";
+    t("signup.body");
   text.appendChild(strong);
   text.appendChild(para);
   toast.appendChild(text);
@@ -65,7 +66,7 @@ function mountToast(): void {
   const close = document.createElement("button");
   close.type = "button";
   close.className = "signup-confirm-close";
-  close.setAttribute("aria-label", "Hinweis schließen");
+  close.setAttribute("aria-label", t("signup.dismiss"));
   close.textContent = "×";
   close.addEventListener("click", () => toast.remove());
   toast.appendChild(close);

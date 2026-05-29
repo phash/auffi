@@ -11,6 +11,7 @@ import { ZERO_PAN, clampPan, stepPan, type PanState } from "./pan.js";
 import { createIceStateHandler } from "./ice-state-handler.js";
 import { CompactBarController } from "./compact-bar.js";
 import { friendlyJoinError, connectTimeoutMessage } from "./connect-messages.js";
+import { t } from "./i18n.js";
 
 // gh #40: lazy singleton — initialized in setupUi() once the DOM is
 // ready. Module-level so setVideoStream() (also module-level) can
@@ -85,11 +86,11 @@ function setConnectionType(type: ConnectionType | null): void {
   }
   el.classList.add("active");
   if (type === "relay") {
-    el.textContent = "Über Relay";
+    el.textContent = t("conn.relay");
     el.classList.add("relay");
     el.classList.remove("p2p");
   } else {
-    el.textContent = "Direkt";
+    el.textContent = t("conn.direct");
     el.classList.remove("relay");
     el.classList.add("p2p");
   }
@@ -129,7 +130,7 @@ function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): 
     document.body.classList.add("streaming");
     // gh #40: Compact-Bar starten (Duration-Timer + Bytes-Poll).
     compactBar?.start();
-    compactBar?.setStatus("Verbindung wird hergestellt …");
+    compactBar?.setStatus(t("status.connecting"));
     // Prevent any user-initiated PiP from auto-detaching the video.
     if ("disablePictureInPicture" in video) {
       (video as HTMLVideoElement & { disablePictureInPicture: boolean }).disablePictureInPicture = true;
@@ -140,8 +141,8 @@ function setVideoStream(stream: MediaStream | null, onFirstFrame?: () => void): 
       // gh #82: green-dot status only after the first composited frame.
       // Until then the page reads "Verbunden — empfange Stream…" in info
       // (blue) so the spinner overlay and status colour agree.
-      setStatus("Stream läuft.", "ok");
-      compactBar?.setStatus("Stream läuft.");
+      setStatus(t("status.streamRunning"), "ok");
+      compactBar?.setStatus(t("status.streamRunning"));
       onFirstFrame?.();
     };
 
@@ -174,8 +175,8 @@ function setInputTogglePressed(btn: HTMLButtonElement, pressed: boolean): void {
   btn.setAttribute("aria-pressed", String(pressed));
   const label = btn.querySelector<HTMLElement>("#input-toggle-label")!;
   label.textContent = pressed
-    ? "Steuerung aktiv (Esc zum Beenden)"
-    : "Steuerung aktivieren";
+    ? t("input.controlActive")
+    : t("input.controlEnable");
 }
 
 function wsUrlToHttpUrl(wsUrl: string): string {
@@ -246,7 +247,7 @@ export function bindUI(backendWsUrl: string): void {
       // Screen-reader announcement should match the visible zoom level
       // (gh #76). Without this update, NVDA / VoiceOver still announce
       // "Originalgröße (100 %)" while the button visibly reads 150 %.
-      zoomResetBtn.setAttribute("aria-label", `Originalgröße (${formatZoom(currentZoom)})`);
+      zoomResetBtn.setAttribute("aria-label", t("zoom.resetAria", { zoom: formatZoom(currentZoom) }));
     }
     if (panOverlay) {
       const showPan = currentZoom > 1;
@@ -333,10 +334,10 @@ export function bindUI(backendWsUrl: string): void {
   document.addEventListener("fullscreenchange", () => {
     if (!fullscreenBtn) return;
     fullscreenBtn.setAttribute("aria-pressed", String(!!document.fullscreenElement));
-    fullscreenBtn.title = document.fullscreenElement ? "Vollbild verlassen" : "Vollbild";
+    fullscreenBtn.title = document.fullscreenElement ? t("fullscreen.exit") : t("fullscreen.enter");
     fullscreenBtn.setAttribute(
       "aria-label",
-      document.fullscreenElement ? "Vollbild verlassen" : "Vollbild",
+      document.fullscreenElement ? t("fullscreen.exit") : t("fullscreen.enter"),
     );
   });
 
@@ -554,8 +555,8 @@ export function bindUI(backendWsUrl: string): void {
     const hadCode = lastCode !== null;
     teardown(
       hadCode
-        ? "Verbindung beendet. Möchtest du doch nochmal verbinden?"
-        : "Getrennt.",
+        ? t("teardown.endedCanReconnect")
+        : t("teardown.disconnected"),
       "info",
       hadCode,
     );
@@ -576,7 +577,7 @@ export function bindUI(backendWsUrl: string): void {
     } catch {
       /* ignore */
     }
-    teardown("Verbindung abgebrochen.", "info", true);
+    teardown(t("teardown.cancelled"), "info", true);
   });
 
   refreshBtn?.addEventListener("click", () => {
@@ -658,7 +659,7 @@ export function bindUI(backendWsUrl: string): void {
     sessionTracker = new SessionTracker();
     lastCode = code;
     hideReconnect();
-    setStatus("Warte auf Bestätigung durch den Sharer…", "info");
+    setStatus(t("status.awaitingConfirm"), "info");
     connectBtn.disabled = true;
     showConnectingControls();
 
@@ -749,7 +750,7 @@ export function bindUI(backendWsUrl: string): void {
               showFreeTierWarning();
             },
             onCutoff: () => {
-              teardown("Relay-Limit erreicht — Premium kommt bald.", "info");
+              teardown(t("teardown.relayLimit"), "info");
             },
           });
         }
@@ -758,14 +759,14 @@ export function bindUI(backendWsUrl: string): void {
       signaling.onRelay((payload) => {
         if (payload.kind === "sdp") {
           peer?.acceptAnswer(payload.sdp).catch((e: unknown) =>
-            teardown(`SDP-Fehler: ${e instanceof Error ? e.message : String(e)}`, "err"),
+            teardown(t("teardown.sdpError", { msg: e instanceof Error ? e.message : String(e) }), "err"),
           );
         } else if (payload.kind === "ice") {
           peer?.addRemoteIceCandidate(payload.candidate).catch(() => {
-            teardown("ICE-Fehler.", "err");
+            teardown(t("teardown.iceError"), "err");
           });
         } else if (payload.kind === "bye") {
-          teardown("Der Sharer hat den Stream beendet.", "info", true);
+          teardown(t("teardown.sharerEnded"), "info", true);
         }
       });
 
@@ -805,7 +806,7 @@ export function bindUI(backendWsUrl: string): void {
         const password = pwInput!.value;
         if (password.length === 0) return;
         pwSubmit!.disabled = true;
-        setStatus("Passwort wird geprüft…", "info");
+        setStatus(t("status.checkingPassword"), "info");
         // Re-arm the backstop for the pw-check round-trip: a wrong-password /
         // locked / confirmed response clears or replaces it.
         armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
@@ -820,7 +821,7 @@ export function bindUI(backendWsUrl: string): void {
         };
         pwCancel!.onclick = (): void => {
           hidePwPrompt();
-          teardown("Vom Helfer abgebrochen.", "info", true);
+          teardown(t("teardown.cancelledByHelper"), "info", true);
         };
       }
 
@@ -828,12 +829,12 @@ export function bindUI(backendWsUrl: string): void {
         // Now waiting on the human to type a password — pause the backstop
         // so a slow typist isn't torn down mid-entry. submitPw re-arms it.
         clearConnectTimeout();
-        showPwPrompt("Dieses Gerät ist passwortgeschützt. Bitte das Geräte-Passwort eingeben.", false);
+        showPwPrompt(t("pw.prompt"), false);
       });
       signaling.onWrongPassword((attemptsLeft) => {
         clearConnectTimeout();
         showPwPrompt(
-          `Falsches Passwort. Noch ${attemptsLeft} Versuch${attemptsLeft === 1 ? "" : "e"}.`,
+          t("pw.wrong", { n: attemptsLeft }),
           true,
         );
       });
@@ -860,7 +861,7 @@ export function bindUI(backendWsUrl: string): void {
           // until then the spinner overlay is still up so the status must
           // stay informational (blue dot). setVideoStream() flips this to
           // "ok" via the first-frame callback.
-          setStatus("Verbunden — empfange Stream…", "info");
+          setStatus(t("status.connectedReceiving"), "info");
         })
         .catch((e: unknown) => {
           hidePwPrompt();
@@ -877,7 +878,7 @@ export function bindUI(backendWsUrl: string): void {
   connectBtn.addEventListener("click", () => {
     const code = codeInput.value.trim();
     if (!/^\d{3}-\d{3}-\d{3}$/.test(code)) {
-      setStatus("Bitte 9-stelligen Code eingeben.", "err");
+      setStatus(t("status.enterCode"), "err");
       return;
     }
     doConnect(code);
