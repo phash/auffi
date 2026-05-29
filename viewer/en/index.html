@@ -1,15 +1,17 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform</title>
+    <title>Auffi — Screen Sharing, Open Source, GDPR-Compliant</title>
 
     <!-- SEO basics -->
-    <meta name="description" content="Auffi — sicheres, kostenloses Bildschirm-Sharing mit Fernsteuerung. Open Source, DSGVO-konform, Server in Deutschland. WebRTC P2P, DTLS-SRTP-verschlüsselt. Ohne Konto starten, mit Konto für Unattended Access." />
+    <meta name="description" content="Auffi — secure, free screen sharing with remote control. Open source, GDPR-compliant, servers in Germany. WebRTC P2P, DTLS-SRTP encrypted. Start without an account, add an account for unattended access." />
     <meta name="robots" content="index, follow" />
     <meta name="author" content="Phash" />
-    <link rel="canonical" href="https://auffi.app/" />
+    <link rel="canonical" href="https://auffi.app/en/" />
+
+    <!-- hreflang alternates -->
     <link rel="alternate" hreflang="de" href="https://auffi.app/" />
     <link rel="alternate" hreflang="en" href="https://auffi.app/en/" />
     <link rel="alternate" hreflang="x-default" href="https://auffi.app/" />
@@ -17,19 +19,19 @@
     <!-- Open Graph (Facebook, LinkedIn, …) -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Auffi" />
-    <meta property="og:title" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
-    <meta property="og:description" content="Spontane Bildschirmhilfe in drei Klicks. WebRTC P2P-verschlüsselt, ohne Konto, Server in Deutschland." />
-    <meta property="og:url" content="https://auffi.app/" />
-    <meta property="og:locale" content="de_DE" />
+    <meta property="og:title" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
+    <meta property="og:description" content="Ad-hoc screen-sharing help in three clicks. WebRTC P2P-encrypted, no account, servers in Germany." />
+    <meta property="og:url" content="https://auffi.app/en/" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:image" content="https://auffi.app/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
+    <meta property="og:image:alt" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Auffi — Bildschirm-Sharing, Open Source" />
-    <meta name="twitter:description" content="Spontane Bildschirmhilfe in drei Klicks. P2P, verschlüsselt, ohne Konto." />
+    <meta name="twitter:title" content="Auffi — Screen Sharing, Open Source" />
+    <meta name="twitter:description" content="Ad-hoc screen-sharing help in three clicks. P2P, encrypted, no account." />
     <meta name="twitter:image" content="https://auffi.app/og-image.png" />
 
     <!-- Theme color (Mobile-URL-Bar Tinting) + Favicons -->
@@ -49,17 +51,17 @@
         "@graph": [
           {
             "@type": "SoftwareApplication",
-            "@id": "https://auffi.app/#software",
+            "@id": "https://auffi.app/en/#software",
             "name": "Auffi",
             "applicationCategory": "BusinessApplication",
             "operatingSystem": "Linux, Windows, macOS",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
-            "description": "Open-Source-Bildschirm-Sharing mit aktiver Bestätigung, DSGVO-konform und Ende-zu-Ende DTLS-SRTP-verschlüsselt.",
-            "url": "https://auffi.app/",
-            "inLanguage": "de-DE",
+            "description": "Open-source screen sharing with active confirmation, GDPR-compliant and end-to-end DTLS-SRTP encrypted.",
+            "url": "https://auffi.app/en/",
+            "inLanguage": "en-US",
             "softwareVersion": "0.5.0",
             "license": "https://github.com/phash/auffi/blob/main/LICENSE",
-            "downloadUrl": "https://auffi.app/download/",
+            "downloadUrl": "https://auffi.app/en/download/",
             "sameAs": ["https://github.com/phash/auffi"],
             "author": { "@id": "https://auffi.app/#author" },
             "publisher": { "@id": "https://auffi.app/#org" }
@@ -97,37 +99,38 @@
       {
         "@context": "https://schema.org",
         "@type": "FAQPage",
+        "inLanguage": "en-US",
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "Brauche ich ein Konto, um Auffi zu nutzen?",
+            "name": "Do I need an account to use Auffi?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Nein. Für spontane Hilfe reicht ein 9-stelliger Verbindungscode. Ein Konto brauchst du nur für Unattended Access (eigene Geräte permanent gepairt)."
+              "text": "No. For ad-hoc help, a 9-digit connection code is all you need. You only need an account for unattended access (your own devices paired permanently)."
             }
           },
           {
             "@type": "Question",
-            "name": "Sieht der Server, was ich teile?",
+            "name": "Can the server see what I'm sharing?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Nein. WebRTC verschlüsselt jeden Stream Ende-zu-Ende mit DTLS-SRTP. Der Signaling-Server vermittelt nur den initialen Handshake — Pixel, Mausbewegungen und Dateien fließen direkt zwischen den Browsern."
+              "text": "No. WebRTC encrypts every stream end-to-end with DTLS-SRTP. The signaling server only brokers the initial handshake — pixels, mouse movements and files flow directly between the browsers."
             }
           },
           {
             "@type": "Question",
-            "name": "Ist Auffi DSGVO-konform?",
+            "name": "Is Auffi GDPR-compliant?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Ja. Server in Deutschland (IONOS Frankfurt), keine IPs im Klartext gespeichert, keine Tracker, kein Logging von Inhalten. Der vollständige Audit liegt im Repo unter docs/security-review-2026-05.md."
+              "text": "Yes. Servers in Germany (IONOS Frankfurt), no IP addresses stored in plaintext, no trackers, no logging of content. The full audit lives in the repo at docs/security-review-2026-05.md."
             }
           },
           {
             "@type": "Question",
-            "name": "Kann ich Auffi selbst hosten?",
+            "name": "Can I self-host Auffi?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Ja. Der Code ist AGPL-3.0-lizenziert auf GitHub. Backend, Viewer und Sharer laufen in Docker Compose; die Anleitung steht in ops/README.md."
+              "text": "Yes. The code is AGPL-3.0-licensed on GitHub. Backend, viewer and sharer all run in Docker Compose; the guide is in ops/README.md."
             }
           }
         ]
@@ -150,37 +153,37 @@
   </head>
   <body>
     <header id="top-bar" role="banner">
-      <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
-      <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+      <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
       <nav class="topbar-actions" aria-label="Links">
-        <a id="lang-switch" href="/en/" class="topbar-btn" aria-label="View in English" hreflang="en">EN</a>
+        <a id="lang-switch" href="/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
         <a
           id="topbar-login"
           href="/dashboard/login"
           class="topbar-btn"
-          aria-label="Einloggen (Konto)"
+          aria-label="Log in (account)"
         >
-          <span class="topbar-btn-label">Einloggen</span>
+          <span class="topbar-btn-label">Log in</span>
         </a>
         <a
           id="topbar-signup"
           href="/dashboard/signup"
           class="topbar-btn topbar-btn-primary"
-          aria-label="Konto anlegen"
+          aria-label="Create account"
         >
-          <span class="topbar-btn-label">Konto anlegen</span>
+          <span class="topbar-btn-label">Create account</span>
         </a>
         <a
           id="topbar-download"
-          href="/download/"
+          href="/en/download/"
           class="topbar-btn"
-          aria-label="Sharer herunterladen"
+          aria-label="Download the sharer"
         >
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
             <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
           </svg>
-          <span class="topbar-btn-label">Sharer herunterladen</span>
+          <span class="topbar-btn-label">Download the sharer</span>
         </a>
         <a
           id="topbar-coffee"
@@ -188,36 +191,36 @@
           target="_blank"
           rel="noopener noreferrer"
           class="topbar-btn topbar-btn-coffee"
-          aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)"
+          aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)"
         >
           ☕ <span class="topbar-btn-label">Buy me a coffee</span>
         </a>
       </nav>
     </header>
 
-    <a id="notch-connect" class="topbar-notch" href="#code" aria-label="Zum Verbindungscode springen">Verbinden</a>
+    <a id="notch-connect" class="topbar-notch" href="#code" aria-label="Jump to the connection code">Connect</a>
 
     <main id="app">
       <!-- Primärer Page-Heading für Screen-Reader und Suchmaschinen.
            Visuell verborgen, weil der App-UI-Flow ohne explizite
            Headline beginnt (Brand + Code-Input führen direkt zum
            Verbinden-Klick). -->
-      <h1 class="visually-hidden">Auffi — sicheres Bildschirm-Sharing aus Deutschland, Open Source und DSGVO-konform</h1>
+      <h1 class="visually-hidden">Auffi — secure screen sharing from Germany, open source and GDPR-compliant</h1>
 
       <!-- gh #40: kompakte Status-Zeile, sichtbar nur wenn das Card
            während eines Streams eingeklappt ist (#app.compact). -->
       <div id="compact-status-line" class="compact-status-line" role="status" aria-live="polite">
         <span class="compact-dot" aria-hidden="true"></span>
-        <span id="compact-status-text">Stream läuft.</span>
+        <span id="compact-status-text">Stream running.</span>
         <span class="compact-sep" aria-hidden="true">·</span>
-        <span id="compact-duration" title="Verbindungsdauer">00:00</span>
+        <span id="compact-duration" title="Connection duration">00:00</span>
         <span class="compact-sep" aria-hidden="true">·</span>
-        <span id="compact-bytes" title="Empfangene Datenmenge">0 B</span>
+        <span id="compact-bytes" title="Data received">0 B</span>
       </div>
 
       <!-- gh #40: Toggle, sichtbar während des Streams (CSS gated). -->
       <button id="card-toggle" type="button" class="card-toggle"
-              aria-expanded="true" aria-label="Bereich einklappen">
+              aria-expanded="true" aria-label="Collapse section">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path d="M3.204 5h9.592L8 10.481 3.204 5zm-.753.659l4.796 5.48a1 1 0 0 0 1.506 0l4.796-5.48c.566-.647.106-1.659-.753-1.659H3.204a1 1 0 0 0-.753 1.659z"/>
         </svg>
@@ -234,7 +237,7 @@
         <span class="brand-name">Auffi</span>
       </div>
 
-      <p class="instruction">Du wurdest um Hilfe gebeten? Gib den Code ein, den dir die andere Person genannt hat.</p>
+      <p class="instruction">Need to get help? Enter the code the other person gave you.</p>
 
       <div class="input-group">
         <input
@@ -243,12 +246,12 @@
           placeholder="000-000-000"
           autocomplete="off"
           inputmode="numeric"
-          aria-label="Verbindungscode"
+          aria-label="Connection code"
         />
         <div class="connect-row">
-          <button id="connect">Verbinden</button>
-          <button id="cancel-connect" type="button" class="cancel-connect" hidden>Abbrechen</button>
-          <button id="refresh-btn" type="button" class="icon-btn" title="Zurücksetzen" aria-label="Code zurücksetzen">
+          <button id="connect">Connect</button>
+          <button id="cancel-connect" type="button" class="cancel-connect" hidden>Cancel</button>
+          <button id="refresh-btn" type="button" class="icon-btn" title="Reset" aria-label="Reset code">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M13.5 8a5.5 5.5 0 1 1-1.325-3.566L14 3v4h-4l1.698-1.698A4 4 0 1 0 12 8h1.5z"/>
             </svg>
@@ -260,7 +263,7 @@
 
       <div id="reconnect-wrap" class="reconnect-wrap">
         <button id="reconnect-btn" type="button" class="btn-primary-full">
-          Erneut verbinden
+          Reconnect
         </button>
       </div>
 
@@ -268,17 +271,17 @@
            Bleibt unter dem Code-Input damit der Ad-hoc-Flow (Code
            tippen → Verbinden) der primäre Pfad bleibt. -->
       <section id="account-cta" class="account-cta" aria-labelledby="account-cta-heading">
-        <h2 id="account-cta-heading" class="account-cta-heading">Regelmäßig im Einsatz?</h2>
+        <h2 id="account-cta-heading" class="account-cta-heading">Using it regularly?</h2>
         <p class="account-cta-text">
-          Lege ein Konto an und paire deine Geräte einmalig — die nächste
-          Verbindung läuft ohne Code, direkt aus dem Dashboard.
+          Create an account and pair your devices once — the next
+          connection runs without a code, straight from the dashboard.
         </p>
         <div class="account-cta-actions">
           <a href="/dashboard/login" class="account-cta-btn account-cta-btn-secondary">
-            Einloggen
+            Log in
           </a>
           <a href="/dashboard/signup" class="account-cta-btn account-cta-btn-primary">
-            Konto anlegen
+            Create account
           </a>
         </div>
       </section>
@@ -287,26 +290,26 @@
         id="session-summary"
         class="session-summary"
         role="region"
-        aria-label="Zusammenfassung der letzten Sitzung"
+        aria-label="Summary of the last session"
         hidden
       >
-        <h2 class="session-summary-title">Sitzung beendet</h2>
+        <h2 class="session-summary-title">Session ended</h2>
         <dl class="session-summary-list">
           <div>
-            <dt>Dauer</dt>
+            <dt>Duration</dt>
             <dd id="session-summary-duration"></dd>
           </div>
           <div>
-            <dt>Verbindung</dt>
+            <dt>Connection</dt>
             <dd id="session-summary-conn"></dd>
           </div>
           <div id="session-summary-files-wrap" hidden>
-            <dt>Dateien empfangen</dt>
+            <dt>Files received</dt>
             <dd id="session-summary-files"></dd>
           </div>
         </dl>
-        <button id="session-summary-close" type="button" class="session-summary-close" aria-label="Zusammenfassung schließen">
-          Schließen
+        <button id="session-summary-close" type="button" class="session-summary-close" aria-label="Close summary">
+          Close
         </button>
       </section>
 
@@ -319,60 +322,60 @@
           tabindex="0"
           disablepictureinpicture
           controlslist="nodownload noplaybackrate nofullscreen"
-          aria-label="Übertragener Bildschirm (Taste f für Vollbild)"
+          aria-label="Shared screen (press f for fullscreen)"
         ></video>
         <div id="video-loading-overlay" role="status" aria-live="polite">
           <div class="video-loading-spinner" aria-hidden="true"></div>
-          <div class="video-loading-text">Verbindung wird hergestellt …</div>
+          <div class="video-loading-text">Connecting …</div>
         </div>
         <div id="video-toolbar">
           <button id="input-toggle" aria-pressed="false">
             <span class="indicator-dot" aria-hidden="true"></span>
-            <span id="input-toggle-label">Steuerung aktivieren</span>
+            <span id="input-toggle-label">Enable control</span>
           </button>
-          <button id="file-send-btn" title="Datei senden">
+          <button id="file-send-btn" title="Send file">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
               <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
             </svg>
-            Datei senden
+            Send file
           </button>
           <input type="file" id="file-input" hidden />
         </div>
-        <button id="disconnect" aria-label="Sitzung beenden">Beenden</button>
-        <div id="connection-type" role="status" aria-live="polite" aria-label="Verbindungstyp"></div>
-        <div id="pan-overlay" class="pan-overlay" role="group" aria-label="Bildausschnitt verschieben" hidden>
-          <button id="pan-up" type="button" class="pan-btn pan-up" aria-label="Ausschnitt nach oben verschieben" title="Hoch">
+        <button id="disconnect" aria-label="End session">End</button>
+        <div id="connection-type" role="status" aria-live="polite" aria-label="Connection type"></div>
+        <div id="pan-overlay" class="pan-overlay" role="group" aria-label="Pan the view" hidden>
+          <button id="pan-up" type="button" class="pan-btn pan-up" aria-label="Pan view up" title="Up">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 3a1 1 0 0 1 .7.3l4 4a1 1 0 1 1-1.4 1.4L9 6.4V13a1 1 0 1 1-2 0V6.4L4.7 8.7a1 1 0 0 1-1.4-1.4l4-4A1 1 0 0 1 8 3z"/></svg>
           </button>
-          <button id="pan-left" type="button" class="pan-btn pan-left" aria-label="Ausschnitt nach links verschieben" title="Links">
+          <button id="pan-left" type="button" class="pan-btn pan-left" aria-label="Pan view left" title="Left">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13 8a1 1 0 0 1-1 1H5.4l2.3 2.3a1 1 0 1 1-1.4 1.4l-4-4a1 1 0 0 1 0-1.4l4-4a1 1 0 1 1 1.4 1.4L5.4 7H12a1 1 0 0 1 1 1z"/></svg>
           </button>
-          <button id="pan-reset" type="button" class="pan-btn pan-reset" aria-label="Ausschnitt zentrieren" title="Zentrieren">
+          <button id="pan-reset" type="button" class="pan-btn pan-reset" aria-label="Center the view" title="Center">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="8" r="3"/></svg>
           </button>
-          <button id="pan-right" type="button" class="pan-btn pan-right" aria-label="Ausschnitt nach rechts verschieben" title="Rechts">
+          <button id="pan-right" type="button" class="pan-btn pan-right" aria-label="Pan view right" title="Right">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 8a1 1 0 0 1 1-1h6.6L8.3 4.7a1 1 0 1 1 1.4-1.4l4 4a1 1 0 0 1 0 1.4l-4 4a1 1 0 1 1-1.4-1.4L10.6 9H4a1 1 0 0 1-1-1z"/></svg>
           </button>
-          <button id="pan-down" type="button" class="pan-btn pan-down" aria-label="Ausschnitt nach unten verschieben" title="Runter">
+          <button id="pan-down" type="button" class="pan-btn pan-down" aria-label="Pan view down" title="Down">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 13a1 1 0 0 1-.7-.3l-4-4a1 1 0 1 1 1.4-1.4L7 9.6V3a1 1 0 1 1 2 0v6.6l2.3-2.3a1 1 0 0 1 1.4 1.4l-4 4A1 1 0 0 1 8 13z"/></svg>
           </button>
         </div>
-        <div id="video-controls" role="toolbar" aria-label="Zoom und Vollbild">
-          <button id="zoom-out" type="button" aria-label="Verkleinern" title="Verkleinern">
+        <div id="video-controls" role="toolbar" aria-label="Zoom and fullscreen">
+          <button id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M3 8a1 1 0 0 1 1-1h8a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1z"/>
             </svg>
           </button>
-          <button id="zoom-reset" type="button" aria-label="Originalgröße (100 %)" title="Originalgröße">
+          <button id="zoom-reset" type="button" aria-label="Original size (100%)" title="Original size">
             <span id="zoom-level">100 %</span>
           </button>
-          <button id="zoom-in" type="button" aria-label="Vergrößern" title="Vergrößern">
+          <button id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M8 3a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H9v3a1 1 0 1 1-2 0V9H4a1 1 0 0 1 0-2h3V4a1 1 0 0 1 1-1z"/>
             </svg>
           </button>
-          <button id="fullscreen-btn" type="button" aria-pressed="false" aria-label="Vollbild" title="Vollbild">
+          <button id="fullscreen-btn" type="button" aria-pressed="false" aria-label="Fullscreen" title="Fullscreen">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M1.5 1h4a.5.5 0 0 1 0 1H2v3.5a.5.5 0 0 1-1 0v-4A.5.5 0 0 1 1.5 1zm9 0h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V2h-3.5a.5.5 0 0 1 0-1zM1 10.5a.5.5 0 0 1 1 0V14h3.5a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5v-4zm14 0a.5.5 0 0 1 0 1V15h-3.5a.5.5 0 0 1 0-1H14v-3.5a.5.5 0 0 1 1 0z"/>
             </svg>
@@ -389,43 +392,43 @@
            CLAUDE.md / brainstorming-Entscheidung 2026-05-14). Bei
            Releases manuell hier oben einen neuen <li> einfügen. -->
       <section class="news-section" aria-labelledby="news-heading">
-        <h2 id="news-heading">Aktuelles</h2>
+        <h2 id="news-heading">News</h2>
         <ul class="news-list">
           <li class="news-item">
-            <time class="news-date" datetime="2026-05-14">14. Mai 2026</time>
-            <h3 class="news-title">Sharer-Download für Windows</h3>
+            <time class="news-date" datetime="2026-05-14">May 14, 2026</time>
+            <h3 class="news-title">Sharer download for Windows</h3>
             <p class="news-body">
-              Den Sharer für Windows gibt es jetzt als
-              <a href="#download">direkten Download</a> — keine
-              Installation, keine Anmeldung. Standalone-.exe oder
-              Setup-Installer mit WebView2.
+              The sharer for Windows is now available as a
+              <a href="#download">direct download</a> — no
+              installation, no sign-up. Standalone .exe or
+              setup installer with WebView2.
             </p>
           </li>
           <li class="news-item">
-            <time class="news-date" datetime="2026-05-14">14. Mai 2026</time>
-            <h3 class="news-title">Konto + Unattended Access</h3>
+            <time class="news-date" datetime="2026-05-14">May 14, 2026</time>
+            <h3 class="news-title">Account + unattended access</h3>
             <p class="news-body">
-              Einmal pairen, dauerhaft verbinden: das neue Dashboard
-              verwaltet deine eigenen Geräte mit Auto-Accept und
-              Geräte-Passwort. Konto anlegen, Code-Frage entfällt.
+              Pair once, connect anytime: the new dashboard
+              manages your own devices with auto-accept and a
+              device password. Create an account and skip the code.
             </p>
           </li>
           <li class="news-item">
-            <time class="news-date" datetime="2026-05-13">13. Mai 2026</time>
-            <h3 class="news-title">Wayland-native Bildschirmerfassung</h3>
+            <time class="news-date" datetime="2026-05-13">May 13, 2026</time>
+            <h3 class="news-title">Wayland-native screen capture</h3>
             <p class="news-body">
-              Plasma 6 und GNOME 47 funktionieren jetzt nativ via
-              GStreamer/PipeWire — kein XWayland-Fallback mehr, kein
-              flackerndes Cursor-Bild.
+              Plasma 6 and GNOME 47 now work natively via
+              GStreamer/PipeWire — no more XWayland fallback, no
+              more flickering cursor.
             </p>
           </li>
           <li class="news-item">
-            <time class="news-date" datetime="2026-05-12">12. Mai 2026</time>
-            <h3 class="news-title">Aus Screenie wird Auffi</h3>
+            <time class="news-date" datetime="2026-05-12">May 12, 2026</time>
+            <h3 class="news-title">Screenie is now Auffi</h3>
             <p class="news-body">
-              Neuer Name, neue Domain <strong>auffi.app</strong>,
-              gleicher Open-Source-Code. Bestehende Sessions laufen
-              unverändert weiter.
+              New name, new domain <strong>auffi.app</strong>,
+              same open-source code. Existing sessions keep
+              running unchanged.
             </p>
           </li>
         </ul>
@@ -441,19 +444,19 @@
            wird wie auf /download/ pro Windows-Release nachgezogen (siehe
            CLAUDE.md "Download-Proxy Patterns"). -->
       <section id="download" class="download-section" aria-labelledby="download-heading">
-        <h2 id="download-heading">Sharer für Windows herunterladen</h2>
+        <h2 id="download-heading">Download the sharer for Windows</h2>
 
         <p class="download-lede">
-          Du brauchst den Sharer nur, wenn du <strong>deinen eigenen
-          Bildschirm</strong> teilen willst — wer Hilfe leistet, öffnet
-          einfach diese Seite und tippt den Code ein.
+          You only need the sharer if you want to share <strong>your own
+          screen</strong> — whoever is helping just opens this page and
+          types in the code.
         </p>
 
         <ul class="download-features">
-          <li><strong>Keine Installation</strong> — Datei doppelklicken, läuft.</li>
-          <li><strong>Keine Daten bei uns</strong> — kein Konto nötig, Bildschirm-Daten fließen direkt P2P.</li>
-          <li><strong>DSGVO-konform</strong> — Server in Deutschland, keine Tracker, keine IPs im Klartext.</li>
-          <li><strong>Open Source (AGPL-3.0)</strong> — Quellcode auf GitHub einsehbar und auditierbar.</li>
+          <li><strong>No installation</strong> — double-click the file and it runs.</li>
+          <li><strong>No data with us</strong> — no account needed, screen data flows directly P2P.</li>
+          <li><strong>GDPR-compliant</strong> — servers in Germany, no trackers, no IPs in plaintext.</li>
+          <li><strong>Open source (AGPL-3.0)</strong> — source code on GitHub, auditable.</li>
         </ul>
 
         <div class="download-buttons">
@@ -461,22 +464,22 @@
             class="download-btn-primary"
             href="/api/downloads/file/auffi-sharer-windows-x64.exe"
             rel="noopener"
-            aria-label="Auffi Sharer für Windows herunterladen (.exe, ca. 30 MB)"
+            aria-label="Download the Auffi sharer for Windows (.exe, approx. 30 MB)"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
               <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
             </svg>
-            Sharer für Windows (.exe)
+            Sharer for Windows (.exe)
           </a>
 
           <a
             class="download-btn-secondary"
             href="/api/downloads/file/Auffi_0.5.0_x64-setup.exe"
             rel="noopener"
-            aria-label="Setup-Installer für Windows (Fallback mit WebView2-Offline)"
+            aria-label="Setup installer for Windows (fallback with offline WebView2)"
           >
-            Setup-Installer (mit WebView2)
+            Setup installer (with WebView2)
           </a>
 
           <a
@@ -484,94 +487,95 @@
             href="https://github.com/phash/auffi/releases/latest"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Alle Releases auf GitHub anzeigen"
+            aria-label="View all releases on GitHub"
           >
-            Alle Releases
+            All releases
           </a>
         </div>
 
         <p class="download-meta">
-          Standalone-.exe (~30 MB) für Windows 10/11 mit vorinstalliertem
-          WebView2 — auf modernen Systemen Standard. Falls beim Start eine
-          Fehlermeldung erscheint, nutze den Setup-Installer (~150 MB), der
-          die WebView2-Runtime mitinstalliert. Linux-Pakete (Debian/Ubuntu,
-          Fedora, Arch) findest du auf der <a href="/download/">eigenen Download-Seite</a>;
-          macOS kommt später.
+          Standalone .exe (~30 MB) for Windows 10/11 with WebView2
+          pre-installed — standard on modern systems. If you see an
+          error on launch, use the setup installer (~150 MB), which
+          installs the WebView2 runtime for you. Linux packages
+          (Debian/Ubuntu, Fedora, Arch) are on the
+          <a href="/en/download/">dedicated download page</a>;
+          macOS is coming later.
         </p>
       </section>
 
       <!-- gh #38 — Trust- / Geo-SEO-Sektion. Vier Vertrauens-Signale
            für Suchmaschinen + Besucher. -->
       <section class="trust-section" aria-labelledby="trust-heading">
-        <h2 id="trust-heading">Warum Auffi?</h2>
+        <h2 id="trust-heading">Why Auffi?</h2>
         <div class="trust-grid">
           <article class="trust-item">
-            <h3 class="trust-title">🔒 Ende-zu-Ende verschlüsselt</h3>
+            <h3 class="trust-title">🔒 End-to-end encrypted</h3>
             <p class="trust-body">
-              WebRTC mit DTLS-SRTP. Der Server vermittelt nur den
-              initialen Handshake — Bildschirminhalte, Eingaben und
-              Dateien fließen direkt zwischen den Browsern.
+              WebRTC with DTLS-SRTP. The server only brokers the
+              initial handshake — screen content, input and
+              files flow directly between the browsers.
             </p>
           </article>
           <article class="trust-item">
-            <h3 class="trust-title">🇩🇪 Server in Deutschland</h3>
+            <h3 class="trust-title">🇩🇪 Servers in Germany</h3>
             <p class="trust-body">
-              Hosted auf IONOS-VPS in Frankfurt. DSGVO-konform, keine
-              US-Cloud, keine Drittanbieter-Tracker, keine Google
+              Hosted on an IONOS VPS in Frankfurt. GDPR-compliant, no
+              US cloud, no third-party trackers, no Google
               Fonts.
             </p>
           </article>
           <article class="trust-item">
-            <h3 class="trust-title">🆓 Open Source (AGPL-3.0)</h3>
+            <h3 class="trust-title">🆓 Open source (AGPL-3.0)</h3>
             <p class="trust-body">
-              Vollständiger Quellcode auf GitHub. Selbst hosten,
-              auditieren oder forken — Backend, Viewer und Sharer
-              sind dokumentiert.
+              Full source code on GitHub. Self-host,
+              audit or fork it — backend, viewer and sharer
+              are all documented.
             </p>
           </article>
           <article class="trust-item">
-            <h3 class="trust-title">👤 Kein Konto nötig</h3>
+            <h3 class="trust-title">👤 No account needed</h3>
             <p class="trust-body">
-              9-stelliger Code, Verbinden, fertig. Konto nur für
-              Unattended Access — also wenn du regelmäßig dieselben
-              Geräte verbindest.
+              9-digit code, connect, done. An account is only for
+              unattended access — that is, when you regularly
+              connect to the same devices.
             </p>
           </article>
         </div>
         <p class="trust-compare-link">
-          Wechselst du von TeamViewer?
-          <a href="/vergleich/teamviewer/">Auffi vs TeamViewer im Vergleich →</a>
+          Switching from TeamViewer?
+          <a href="/en/compare/teamviewer/">Auffi vs TeamViewer compared →</a>
         </p>
       </section>
     </div>
 
     <div id="free-tier-warning-toast" role="alert" aria-live="assertive" aria-atomic="true">
-      ⚠ Noch 2 Min Relay-Zeit übrig — Premium kommt bald
+      ⚠ 2 min of relay time left — Premium coming soon
     </div>
 
-    <div id="file-offer-toast" role="dialog" aria-modal="true" aria-label="Dateiübertragung">
-      <div class="toast-title">Dateiübertragung</div>
+    <div id="file-offer-toast" role="dialog" aria-modal="true" aria-label="File transfer">
+      <div class="toast-title">File transfer</div>
       <div class="toast-body" id="file-offer-body"></div>
       <div class="toast-actions">
-        <button class="toast-btn toast-btn-accept" id="file-offer-accept">Annehmen</button>
-        <button class="toast-btn toast-btn-reject" id="file-offer-reject">Ablehnen</button>
+        <button class="toast-btn toast-btn-accept" id="file-offer-accept">Accept</button>
+        <button class="toast-btn toast-btn-reject" id="file-offer-reject">Decline</button>
       </div>
     </div>
 
     <!-- gh #36: unattended-mode password prompt. Shown when the
          backend sends `needs-password` after the viewer joins a
          code that resolved to a registered device. -->
-    <div id="pw-prompt-toast" role="dialog" aria-modal="true" aria-label="Geräte-Passwort">
-      <div class="toast-title">Geräte-Passwort</div>
+    <div id="pw-prompt-toast" role="dialog" aria-modal="true" aria-label="Device password">
+      <div class="toast-title">Device password</div>
       <div class="toast-body">
-        <p id="pw-prompt-message">Dieses Gerät ist passwortgeschützt. Bitte das Geräte-Passwort eingeben.</p>
+        <p id="pw-prompt-message">This device is password-protected. Please enter the device password.</p>
         <input id="pw-prompt-input" type="password" autocomplete="off"
-          aria-label="Geräte-Passwort"
+          aria-label="Device password"
           style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; font-size: 1rem;" />
       </div>
       <div class="toast-actions">
-        <button class="toast-btn toast-btn-accept" id="pw-prompt-submit">Verbinden</button>
-        <button class="toast-btn toast-btn-reject" id="pw-prompt-cancel">Abbrechen</button>
+        <button class="toast-btn toast-btn-accept" id="pw-prompt-submit">Connect</button>
+        <button class="toast-btn toast-btn-reject" id="pw-prompt-cancel">Cancel</button>
       </div>
     </div>
 
@@ -579,7 +583,7 @@
       <span>
         powered by
         <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
-        und
+        and
         <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
       </span>
       <span class="legal-links">
