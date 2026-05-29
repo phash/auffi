@@ -10,6 +10,7 @@ import { DEFAULT_ZOOM, ZOOM_STEPS, formatZoom, nextZoomLevel } from "./zoom.js";
 import { ZERO_PAN, clampPan, stepPan, type PanState } from "./pan.js";
 import { createIceStateHandler } from "./ice-state-handler.js";
 import { CompactBarController } from "./compact-bar.js";
+import { friendlyJoinError, connectTimeoutMessage } from "./connect-messages.js";
 
 // gh #40: lazy singleton — initialized in setupUi() once the DOM is
 // ready. Module-level so setVideoStream() (also module-level) can
@@ -21,6 +22,14 @@ import {
   formatDuration,
   formatFileSize,
 } from "./session-summary.js";
+
+// Backstop timeouts so the connect flow never dead-ends in a spinner. The
+// visible Abbrechen button is the primary escape; these fire only if the user
+// walks away. CONFIRM covers "waiting for the sharer to click Akzeptieren";
+// MEDIA covers "confirmed, but no decoded frame arrives" (e.g. P2P blocked and
+// no reachable TURN relay — surfaced as a firewall hint, see connectTimeoutMessage).
+export const CONNECT_CONFIRM_TIMEOUT_MS = 60_000;
+export const CONNECT_MEDIA_TIMEOUT_MS = 30_000;
 
 function setStatus(text: string, kind: "ok" | "err" | "info"): void {
   const el = document.getElementById("status")!;
@@ -190,6 +199,7 @@ export function bindUI(backendWsUrl: string): void {
   const codeInput = document.getElementById("code") as HTMLInputElement;
   const connectBtn = document.getElementById("connect") as HTMLButtonElement;
   const disconnectBtn = document.getElementById("disconnect") as HTMLButtonElement;
+  const cancelConnectBtn = document.getElementById("cancel-connect") as HTMLButtonElement | null;
   const inputToggleBtn = document.getElementById("input-toggle") as HTMLButtonElement;
   const refreshBtn = document.getElementById("refresh-btn") as HTMLButtonElement | null;
   const reconnectWrap = document.getElementById("reconnect-wrap") as HTMLElement | null;
@@ -359,6 +369,26 @@ export function bindUI(backendWsUrl: string): void {
     }
   }
 
+  // Backstop timer for the connect phase (see CONNECT_*_TIMEOUT_MS). Cleared
+  // once the first frame arrives, on teardown, and while we're waiting on the
+  // human (password prompt).
+  let connectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function clearConnectTimeout(): void {
+    if (connectTimeout !== null) {
+      clearTimeout(connectTimeout);
+      connectTimeout = null;
+    }
+  }
+
+  function showConnectingControls(): void {
+    if (cancelConnectBtn) cancelConnectBtn.hidden = false;
+  }
+
+  function hideConnectingControls(): void {
+    if (cancelConnectBtn) cancelConnectBtn.hidden = true;
+  }
+
   // Session-summary tracker (gh #73). Reset whenever a new session begins.
   let sessionTracker = new SessionTracker();
   let sessionSummaryDismissTimer: ReturnType<typeof setTimeout> | null = null;
@@ -463,6 +493,8 @@ export function bindUI(backendWsUrl: string): void {
 
   function teardown(reason: string, kind: "ok" | "err" | "info" = "info", canReconnect = false): void {
     clearIceGraceTimer();
+    clearConnectTimeout();
+    hideConnectingControls();
     freeTierTimer?.stop();
     freeTierTimer = null;
     hideFreeTierWarning();
@@ -526,6 +558,17 @@ export function bindUI(backendWsUrl: string): void {
       hideReconnect();
       manualDisconnectTimer = null;
     }, MANUAL_DISCONNECT_RECONNECT_WINDOW_MS);
+  });
+
+  cancelConnectBtn?.addEventListener("click", () => {
+    // Let the sharer know we gave up so its confirm dialog can dismiss,
+    // best-effort. Then return to the entry screen with reconnect offered.
+    try {
+      signaling?.sendRelay({ kind: "bye" });
+    } catch {
+      /* ignore */
+    }
+    teardown("Verbindung abgebrochen.", "info", true);
   });
 
   refreshBtn?.addEventListener("click", () => {
@@ -602,23 +645,45 @@ export function bindUI(backendWsUrl: string): void {
 
   function doConnect(code: string): void {
     clearManualDisconnectTimer();
+    clearConnectTimeout();
     hideSessionSummary();
     sessionTracker = new SessionTracker();
     lastCode = code;
     hideReconnect();
     setStatus("Warte auf Bestätigung durch den Sharer…", "info");
     connectBtn.disabled = true;
+    showConnectingControls();
+
+    // Closure state the backstop timer reads when it fires: whether the
+    // sharer has confirmed yet, and whether a TURN relay was on offer.
+    let confirmed = false;
+    let relayAvailable = false;
+    const armConnectTimeout = (ms: number): void => {
+      clearConnectTimeout();
+      connectTimeout = setTimeout(() => {
+        connectTimeout = null;
+        teardown(connectTimeoutMessage({ confirmed, relayAvailable }), "err", true);
+      }, ms);
+    };
+    armConnectTimeout(CONNECT_CONFIRM_TIMEOUT_MS);
 
     const backendHttpUrl = wsUrlToHttpUrl(backendWsUrl);
 
     void fetchIceServers(backendHttpUrl, code).then((iceServers) => {
+      relayAvailable = iceServers.length > 0;
       signaling = new SignalingClient(backendWsUrl);
       peer = new ViewerPeer({ iceServers });
 
       const videoEl = document.getElementById("remote-video") as HTMLVideoElement;
 
       peer.onTrack((stream) => {
-        setVideoStream(stream, () => sessionTracker.markStreamStarted());
+        setVideoStream(stream, () => {
+          // First decoded frame: the session is genuinely live. Stop the
+          // connect backstop and drop the Abbrechen control.
+          clearConnectTimeout();
+          hideConnectingControls();
+          sessionTracker.markStreamStarted();
+        });
         const hub = peer!.getDataHub();
         hub.ready().then(() => {
           capture = new InputCapture(videoEl, (ev) => hub.sendInput(ev));
@@ -729,6 +794,9 @@ export function bindUI(backendWsUrl: string): void {
         if (password.length === 0) return;
         pwSubmit!.disabled = true;
         setStatus("Passwort wird geprüft…", "info");
+        // Re-arm the backstop for the pw-check round-trip: a wrong-password /
+        // locked / confirmed response clears or replaces it.
+        armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
         signaling?.sendPwAttempt(password);
         // Don't hide the toast yet — wrong-password may bring it
         // back. peer-confirmed (join resolves) will hide it.
@@ -745,9 +813,13 @@ export function bindUI(backendWsUrl: string): void {
       }
 
       signaling.onNeedsPassword(() => {
+        // Now waiting on the human to type a password — pause the backstop
+        // so a slow typist isn't torn down mid-entry. submitPw re-arms it.
+        clearConnectTimeout();
         showPwPrompt("Dieses Gerät ist passwortgeschützt. Bitte das Geräte-Passwort eingeben.", false);
       });
       signaling.onWrongPassword((attemptsLeft) => {
+        clearConnectTimeout();
         showPwPrompt(
           `Falsches Passwort. Noch ${attemptsLeft} Versuch${attemptsLeft === 1 ? "" : "e"}.`,
           true,
@@ -756,13 +828,19 @@ export function bindUI(backendWsUrl: string): void {
 
       signaling.onDisconnect((reason) => {
         hidePwPrompt();
-        teardown(`Verbindung beendet: ${reason}`, "err", true);
+        const friendly = friendlyJoinError(reason);
+        teardown(friendly.text, friendly.kind, true);
       });
 
       signaling
         .join(code)
         .then(async () => {
           if (!peer || !signaling) return;
+          // Sharer confirmed. Switch the backstop from the (generous)
+          // confirmation window to the shorter media window: we now expect a
+          // decoded frame promptly, or it's a relay/firewall problem.
+          confirmed = true;
+          armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
           hidePwPrompt();
           const offer = await peer.start();
           signaling.sendRelay({ kind: "sdp", sdp: offer });
@@ -775,22 +853,11 @@ export function bindUI(backendWsUrl: string): void {
         .catch((e: unknown) => {
           hidePwPrompt();
           const msg = e instanceof Error ? e.message : String(e);
-          // gh #36: friendly text for the unattended-mode terminal
-          // failures so the user sees what went wrong instead of a
-          // raw error code.
-          if (msg.startsWith("locked:")) {
-            const secs = Number(msg.slice("locked:".length));
-            const mins = Math.max(1, Math.ceil(secs / 60));
-            teardown(
-              `Zu viele Fehlversuche. Sperre für ca. ${mins} Min — später erneut versuchen.`,
-              "err",
-              true,
-            );
-          } else if (msg === "rejected-by-user") {
-            teardown("Der Sharer hat die Verbindung abgelehnt.", "info", true);
-          } else {
-            teardown(`Fehler: ${msg}`, "err", true);
-          }
+          // Map every terminal failure (wrong/expired code, decline, lockout,
+          // rate-limit, protocol error) to friendly German copy so the
+          // non-technical helper never sees a raw protocol token.
+          const friendly = friendlyJoinError(msg);
+          teardown(friendly.text, friendly.kind, true);
         });
     });
   }

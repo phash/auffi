@@ -512,6 +512,27 @@ a:hover { border-bottom-color: var(--cyan); }
   gap: 0.5rem;
 }
 .connect-row #connect { flex: 1; }
+.cancel-connect {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.875rem 1rem;
+  min-height: 48px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background 120ms ease, transform 100ms ease;
+  -webkit-appearance: none;
+}
+.cancel-connect:hover { background: var(--surface); }
+.cancel-connect:active { transform: translateY(1px); }
+.cancel-connect:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.cancel-connect[hidden] { display: none; }
 .icon-btn {
   flex-shrink: 0;
   padding: 0.75rem 0.875rem;
