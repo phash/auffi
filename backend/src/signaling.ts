@@ -21,10 +21,16 @@ import {
   UnattendedSessions,
 } from "./unattended_sessions.js";
 import { startConnectionLog, endConnectionLog } from "./connection_log.js";
+import {
+  checkIpRateLimit as checkRateLimit,
+  stripIpv4Mapped,
+  type RateLimitConfig,
+  type RateLimitEntry,
+} from "./rate-limit.js";
 
-export type RateLimitEntry = { count: number; resetAt: number };
-
-export type RateLimitConfig = { windowMs: number; max: number };
+// Re-exported so existing importers keep a stable surface; the canonical
+// home is rate-limit.ts.
+export type { RateLimitConfig, RateLimitEntry } from "./rate-limit.js";
 
 export type PerPeerRateLimitConfig = { windowMs: number; max: number };
 
@@ -46,25 +52,6 @@ function newPerPeerEntry(cfg: PerPeerRateLimitConfig): RateLimitEntry {
   return { count: 0, resetAt: Date.now() + cfg.windowMs };
 }
 
-function stripIpv4Mapped(ip: string): string {
-  return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
-}
-
-function checkRateLimit(
-  rawIp: string,
-  counts: Map<string, RateLimitEntry>,
-  cfg: RateLimitConfig
-): boolean {
-  const ip = stripIpv4Mapped(rawIp);
-  const now = Date.now();
-  const entry = counts.get(ip);
-  if (!entry || now > entry.resetAt) {
-    counts.set(ip, { count: 1, resetAt: now + cfg.windowMs });
-    return true;
-  }
-  entry.count += 1;
-  return entry.count <= cfg.max;
-}
 
 const DEFAULT_PER_PEER_LIMIT: PerPeerRateLimitConfig = { windowMs: 10_000, max: 50 };
 
