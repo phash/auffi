@@ -1,0 +1,25 @@
+# Smoke-test coturn config — no TLS, no DTLS, so the local stack works without
+# a Let's Encrypt certificate. Mounted by docker-compose.smoke.yml in place of
+# the production turnserver.conf.tmpl and processed by the same entrypoint.sh
+# (which substitutes the ${...} placeholders). See docs/smoke-test-prod.md.
+#
+# NOTE: this config intentionally OMITS the production `denied-peer-ip`
+# hardening. The smoke test runs entirely on the local host where the WebRTC
+# peers themselves live on loopback / private ranges; denying those would break
+# the local relay path. The smoke stack is never exposed to the internet, so
+# the SSRF concern the production template guards against does not apply here.
+listening-port=3478
+listening-ip=${TURN_LISTENING_IP}
+external-ip=${TURN_EXTERNAL_IP}
+fingerprint
+use-auth-secret
+static-auth-secret=${TURN_SHARED_SECRET}
+realm=${TURN_REALM}
+total-quota=100
+user-quota=5000000
+max-bps=5000000
+lifetime=600
+no-multicast-peers
+no-tls
+no-dtls
+log-file=stdout
