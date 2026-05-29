@@ -138,13 +138,19 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   const turnTtlSec = envNumber("TURN_TTL_SEC", 3600);
   const app = Fastify({
     logger: buildLoggerOptions(process.env.NODE_ENV),
-    // We run behind the cluster's Caddy reverse-proxy (which sets
-    // X-Forwarded-For). Without this, req.ip resolves to the proxy's
-    // address for every request and the per-IP rate limiters
-    // (signaling joins, /turn-credentials, auth endpoints) collapse to
-    // a single bucket. The backend port is not exposed outside the
-    // internal docker network so the trust is safe.
-    trustProxy: true,
+    // We run behind exactly one reverse-proxy hop (the cluster's Caddy in
+    // production, our own Caddy in standalone), which sets X-Forwarded-For.
+    // Without trusting it, req.ip resolves to the proxy's address for every
+    // request and the per-IP rate limiters (signaling joins,
+    // /turn-credentials, auth endpoints) collapse to a single bucket. We pin
+    // the trust to a single hop rather than `true`: `true` trusts the ENTIRE
+    // client-supplied XFF chain, so a caller could spoof
+    // `X-Forwarded-For: 1.2.3.4` to mint a fresh rate-limit bucket per request
+    // and defeat every brute-force protection. `1` trusts only the nearest
+    // proxy and takes the rightmost XFF entry as the real client. The backend
+    // port is not exposed outside the internal docker network today, so this
+    // is defence-in-depth against a future port-publish misconfiguration.
+    trustProxy: 1,
   });
 
   await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
