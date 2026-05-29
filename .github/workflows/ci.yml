@@ -51,10 +51,70 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # vite build uses esbuild and does NOT type-check — run tsc explicitly.
+      - name: Type-check
+        run: npx tsc --noEmit
+
       - name: Run tests with coverage
         run: npm test -- --coverage
 
       - name: Build
+        run: npm run build
+
+  dashboard:
+    name: Dashboard (Node 22)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      - name: Build
+        run: npm run build
+
+  sharer-webview:
+    name: Sharer webview (Node 22)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sharer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sharer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+
+      - name: Build webview bundle
         run: npm run build
 
   sharer:
