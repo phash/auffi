@@ -105,6 +105,103 @@ Forwarded `relay` message from the other peer.
 
 ---
 
+## Unattended-Access Extensions (gh #16 / #17 / #25)
+
+The messages above cover the **ad-hoc** flow (sharer mints a code, confirms each
+viewer manually). A second flow exists for **unattended** devices: an account
+pairs a device once, the sharer keeps a persistent WSS open, and a viewer
+connects with the device's code + a device password instead of a per-session
+human confirmation. The authoritative wire types live in
+[`backend/src/protocol.ts`](../backend/src/protocol.ts) and the sharer side in
+[`sharer/src-tauri/src/heartbeat.rs`](../sharer/src-tauri/src/heartbeat.rs)
+(`BackendFrame` / `SharerFrame`).
+
+### Sharer connect (Bearer, not `register`)
+
+An unattended sharer authenticates the `/signal` WebSocket upgrade with
+`Authorization: Bearer <device-token>` + `X-Auffi-Device-Id: <id>` headers
+(rate-limited per IP, Sec H-1) instead of sending a `register` frame. On
+success the backend replies:
+
+```json
+{ "type": "unattended-hello", "deviceId": "284-915-073" }
+```
+
+The sharer then idles, waiting for `pw-check` frames.
+
+### `needs-password` (→ viewer)
+A `join` whose code resolves to a live unattended device. Instead of pairing
+immediately, the backend prompts the viewer for the device password.
+```json
+{ "type": "needs-password" }
+```
+
+### `pw-attempt` (viewer → server)
+```json
+{ "type": "pw-attempt", "password": "the-device-password" }
+```
+
+### `pw-check` (→ sharer)
+Backend forwards the attempt to the sharer, which argon2-verifies it **locally**
+(the backend never sees the device password hash). `autoAccept` mirrors
+`devices.auto_accept` and is sent on every check so a dashboard toggle takes
+effect without a sharer reconnect.
+```json
+{ "type": "pw-check", "attempt": "the-device-password", "autoAccept": false }
+```
+
+### `pw-check-result` (sharer → server)
+Result of the local verify (and the optional manual-confirm dialog when
+`autoAccept` is false):
+```json
+{ "type": "pw-check-result", "result": "ok" | "fail" | "rejected" }
+```
+- `ok` → backend pairs the peers and sends `peer-confirmed` to the viewer; SDP/ICE relay proceeds as in the ad-hoc flow.
+- `fail` → argon2 rejected; backend increments the per-device lockout counter and sends `wrong-password`.
+- `rejected` → verify succeeded but the user clicked *ablehnen*; backend sends `rejected-by-user`.
+
+> A late `pw-check-result` (sharer took a slow manual-confirm path after the
+> viewer already gave up) is **silently dropped**, not error-reported — a
+> `bad-message` error here would make the sharer's heartbeat treat it as a
+> fatal disconnect (TC C-2).
+
+### `wrong-password` (→ viewer)
+```json
+{ "type": "wrong-password", "attemptsLeft": 3 }
+```
+
+### `locked` (→ viewer)
+Per-device attempts exhausted (5 fails → 15-min lockout, spec §6). Also sent if
+a viewer joins a device that is already in its lockout window.
+```json
+{ "type": "locked", "retryAfterSec": 840 }
+```
+
+### `rejected-by-user` (→ viewer)
+```json
+{ "type": "rejected-by-user" }
+```
+
+> **Manual-confirm routing (sharer-internal).** When `autoAccept` is false the
+> sharer Rust core raises a `needs-confirm` Tauri event to its own webview
+> carrying a monotonic `confirmId`; the webview must echo that id back through
+> the `unattended_confirm` command. This `confirmId` is a sharer-process
+> detail (`pending_confirms: HashMap<u64, Sender>`), **not** a backend wire
+> field — it never crosses the WSS. See `sharer/src-tauri/src/unattended_cmd.rs`.
+
+### Connection telemetry (sharer → server)
+The sharer reports connection lifecycle for the `connection_log` and relay-byte
+accounting (feeds the free-tier relay cap).
+```json
+{ "type": "connection-started", "connectionType": "p2p" | "relay" }
+{ "type": "connection-ended", "bytesRelayed": 1048576 }
+```
+> Currently emitted only by the **ad-hoc** signaling path. The unattended
+> heartbeat path defines these wire shapes but does not yet emit them
+> (gh #109).
+
+---
+
 ## DataChannel Sub-Protocols
 
 Once the WebRTC peer connection is active, two named DataChannels are opened
