@@ -374,6 +374,12 @@ export function bindUI(backendWsUrl: string): void {
   // human (password prompt).
   let connectTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  // Bumped on every doConnect and every teardown. The async fetchIceServers()
+  // continuation captures its generation and bails if it's stale — otherwise a
+  // cancel/teardown that fires while the TURN-credentials fetch is in flight
+  // would be undone when the late `.then` re-creates the peer + WS.
+  let connectGeneration = 0;
+
   function clearConnectTimeout(): void {
     if (connectTimeout !== null) {
       clearTimeout(connectTimeout);
@@ -492,6 +498,8 @@ export function bindUI(backendWsUrl: string): void {
   }
 
   function teardown(reason: string, kind: "ok" | "err" | "info" = "info", canReconnect = false): void {
+    // Invalidate any in-flight doConnect continuation (see connectGeneration).
+    connectGeneration++;
     clearIceGraceTimer();
     clearConnectTimeout();
     hideConnectingControls();
@@ -667,9 +675,13 @@ export function bindUI(backendWsUrl: string): void {
     };
     armConnectTimeout(CONNECT_CONFIRM_TIMEOUT_MS);
 
+    const connectGen = ++connectGeneration;
     const backendHttpUrl = wsUrlToHttpUrl(backendWsUrl);
 
     void fetchIceServers(backendHttpUrl, code).then((iceServers) => {
+      // The user cancelled / a teardown fired while the fetch was in flight —
+      // don't resurrect the connection.
+      if (connectGen !== connectGeneration) return;
       relayAvailable = iceServers.length > 0;
       signaling = new SignalingClient(backendWsUrl);
       peer = new ViewerPeer({ iceServers });
