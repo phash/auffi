@@ -1,6 +1,6 @@
 [package]
 name = "auffi-sharer"
-version = "0.4.5"
+version = "0.5.0"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Auffi — sicheres Open-Source Bildschirm-Sharing mit Fernsteuerung"

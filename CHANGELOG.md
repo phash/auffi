@@ -5,6 +5,50 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.5.0] — 2026-05-29
+
+Bündelt die Ergebnisse eines Security- und UX-Reviews.
+
+### Sicherheit
+
+- **TURN-Relay-SSRF geschlossen.** coturn verweigert jetzt Relays zu allen
+  Special-Use-/Private-Bereichen (RFC1918, Loopback, Link-Local inkl.
+  Cloud-Metadata `169.254.169.254`, CGNAT, IPv4-mapped IPv6) — ein Client mit
+  TURN-Credentials kann den Relay nicht mehr als internen Port-Scanner gegen
+  Backend, Matomo oder Nachbar-Container missbrauchen.
+- **`X-Forwarded-For`-Spoofing entschärft.** Das Backend traut nur noch genau
+  einem Proxy-Hop (`trustProxy: 1` statt `true`), damit eine gefälschte
+  XFF-Kette die Per-IP-Rate-Limits nicht aushebeln kann.
+- **Feedback-Endpoint gegen argon2-DoS gehärtet.** Der Sharer-Bearer-Pfad von
+  `POST /api/feedback` hat ein eigenes, engeres Per-IP-Limit vor dem
+  argon2-Verify (analog zum Signaling-Bearer-Cap).
+
+### Geändert
+
+- **Viewer: verständliche Fehlermeldungen statt Roh-Codes.** Falscher/
+  abgelaufener Code, gesperrter Code, abgelehnte Anfrage usw. erscheinen jetzt
+  als deutscher Klartext mit Handlungspfad statt `Fehler: invalid-code …`.
+- **Viewer: kein Endlos-Spinner mehr.** Ein Connect-Timeout (mit Firewall-
+  Hinweis, wenn kein Relay erreichbar war) und ein sichtbarer
+  „Abbrechen"-Button geben immer einen Ausweg aus „Warte auf Bestätigung…".
+- **Downloads auf der Startseite laufen über den Proxy.** Die Windows-Buttons
+  zeigen nicht mehr direkt auf GitHub (keine IP an Dritte, server-seitiger
+  Zähler) — konsistent mit der `/download/`-Seite.
+
+### Behoben
+
+- Defekter „Setup-Installer"-Link auf der Startseite (zeigte auf ein nicht
+  existierendes Asset → 404).
+- Zwei latente Typfehler im Sharer-Webview (nie typgeprüft, da der Build via
+  esbuild läuft).
+
+### Intern
+
+- Geteilter Per-IP-Rate-Limiter (`rate-limit.ts`), CI-Jobs für Dashboard +
+  Sharer-Webview, `tsc --noEmit`-Gates, Dashboard-Coverage-Tooling,
+  Sharer-`tsconfig.json`, Entfernung veralteter `dead_code`-Allows,
+  Protokoll-Doku für den Unattended-Flow.
+
 ## [0.4.5] — 2026-05-21
 
 ### Hinzugefügt
