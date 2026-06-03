@@ -37,36 +37,52 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --paper: #f5f1e6;
-  --paper-edge: #ebe5d4;
-  --ink: #14110d;
-  --ink-soft: #4a443a;
-  --rule: #14110d;
-  --edge: #ddd5c0;
-  --amber: #f3a300;
-  --amber-deep: #c98300;
-  --amber-ink: #1a1408;
-  --cyan: #0e4c9c;
+  --paper: #f6faf8;
+  --surface: #ffffff;
+  --ink: #0f1f1a;
+  --muted: #5b6b64;
+  --brand: #10b981;
+  --brand-2: #34d399;
+  --brand-strong: #047857;
+  --line: #e3ece8;
+  --focus: #10b981;
+
+  --radius-card: 16px;
+  --radius-input: 12px;
+  --radius-pill: 999px;
+  --radius-sm: 10px;
+  --shadow-sm: 0 1px 2px rgba(15, 31, 26, 0.05), 0 2px 8px rgba(16, 185, 129, 0.06);
+  --shadow-lift: 0 4px 12px rgba(15, 31, 26, 0.08), 0 8px 24px rgba(16, 185, 129, 0.10);
+
+  /* Legacy bridges — keep old class users working */
+  --bg: var(--paper);
+  --text: var(--ink);
+  --card-bg: var(--surface);
+  --accent: var(--brand-strong);
+  --amber: var(--brand-strong);
+  --cyan: var(--brand-strong);
+
+  /* Extra legacy bridges for component styles not yet recasted */
+  --text-primary: var(--ink);
+  --text-secondary: var(--muted);
+  --border: var(--line);
+  --accent-hover: var(--brand-strong);
+  --accent-active: var(--brand-strong);
+  --shadow: var(--shadow-sm);
+  --radius: 0;
+  --success: var(--brand);
+
+  /* Semantic tokens still referenced by components */
+  --paper-edge: var(--surface);
+  --ink-soft: var(--muted);
+  --rule: var(--line);
+  --edge: var(--line);
+  --amber-deep: var(--brand-strong);
+  --amber-ink: #0f1f1a;
   --error: #a83b3b;
   --error-deep: #862828;
   --warning: #b7791f;
   --signal-on: #2e7d32;
-
-  /* Legacy bridges so existing inline style attributes + view code
-     keep working without touching every view file. */
-  --bg: var(--paper);
-  --card-bg: var(--paper);
-  --surface: var(--paper-edge);
-  --text: var(--ink);
-  --text-primary: var(--ink);
-  --text-secondary: var(--ink-soft);
-  --border: var(--edge);
-  --accent: var(--amber);
-  --accent-hover: var(--amber-deep);
-  --accent-active: var(--amber-deep);
-  --shadow: none;
-  --radius: 0;
-  --success: var(--signal-on);
 
   --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -77,16 +93,26 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #0e0c08;
-    --paper-edge: #1a1610;
-    --ink: #ece6d4;
-    --ink-soft: #9a9281;
-    --rule: #ece6d4;
-    --edge: #2a241b;
-    --amber: #f4b73a;
-    --amber-deep: #ffd166;
-    --amber-ink: #0e0c08;
-    --cyan: #66a9ff;
+    --paper: #0c1714;
+    --surface: #11201c;
+    --ink: #e8f1ec;
+    --muted: #9fb2aa;
+    --brand: #34d399;
+    --brand-2: #10b981;
+    --brand-strong: #34d399;
+    --line: #20312b;
+    --focus: #34d399;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-lift: 0 6px 20px rgba(0, 0, 0, 0.5);
+
+    /* Derived legacy bridges updated for dark mode */
+    --paper-edge: var(--surface);
+    --ink-soft: var(--muted);
+    --rule: var(--line);
+    --edge: var(--line);
+    --amber: var(--brand-strong);
+    --amber-deep: var(--brand-strong);
+    --amber-ink: #0c1714;
     --error: #d65a5a;
     --error-deep: #f07474;
     --warning: #e2a648;
