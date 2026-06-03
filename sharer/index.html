@@ -57,9 +57,10 @@
 
       @media (prefers-color-scheme: dark) {
         :root {
-          /* Brand (same in dark) */
-          --brand: #10b981;
-          --brand-strong: #047857;
+          /* Brand — light emerald in dark so dark ink (#06231b) passes AA */
+          --brand: #34d399;
+          --brand-strong: #34d399;
+          --brand-2: #10b981;
           --ink-on-brand: #06231b;
 
           /* Page / surface */
@@ -506,6 +507,14 @@
       }
       .password-toggle[aria-pressed="true"] { color: var(--text); }
 
+      /* ── Unattended inputs — standard border + radius (inline styles only
+         set padding/font, so this adds the missing shape tokens) ── */
+      #unattended-pair-code,
+      #unattended-pw-input {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-input);
+      }
+
       /* ── Global focus ring ── */
       :focus-visible {
         outline: 2px solid var(--focus);
@@ -561,7 +570,7 @@
 
       .btn-danger {
         background: rgba(220,38,38,0.10);
-        color: #dc2626;
+        color: var(--error);
         border: 1px solid rgba(220,38,38,0.35);
         width: 100%;
       }
@@ -847,7 +856,7 @@
         transition: background 150ms ease, color 150ms ease;
         flex-shrink: 0;
       }
-      .btn-remove-peer:hover { background: rgba(220,38,38,0.10); color: #dc2626; border-color: rgba(220,38,38,0.35); }
+      .btn-remove-peer:hover { background: rgba(220,38,38,0.10); color: var(--error); border-color: rgba(220,38,38,0.35); }
       .btn-remove-peer:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
       .trusted-empty {
