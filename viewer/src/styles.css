@@ -213,6 +213,10 @@
   -webkit-appearance: none;
   outline: none;
 }
+.topbar-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 .topbar-btn:hover {
   background: var(--surface);
   box-shadow: var(--shadow-sm);
