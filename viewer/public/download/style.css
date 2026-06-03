@@ -2,16 +2,6 @@
    Topbar, footer, color variables and body base styles are loaded
    from /topbar-footer.css (linked first in the <head>). */
 
-:root {
-  --radius: var(--radius-card);
-  --shadow: var(--shadow-sm);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --shadow: var(--shadow-sm);
-  }
-}
-
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { line-height: 1.5; }

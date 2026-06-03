@@ -518,6 +518,7 @@ section:first-of-type { border-top: none; padding-top: 0; }
 }
 .download-btn:hover {
   background: var(--brand);
+  color: var(--ink-on-brand);
   box-shadow: var(--shadow-lift);
   transform: translateY(-1px);
   border-bottom: none;

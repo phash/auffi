@@ -144,7 +144,7 @@
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 .feedback-modal-btn:hover {
-  background: var(--surface, #ffffff);
+  background: color-mix(in srgb, var(--brand, #10b981) 10%, transparent);
   border-color: var(--brand, #10b981);
   color: var(--brand-strong, #047857);
 }
