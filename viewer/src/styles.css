@@ -7,11 +7,9 @@
  * (/fonts/IBMPlex*.woff2), per the CLAUDE.md no-third-party-CDN
  * rule. Class names are preserved verbatim — visuals only change.
  *
- * Aesthetic: ink-on-paper engineering brief. Warm cream paper bg
- * with subtle radial-dot grain. Square corners, sharp 1.5–2px
- * ink rules instead of card shadows. Amber as the single
- * saturated action color. IBM Plex Sans for prose, Plex Mono for
- * data and section labels. */
+ * Aesthetic: Calm Fresh — emerald/mint palette, rounded corners
+ * (radius tokens), soft card shadows, emerald as the primary accent.
+ * IBM Plex Sans for prose, Plex Mono for data and mono eyebrow labels. */
 
 @font-face {
   font-family: "Plex Sans";
@@ -42,6 +40,7 @@
   --ink: #0f1f1a;
   --muted: #5b6b64;
   --brand: #10b981;
+  /* Reserved — consumed by the component recast in Task 2 (cards, buttons, hero, inputs) */
   --brand-2: #34d399;
   --brand-strong: #047857;
   --line: #e3ece8;
@@ -82,6 +81,8 @@
   --error: #a83b3b;
   --error-deep: #862828;
   --warning: #b7791f;
+  /* Status/"live" indicator green — intentionally deeper than --brand for a
+     distinct connected-state signal; keep separate from the brand accent. */
   --signal-on: #2e7d32;
 
   --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;

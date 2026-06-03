@@ -8,7 +8,7 @@ const css = readFileSync(
 );
 
 function token(name: string): string {
-  const m = css.match(new RegExp(`${name}\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
+  const m = css.match(new RegExp(`${name}(?![\\w-])\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
   if (!m) throw new Error(`token ${name} not found in styles.css`);
   return m[1];
 }
