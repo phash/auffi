@@ -1,5 +1,5 @@
 /* ============================================================
- * AUFFI · SHARED MARKETING TOPBAR + FOOTER · ENGINEERING-BRIEF
+ * AUFFI · SHARED MARKETING TOPBAR + FOOTER · CALM FRESH
  * ============================================================
  * Used by impressum/, datenschutz/, download/. The SPA at
  * viewer/index.html ships an identical token-set + components via
@@ -7,9 +7,8 @@
  * visual rules; HTML class names are stable across the SPA + the
  * static-page set so the same selectors apply.
  *
- * Aesthetic mirrors the dashboard (ink-on-paper engineering brief,
- * amber action accent, IBM Plex Sans + Plex Mono, square corners,
- * sharp rules). Fonts are self-hosted under /fonts/. */
+ * Aesthetic: emerald/mint, rounded corners, soft card shadows,
+ * mono eyebrow labels kept. Fonts are self-hosted under /fonts/. */
 
 /* ── @font-face ──────────────────────────────────────────────── */
 @font-face {
@@ -35,29 +34,40 @@
 
 /* ── Design tokens ───────────────────────────────────────────── */
 :root {
-  --paper: #f5f1e6;
-  --paper-edge: #ebe5d4;
-  --ink: #14110d;
-  --ink-soft: #4a443a;
-  --rule: #14110d;
-  --edge: #ddd5c0;
-  --amber: #f3a300;
-  --amber-deep: #c98300;
-  --amber-ink: #1a1408;
-  --cyan: #0e4c9c;
-  --error: #a83b3b;
-  --warning: #b7791f;
+  --paper: #f6faf8;
+  --surface: #ffffff;
+  --ink: #0f1f1a;
+  --muted: #5b6b64;
+  --brand: #10b981;
+  --brand-2: #34d399;
+  --brand-strong: #047857;
+  --ink-on-brand: #06231b;
+  --line: #e3ece8;
+  --focus: #10b981;
+  --radius-card: 16px;
+  --radius-input: 12px;
+  --radius-pill: 999px;
+  --radius-sm: 10px;
+  --shadow-sm: 0 1px 2px rgba(15,31,26,0.05), 0 2px 8px rgba(16,185,129,0.06);
+  --shadow-lift: 0 4px 12px rgba(15,31,26,0.08), 0 8px 24px rgba(16,185,129,0.10);
 
-  /* Legacy bridges so view-inline-styles + the Vite-bundled SPA
-     can read the same names. */
+  /* legacy bridges */
   --bg: var(--paper);
-  --card-bg: var(--paper);
-  --surface: var(--paper-edge);
   --text: var(--ink);
-  --text-secondary: var(--ink-soft);
-  --border: var(--edge);
-  --accent: var(--amber);
-  --accent-hover: var(--amber-deep);
+  --card-bg: var(--surface);
+  --accent: var(--brand-strong);
+  --amber: var(--brand-strong);
+  --cyan: var(--brand-strong);
+
+  /* kept for components that reference them directly */
+  --ink-soft: var(--muted);
+  --edge: var(--line);
+  --accent-hover: var(--brand);
+  --amber-ink: var(--ink-on-brand);
+  --border: var(--line);
+  --text-secondary: var(--muted);
+  --error: #b91c1c;
+  --warning: #b45309;
 
   --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -68,18 +78,18 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #0e0c08;
-    --paper-edge: #1a1610;
-    --ink: #ece6d4;
-    --ink-soft: #9a9281;
-    --rule: #ece6d4;
-    --edge: #2a241b;
-    --amber: #f4b73a;
-    --amber-deep: #ffd166;
-    --amber-ink: #0e0c08;
-    --cyan: #66a9ff;
-    --error: #d65a5a;
-    --warning: #e2a648;
+    --paper: #0c1714;
+    --surface: #11201c;
+    --ink: #e8f1ec;
+    --muted: #9fb2aa;
+    --brand: #34d399;
+    --brand-2: #10b981;
+    --brand-strong: #34d399;
+    --ink-on-brand: #06231b;
+    --line: #20312b;
+    --focus: #34d399;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-lift: 0 6px 20px rgba(0,0,0,0.5);
   }
 }
 
@@ -90,26 +100,18 @@ body {
   margin: 0;
   padding-top: calc(var(--topbar-height) + 1.5rem);
   padding-bottom: calc(var(--footer-height) + 1rem);
-  background-image: radial-gradient(rgba(20, 17, 13, 0.04) 1px, transparent 1px);
-  background-size: 6px 6px;
-  background-attachment: fixed;
   line-height: 1.55;
-}
-@media (prefers-color-scheme: dark) {
-  body {
-    background-image: radial-gradient(rgba(236, 230, 212, 0.025) 1px, transparent 1px);
-  }
 }
 
 a {
-  color: var(--cyan);
+  color: var(--brand-strong);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 100ms ease;
 }
-a:hover { border-bottom-color: var(--cyan); }
+a:hover { border-bottom-color: var(--brand-strong); }
 
-/* ── Topbar — solid paper, sharp 2px ink rule, NO backdrop-blur ── */
+/* ── Topbar — frosted surface, 1px line border, pill buttons ── */
 #top-bar {
   position: fixed;
   top: 0;
@@ -121,8 +123,9 @@ a:hover { border-bottom-color: var(--cyan); }
   align-items: center;
   justify-content: space-between;
   padding: 0 1.5rem;
-  background: var(--paper);
-  border-bottom: 2px solid var(--rule);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
   gap: 1rem;
 }
 
@@ -132,15 +135,21 @@ a:hover { border-bottom-color: var(--cyan); }
   font-size: 0.875rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--amber-ink);
-  background: var(--amber);
-  padding: 0.1875rem 0.5rem 0.125rem;
+  color: #fff;
+  background: var(--brand-strong);
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
   flex-shrink: 0;
   text-decoration: none;
   border-bottom: none;
+  transition: background 120ms ease, transform 120ms ease;
 }
-.topbar-wordmark:hover { border-bottom: none; background: var(--amber-deep); }
+.topbar-wordmark:hover {
+  border-bottom: none;
+  background: var(--brand);
+  transform: translateY(-1px);
+}
 
 .topbar-tagline {
   font-family: var(--font-mono);
@@ -148,7 +157,7 @@ a:hover { border-bottom-color: var(--cyan); }
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -167,62 +176,65 @@ a:hover { border-bottom-color: var(--cyan); }
   flex-shrink: 0;
 }
 
-/* Topbar buttons: ink-outline default, ALL CAPS mono tracked,
-   square corners. Three variants: default (outline), primary
-   (ink-outline emphasised), coffee (amber-filled). */
+/* Topbar buttons: ghost default, ALL CAPS mono tracked, pill corners.
+   Three variants: default (ghost), primary (emerald-filled), coffee (emerald). */
 .topbar-btn {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  padding: 0.4375rem 0.75rem;
+  padding: 0.4375rem 0.875rem;
   min-height: 32px;
-  border: 1px solid var(--ink);
-  border-radius: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
   text-decoration: none;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-  background: var(--paper);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  background: transparent;
   color: var(--ink);
   -webkit-appearance: none;
   outline: none;
 }
 .topbar-btn:focus-visible {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .topbar-btn:hover {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
+  background: var(--surface);
+  border-color: var(--brand);
+  color: var(--brand-strong);
+  transform: translateY(-1px);
 }
 
 .topbar-btn-coffee {
-  background: var(--amber);
-  border-color: var(--ink);
-  color: var(--amber-ink);
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
 }
 .topbar-btn-coffee:hover {
-  background: var(--amber-deep);
-  border-color: var(--ink);
-  color: var(--amber-ink);
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--ink-on-brand);
+  box-shadow: var(--shadow-lift);
 }
 
 .topbar-btn-primary {
-  background: var(--paper);
-  border-color: var(--ink);
-  color: var(--ink);
-  font-weight: 500;
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
 }
 .topbar-btn-primary:hover {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--ink-on-brand);
+  box-shadow: var(--shadow-lift);
 }
 
 .topbar-btn-label { display: inline; }
@@ -237,10 +249,7 @@ a:hover { border-bottom-color: var(--cyan); }
   #topbar-coffee .topbar-btn-label { display: none; }
 }
 
-/* ── Notch CTA — engineering-margin-tab feel. Sharp, amber-on-ink,
-     no rounded bottom; instead a "torn-paper" hint via subtle inset
-     shadow + the section-name label inside. Hover slides it down a
-     pixel (note-tab being pulled out of a binder). ── */
+/* ── Notch CTA — emerald pill tab hanging from topbar ── */
 .topbar-notch {
   position: fixed;
   top: var(--topbar-height);
@@ -248,13 +257,13 @@ a:hover { border-bottom-color: var(--cyan); }
   transform: translateX(-50%);
   z-index: 501;
   height: 32px;
-  padding: 0 1.125rem;
+  padding: 0 1.25rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5em;
-  background: var(--amber);
-  color: var(--amber-ink);
+  background: var(--brand-strong);
+  color: #fff;
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 500;
@@ -262,28 +271,32 @@ a:hover { border-bottom-color: var(--cyan); }
   text-transform: uppercase;
   text-decoration: none;
   border: none;
-  border-bottom: 1px solid var(--ink);
-  border-left: 1px solid var(--ink);
-  border-right: 1px solid var(--ink);
-  border-radius: 0;
+  border-bottom-left-radius: var(--radius-pill);
+  border-bottom-right-radius: var(--radius-pill);
   cursor: pointer;
-  transition: transform 150ms ease, background 120ms ease;
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms ease, background 120ms ease, box-shadow 150ms ease;
   -webkit-appearance: none;
   outline: none;
 }
 .topbar-notch::before {
-  content: "▌";
-  color: var(--amber-ink);
-  font-size: 1em;
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 1em;
   margin-right: 0.25em;
+  vertical-align: -0.12em;
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.7);
   line-height: 1;
 }
 .topbar-notch:hover {
-  background: var(--amber-deep);
-  transform: translateX(-50%) translateY(2px);
+  background: var(--brand);
+  transform: translateX(-50%) translateY(3px);
+  box-shadow: var(--shadow-lift);
 }
 .topbar-notch:focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 @media (max-width: 480px) {
@@ -294,7 +307,7 @@ a:hover { border-bottom-color: var(--cyan); }
   }
 }
 
-/* ── Footer — slim mono band, paper bg, no blur ── */
+/* ── Footer — slim mono band, surface bg, 1px line ── */
 #site-footer {
   position: fixed;
   left: 0;
@@ -308,15 +321,15 @@ a:hover { border-bottom-color: var(--cyan); }
   gap: 1.25rem;
   flex-wrap: wrap;
   padding: 0.5rem 1.5rem;
-  background: var(--paper);
-  border-top: 2px solid var(--rule);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   line-height: 1.4;
-  color: var(--ink-soft);
+  color: var(--muted);
   text-align: center;
 }
 
@@ -325,17 +338,18 @@ a:hover { border-bottom-color: var(--cyan); }
 }
 
 #site-footer a {
-  color: var(--ink-soft);
+  color: var(--muted);
   text-decoration: none;
   font-weight: 500;
   border-bottom: 1px solid transparent;
+  transition: color 100ms ease, border-color 100ms ease;
 }
 #site-footer a:hover {
-  color: var(--ink);
-  border-bottom-color: var(--ink);
+  color: var(--brand-strong);
+  border-bottom-color: var(--brand-strong);
 }
 #site-footer a:focus-visible {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -357,8 +371,8 @@ a:hover { border-bottom-color: var(--cyan); }
 /* ============================================================
    Marketing-page content typography. Pages that import this CSS
    (impressum/, datenschutz/, download/) render long-form prose
-   in plain <h1>..<h3>, <p>, <ul>, <code>. Engineering-brief
-   typography conventions: amber ▌-marker on headings, mono code,
+   in plain <h1>..<h3>, <p>, <ul>, <code>. Typography conventions:
+   emerald rounded-bar marker on headings, mono code,
    tabular-aligned list bullets via custom counter-style.
    ============================================================ */
 main.container {
@@ -377,18 +391,24 @@ h1, h2, h3 {
 h1 { font-size: 1.875rem; margin-bottom: 0.625rem; }
 h2 { font-size: 1.125rem; margin-top: 2.25rem; margin-bottom: 0.625rem; }
 h2::before {
-  content: "▌ ";
-  color: var(--amber);
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 1em;
+  margin-right: 0.5em;
+  vertical-align: -0.12em;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
   font-weight: 400;
 }
-h3 { font-size: 1rem; margin-top: 1.25rem; margin-bottom: 0.375rem; color: var(--ink-soft); font-weight: 600; }
+h3 { font-size: 1rem; margin-top: 1.25rem; margin-bottom: 0.375rem; color: var(--muted); font-weight: 600; }
 h3.platform-heading {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink);
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line);
   padding-top: 0.875rem;
   margin-top: 2rem;
 }
@@ -400,8 +420,9 @@ p.hint {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0.06em;
-  color: var(--ink-soft);
-  border-left: 3px solid var(--amber);
+  color: var(--muted);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
   padding: 0.5rem 0.875rem;
   margin: 1.25rem 0;
 }
@@ -412,10 +433,10 @@ li { margin-bottom: 0.375rem; }
 code {
   font-family: var(--font-mono);
   font-size: 0.875em;
-  background: var(--paper-edge);
-  border: 1px solid var(--edge);
+  background: var(--surface);
+  border: 1px solid var(--line);
   padding: 0.0625rem 0.375rem;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 strong { color: var(--ink); font-weight: 600; }
@@ -423,7 +444,7 @@ strong { color: var(--ink); font-weight: 600; }
 section {
   margin-top: 1.5rem;
   padding-top: 1.5rem;
-  border-top: 1px solid var(--edge);
+  border-top: 1px solid var(--line);
 }
 section:first-of-type { border-top: none; padding-top: 0; }
 
@@ -436,18 +457,25 @@ section:first-of-type { border-top: none; padding-top: 0; }
   list-style: none;
   margin: 0 0 1.25rem;
   padding: 0;
-  border-top: 1px solid var(--ink);
-  border-bottom: 1px solid var(--ink);
+  display: grid;
+  gap: 0.875rem;
 }
 .download-item {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1.25rem;
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--edge);
+  padding: 1.25rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 150ms ease, transform 150ms ease;
 }
-.download-item:last-child { border-bottom: none; }
+.download-item:hover {
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-2px);
+}
 .download-meta {
   flex: 1;
 }
@@ -460,14 +488,14 @@ section:first-of-type { border-top: none; padding-top: 0; }
 .download-meta p {
   margin: 0;
   font-size: 0.875rem;
-  color: var(--ink-soft);
+  color: var(--muted);
   line-height: 1.5;
 }
 .download-meta .size {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   letter-spacing: 0.08em;
-  color: var(--ink-soft);
+  color: var(--muted);
   text-transform: uppercase;
 }
 .download-btn {
@@ -477,39 +505,42 @@ section:first-of-type { border-top: none; padding-top: 0; }
   letter-spacing: 0.14em;
   text-transform: uppercase;
   padding: 0.5625rem 1.125rem;
-  border: 1px solid var(--ink);
-  border-radius: 0;
-  background: var(--amber);
-  color: var(--amber-ink);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--brand-strong);
+  color: #fff;
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
   align-self: center;
-  transition: background 120ms ease;
-  border-bottom: 1px solid var(--ink);
+  box-shadow: var(--shadow-sm);
+  transition: background 120ms ease, box-shadow 150ms ease, transform 120ms ease;
 }
 .download-btn:hover {
-  background: var(--amber-deep);
-  border-bottom-color: var(--ink);
+  background: var(--brand);
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-1px);
+  border-bottom: none;
 }
 .download-btn:focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .download-count {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   letter-spacing: 0.08em;
-  color: var(--ink-soft);
+  color: var(--muted);
   text-transform: uppercase;
   margin-top: 0.375rem;
 }
 
-/* /download/ release-notes section: amber ruler between versions */
+/* /download/ release-notes section: emerald rounded border-left */
 .release-list { list-style: none; margin: 0; padding: 0; }
 .release-list li {
   padding: 0.375rem 0 0.375rem 1.5rem;
-  border-left: 2px solid var(--amber);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
   margin-bottom: 0.625rem;
   font-size: 0.9375rem;
 }
@@ -525,8 +556,14 @@ section:first-of-type { border-top: none; padding-top: 0; }
   text-transform: none;
 }
 .release-notes h3::before {
-  content: "▌ ";
-  color: var(--amber);
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 1em;
+  margin-right: 0.5em;
+  vertical-align: -0.12em;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
 }
 
 @media (max-width: 580px) {
