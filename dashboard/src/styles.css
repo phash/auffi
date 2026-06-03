@@ -458,6 +458,7 @@ button.primary:hover,
 .btn.primary:hover {
   background: var(--brand);
   border-color: var(--brand);
+  color: var(--ink-on-brand);
   box-shadow: var(--shadow-lift);
   transform: translateY(-1px);
 }
@@ -833,7 +834,7 @@ button:focus-visible,
   border: 1px solid var(--line);
   color: var(--ink);
 }
-.feedback-admin-meta .rating { color: var(--brand); letter-spacing: 0; }
+.feedback-admin-meta .rating { color: var(--brand-strong); letter-spacing: 0; }
 .feedback-admin-body {
   white-space: pre-wrap;
   margin: 0 0 var(--space-3);

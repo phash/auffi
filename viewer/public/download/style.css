@@ -44,7 +44,7 @@ body { line-height: 1.5; }
   border: 1px solid var(--line);
 }
 .container a { color: var(--brand-strong); }
-.container a:hover { color: var(--brand); }
+.container a:hover { color: var(--brand-strong); }
 
 .platform-heading {
   margin: 2rem 0 0.75rem;

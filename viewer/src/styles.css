@@ -40,7 +40,7 @@
   --ink: #0f1f1a;
   --muted: #5b6b64;
   --brand: #10b981;
-  /* Reserved — consumed by the component recast in Task 2 (cards, buttons, hero, inputs) */
+  /* Mint — used in the hero gradient and subtle highlights */
   --brand-2: #34d399;
   --brand-strong: #047857;
   --ink-on-brand: #06231b; /* text on brand-strong backgrounds */
@@ -80,8 +80,6 @@
   --amber-deep: var(--brand-strong);
   --amber-ink: #0f1f1a;
   --error: #a83b3b;
-  --error-deep: #862828;
-  --warning: #b7791f;
   /* Status/"live" indicator green — intentionally deeper than --brand for a
      distinct connected-state signal; keep separate from the brand accent. */
   --signal-on: #2e7d32;
@@ -117,8 +115,6 @@
     --amber-deep: var(--brand-strong);
     --amber-ink: #0c1714;
     --error: #d65a5a;
-    --error-deep: #f07474;
-    --warning: #e2a648;
     --signal-on: #71c285;
   }
 }
@@ -612,7 +608,7 @@ body.streaming .hero-title { display: none; }
 @media (prefers-color-scheme: dark) {
   #connect { color: var(--ink-on-brand); }
 }
-#connect:hover:not(:disabled) { background: var(--brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+#connect:hover:not(:disabled) { background: var(--brand); color: var(--ink-on-brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
 #connect:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
 #connect:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -677,7 +673,7 @@ body.streaming .hero-title { display: none; }
 @media (prefers-color-scheme: dark) {
   .btn-primary-full { color: var(--ink-on-brand); }
 }
-.btn-primary-full:hover { background: var(--brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+.btn-primary-full:hover { background: var(--brand); color: var(--ink-on-brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
 
 /* Status indicator — mono prose with a colored dot ── */
 #status {
@@ -922,7 +918,7 @@ body.streaming .hero-title { display: none; }
 #connection-type.active { display: inline-block; }
 #connection-type.relay {
   background: var(--brand);
-  color: #ffffff;
+  color: var(--ink-on-brand);
   border-color: transparent;
 }
 
@@ -963,7 +959,7 @@ body.streaming .hero-title { display: none; }
 #input-toggle:hover { background: rgba(15, 31, 26, 0.9); }
 #input-toggle[aria-pressed="true"] {
   background: var(--brand);
-  color: #ffffff;
+  color: var(--ink-on-brand);
   border-color: transparent;
 }
 #input-toggle[aria-pressed="true"]:hover { background: var(--brand-strong); }
@@ -1068,7 +1064,7 @@ body.streaming .hero-title { display: none; }
 @media (prefers-color-scheme: dark) {
   .toast-btn-accept { color: var(--ink-on-brand); }
 }
-.toast-btn-accept:hover { background: var(--brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+.toast-btn-accept:hover { background: var(--brand); color: var(--ink-on-brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
 .toast-btn-reject {
   background: transparent;
   color: var(--ink);
@@ -1303,7 +1299,7 @@ body.streaming .hero-title { display: none; }
 .account-cta-btn-primary:hover {
   background: var(--brand);
   border-color: var(--brand);
-  color: #ffffff;
+  color: var(--ink-on-brand);
   box-shadow: var(--shadow-lift);
 }
 @media (prefers-color-scheme: dark) {
@@ -1460,7 +1456,7 @@ body.streaming .landing-sections { display: none; }
 @media (prefers-color-scheme: dark) {
   .download-btn-primary { color: var(--ink-on-brand); }
 }
-.download-btn-primary:hover { background: var(--brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
+.download-btn-primary:hover { background: var(--brand); color: var(--ink-on-brand); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
 .download-btn-primary:active { transform: translateY(1px); box-shadow: none; }
 .download-btn-secondary {
   display: inline-flex;
