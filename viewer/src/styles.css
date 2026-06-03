@@ -394,6 +394,47 @@ a:hover { border-bottom-color: var(--cyan); }
 #site-footer a:hover { color: var(--ink); border-bottom-color: var(--line); }
 
 /* ============================================================
+   Hero section — mint→paper gradient backdrop wrapping the
+   connect card with eyebrow + headline. Additive only; does
+   not change #app or any existing selector.
+   ============================================================ */
+.hero {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brand-2) 16%, var(--paper)) 0%, var(--paper) 70%);
+  border-radius: var(--radius-card);
+  padding: clamp(2rem, 6vw, 5rem) clamp(1rem, 4vw, 3rem);
+  text-align: center;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+}
+body.streaming .hero { background: transparent; padding: 0; border-radius: 0; gap: 0; max-width: min(96vw, 1280px); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+body.streaming .eyebrow { display: none; }
+
+.hero-title {
+  font-family: var(--font-sans);
+  font-size: clamp(1.75rem, 5vw, 3.25rem);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0;
+}
+body.streaming .hero-title { display: none; }
+
+/* ============================================================
    The hero connect card — Calm Fresh rounded card.
    ============================================================ */
 #app {
