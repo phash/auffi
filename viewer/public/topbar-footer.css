@@ -571,3 +571,12 @@ section:first-of-type { border-top: none; padding-top: 0; }
   .download-item { flex-direction: column; }
   .download-btn { align-self: flex-start; }
 }
+
+/* Dark-mode AA contrast: brand-background elements with white text. */
+@media (prefers-color-scheme: dark) {
+  .topbar-wordmark { color: var(--ink-on-brand); }
+  .topbar-btn-coffee { color: var(--ink-on-brand); }
+  .topbar-btn-primary { color: var(--ink-on-brand); }
+  .topbar-notch { color: var(--ink-on-brand); }
+  .download-btn { color: var(--ink-on-brand); }
+}

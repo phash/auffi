@@ -136,6 +136,10 @@
         height: 14px;
         fill: #fff;
       }
+      @media (prefers-color-scheme: dark) {
+        .brand-icon { color: var(--ink-on-brand); }
+        .brand-icon svg { fill: var(--ink-on-brand); }
+      }
 
       .brand-name {
         font-size: 0.9375rem;
@@ -253,6 +257,9 @@
         align-items: center;
         justify-content: center;
         margin-top: 0.0625rem;
+      }
+      @media (prefers-color-scheme: dark) {
+        .howto-step-num { color: var(--ink-on-brand); }
       }
 
       .howto-step strong {
@@ -681,6 +688,9 @@
         outline: 2px solid var(--focus);
         outline-offset: 2px;
       }
+      @media (prefers-color-scheme: dark) {
+        .update-banner-btn { color: var(--ink-on-brand); }
+      }
       .update-banner-dismiss {
         background: transparent;
         border: none;
@@ -730,6 +740,10 @@
       }
 
       .about-logo-icon svg { width: 20px; height: 20px; fill: #fff; }
+      @media (prefers-color-scheme: dark) {
+        .about-logo-icon { color: var(--ink-on-brand); }
+        .about-logo-icon svg { fill: var(--ink-on-brand); }
+      }
 
       .about-logo-name {
         font-size: 1.375rem;
@@ -945,6 +959,9 @@
       }
       .feedback-fab:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
       .feedback-fab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+      @media (prefers-color-scheme: dark) {
+        .feedback-fab { color: var(--ink-on-brand); }
+      }
       .feedback-modal-overlay {
         position: fixed; inset: 0;
         background: rgba(0,0,0,0.45);
@@ -1001,6 +1018,9 @@
       }
       .feedback-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
       .feedback-btn-primary { background: var(--brand-strong); border-color: var(--brand-strong); color: #fff; }
+      @media (prefers-color-scheme: dark) {
+        .feedback-btn-primary { color: var(--ink-on-brand); }
+      }
       .feedback-btn:disabled { opacity: 0.6; cursor: not-allowed; }
       .feedback-modal-status {
         margin: 0; font-size: 0.8125rem; min-height: 1.25rem;

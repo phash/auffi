@@ -114,6 +114,9 @@ body.matomo-consent-shown {
   color: var(--ink-on-brand, #06231b);
   box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08));
 }
+@media (prefers-color-scheme: dark) {
+  .matomo-consent-ok { color: var(--ink-on-brand, #06231b); }
+}
 
 /* Narrow viewports — text wraps above the buttons, padding-bottom
    on body grows accordingly so the wrapped two-row bar still

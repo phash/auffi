@@ -535,6 +535,10 @@ body.streaming .hero-title { display: none; }
   flex-shrink: 0;
 }
 .brand-icon svg { width: 16px; height: 16px; fill: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  .brand-icon { color: var(--ink-on-brand); }
+  .brand-icon svg { fill: var(--ink-on-brand); }
+}
 .brand-name {
   font-family: var(--font-sans);
   font-size: 1.1875rem;

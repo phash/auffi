@@ -161,6 +161,10 @@
   box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08));
 }
 .feedback-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (prefers-color-scheme: dark) {
+  .feedback-fab { color: var(--ink-on-brand, #06231b); }
+  .feedback-modal-btn-primary { color: var(--ink-on-brand, #06231b); }
+}
 
 .feedback-modal-status {
   margin: 0;
