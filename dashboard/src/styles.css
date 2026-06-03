@@ -48,6 +48,7 @@
   --ink: #0f1f1a;
   --muted: #5b6b64;
   --brand: #10b981;
+  /* Shared palette token — consumed by the viewer hero; reserved here */
   --brand-2: #34d399;
   --brand-strong: #047857;
   --ink-on-brand: #06231b;
@@ -120,6 +121,7 @@
     --ink: #e8f1ec;
     --muted: #9fb2aa;
     --brand: #34d399;
+    /* Shared palette token — consumed by the viewer hero; reserved here */
     --brand-2: #10b981;
     --brand-strong: #34d399;
     --ink-on-brand: #06231b;
@@ -437,11 +439,6 @@ button {
   line-height: 1.2;
   transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
-button:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
 button.primary,
 .btn.primary {
   background: var(--brand-strong);
