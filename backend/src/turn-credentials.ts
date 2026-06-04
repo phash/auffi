@@ -18,6 +18,14 @@ export type TurnConfig = {
    * (gh #60).
    */
   sessionStore?: SessionStore;
+  /**
+   * Optional: when provided, credential issuance is also accepted for
+   * callers that present a code matching a live unattended session's
+   * deviceId. Without this, unattended viewers behind symmetric NAT /
+   * firewalls were denied TURN credentials (403 "no active session")
+   * even though a valid pairing existed in UnattendedSessions.
+   */
+  unattendedSessions?: { findByDeviceId(id: string): unknown | null };
 };
 
 export function makeCredentials(cfg: TurnConfig): {
@@ -57,7 +65,11 @@ export function registerTurnEndpoint(
         const body = (req.body ?? {}) as { code?: unknown };
         const raw = typeof body.code === "string" ? body.code : "";
         const normalized = normalizeCode(raw);
-        if (!normalized || !cfg.sessionStore.getSession(normalized)) {
+        const hasAdHoc = normalized !== null && cfg.sessionStore.getSession(normalized) !== null;
+        const hasUnattended =
+          normalized !== null &&
+          (cfg.unattendedSessions?.findByDeviceId(normalized) ?? null) !== null;
+        if (!hasAdHoc && !hasUnattended) {
           return reply.status(403).send({ error: "no active session" });
         }
       }

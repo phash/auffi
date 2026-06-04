@@ -114,10 +114,17 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
       const inner = captureTransport();
       return {
         async send(opts) {
-          process.stderr.write(
-            `[mailer:no-smtp] to=${opts.to} subject=${JSON.stringify(opts.subject)}\n` +
-              `[mailer:no-smtp] body=\n${opts.text}\n`,
-          );
+          // Always log recipient + subject so an operator knows mail is
+          // flowing. The body (which contains verify/reset token links)
+          // is only dumped when AUFFI_LOG_MAIL_BODIES=1 to avoid leaking
+          // tokens into container logs in production.
+          const header =
+            `[mailer:no-smtp] to=${opts.to} subject=${JSON.stringify(opts.subject)}\n`;
+          const body =
+            process.env.AUFFI_LOG_MAIL_BODIES === "1"
+              ? `[mailer:no-smtp] body=\n${opts.text}\n`
+              : "";
+          process.stderr.write(header + body);
           await inner.send(opts);
         },
         // Preserve the CaptureTransport-shape so tests + admin tooling

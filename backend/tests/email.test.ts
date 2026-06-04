@@ -152,3 +152,47 @@ describe("mailerFromEnv", () => {
     expect(captured[0].text).toContain("https://self-hosted.example/db/verify/tok");
   });
 });
+
+describe("mailerFromEnv — no-SMTP fallback token-leak fix", () => {
+  it("logs recipient + subject but NOT the body when AUFFI_LOG_MAIL_BODIES is unset", async () => {
+    const stderrLines: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    // Capture stderr without touching AUFFI_LOG_MAIL_BODIES in process.env.
+    (process.stderr as { write: (s: string) => boolean }).write = (s: string) => {
+      stderrLines.push(s);
+      return true;
+    };
+    try {
+      delete process.env.AUFFI_LOG_MAIL_BODIES;
+      const out = mailerFromEnv({ NODE_ENV: "production" }); // no SMTP → fallback
+      await out.mailer.sendVerifyEmail("victim@example.com", "secret-token-abc");
+    } finally {
+      (process.stderr as { write: (s: string) => boolean }).write = origWrite;
+    }
+    const combined = stderrLines.join("");
+    expect(combined).toContain("victim@example.com");
+    // Token must NOT appear in logs when body-dump is disabled.
+    expect(combined).not.toContain("secret-token-abc");
+  });
+
+  it("logs the full body including the token when AUFFI_LOG_MAIL_BODIES=1", async () => {
+    const stderrLines: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    (process.stderr as { write: (s: string) => boolean }).write = (s: string) => {
+      stderrLines.push(s);
+      return true;
+    };
+    try {
+      process.env.AUFFI_LOG_MAIL_BODIES = "1";
+      const out = mailerFromEnv({ NODE_ENV: "production" });
+      await out.mailer.sendVerifyEmail("dev@example.com", "dev-token-xyz");
+    } finally {
+      (process.stderr as { write: (s: string) => boolean }).write = origWrite;
+      delete process.env.AUFFI_LOG_MAIL_BODIES;
+    }
+    const combined = stderrLines.join("");
+    expect(combined).toContain("dev@example.com");
+    // Body dump is explicitly enabled — the token link must appear.
+    expect(combined).toContain("dev-token-xyz");
+  });
+});

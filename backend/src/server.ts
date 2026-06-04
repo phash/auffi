@@ -244,6 +244,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
         if (entry.resetAt < now) map.delete(key);
       }
     }
+    store.sweepExpired(now);
   }, 60_000);
 
   app.addHook("onClose", () => {
@@ -269,6 +270,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
       ttlSec: turnTtlSec,
       allowedOrigins: env.allowedOrigins,
       sessionStore: store,
+      unattendedSessions,
     });
   }
 

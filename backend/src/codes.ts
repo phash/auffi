@@ -126,6 +126,20 @@ export class SessionStore {
     this.byPeer.delete(viewer);
   }
 
+  /**
+   * Proactively delete all sessions whose `expiresAt` is in the past.
+   * Called from the server's periodic sweep so the Map does not grow
+   * without bound when sharers disconnect without closing cleanly.
+   * Reuses `dropSession` so `byPeer` stays consistent.
+   */
+  sweepExpired(now: number = Date.now()): void {
+    for (const session of this.sessions.values()) {
+      if (session.expiresAt < now) {
+        this.dropSession(session);
+      }
+    }
+  }
+
   private dropSession(session: Session): void {
     this.sessions.delete(session.code);
     this.byPeer.delete(session.sharer);

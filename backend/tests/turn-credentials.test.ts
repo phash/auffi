@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { FastifyInstance } from "fastify";
+import Fastify, { FastifyInstance } from "fastify";
+import rateLimitPlugin from "@fastify/rate-limit";
 import { WebSocket } from "ws";
 import { createServer } from "../src/server.js";
+import { registerTurnEndpoint } from "../src/turn-credentials.js";
+import { SessionStore } from "../src/codes.js";
 
 function setTurnEnv(): void {
   process.env.TURN_SHARED_SECRET = "test-secret-32-chars-minimum";
@@ -214,5 +217,67 @@ describe("POST /turn-credentials — rate limiting", () => {
     expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
     expect(statuses[10]).toBe(429);
     ws.close();
+  });
+});
+
+describe("POST /turn-credentials — unattended session gate", () => {
+  // Tests that a code with no ad-hoc session but a live unattended
+  // session → 200, and both missing → 403.
+  let app: FastifyInstance;
+  let baseUrl: string;
+  const LIVE_DEVICE_ID = "123-456-789";
+  const DEAD_CODE = "000-000-000";
+
+  beforeAll(async () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    // No ad-hoc sessions registered — only the unattended stub has the code.
+    const unattendedSessions = {
+      findByDeviceId(id: string): object | null {
+        return id === LIVE_DEVICE_ID ? { deviceId: id } : null;
+      },
+    };
+
+    app = Fastify();
+    await app.register(rateLimitPlugin, { global: true, max: 100, timeWindow: "1 minute" });
+    registerTurnEndpoint(app, {
+      sharedSecret: "test-secret-32-chars-minimum",
+      realm: "turn.auffi.local",
+      urls: ["turn:turn.auffi.local:3478"],
+      ttlSec: 3600,
+      allowedOrigins: ["http://localhost:5173"],
+      sessionStore: store,
+      unattendedSessions,
+    });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const addr = app.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  async function post(code: string): Promise<Response> {
+    return fetch(`${baseUrl}/turn-credentials`, {
+      method: "POST",
+      headers: { Origin: "http://localhost:5173", "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  it("issues credentials when no ad-hoc session exists but a live unattended session matches the deviceId", async () => {
+    const res = await post(LIVE_DEVICE_ID);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { urls: string[]; username: string };
+    expect(body.urls).toContain("turn:turn.auffi.local:3478");
+    expect(body.username).toMatch(/^\d+:[a-z0-9-]+$/);
+  });
+
+  it("returns 403 when neither ad-hoc nor unattended session matches the code", async () => {
+    const res = await post(DEAD_CODE);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("session");
   });
 });

@@ -18,7 +18,9 @@ async function build(): Promise<{
   applyMigrations(db, defaultMigrationsDir());
   const transport = captureTransport();
   const mailer = buildAuthMailer({ dashboardUrl: "https://t/", transport });
-  const app = Fastify();
+  // trustProxy: 1 matches production (one reverse-proxy hop via Caddy).
+  // Without it req.ip is always 127.0.0.1 and adminIpPrefix is meaningless.
+  const app = Fastify({ trustProxy: 1 });
   await app.register(rateLimit, { global: false });
   decorateRequireSession(app, db);
   decorateRequireAdmin(app, db);
@@ -115,10 +117,12 @@ describe("requireAdmin middleware", () => {
 
   it("writes an audit_log row with the admin id and an IP-prefix", async () => {
     const c = await h.adminCookie();
+    // Single-entry XFF as set by Caddy in production (one trusted proxy hop).
+    // trustProxy:1 resolves req.ip to this value.
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
-      headers: { cookie: `__Host-auffi_session=${c}`, "x-forwarded-for": "84.137.42.7, 10.0.0.1" },
+      headers: { cookie: `__Host-auffi_session=${c}`, "x-forwarded-for": "84.137.42.7" },
     });
     const row = h.db
       .prepare<
@@ -146,6 +150,7 @@ describe("writeAudit IP-prefix shaping", () => {
   it("redacts to first two octets for IPv4", async () => {
     const h = await build();
     const c = await h.adminCookie();
+    // Single-entry XFF: trustProxy:1 sets req.ip = 203.0.113.42.
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
@@ -167,6 +172,7 @@ describe("writeAudit IP-prefix shaping", () => {
     // that the audit log uses post-2026-05-17 review.
     const h = await build();
     const c = await h.adminCookie();
+    // Single-entry XFF: trustProxy:1 sets req.ip = the IPv6 address.
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
@@ -181,6 +187,35 @@ describe("writeAudit IP-prefix shaping", () => {
       )
       .get();
     expect(row?.viewer_ip_prefix).toBe("2001:db8:abcd::xxx");
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("uses req.ip (not raw x-forwarded-for) — attacker-prepended header cannot spoof audit log", async () => {
+    // An attacker sending X-Forwarded-For: 1.2.3.4, <real-client-ip>
+    // cannot control the audit-log IP prefix. With trustProxy:1, Fastify
+    // resolves req.ip to the rightmost entry (the proxy-validated real IP),
+    // ignoring attacker-injected leftmost entries.
+    const h = await build();
+    const c = await h.adminCookie();
+    // The attacker prepends "1.2.3.4," hoping to appear in the audit log
+    // as that address. With trustProxy:1, req.ip = 5.6.7.8 (rightmost).
+    await h.app.inject({
+      method: "POST",
+      url: "/api/admin/ping",
+      headers: {
+        cookie: `__Host-auffi_session=${c}`,
+        "x-forwarded-for": "1.2.3.4, 5.6.7.8",
+      },
+    });
+    const row = h.db
+      .prepare<[], { viewer_ip_prefix: string }>(
+        "SELECT viewer_ip_prefix FROM audit_log ORDER BY id DESC LIMIT 1",
+      )
+      .get();
+    // Must NOT be the attacker-controlled leftmost entry.
+    expect(row?.viewer_ip_prefix).not.toBe("1.2.xxx");
+    expect(row?.viewer_ip_prefix).toBe("5.6.xxx");
     await h.app.close();
     h.db.close();
   });

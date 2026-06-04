@@ -52,8 +52,10 @@ declare module "fastify" {
  * geo, less personenbezogen. Code-review DSGVO-M7 (2026-05-17).
  */
 function adminIpPrefix(req: FastifyRequest): string {
-  const raw = (req.headers["x-forwarded-for"] as string | undefined) ?? req.ip ?? "";
-  const first = raw.split(",")[0]?.trim() ?? "";
+  // Use the framework-trusted req.ip (trustProxy:1 resolves to the real
+  // client IP) rather than the raw x-forwarded-for header, which is
+  // attacker-controlled and could be used to spoof the audit log entry.
+  const first = req.ip ?? "";
   if (!first) return "unknown";
   if (first.includes(":")) {
     const parts = first.split(":").slice(0, 3);

@@ -172,4 +172,40 @@ describe("SessionStore", () => {
       store.registerSharer({ id: "s1" } as unknown as object)
     ).not.toThrow();
   });
+
+  it("sweepExpired removes sessions past their TTL and keeps live ones", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const s1 = { id: "s1" } as unknown as object;
+    const s2 = { id: "s2" } as unknown as object;
+    const { code: code1 } = store.registerSharer(s1);
+    const { code: code2 } = store.registerSharer(s2);
+
+    // Expire code1 by sweeping with a future timestamp.
+    const future = Date.now() + 700_000;
+    // code2's session is still live at 'now' but expired at 'future'.
+    // Pass a timestamp past both TTLs → both swept.
+    store.sweepExpired(future);
+    expect(store.getSession(code1)).toBeNull();
+    expect(store.getSession(code2)).toBeNull();
+  });
+
+  it("sweepExpired leaves sessions that have not yet expired", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const sharer = { id: "s1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    // Sweep at 'now' — session expires at now + 600_000, so not swept.
+    store.sweepExpired(Date.now());
+    expect(store.getSession(code)).not.toBeNull();
+  });
+
+  it("sweepExpired also cleans up byPeer index (findByPeer returns null after sweep)", () => {
+    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    store.sweepExpired(Date.now() + 700_000);
+    expect(store.findByPeer(sharer)).toBeNull();
+    expect(store.findByPeer(viewer)).toBeNull();
+  });
 });
