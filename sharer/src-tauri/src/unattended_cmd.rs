@@ -89,6 +89,27 @@ fn mode_path(app: &AppHandle) -> CmdResult<PathBuf> {
     Ok(app_data_dir(app)?.join(MODE_FILE))
 }
 
+/// Validate that a backend URL uses a TLS scheme (`wss://` or `https://`).
+///
+/// Returns `Ok(())` when the URL is secure, or `Ok(())` when the insecure
+/// escape hatch `AUFFI_ALLOW_INSECURE=1` is set (development only). Returns
+/// `Err(String)` when the URL is `ws://`/`http://` **and** the flag is absent.
+///
+/// Pure (takes a `&str` and an explicit `allow_insecure` flag) so it is
+/// unit-testable without touching process-wide env vars (CQ M-20: parallel
+/// tests racing on env vars flaked CI).
+pub(crate) fn validate_backend_url(url: &str, allow_insecure: bool) -> Result<(), String> {
+    let is_insecure =
+        url.starts_with("ws://") || url.starts_with("http://");
+    if is_insecure && !allow_insecure {
+        return Err(format!(
+            "Unsicheres Backend-URL abgelehnt: {url:?}. \
+             Setze AUFFI_ALLOW_INSECURE=1 für lokale Entwicklungsumgebungen."
+        ));
+    }
+    Ok(())
+}
+
 fn backend_ws_url() -> String {
     std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
         std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
@@ -97,8 +118,21 @@ fn backend_ws_url() -> String {
     })
 }
 
-fn backend_http_base() -> String {
-    backend_http_base_from(&backend_ws_url())
+/// Like [`backend_ws_url`] but validates the resolved URL against
+/// [`validate_backend_url`]. Returns an error string when the URL is
+/// cleartext and the dev escape hatch is not set. All callers that send
+/// a Bearer token MUST use this variant.
+fn backend_ws_url_secure() -> Result<String, String> {
+    let url = backend_ws_url();
+    let allow_insecure = std::env::var("AUFFI_ALLOW_INSECURE")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    validate_backend_url(&url, allow_insecure)?;
+    Ok(url)
+}
+
+fn backend_http_base() -> Result<String, String> {
+    Ok(backend_http_base_from(&backend_ws_url_secure()?))
 }
 
 /// Pure mapping `ws[s]://host[:port]/…` → `http[s]://host[:port]`.
@@ -129,7 +163,7 @@ pub async fn unattended_pair(app: AppHandle, code: String, alias: String) -> Cmd
         .build()
         .map_err(|e| format!("http client: {e}"))?;
     let store = KeyringTokenStore::default_for_auffi();
-    account::pair(&http, &store, &backend_http_base(), &code, &alias, &dir)
+    account::pair(&http, &store, &backend_http_base()?, &code, &alias, &dir)
         .await
         .map_err(|e| e.to_string())
 }
@@ -143,7 +177,7 @@ pub async fn unattended_unpair(app: AppHandle) -> CmdResult<()> {
         .build()
         .map_err(|e| format!("http client: {e}"))?;
     let store = KeyringTokenStore::default_for_auffi();
-    account::unpair(&http, &store, &backend_http_base(), &dir)
+    account::unpair(&http, &store, &backend_http_base()?, &dir)
         .await
         .map_err(|e| e.to_string())
 }
@@ -255,7 +289,7 @@ pub async fn unattended_start(
         return Err("Geräte-Passwort nicht gesetzt".to_string());
     }
 
-    let cfg = heartbeat::HeartbeatConfig::production(backend_ws_url(), device_id, token);
+    let cfg = heartbeat::HeartbeatConfig::production(backend_ws_url_secure()?, device_id, token);
     let (commands, events) = heartbeat::start(cfg);
 
     // gh #20: install the outbound sink BEFORE the forwarder runs so
@@ -386,7 +420,7 @@ pub async fn unattended_submit_feedback(
         "rating": rating,
         "body": trimmed,
     });
-    let url = format!("{}/api/feedback", backend_http_base());
+    let url = format!("{}/api/feedback", backend_http_base()?);
     let res = http
         .post(&url)
         .header("Authorization", format!("Bearer {token}"))
@@ -810,5 +844,68 @@ mod tests {
         *outbound_slot.lock().await = None;
         assert!(cmd_slot.lock().await.is_none());
         assert!(outbound_slot.lock().await.is_none());
+    }
+
+    // ── validate_backend_url (security hardening) ─────────────────────
+    //
+    // Tests operate on the pure function so they never touch real env
+    // vars (CQ M-20: parallel tests racing on env vars flaked CI).
+    // The `allow_insecure` flag is passed explicitly, matching what
+    // `backend_ws_url_secure()` reads from AUFFI_ALLOW_INSECURE.
+
+    #[test]
+    fn validate_backend_url_accepts_wss_scheme() {
+        assert!(
+            validate_backend_url("wss://auffi.app/signal", false).is_ok(),
+            "wss:// must be accepted without the insecure flag"
+        );
+    }
+
+    #[test]
+    fn validate_backend_url_accepts_https_scheme() {
+        assert!(
+            validate_backend_url("https://auffi.app/api", false).is_ok(),
+            "https:// must be accepted without the insecure flag"
+        );
+    }
+
+    #[test]
+    fn validate_backend_url_rejects_ws_without_insecure_flag() {
+        let err = validate_backend_url("ws://localhost:8080/signal", false)
+            .expect_err("ws:// without AUFFI_ALLOW_INSECURE must be rejected");
+        assert!(
+            err.contains("ws://localhost:8080/signal"),
+            "error must name the rejected URL: {err}"
+        );
+        assert!(
+            err.contains("AUFFI_ALLOW_INSECURE"),
+            "error must mention the escape hatch: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_backend_url_rejects_http_without_insecure_flag() {
+        let err = validate_backend_url("http://localhost:8080", false)
+            .expect_err("http:// without AUFFI_ALLOW_INSECURE must be rejected");
+        assert!(
+            err.contains("http://localhost:8080"),
+            "error must name the rejected URL: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_backend_url_permits_ws_with_insecure_flag() {
+        assert!(
+            validate_backend_url("ws://localhost:8080/signal", true).is_ok(),
+            "ws:// with allow_insecure=true must be accepted for local dev"
+        );
+    }
+
+    #[test]
+    fn validate_backend_url_permits_http_with_insecure_flag() {
+        assert!(
+            validate_backend_url("http://localhost:8080", true).is_ok(),
+            "http:// with allow_insecure=true must be accepted for local dev"
+        );
     }
 }
