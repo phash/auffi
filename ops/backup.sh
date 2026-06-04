@@ -161,6 +161,7 @@ if ! gzip -c "${DB_TMP_HOST}" > "${DB_FILEPATH}"; then
   exit 1
 fi
 
+chmod 600 "${DB_FILEPATH}"
 DB_SIZE=$(du -h "${DB_FILEPATH}" | cut -f1)
 log "DB-Snapshot OK — ${DB_SIZE} (integrity_check ok, gzip ok)"
 
@@ -184,7 +185,7 @@ if ! docker run --rm \
     -v "${CADDY_DATA_VOLUME}:/src/data:ro" \
     -v "${CADDY_CONFIG_VOLUME}:/src/config:ro" \
     -v "${BACKUP_DIR}:/dst" \
-    alpine:3 \
+    alpine:3.20 \
     sh -c "tar czf '/dst/${CADDY_FILENAME}' -C /src . && chown ${HOST_UID}:${HOST_GID} '/dst/${CADDY_FILENAME}'" ; then
   err "tar der Caddy-Volumes fehlgeschlagen!"
   rm -f "${CADDY_FILEPATH}"
@@ -197,6 +198,7 @@ if ! gzip -t "${CADDY_FILEPATH}" 2>/dev/null; then
   exit 1
 fi
 
+chmod 600 "${CADDY_FILEPATH}"
 CADDY_SIZE=$(du -h "${CADDY_FILEPATH}" | cut -f1)
 log "Caddy-Volumes OK — ${CADDY_SIZE} (gzip verifiziert)"
 

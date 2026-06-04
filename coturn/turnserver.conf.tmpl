@@ -15,7 +15,10 @@ use-auth-secret
 static-auth-secret=${TURN_SHARED_SECRET}
 realm=${TURN_REALM}
 total-quota=100
-user-quota=5000000
+# Per-credential allocation cap. A legit WebRTC session uses 1–2 relay
+# allocations; 12 leaves headroom while preventing one (possibly stolen,
+# ≤1h-TTL) ephemeral credential from monopolising the total-quota pool.
+user-quota=12
 max-bps=5000000
 lifetime=600
 no-multicast-peers
