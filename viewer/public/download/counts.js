@@ -34,7 +34,8 @@
     // class of future copy-paste bugs (code-review CODE-H3, 2026-05-17).
     var clean = href.split("?")[0].split("#")[0];
     var idx = clean.lastIndexOf("/");
-    return idx >= 0 ? decodeURIComponent(clean.substring(idx + 1)) : null;
+    if (idx < 0) return null;
+    try { return decodeURIComponent(clean.substring(idx + 1)); } catch { return null; }
   }
 
   function decorateAll(counts) {

@@ -1,6 +1,47 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FileTransferManager, sanitizeFilename } from "../src/file-transfer.js";
+import { FileTransferManager, sanitizeFilename, sanitizeMime } from "../src/file-transfer.js";
 import type { FileEvent } from "../src/protocol.js";
+
+describe("sanitizeMime", () => {
+  it("allows image/* types", () => {
+    expect(sanitizeMime("image/png")).toBe("image/png");
+    expect(sanitizeMime("image/jpeg")).toBe("image/jpeg");
+    expect(sanitizeMime("image/gif")).toBe("image/gif");
+  });
+
+  it("allows video/* types", () => {
+    expect(sanitizeMime("video/mp4")).toBe("video/mp4");
+    expect(sanitizeMime("video/webm")).toBe("video/webm");
+  });
+
+  it("allows audio/* types", () => {
+    expect(sanitizeMime("audio/mpeg")).toBe("audio/mpeg");
+    expect(sanitizeMime("audio/ogg")).toBe("audio/ogg");
+  });
+
+  it("allows specific safe application/* types", () => {
+    expect(sanitizeMime("application/pdf")).toBe("application/pdf");
+    expect(sanitizeMime("application/zip")).toBe("application/zip");
+  });
+
+  it("allows text/plain", () => {
+    expect(sanitizeMime("text/plain")).toBe("text/plain");
+  });
+
+  it("rejects text/html and falls back to octet-stream", () => {
+    expect(sanitizeMime("text/html")).toBe("application/octet-stream");
+  });
+
+  it("rejects application/javascript and falls back to octet-stream", () => {
+    expect(sanitizeMime("application/javascript")).toBe("application/octet-stream");
+  });
+
+  it("rejects unknown / empty MIME and falls back to octet-stream", () => {
+    expect(sanitizeMime("")).toBe("application/octet-stream");
+    expect(sanitizeMime("x-custom/type")).toBe("application/octet-stream");
+    expect(sanitizeMime("application/octet-stream")).toBe("application/octet-stream");
+  });
+});
 
 describe("sanitizeFilename", () => {
   it("strips path-traversal on both unix and windows separators", () => {

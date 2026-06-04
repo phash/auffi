@@ -1020,6 +1020,14 @@ body.streaming .hero-title { display: none; }
 #file-offer-toast.active,
 #pw-prompt-toast.active { display: flex; }
 #pw-prompt-message.wrong { color: var(--error); }
+/* Password input inside the pw-prompt-toast. Moved from inline style
+   (CSP blocks style-src 'unsafe-inline' attribute styles). */
+.pw-prompt-input {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 1rem;
+}
 
 .toast-title {
   font-family: var(--font-mono);

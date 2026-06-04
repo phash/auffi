@@ -698,7 +698,12 @@ export function bindUI(backendWsUrl: string): void {
           sessionTracker.markStreamStarted();
         });
         const hub = peer!.getDataHub();
+        const hubGen = connectGen;
         hub.ready().then(() => {
+          // Guard against teardown firing between enqueue and microtask.
+          // If the generation changed, peer/signaling are already null and
+          // these new objects would become ghost listeners on a closed hub.
+          if (hubGen !== connectGeneration || peer === null || signaling === null) return;
           capture = new InputCapture(videoEl, (ev) => hub.sendInput(ev));
 
           fileManager = new FileTransferManager(

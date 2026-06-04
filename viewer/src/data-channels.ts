@@ -35,8 +35,10 @@ export class DataChannelHub {
         this.checkReady();
       };
       ch.onmessage = (ev) => {
-        const event = JSON.parse(ev.data as string) as InputEvent;
-        for (const h of this.inputHandlers) h(event);
+        try {
+          const event = JSON.parse(ev.data as string) as InputEvent;
+          for (const h of this.inputHandlers) h(event);
+        } catch { return; }
       };
     } else if (ch.label === "files") {
       this.filesChannel = ch;
@@ -48,8 +50,10 @@ export class DataChannelHub {
         if (ev.data instanceof ArrayBuffer) {
           for (const h of this.fileChunkHandlers) h(ev.data);
         } else {
-          const event = JSON.parse(ev.data as string) as FileEvent;
-          for (const h of this.fileHandlers) h(event);
+          try {
+            const event = JSON.parse(ev.data as string) as FileEvent;
+            for (const h of this.fileHandlers) h(event);
+          } catch { return; }
         }
       };
     }
@@ -113,5 +117,10 @@ export class DataChannelHub {
   close(): void {
     this.inputChannel?.close();
     this.filesChannel?.close();
+    // Settle any pending ready() promises so their .then/.catch chains are
+    // not left dangling after the hub is closed (prevents memory leaks and
+    // ghost callbacks after teardown).
+    for (const r of this.readyResolvers) r();
+    this.readyResolvers = [];
   }
 }

@@ -192,6 +192,36 @@ describe("DataChannelHub — caller role", () => {
     }
   });
 
+  it("close() settles pending ready() promises so they don't leak", async () => {
+    // ready() returns a pending promise because channels haven't opened yet
+    const promise = hub.ready();
+    let settled = false;
+    promise.then(() => { settled = true; });
+
+    // close() must resolve the pending resolver
+    hub.close();
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(settled).toBe(true);
+  });
+
+  it("input channel onmessage ignores malformed JSON without throwing", () => {
+    const input = pc.channels.find((c) => c.label === "input")!;
+    const handler = vi.fn();
+    hub.onInput(handler);
+    // Malformed JSON must not propagate — handler must not be called
+    expect(() => input.simulateMessage("not-valid-json{")).not.toThrow();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("files channel onmessage ignores malformed JSON without throwing", () => {
+    const files = pc.channels.find((c) => c.label === "files")!;
+    const handler = vi.fn();
+    hub.onFile(handler);
+    expect(() => files.simulateMessage("{broken")).not.toThrow();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("filesBufferedAmount returns the files channel bufferedAmount", () => {
     const files = pc.channels.find((c) => c.label === "files")!;
     files.bufferedAmount = 512;
