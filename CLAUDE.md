@@ -40,7 +40,7 @@ Tieferes Referenzmaterial wurde aus dieser Datei ausgegliedert, um sie schlank z
 
 - **`docs/footguns.md`** — Load-bearing settings & Footguns: WebRTC Connectivity, Sharer Teardown, Unattended-Access, AppImage-Build, Download-Proxy, Caddyfile, Matomo Cross-Tenant Trust, Cluster-Ops, Fixed-Position-Overlay.
 - **`docs/ops-runbook.md`** — Ops: Rebrand-Naming, Production-Deploy, OG-image, Sharer-Release, Admin-Promote, Docker Conventions, Reverse Proxy, Daily Backup + Restore, Deploy-Skript-Robustheit.
-- **`docs/frontend-patterns.md`** — Admin-Section Patterns + Engineering-Brief Aesthetic (Design-System, Tokens, Fonts).
+- **`docs/frontend-patterns.md`** — Admin-Section Patterns + Calm Fresh Aesthetic (emerald/mint Design-System, Tokens, Fonts).
 - **`docs/matomo-dsgvo.md`** — Matomo-Exception zur No-Tracker-Regel (Consent-Banner, cookieless, Backend-Code-Mint-Tracking).
 
 ## Quick Commands
