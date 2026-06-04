@@ -1,5 +1,5 @@
 /* Auffi — Matomo-Consent-Banner styling.
-   Engineering-Brief slim full-width bar that sits between the page-
+   Calm Fresh recast. Slim full-width bar that sits between the page-
    content area and the footer. Takes its own vertical line so it
    never overlays content (an earlier floating-card variant covered
    readable text mid-page; the visual audit on 2026-05-23 caught it).
@@ -20,10 +20,12 @@ body.matomo-consent-shown {
   right: 0;
   bottom: var(--footer-height, 48px);
   z-index: 600;
-  background: var(--paper, #f5f1e6);
-  color: var(--ink, #14110d);
-  border-top: 2px solid var(--ink, #14110d);
-  padding: 0.625rem 1.5rem;
+  background: var(--surface, #ffffff);
+  color: var(--ink, #0f1f1a);
+  border-top: 1px solid var(--line, #e3ece8);
+  border-radius: var(--radius-card, 16px) var(--radius-card, 16px) 0 0;
+  box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08));
+  padding: 0.75rem 1.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -34,9 +36,9 @@ body.matomo-consent-shown {
 
 @media (prefers-color-scheme: dark) {
   .matomo-consent-banner {
-    background: var(--paper, #0e0c08);
-    color: var(--ink, #ece6d4);
-    border-top-color: var(--ink, #ece6d4);
+    background: var(--surface, #11201c);
+    color: var(--ink, #e8f1ec);
+    border-top-color: var(--line, #20312b);
   }
 }
 
@@ -44,18 +46,24 @@ body.matomo-consent-shown {
   margin: 0;
   font-size: 0.8125rem;
   line-height: 1.45;
-  color: var(--ink, #14110d);
+  color: var(--ink, #0f1f1a);
   flex: 1;
   min-width: 16rem;
 }
 .matomo-consent-text::before {
-  content: "▌ ";
-  color: var(--amber, #f3a300);
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 0.85em;
+  margin-right: 0.4em;
+  vertical-align: -0.05em;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand, #10b981);
   font-weight: 500;
 }
 
 .matomo-consent-link {
-  color: var(--cyan, #0e4c9c);
+  color: var(--brand-strong, #047857);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -73,35 +81,41 @@ body.matomo-consent-shown {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   padding: 0.4375rem 0.875rem;
-  border-radius: 0;
-  border: 1px solid var(--ink, #14110d);
-  background: var(--paper, #f5f1e6);
-  color: var(--ink, #14110d);
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--line, #e3ece8);
+  background: transparent;
+  color: var(--ink, #0f1f1a);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
   white-space: nowrap;
 }
 
 .matomo-consent-btn:hover {
-  background: var(--ink, #14110d);
-  color: var(--paper, #f5f1e6);
+  background: var(--surface, #ffffff);
+  border-color: var(--brand, #10b981);
+  color: var(--brand-strong, #047857);
 }
 
 .matomo-consent-btn:focus-visible {
-  outline: 2px solid var(--amber, #f3a300);
+  outline: 2px solid var(--focus, #10b981);
   outline-offset: 2px;
 }
 
 .matomo-consent-ok {
-  background: var(--amber, #f3a300);
-  border-color: var(--ink, #14110d);
-  color: var(--amber-ink, #1a1408);
+  background: var(--brand-strong, #047857);
+  border-color: var(--brand-strong, #047857);
+  color: #fff;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,31,26,0.05));
 }
 
 .matomo-consent-ok:hover {
-  background: var(--amber-deep, #c98300);
-  border-color: var(--ink, #14110d);
-  color: var(--amber-ink, #1a1408);
+  background: var(--brand, #10b981);
+  border-color: var(--brand, #10b981);
+  color: var(--ink-on-brand, #06231b);
+  box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08));
+}
+@media (prefers-color-scheme: dark) {
+  .matomo-consent-ok { color: var(--ink-on-brand, #06231b); }
 }
 
 /* Narrow viewports — text wraps above the buttons, padding-bottom
@@ -109,7 +123,7 @@ body.matomo-consent-shown {
    clears all page content. */
 @media (max-width: 580px) {
   .matomo-consent-banner {
-    padding: 0.5rem 1rem;
+    padding: 0.625rem 1rem;
     gap: 0.5rem;
     flex-direction: column;
     align-items: stretch;

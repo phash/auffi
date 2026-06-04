@@ -1,5 +1,5 @@
 /* Auffi — Floating Feedback Action Button + Modal.
-   Engineering-Brief recast. Tokens come from topbar-footer.css (which
+   Calm Fresh recast. Tokens come from topbar-footer.css (which
    is loaded first on the marketing-subpages) or from the SPA bundle
    on viewer/index.html. */
 
@@ -11,27 +11,28 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5625rem 0.875rem;
-  background: var(--amber, #f3a300);
-  color: var(--amber-ink, #1a1408);
-  border: 1px solid var(--ink, #14110d);
-  border-radius: 0;
+  padding: 0.5625rem 1rem;
+  background: var(--brand-strong, #047857);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-pill, 999px);
   font-family: var(--font-mono, ui-monospace, Menlo, monospace);
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 4px 4px 0 0 var(--ink, #14110d);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,31,26,0.05), 0 2px 8px rgba(16,185,129,0.06));
   transition: transform 150ms ease, background 120ms ease, box-shadow 150ms ease;
 }
 .feedback-fab:hover {
-  background: var(--amber-deep, #c98300);
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 0 var(--ink, #14110d);
+  background: var(--brand, #10b981);
+  color: var(--ink-on-brand, #06231b);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08), 0 8px 24px rgba(16,185,129,0.10));
 }
 .feedback-fab:focus-visible {
-  outline: 2px solid var(--ink, #14110d);
+  outline: 2px solid var(--focus, #10b981);
   outline-offset: 3px;
 }
 @media (max-width: 480px) {
@@ -44,18 +45,18 @@
   position: fixed;
   inset: 0;
   z-index: 700;
-  background: rgba(20, 17, 13, 0.6);
+  background: rgba(15, 31, 26, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
 }
 .feedback-modal {
-  background: var(--paper, #f5f1e6);
-  color: var(--ink, #14110d);
-  border: 2px solid var(--ink, #14110d);
-  border-radius: 0;
-  box-shadow: 8px 8px 0 0 var(--ink, #14110d);
+  background: var(--surface, #ffffff);
+  color: var(--ink, #0f1f1a);
+  border: 1px solid var(--line, #e3ece8);
+  border-radius: var(--radius-card, 16px);
+  box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08), 0 8px 24px rgba(16,185,129,0.10));
   width: 100%;
   max-width: 32rem;
   display: grid;
@@ -68,7 +69,7 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding-bottom: 0.625rem;
-  border-bottom: 1px solid var(--edge, #ddd5c0);
+  border-bottom: 1px solid var(--line, #e3ece8);
 }
 .feedback-modal-header h2 {
   margin: 0;
@@ -77,9 +78,9 @@
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink, #14110d);
+  color: var(--ink, #0f1f1a);
 }
-.feedback-modal-header h2::before { content: "/ "; color: var(--amber, #f3a300); }
+.feedback-modal-header h2::before { content: "/ "; color: var(--brand, #10b981); }
 
 .feedback-modal-close {
   background: transparent;
@@ -88,9 +89,9 @@
   line-height: 1;
   cursor: pointer;
   padding: 0.125rem 0.5rem;
-  color: var(--ink-soft, #4a443a);
+  color: var(--muted, #5b6b64);
 }
-.feedback-modal-close:hover { color: var(--ink, #14110d); }
+.feedback-modal-close:hover { color: var(--ink, #0f1f1a); }
 
 .feedback-modal-form {
   display: grid;
@@ -103,16 +104,16 @@
   font-size: 0.6875rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-soft, #4a443a);
+  color: var(--muted, #5b6b64);
 }
 .feedback-modal-label textarea {
   width: 100%;
   font-family: var(--font-sans, -apple-system, sans-serif);
   font-size: 0.9375rem;
-  color: var(--ink, #14110d);
-  background: var(--paper, #f5f1e6);
-  border: 1px solid var(--ink, #14110d);
-  border-radius: 0;
+  color: var(--ink, #0f1f1a);
+  background: var(--paper, #f6faf8);
+  border: 1px solid var(--line, #e3ece8);
+  border-radius: var(--radius-input, 12px);
   padding: 0.5625rem 0.75rem;
   resize: vertical;
   min-height: 6rem;
@@ -120,9 +121,9 @@
   text-transform: none;
 }
 .feedback-modal-label textarea:focus {
-  outline: none;
-  border-color: var(--amber, #f3a300);
-  box-shadow: inset 0 -2px 0 var(--amber, #f3a300);
+  outline: 2px solid var(--focus, #10b981);
+  outline-offset: 0;
+  border-color: var(--brand, #10b981);
 }
 .feedback-modal-actions {
   display: flex;
@@ -136,24 +137,35 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   padding: 0.5rem 0.875rem;
-  border-radius: 0;
+  border-radius: var(--radius-pill, 999px);
   cursor: pointer;
-  border: 1px solid var(--ink, #14110d);
-  background: var(--paper, #f5f1e6);
-  color: var(--ink, #14110d);
-  transition: background 120ms ease, color 120ms ease;
+  border: 1px solid var(--line, #e3ece8);
+  background: transparent;
+  color: var(--ink, #0f1f1a);
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
-.feedback-modal-btn:hover { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+.feedback-modal-btn:hover {
+  background: color-mix(in srgb, var(--brand, #10b981) 10%, transparent);
+  border-color: var(--brand, #10b981);
+  color: var(--brand-strong, #047857);
+}
 .feedback-modal-btn-primary {
-  background: var(--amber, #f3a300);
-  border-color: var(--ink, #14110d);
-  color: var(--amber-ink, #1a1408);
+  background: var(--brand-strong, #047857);
+  border-color: var(--brand-strong, #047857);
+  color: #fff;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(15,31,26,0.05));
 }
 .feedback-modal-btn-primary:hover {
-  background: var(--amber-deep, #c98300);
-  color: var(--amber-ink, #1a1408);
+  background: var(--brand, #10b981);
+  border-color: var(--brand, #10b981);
+  color: var(--ink-on-brand, #06231b);
+  box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08));
 }
 .feedback-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (prefers-color-scheme: dark) {
+  .feedback-fab { color: var(--ink-on-brand, #06231b); }
+  .feedback-modal-btn-primary { color: var(--ink-on-brand, #06231b); }
+}
 
 .feedback-modal-status {
   margin: 0;
@@ -161,10 +173,10 @@
   font-size: 0.6875rem;
   letter-spacing: 0.06em;
   min-height: 1.2em;
-  color: var(--ink-soft, #4a443a);
+  color: var(--muted, #5b6b64);
 }
-.feedback-modal-status.err { color: var(--error, #a83b3b); }
-.feedback-modal-status.info { color: var(--ink-soft, #4a443a); }
+.feedback-modal-status.err { color: var(--error, #b91c1c); }
+.feedback-modal-status.info { color: var(--muted, #5b6b64); }
 
 /* Toast after successful send */
 .feedback-toast {
@@ -172,17 +184,17 @@
   right: 1.25rem;
   bottom: calc(var(--footer-height, 48px) + 4.5rem);
   z-index: 800;
-  background: var(--ink, #14110d);
-  color: var(--paper, #f5f1e6);
-  padding: 0.5625rem 0.875rem;
+  background: var(--ink, #0f1f1a);
+  color: var(--paper, #f6faf8);
+  padding: 0.5625rem 1rem;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-pill, 999px);
   font-family: var(--font-mono, ui-monospace, Menlo, monospace);
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  box-shadow: 4px 4px 0 0 var(--ink, #14110d);
+  box-shadow: var(--shadow-lift, 0 4px 12px rgba(15,31,26,0.08));
   animation: feedback-toast-in 200ms ease-out;
 }
 @keyframes feedback-toast-in {

@@ -2,8 +2,25 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    environment: "jsdom",
-    include: ["tests/**/*.test.ts"],
+    projects: [
+      {
+        // Node environment for file-system tests (design-tokens contrast guard)
+        test: {
+          name: "node",
+          include: ["tests/design-tokens.test.ts"],
+          environment: "node",
+        },
+      },
+      {
+        // jsdom environment for all other viewer tests
+        test: {
+          name: "jsdom",
+          include: ["tests/**/*.test.ts"],
+          exclude: ["tests/design-tokens.test.ts"],
+          environment: "jsdom",
+        },
+      },
+    ],
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
