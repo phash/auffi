@@ -8,8 +8,14 @@ const css = readFileSync(
 );
 
 function token(name: string): string {
-  const m = css.match(new RegExp(`${name}(?![\\w-])\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
+  const m = css.match(new RegExp(`(?<![\\w-])${name}(?![\\w-])\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
   if (!m) throw new Error(`token ${name} not found in styles.css`);
+  return m[1];
+}
+function darkToken(name: string): string {
+  const dark = css.slice(css.indexOf("prefers-color-scheme: dark"));
+  const m = dark.match(new RegExp(`(?<![\\w-])${name}(?![\\w-])\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
+  if (!m) throw new Error(`dark token ${name} not found`);
   return m[1];
 }
 function luminance(hex: string): number {
@@ -35,5 +41,11 @@ describe("design tokens", () => {
   });
   it("body text (ink on paper) meets WCAG AA", () => {
     expect(contrast(token("--ink"), token("--paper"))).toBeGreaterThanOrEqual(4.5);
+  });
+  it("dark primary button (ink-on-brand on brand-strong) meets WCAG AA", () => {
+    expect(contrast(darkToken("--ink-on-brand"), darkToken("--brand-strong"))).toBeGreaterThanOrEqual(4.5);
+  });
+  it("dark body text (ink on paper) meets WCAG AA", () => {
+    expect(contrast(darkToken("--ink"), darkToken("--paper"))).toBeGreaterThanOrEqual(4.5);
   });
 });

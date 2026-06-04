@@ -48,7 +48,7 @@
   --ink: #0f1f1a;
   --muted: #5b6b64;
   --brand: #10b981;
-  /* Shared palette token — consumed by the viewer hero; reserved here */
+  /* Reserved for future use — kept for palette parity with the viewer */
   --brand-2: #34d399;
   --brand-strong: #047857;
   --ink-on-brand: #06231b;
@@ -121,7 +121,7 @@
     --ink: #e8f1ec;
     --muted: #9fb2aa;
     --brand: #34d399;
-    /* Shared palette token — consumed by the viewer hero; reserved here */
+    /* Reserved for future use — kept for palette parity with the viewer */
     --brand-2: #10b981;
     --brand-strong: #34d399;
     --ink-on-brand: #06231b;

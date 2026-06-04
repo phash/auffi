@@ -66,8 +66,7 @@
   --amber-ink: var(--ink-on-brand);
   --border: var(--line);
   --text-secondary: var(--muted);
-  --error: #b91c1c;
-  --warning: #b45309;
+  --error: #a83b3b;
 
   --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -138,7 +137,7 @@ a:hover { border-bottom-color: var(--brand-strong); }
   color: #fff;
   background: var(--brand-strong);
   padding: 0.25rem 0.625rem;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   flex-shrink: 0;
   text-decoration: none;
@@ -148,6 +147,7 @@ a:hover { border-bottom-color: var(--brand-strong); }
 .topbar-wordmark:hover {
   border-bottom: none;
   background: var(--brand);
+  color: var(--ink-on-brand);
   transform: translateY(-1px);
 }
 

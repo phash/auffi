@@ -69,7 +69,6 @@
   --accent-hover: var(--brand-strong);
   --accent-active: var(--brand-strong);
   --shadow: var(--shadow-sm);
-  --radius: 0;
   --success: var(--brand);
 
   /* Semantic tokens still referenced by components */
@@ -159,7 +158,7 @@
   text-decoration: none;
   transition: background .12s ease;
 }
-.topbar-wordmark:hover { background: var(--brand); }
+.topbar-wordmark:hover { background: var(--brand); color: var(--ink-on-brand); }
 @media (prefers-color-scheme: dark) {
   .topbar-wordmark { color: var(--ink-on-brand); }
 }
@@ -337,7 +336,7 @@ body {
   gap: 2rem;
   padding: calc(var(--topbar-height) + 2.5rem) 1rem calc(var(--footer-height) + 2rem);
   line-height: 1.55;
-  background-image: radial-gradient(rgba(20, 17, 13, 0.04) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(15, 31, 26, 0.04) 1px, transparent 1px);
   background-size: 6px 6px;
   background-attachment: fixed;
 }
@@ -475,7 +474,7 @@ body.streaming .hero-title { display: none; }
   z-index: 2;
 }
 #app.streaming .card-toggle { display: inline-flex; }
-.card-toggle:hover { background: var(--brand-strong); color: #ffffff; border-color: var(--brand-strong); box-shadow: var(--shadow-sm); }
+.card-toggle:hover { background: var(--brand-strong); color: var(--ink-on-brand); border-color: var(--brand-strong); box-shadow: var(--shadow-sm); }
 #app.compact .card-toggle { transform: rotate(180deg); }
 
 .compact-status-line {
@@ -845,7 +844,7 @@ body.streaming .hero-title { display: none; }
   outline: none;
   transition: background 100ms ease, color 100ms ease;
 }
-#video-controls button:hover { background: var(--brand); color: #ffffff; }
+#video-controls button:hover { background: var(--brand); color: var(--ink-on-brand); }
 #video-controls button:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 #video-controls button:disabled { opacity: 0.45; cursor: not-allowed; }
 #video-controls button:disabled:hover { background: transparent; color: #ffffff; }
@@ -853,7 +852,7 @@ body.streaming .hero-title { display: none; }
 #zoom-reset { font-variant-numeric: tabular-nums; min-width: 56px; }
 #fullscreen-btn[aria-pressed="true"] {
   background: var(--brand);
-  color: #ffffff;
+  color: var(--ink-on-brand);
 }
 #fullscreen-btn svg { display: block; }
 
@@ -891,7 +890,7 @@ body.streaming .hero-title { display: none; }
   padding: 0;
   transition: background 100ms ease, color 100ms ease;
 }
-.pan-btn:hover { background: var(--brand); color: #ffffff; }
+.pan-btn:hover { background: var(--brand); color: var(--ink-on-brand); }
 .pan-btn:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .pan-btn:disabled { opacity: 0.35; cursor: not-allowed; background: transparent; color: rgba(255,255,255,0.4); }
 
@@ -995,7 +994,7 @@ body.streaming .hero-title { display: none; }
   -webkit-appearance: none;
   backdrop-filter: blur(4px);
 }
-#file-send-btn:hover { background: var(--brand); color: #ffffff; }
+#file-send-btn:hover { background: var(--brand); color: var(--ink-on-brand); }
 
 /* ============================================================
    Toasts: file-offer, pw-prompt — Calm Fresh card toasts
