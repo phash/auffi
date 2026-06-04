@@ -12,6 +12,7 @@ import {
 } from "./admin-nav.js";
 import { BASE_PATH, createRouter, pathUnderBase, type Route } from "./router.js";
 import { installFeedbackFab } from "./components/feedback-fab.js";
+import { mountLogoutButton } from "./logout-button.js";
 import { renderAccount } from "./views/account.js";
 import { renderAddDevice } from "./views/add-device.js";
 import { renderAdmin403 } from "./views/admin-403.js";
@@ -122,6 +123,13 @@ async function bootstrap(rootEl: HTMLElement): Promise<void> {
   const anonymousOnAdmin = !me.ok && me.status === 401 && isAdminGatedPath(here);
 
   const nav = buildNav(routes, isAdminFlag);
+
+  // Mount "Abmelden" in the topbar-meta row (right side, next to the viewer
+  // link) — visible on every authed page so shared-computer users can always
+  // end their session.
+  const topbarMeta = document.querySelector<HTMLElement>(".topbar-meta");
+  if (topbarMeta) mountLogoutButton(topbarMeta);
+
   createRouter(rootEl, routes, undefined, undefined, {
     isAdmin: () => isAdminFlag,
     renderAdminForbidden: renderAdmin403,
