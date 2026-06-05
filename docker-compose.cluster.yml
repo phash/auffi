@@ -31,6 +31,8 @@ services:
     image: nginx:1.29-alpine
     container_name: auffi-viewer
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./viewer-dist:/usr/share/nginx/html:ro
       - ./nginx/auffi-viewer.conf:/etc/nginx/conf.d/default.conf:ro
