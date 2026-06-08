@@ -9,9 +9,11 @@ URLS=(
   "https://auffi.app/"
   "https://auffi.app/download/"
   "https://auffi.app/vergleich/teamviewer/"
+  "https://auffi.app/vergleich/anydesk/"
   "https://auffi.app/en/"
   "https://auffi.app/en/download/"
   "https://auffi.app/en/compare/teamviewer/"
+  "https://auffi.app/en/compare/anydesk/"
 )
 body=$(printf '{"host":"%s","key":"%s","keyLocation":"https://%s/%s.txt","urlList":[%s]}' \
   "$HOST" "$KEY" "$HOST" "$KEY" \
