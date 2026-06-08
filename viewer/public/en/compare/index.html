@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TeamViewer & AnyDesk alternatives 2026: remote support compared</title>
+    <meta name="description" content="Screen sharing & remote support compared honestly: Auffi, TeamViewer, AnyDesk, RustDesk, Chrome Remote Desktop, Splashtop, Zoho Assist & Microsoft Quick Assist — free, open source, GDPR-compliant, self-hostable. Which tool for which job?" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/compare/" />
+
+    <!-- hreflang alternates -->
+    <link rel="alternate" hreflang="de" href="https://auffi.app/vergleich/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/compare/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/vergleich/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="TeamViewer & AnyDesk alternatives compared" />
+    <meta property="og:description" content="Auffi, TeamViewer, AnyDesk, RustDesk, Chrome Remote Desktop, Splashtop, Zoho Assist & Quick Assist compared — free, open source, GDPR, self-hostable." />
+    <meta property="og:url" content="https://auffi.app/en/compare/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Remote support & screen sharing: alternatives compared" />
+    <meta name="twitter:description" content="Auffi, TeamViewer, AnyDesk, RustDesk & co. compared honestly — free, open source, GDPR-compliant." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.5rem 0.6rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+      .vs-portrait { margin: 1.25rem 0; }
+      .vs-portrait h3 { margin-bottom: 0.25rem; }
+      .vs-best { font-size: 0.9rem; opacity: 0.85; }
+    </style>
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://auffi.app/en/compare/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "inLanguage": "en-US",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the best free alternative to TeamViewer and AnyDesk?",
+            "acceptedAnswer": { "@type": "Answer", "text": "It depends on the use case. For ad-hoc, privacy-friendly help with no installation for the person helping, Auffi is a good choice: free, open source (AGPL-3.0), servers in Germany. If you prefer open source with an app on both ends and self-hosting, RustDesk is a strong fit. For pure Windows-to-Windows help, the built-in Microsoft Quick Assist is enough." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which remote-support software is open source and GDPR-compliant?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Auffi (AGPL-3.0, servers in Germany, self-hostable) and RustDesk (AGPL-3.0, self-hostable) are open source and can be run entirely on your own infrastructure. TeamViewer and AnyDesk are German companies but proprietary and cloud-based. Chrome Remote Desktop (Google) and Microsoft Quick Assist run over US clouds." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is there screen sharing with no installation at all?",
+            "acceptedAnswer": { "@type": "Answer", "text": "With Auffi, the person helping just opens the website in a browser — no installation and no account. Only the person sharing their own screen downloads a small sharer. Most other tools (TeamViewer, AnyDesk, RustDesk) require an app on both ends." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which alternative needs no account for ad-hoc help?",
+            "acceptedAnswer": { "@type": "Answer", "text": "For ad-hoc help, Auffi needs no account — a 9-digit code is enough. TeamViewer and AnyDesk also work ad hoc without an account. Chrome Remote Desktop, by contrast, requires a Google account on both ends, and Microsoft Quick Assist a Microsoft account on the helping side." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+      <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/vergleich/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in (account)">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create account">
+          <span class="topbar-btn-label">Create account</span>
+        </a>
+        <a id="topbar-download" href="/en/download/" class="topbar-btn" aria-label="Download the sharer">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-btn-label">Download the sharer</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <a class="topbar-notch" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
+
+    <main class="container">
+      <h1>Screen sharing &amp; remote support: the alternatives compared</h1>
+
+      <p class="vs-lead">
+        There are many tools for screen sharing and remote support — from
+        <strong>TeamViewer</strong> and <strong>AnyDesk</strong> to the
+        open-source <strong>RustDesk</strong> and <strong>Auffi</strong>.
+        The key question is usually not "which has the most features" but:
+        <strong>Does the person you're helping have to install anything? Do
+        they need an account? And where does the data live?</strong>
+        This overview compares the best-known options honestly against exactly
+        those criteria — including a clear pointer to when another tool is the
+        better pick.
+      </p>
+
+      <section>
+        <h2>Comparison table</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr>
+                <th scope="col">Tool</th>
+                <th scope="col">Price</th>
+                <th scope="col">Open source</th>
+                <th scope="col">Self-hostable</th>
+                <th scope="col">Person helping needs</th>
+                <th scope="col">Origin / servers</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Auffi</th>
+                <td class="vs-yes">Free (private &amp; commercial)</td>
+                <td class="vs-yes">Yes — AGPL-3.0</td>
+                <td class="vs-yes">Yes (Docker)</td>
+                <td class="vs-yes">Just a browser, no account</td>
+                <td>Germany (Frankfurt)</td>
+              </tr>
+              <tr>
+                <th scope="row">TeamViewer</th>
+                <td>Free for private use only</td>
+                <td class="vs-no">No, proprietary</td>
+                <td class="vs-no">No</td>
+                <td>QuickSupport app + ID</td>
+                <td>Germany (Göppingen), cloud</td>
+              </tr>
+              <tr>
+                <th scope="row">AnyDesk</th>
+                <td>Free for private use only</td>
+                <td class="vs-no">No, proprietary</td>
+                <td>Enterprise on-prem only</td>
+                <td>App / portable EXE + ID</td>
+                <td>Germany (Stuttgart), cloud</td>
+              </tr>
+              <tr>
+                <th scope="row">RustDesk</th>
+                <td class="vs-yes">Free (incl. commercial)</td>
+                <td class="vs-yes">Yes — AGPL-3.0</td>
+                <td class="vs-yes">Yes</td>
+                <td>App on both ends</td>
+                <td>Company Singapore; servers self-hosted</td>
+              </tr>
+              <tr>
+                <th scope="row">Chrome Remote Desktop</th>
+                <td>Free</td>
+                <td class="vs-no">No (Google)</td>
+                <td class="vs-no">No</td>
+                <td>Browser, but Google account required</td>
+                <td>USA (Google), cloud</td>
+              </tr>
+              <tr>
+                <th scope="row">Splashtop</th>
+                <td>Trial, then paid</td>
+                <td class="vs-no">No, proprietary</td>
+                <td>On-prem only (separate product)</td>
+                <td>SOS app + code (+ technician account)</td>
+                <td>USA (EU region available)</td>
+              </tr>
+              <tr>
+                <th scope="row">Zoho Assist</th>
+                <td>Free tier + paid</td>
+                <td class="vs-no">No (SaaS)</td>
+                <td class="vs-no">No</td>
+                <td>Browser/link (+ technician account)</td>
+                <td>India (EU region available)</td>
+              </tr>
+              <tr>
+                <th scope="row">Microsoft Quick Assist</th>
+                <td>Free (built into Windows)</td>
+                <td class="vs-no">No, proprietary</td>
+                <td class="vs-no">No</td>
+                <td>Windows app + Microsoft account</td>
+                <td>USA (Microsoft), cloud</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">As of: June 2026 · "free private" = free for non-commercial use only</p>
+      </section>
+
+      <section>
+        <h2>The tools at a glance</h2>
+
+        <div class="vs-portrait">
+          <h3>Auffi</h3>
+          <p>Free, open-source (AGPL-3.0) screen sharing with remote control. The person helping just opens the website — no installation, no account. Servers in Germany, end-to-end encrypted with DTLS-SRTP, fully self-hostable.</p>
+          <p class="vs-best"><strong>Best for:</strong> ad-hoc, privacy-friendly help without an installation hurdle — e.g. family, friends or customers.</p>
+        </div>
+
+        <div class="vs-portrait">
+          <h3>TeamViewer</h3>
+          <p>The incumbent with the broadest feature set: meetings, mobile apps, device management. A German company, but proprietary and paid for commercial use.</p>
+          <p class="vs-best"><strong>Best for:</strong> broad platform/mobile support and enterprise features. <a href="/en/compare/teamviewer/">Auffi vs TeamViewer in detail →</a></p>
+        </div>
+
+        <div class="vs-portrait">
+          <h3>AnyDesk</h3>
+          <p>A German company from Stuttgart with a very fast, low-latency client (DeskRT codec) and broad platform support. Proprietary, paid for commercial use.</p>
+          <p class="vs-best"><strong>Best for:</strong> smooth remote control on graphics-intensive work. <a href="/en/compare/anydesk/">Auffi vs AnyDesk in detail →</a></p>
+        </div>
+
+        <div class="vs-portrait">
+          <h3>RustDesk</h3>
+          <p>The leading open-source (AGPL-3.0) TeamViewer alternative: self-hostable, end-to-end encrypted, free including commercial use. It does run an app on both ends, though.</p>
+          <p class="vs-best"><strong>Best for:</strong> open-source fans who want to run their own server and accept an app on both ends.</p>
+        </div>
+
+        <div class="vs-portrait">
+          <h3>Chrome Remote Desktop</h3>
+          <p>A free Google service. The controlling side works in the browser, the host installs a component — and both sides need a Google account. Data runs over US servers.</p>
+          <p class="vs-best"><strong>Best for:</strong> quick access when everyone already has a Google account.</p>
+        </div>
+
+        <div class="vs-portrait">
+          <h3>Splashtop &amp; Zoho Assist</h3>
+          <p>Paid cloud help-desk solutions for IT teams. Splashtop offers affordable per-technician plans; Zoho Assist has a small free entry tier. Both are proprietary and cloud-based (EU region partly selectable).</p>
+          <p class="vs-best"><strong>Best for:</strong> professional team IT support across many endpoints.</p>
+        </div>
+
+        <div class="vs-portrait">
+          <h3>Microsoft Quick Assist</h3>
+          <p>Built into Windows and free. Works Windows-to-Windows only; the person helping needs a Microsoft account, while the supported side just enters a code.</p>
+          <p class="vs-best"><strong>Best for:</strong> ad-hoc Windows-to-Windows help with no extra tool.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Which alternative fits you?</h2>
+        <ul>
+          <li>You want to <strong>help someone ad hoc without that person installing anything complicated</strong>, and privacy/EU hosting matter → <strong>Auffi</strong>.</li>
+          <li>You need <strong>maximum performance, mobile apps or enterprise features</strong> → <strong>AnyDesk</strong> or <strong>TeamViewer</strong>.</li>
+          <li>You want <strong>open source with your own server</strong> and an app on both ends is fine → <strong>RustDesk</strong> (or Auffi, if the person helping should only need a browser).</li>
+          <li>Pure <strong>Windows-to-Windows help</strong> with no extra tool → <strong>Microsoft Quick Assist</strong>.</li>
+          <li>You run a <strong>paid IT help desk for a team</strong> → <strong>Zoho Assist</strong> or <strong>Splashtop</strong>.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>What makes Auffi different</h2>
+        <p>
+          Auffi isn't the tool with the most features — it's the one with the
+          lowest hurdle for the person helping and a clear privacy promise. Of
+          all the options compared here, Auffi is the only one that combines
+          <strong>all four</strong> of these at once:
+        </p>
+        <ul>
+          <li>The <strong>person helping needs only a browser</strong> — no installation.</li>
+          <li>For ad-hoc help, <strong>no account</strong> is needed — a 9-digit code is enough.</li>
+          <li><strong>Servers in Germany</strong>, GDPR-compliant, no trackers, end-to-end encrypted.</li>
+          <li><strong>Open source (AGPL-3.0)</strong> and fully self-hostable.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>What is the best free alternative to TeamViewer and AnyDesk?</h3>
+        <p>It depends on the use case. For ad-hoc, privacy-friendly help with no installation for the person helping, Auffi is a good choice: free, open source (AGPL-3.0), servers in Germany. If you prefer open source with an app on both ends and self-hosting, RustDesk is a strong fit. For pure Windows-to-Windows help, the built-in Microsoft Quick Assist is enough.</p>
+        <h3>Which remote-support software is open source and GDPR-compliant?</h3>
+        <p>Auffi (AGPL-3.0, servers in Germany, self-hostable) and RustDesk (AGPL-3.0, self-hostable) are open source and can be run entirely on your own infrastructure. TeamViewer and AnyDesk are German companies but proprietary and cloud-based. Chrome Remote Desktop (Google) and Microsoft Quick Assist run over US clouds.</p>
+        <h3>Is there screen sharing with no installation at all?</h3>
+        <p>With Auffi, the person helping just opens the website in a browser — no installation and no account. Only the person sharing their own screen downloads a small sharer. Most other tools (TeamViewer, AnyDesk, RustDesk) require an app on both ends.</p>
+        <h3>Which alternative needs no account for ad-hoc help?</h3>
+        <p>For ad-hoc help, Auffi needs no account — a 9-digit code is enough. TeamViewer and AnyDesk also work ad hoc without an account. Chrome Remote Desktop, by contrast, requires a Google account on both ends, and Microsoft Quick Assist a Microsoft account on the helping side.</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          <a href="/en/#code">Share your screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/teamviewer/">Auffi vs TeamViewer</a>
+          · <a href="/en/compare/anydesk/">Auffi vs AnyDesk</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>
