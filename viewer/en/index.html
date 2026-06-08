@@ -546,6 +546,32 @@
           <a href="/en/compare/teamviewer/">Auffi vs TeamViewer compared →</a>
         </p>
       </section>
+
+      <!-- Visible FAQ — text matches the FAQPage JSON-LD in <head> verbatim.
+           Google forbids markup for content not visible to users (spam-flag
+           risk) and answer engines only extract visible Q&A text. The schema
+           block stays byte-identical → no CSP hash change. -->
+      <section class="faq-section" aria-labelledby="faq-heading">
+        <h2 id="faq-heading">Frequently asked questions</h2>
+        <div class="faq-list">
+          <article class="faq-item">
+            <h3 class="faq-question">Do I need an account to use Auffi?</h3>
+            <p class="faq-answer">No. For ad-hoc help, a 9-digit connection code is all you need. You only need an account for unattended access (your own devices paired permanently).</p>
+          </article>
+          <article class="faq-item">
+            <h3 class="faq-question">Can the server see what I'm sharing?</h3>
+            <p class="faq-answer">No. WebRTC encrypts every stream end-to-end with DTLS-SRTP. The signaling server only brokers the initial handshake — pixels, mouse movements and files flow directly between the browsers.</p>
+          </article>
+          <article class="faq-item">
+            <h3 class="faq-question">Is Auffi GDPR-compliant?</h3>
+            <p class="faq-answer">Yes. Servers in Germany (IONOS Frankfurt), no IP addresses stored in plaintext, no trackers, no logging of content. The full audit lives in the repo at docs/security-review-2026-05.md.</p>
+          </article>
+          <article class="faq-item">
+            <h3 class="faq-question">Can I self-host Auffi?</h3>
+            <p class="faq-answer">Yes. The code is AGPL-3.0-licensed on GitHub. Backend, viewer and sharer all run in Docker Compose; the guide is in ops/README.md.</p>
+          </article>
+        </div>
+      </section>
     </div>
 
     <div id="free-tier-warning-toast" role="alert" aria-live="assertive" aria-atomic="true">

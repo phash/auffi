@@ -542,6 +542,32 @@
           <a href="/vergleich/teamviewer/">Auffi vs TeamViewer im Vergleich →</a>
         </p>
       </section>
+
+      <!-- Sichtbare FAQ — Text 1:1 deckungsgleich mit dem FAQPage-JSON-LD
+           im <head>. Google verbietet Markup für nicht sichtbaren Content
+           (Spam-Flag-Risiko), und Answer-Engines extrahieren nur sichtbaren
+           Q&A-Text. Schema-Block bleibt byte-identisch → kein CSP-Hash-Change. -->
+      <section class="faq-section" aria-labelledby="faq-heading">
+        <h2 id="faq-heading">Häufige Fragen</h2>
+        <div class="faq-list">
+          <article class="faq-item">
+            <h3 class="faq-question">Brauche ich ein Konto, um Auffi zu nutzen?</h3>
+            <p class="faq-answer">Nein. Für spontane Hilfe reicht ein 9-stelliger Verbindungscode. Ein Konto brauchst du nur für Unattended Access (eigene Geräte permanent gepairt).</p>
+          </article>
+          <article class="faq-item">
+            <h3 class="faq-question">Sieht der Server, was ich teile?</h3>
+            <p class="faq-answer">Nein. WebRTC verschlüsselt jeden Stream Ende-zu-Ende mit DTLS-SRTP. Der Signaling-Server vermittelt nur den initialen Handshake — Pixel, Mausbewegungen und Dateien fließen direkt zwischen den Browsern.</p>
+          </article>
+          <article class="faq-item">
+            <h3 class="faq-question">Ist Auffi DSGVO-konform?</h3>
+            <p class="faq-answer">Ja. Server in Deutschland (IONOS Frankfurt), keine IPs im Klartext gespeichert, keine Tracker, kein Logging von Inhalten. Der vollständige Audit liegt im Repo unter docs/security-review-2026-05.md.</p>
+          </article>
+          <article class="faq-item">
+            <h3 class="faq-question">Kann ich Auffi selbst hosten?</h3>
+            <p class="faq-answer">Ja. Der Code ist AGPL-3.0-lizenziert auf GitHub. Backend, Viewer und Sharer laufen in Docker Compose; die Anleitung steht in ops/README.md.</p>
+          </article>
+        </div>
+      </section>
     </div>
 
     <div id="free-tier-warning-toast" role="alert" aria-live="assertive" aria-atomic="true">
