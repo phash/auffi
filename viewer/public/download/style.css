@@ -36,7 +36,7 @@ body { line-height: 1.5; }
   max-width: 65ch;
 }
 .container code {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
   background: var(--surface);
   padding: 0.125rem 0.375rem;

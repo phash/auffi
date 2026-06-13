@@ -580,3 +580,25 @@ section:first-of-type { border-top: none; padding-top: 0; }
   .topbar-notch { color: var(--ink-on-brand); }
   .download-btn { color: var(--ink-on-brand); }
 }
+
+/* Touch targets: the topbar stays visually compact on desktop, but on a
+ * coarse pointer (phone/tablet — our non-technical audience) the controls
+ * grow to the 44px WCAG 2.5.5 minimum so they're comfortably tappable. */
+@media (pointer: coarse) {
+  .topbar-btn,
+  .topbar-notch,
+  .download-btn { min-height: 44px; }
+}
+
+/* Respect the OS "reduce motion" setting (WCAG 2.3.3): neutralise all
+ * animation/transition/auto-scroll for users who get motion sick. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

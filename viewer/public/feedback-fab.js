@@ -91,7 +91,7 @@
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "feedback-modal-close";
-    closeBtn.setAttribute("aria-label", "Schliessen");
+    closeBtn.setAttribute("aria-label", "Schließen");
     closeBtn.textContent = "×";
     header.appendChild(closeBtn);
     card.appendChild(header);
@@ -111,7 +111,7 @@
     ta.rows = 5;
     ta.maxLength = 4000;
     ta.required = true;
-    ta.placeholder = "Schreib uns ein paar Saetze — wir antworten per Mail.";
+    ta.placeholder = "Schreib uns ein paar Sätze — wir antworten per Mail.";
     label.appendChild(ta);
     form.appendChild(label);
 
@@ -198,7 +198,7 @@
         .catch(function () {
           submitBtn.disabled = false;
           cancelBtn.disabled = false;
-          status.textContent = "Netzwerkfehler. Bitte spaeter erneut.";
+          status.textContent = "Netzwerkfehler. Bitte später erneut.";
           status.className = "feedback-modal-status err";
           return null;
         })
@@ -207,7 +207,7 @@
           response = r;
           if (r.ok) {
             close();
-            showToast("Danke fuer dein Feedback!");
+            showToast("Danke für dein Feedback!");
             return;
           }
           return r.json().then(
