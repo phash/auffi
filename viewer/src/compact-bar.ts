@@ -11,6 +11,8 @@
 // `() => peer.getInboundBytes()`) damit dieses Modul nichts über
 // die WebRTC-Peer-Implementation weiß.
 
+import { t } from "./i18n.js";
+
 const STORAGE_KEY = "auffi.viewer.compactBar.collapsed";
 
 export interface CompactBarOpts {
@@ -93,7 +95,7 @@ export class CompactBarController {
     this.opts.toggle.setAttribute("aria-expanded", String(!collapsed));
     this.opts.toggle.setAttribute(
       "aria-label",
-      collapsed ? "Bereich ausklappen" : "Bereich einklappen",
+      collapsed ? t("compactBar.expand") : t("compactBar.collapse"),
     );
   }
 

@@ -439,4 +439,66 @@ describe("FileTransferManager — receive", () => {
   it("handleChunk with too-short buffer is ignored gracefully", () => {
     expect(() => manager.handleChunk(new ArrayBuffer(4))).not.toThrow();
   });
+
+  it("rejects an offer whose declared size exceeds the 2 GiB cap (no OOM)", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    manager.handle({
+      kind: "file-offer",
+      id: "too-big",
+      name: "huge.bin",
+      size: 2 * 1024 * 1024 * 1024 + 1,
+      mime: "application/octet-stream",
+    });
+    await vi.waitFor(() => {
+      expect(sentEvents.some((e) => e.kind === "file-reject")).toBe(true);
+    });
+    // Handler must never run for an over-cap offer.
+    const reject = sentEvents.find((e) => e.kind === "file-reject");
+    if (reject?.kind !== "file-reject") throw new Error("type guard");
+    expect(reject.id).toBe("too-big");
+  });
+
+  it("rejects an offer with a malformed (negative / non-integer) size", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    manager.handle({ kind: "file-offer", id: "neg", name: "n.bin", size: -1, mime: "x" });
+    manager.handle({ kind: "file-offer", id: "frac", name: "f.bin", size: 1.5, mime: "x" });
+    await vi.waitFor(() => {
+      expect(sentEvents.filter((e) => e.kind === "file-reject").length).toBe(2);
+    });
+  });
+
+  it("aborts the receive when streamed bytes exceed the declared size", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    const fileId = "overflow";
+    manager.handle({ kind: "file-offer", id: fileId, name: "o.bin", size: 4, mime: "x" });
+    await vi.waitFor(() => {
+      expect(sentEvents.some((e) => e.kind === "file-accept")).toBe(true);
+    });
+    // Declared 4 bytes; stream 4 then 4 more — the second chunk overflows and
+    // the partial buffer is dropped, so file-done produces no file.
+    manager.handleChunk(makeChunkBuffer(fileId, 0, new Uint8Array([1, 2, 3, 4])));
+    manager.handleChunk(makeChunkBuffer(fileId, 1, new Uint8Array([5, 6, 7, 8])));
+    manager.handle({ kind: "file-done", id: fileId });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(completedFiles).toHaveLength(0);
+  });
+
+  it("ignores empty and duplicate chunks", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    const fileId = "dup";
+    manager.handle({ kind: "file-offer", id: fileId, name: "d.bin", size: 2, mime: "x" });
+    await vi.waitFor(() => {
+      expect(sentEvents.some((e) => e.kind === "file-accept")).toBe(true);
+    });
+    manager.handleChunk(makeChunkBuffer(fileId, 0, new Uint8Array([9, 9])));
+    // duplicate seq 0 (must not double-count → would overflow size 2) + empty chunk
+    manager.handleChunk(makeChunkBuffer(fileId, 0, new Uint8Array([7, 7])));
+    manager.handleChunk(makeChunkBuffer(fileId, 1, new Uint8Array([])));
+    manager.handle({ kind: "file-done", id: fileId });
+    await vi.waitFor(() => {
+      expect(completedFiles.length).toBeGreaterThan(0);
+    });
+    const bytes = new Uint8Array(await completedFiles[0].arrayBuffer());
+    expect(Array.from(bytes)).toEqual([9, 9]);
+  });
 });

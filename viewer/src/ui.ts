@@ -11,6 +11,7 @@ import { ZERO_PAN, clampPan, stepPan, type PanState } from "./pan.js";
 import { createIceStateHandler } from "./ice-state-handler.js";
 import { CompactBarController } from "./compact-bar.js";
 import { friendlyJoinError, connectTimeoutMessage } from "./connect-messages.js";
+import { trapFocus } from "./focus-trap.js";
 import { t } from "./i18n.js";
 
 // gh #40: lazy singleton — initialized in setupUi() once the DOM is
@@ -462,6 +463,17 @@ export function bindUI(backendWsUrl: string): void {
   const clearIceGraceTimer = (): void => iceState.clear();
 
   let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
+  let fileOfferTrapRelease: (() => void) | null = null;
+
+  // Resolve the pending offer, release the focus-trap and hide the toast.
+  // Used by the accept/reject buttons, the Escape key, and teardown.
+  const closeFileOffer = (accepted: boolean): void => {
+    fileOfferTrapRelease?.();
+    fileOfferTrapRelease = null;
+    pendingOfferResolve?.(accepted);
+    pendingOfferResolve = null;
+    fileOfferToast.classList.remove("active");
+  };
 
   const escapeHandler = (e: KeyboardEvent): void => {
     if (e.key === "Escape" && inputToggleBtn.getAttribute("aria-pressed") === "true") {
@@ -511,9 +523,7 @@ export function bindUI(backendWsUrl: string): void {
     capture = null;
     fileManager?.cancelAll();
     fileManager = null;
-    pendingOfferResolve?.(false);
-    pendingOfferResolve = null;
-    fileOfferToast.classList.remove("active");
+    closeFileOffer(false);
     setInputTogglePressed(inputToggleBtn, false);
     peer?.close();
     signaling?.close();
@@ -590,17 +600,8 @@ export function bindUI(backendWsUrl: string): void {
     setStatus("", "info");
   });
 
-  fileOfferAccept.addEventListener("click", () => {
-    pendingOfferResolve?.(true);
-    pendingOfferResolve = null;
-    fileOfferToast.classList.remove("active");
-  });
-
-  fileOfferReject.addEventListener("click", () => {
-    pendingOfferResolve?.(false);
-    pendingOfferResolve = null;
-    fileOfferToast.classList.remove("active");
-  });
+  fileOfferAccept.addEventListener("click", () => closeFileOffer(true));
+  fileOfferReject.addEventListener("click", () => closeFileOffer(false));
 
   fileSendBtn.addEventListener("click", () => {
     fileInput.click();
@@ -719,6 +720,10 @@ export function bindUI(backendWsUrl: string): void {
               const sizeMb = (offer.size / (1024 * 1024)).toFixed(2);
               fileOfferBody.textContent = `"${offer.name}" (${sizeMb} MB)`;
               fileOfferToast.classList.add("active");
+              // Confine Tab to the dialog (it declares aria-modal) and make
+              // Escape reject the offer. Focus the safe default (reject).
+              fileOfferTrapRelease = trapFocus(fileOfferToast, () => closeFileOffer(false));
+              fileOfferReject.focus();
             });
           });
 
@@ -792,6 +797,7 @@ export function bindUI(backendWsUrl: string): void {
       // guarding makes the existing test fixtures keep working without
       // every one of them having to be updated.
       const havePwPrompt = !!(pwToast && pwInput && pwSubmit && pwCancel && pwMessage);
+      let pwTrapRelease: (() => void) | null = null;
       const showPwPrompt = (text: string, wrong: boolean): void => {
         if (!havePwPrompt) return;
         pwMessage!.textContent = text;
@@ -800,9 +806,14 @@ export function bindUI(backendWsUrl: string): void {
         pwToast!.classList.add("active");
         pwSubmit!.disabled = false;
         pwInput!.focus();
+        // Confine Tab to the dialog; Escape cancels (same as the Cancel button).
+        pwTrapRelease?.();
+        pwTrapRelease = trapFocus(pwToast!, () => pwCancel!.click());
       };
       const hidePwPrompt = (): void => {
         if (!havePwPrompt) return;
+        pwTrapRelease?.();
+        pwTrapRelease = null;
         pwToast!.classList.remove("active");
         pwInput!.value = "";
       };
