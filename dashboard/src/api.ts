@@ -64,12 +64,14 @@ async function request<T>(
         ...(init.headers ?? {}),
       },
     });
-  } catch (e) {
+  } catch {
     return {
       ok: false,
       status: 0,
       code: "network-error",
-      message: `Netzwerkfehler: ${String(e)}`,
+      // Fixed, friendly copy — never interpolate the raw exception (it's
+      // not German, not actionable, and can be noisy in the UI).
+      message: "Netzwerkfehler — bitte die Internetverbindung prüfen und erneut versuchen.",
     };
   }
   // The backend's 2xx responses are JSON. 4xx error bodies are

@@ -72,7 +72,10 @@ describe("confirmWithReason modal", () => {
       message: "x",
       confirmLabel: "Ja",
     });
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    // Escape bubbles from the focused field up to the dialog (the trap
+    // listens on the backdrop), so dispatch it there.
+    const backdrop = document.getElementById("admin-modal-backdrop")!;
+    backdrop.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(await p).toBeNull();
   });
 
@@ -107,7 +110,9 @@ describe("confirmWithReason modal", () => {
     expect(confirm.disabled).toBe(false);
 
     // Cleanup the promise.
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    document
+      .getElementById("admin-modal-backdrop")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await p;
   });
 

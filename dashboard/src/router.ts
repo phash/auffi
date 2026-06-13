@@ -173,6 +173,21 @@ export function createRouter(
   // router handle through every callsite.
   // (Last-router-wins; tests that build multiple routers should
   // call stop() before constructing a new one.)
+  // After a route renders, move focus to the new view's heading so
+  // keyboard / screen-reader users are told the page changed (the SPA swaps
+  // content without a full navigation). Skipped when the view already moved
+  // focus into itself synchronously; form views that focus an input via a
+  // microtask still win because that runs after this.
+  const focusNewView = (): void => {
+    const active = document.activeElement;
+    if (active !== null && active !== document.body && root.contains(active)) return;
+    const heading = root.querySelector("h1");
+    if (heading instanceof HTMLElement) {
+      if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+      heading.focus();
+    }
+  };
+
   const render = (): void => {
     const path = pathUnderBase(location.pathname);
     const match = matchRoute(routes, path);
@@ -203,6 +218,7 @@ export function createRouter(
     } else {
       match.route.render(root, ctx);
     }
+    focusNewView();
     // Notify subscribers (e.g. nav active-state highlighter) that the
     // page just (re-)rendered. Custom event keeps the router decoupled
     // from the nav module.

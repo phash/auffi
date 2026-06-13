@@ -21,6 +21,7 @@ import {
   type FeedbackCategory,
 } from "../api.js";
 import { formatAbsolute } from "../format.js";
+import { confirmDialog } from "../components/confirm-dialog.js";
 import { type RouteContext, type RouteRenderer } from "../router.js";
 
 type Tab = "open" | "resolved" | "all";
@@ -215,9 +216,13 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
   deleteBtn.className = "feedback-btn";
   deleteBtn.textContent = "Löschen";
   deleteBtn.addEventListener("click", async () => {
-    if (!confirm("Feedback-Eintrag wirklich löschen? Diese Aktion wird im Audit-Log protokolliert.")) {
-      return;
-    }
+    const ok = await confirmDialog({
+      title: "Feedback löschen",
+      message: "Feedback-Eintrag wirklich löschen? Diese Aktion wird im Audit-Log protokolliert.",
+      confirmLabel: "Löschen",
+      variant: "danger",
+    });
+    if (!ok) return;
     deleteBtn.disabled = true;
     const res = await deleteAdminFeedback(item.id);
     deleteBtn.disabled = false;

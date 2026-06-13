@@ -62,13 +62,9 @@ function renderList(root: HTMLElement, items: Device[]): void {
 
   const addLink = document.createElement("a");
   addLink.href = BASE_PATH + "/devices/new";
-  addLink.className = "primary";
-  addLink.style.padding = "0.375rem 0.75rem";
-  addLink.style.borderRadius = "6px";
-  addLink.style.textDecoration = "none";
-  addLink.style.color = "#fff";
-  addLink.style.background = "var(--accent)";
-  addLink.style.fontSize = "0.875rem";
+  // Use the shared pill-button class instead of re-inlining the design
+  // system (radius/colour/padding all come from .btn.primary).
+  addLink.className = "btn primary";
   addLink.textContent = "+ Neues Gerät";
   headerRow.appendChild(addLink);
 

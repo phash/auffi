@@ -17,6 +17,7 @@ import {
   type Device,
 } from "../api.js";
 import { formatRelative } from "../format.js";
+import { confirmDialog } from "../components/confirm-dialog.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
@@ -189,11 +190,14 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   autoRow.style.borderBottom = "1px solid var(--border)";
 
   const autoCol = document.createElement("div");
-  const autoLabel = document.createElement("div");
+  const autoLabel = document.createElement("label");
+  autoLabel.setAttribute("for", "dev-auto-accept");
   autoLabel.textContent = "Auto-Akzeptieren";
   autoLabel.style.fontWeight = "600";
+  autoLabel.style.cursor = "pointer";
   autoCol.appendChild(autoLabel);
   const autoDesc = document.createElement("div");
+  autoDesc.id = "dev-auto-accept-desc";
   autoDesc.style.fontSize = "0.8125rem";
   autoDesc.style.color = "var(--text-secondary)";
   autoDesc.style.marginTop = "0.125rem";
@@ -207,7 +211,8 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   autoToggle.type = "checkbox";
   autoToggle.id = "dev-auto-accept";
   autoToggle.checked = dev.autoAccept;
-  autoToggle.setAttribute("aria-label", "Auto-Akzeptieren umschalten");
+  // Named by the visible <label for>; describe the behaviour for AT.
+  autoToggle.setAttribute("aria-describedby", "dev-auto-accept-desc");
   autoToggle.style.transform = "scale(1.4)";
   autoToggle.style.cursor = "pointer";
   autoRow.appendChild(autoToggle);
@@ -281,7 +286,13 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   dangerStatus.style.marginTop = "0.5rem";
 
   dangerBtn.addEventListener("click", async () => {
-    if (!window.confirm(`Gerät "${dev.alias}" wirklich entkoppeln?`)) return;
+    const ok = await confirmDialog({
+      title: "Gerät entkoppeln",
+      message: `Gerät "${dev.alias}" wirklich entkoppeln? Es kann sich danach nicht mehr unbeaufsichtigt verbinden.`,
+      confirmLabel: "Entkoppeln",
+      variant: "danger",
+    });
+    if (!ok) return;
     dangerBtn.disabled = true;
     dangerBtn.textContent = "Entkoppeln …";
     const res = await deleteDevice(dev.id);

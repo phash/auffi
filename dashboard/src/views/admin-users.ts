@@ -70,14 +70,18 @@ export const renderAdminUsers: RouteRenderer = (
 
   const chips = document.createElement("div");
   chips.className = "admin-users-chips";
-  chips.setAttribute("role", "tablist");
+  // A toggle-button group, not an ARIA tablist (there is no tabpanel and no
+  // roving-tabindex/arrow-key model). role="group" + aria-pressed is the
+  // honest semantic and keeps each chip in the natural tab order.
+  chips.setAttribute("role", "group");
+  chips.setAttribute("aria-label", "Nutzer filtern");
   const chipBtns: Record<Filter, HTMLButtonElement> = {} as Record<Filter, HTMLButtonElement>;
   for (const { key, label } of FILTER_LABELS) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "admin-users-chip";
     btn.textContent = label;
-    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-pressed", "false");
     btn.dataset.filter = key;
     chips.appendChild(btn);
     chipBtns[key] = btn;
@@ -109,10 +113,10 @@ export const renderAdminUsers: RouteRenderer = (
     for (const { key } of FILTER_LABELS) {
       if (key === state.filter) {
         chipBtns[key].classList.add("active");
-        chipBtns[key].setAttribute("aria-selected", "true");
+        chipBtns[key].setAttribute("aria-pressed", "true");
       } else {
         chipBtns[key].classList.remove("active");
-        chipBtns[key].setAttribute("aria-selected", "false");
+        chipBtns[key].setAttribute("aria-pressed", "false");
       }
     }
   }
@@ -186,10 +190,19 @@ export const renderAdminUsers: RouteRenderer = (
     for (const user of state.items) {
       const tr = document.createElement("tr");
       tr.className = "row-clickable";
-      tr.addEventListener("click", () => navigate(`/admin/users/${user.id}`));
+      tr.addEventListener("click", (e) => {
+        // The email cell is a real link (keyboard-accessible); let the
+        // router handle that click so we don't navigate twice.
+        if ((e.target as HTMLElement).closest("a")) return;
+        navigate(`/admin/users/${user.id}`);
+      });
 
       const tdEmail = document.createElement("td");
-      tdEmail.textContent = user.email;
+      const emailLink = document.createElement("a");
+      emailLink.href = BASE_PATH + `/admin/users/${user.id}`;
+      emailLink.textContent = user.email;
+      emailLink.className = "user-row-link";
+      tdEmail.appendChild(emailLink);
       tr.appendChild(tdEmail);
 
       const tdStatus = document.createElement("td");

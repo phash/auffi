@@ -11,6 +11,8 @@
 // Bestätigen-Button bleibt disabled bis die Länge erreicht ist; bei
 // Submit-Versuch unterhalb der Länge wird eine Fehlermeldung gezeigt.
 
+import { trapFocus } from "../focus-trap.js";
+
 export const MIN_REASON_LEN = 10;
 
 export interface ConfirmOptions {
@@ -46,15 +48,19 @@ export function confirmWithReason(opts: ConfirmOptions): Promise<string | null> 
     backdrop.className = "admin-modal-backdrop";
     backdrop.setAttribute("role", "dialog");
     backdrop.setAttribute("aria-modal", "true");
+    backdrop.setAttribute("aria-labelledby", "admin-modal-title");
+    backdrop.setAttribute("aria-describedby", "admin-modal-desc");
 
     const modal = document.createElement("div");
     modal.className = "admin-modal";
 
     const h2 = document.createElement("h2");
+    h2.id = "admin-modal-title";
     h2.textContent = opts.title;
     modal.appendChild(h2);
 
     const msg = document.createElement("p");
+    msg.id = "admin-modal-desc";
     msg.textContent = opts.message;
     modal.appendChild(msg);
 
@@ -99,11 +105,12 @@ export function confirmWithReason(opts: ConfirmOptions): Promise<string | null> 
     document.body.appendChild(backdrop);
 
     textarea.focus();
+    // Confine Tab to the dialog and wire Escape → cancel; restores focus to
+    // the triggering control on close.
+    const releaseTrap = trapFocus(backdrop, () => close(null));
 
     function close(value: string | null): void {
-      // Detach listeners to avoid leaks if the Promise is GC'd before
-      // close (defensive — JS doesn't really need this but it's tidy).
-      document.removeEventListener("keydown", onKey);
+      releaseTrap();
       backdrop.remove();
       resolve(value);
     }
@@ -132,10 +139,5 @@ export function confirmWithReason(opts: ConfirmOptions): Promise<string | null> 
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) close(null);
     });
-
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === "Escape") close(null);
-    }
-    document.addEventListener("keydown", onKey);
   });
 }

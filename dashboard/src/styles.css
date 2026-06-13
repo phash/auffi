@@ -1394,3 +1394,16 @@ a.muted:hover {
   color: var(--ink);
   border-bottom-color: var(--brand);
 }
+
+/* Respect the OS "reduce motion" setting (WCAG 2.3.3): neutralise all
+   animation/transition/auto-scroll for users who get motion sick. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

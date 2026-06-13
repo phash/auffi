@@ -10,6 +10,7 @@
 // Auth flows via the existing __Host-auffi_session cookie.
 
 import { getMe, submitFeedback, type FeedbackCategory } from "../api.js";
+import { trapFocus } from "../focus-trap.js";
 
 const FAB_ID = "feedback-fab";
 const MODAL_ID = "feedback-modal";
@@ -206,7 +207,12 @@ function openModal(): void {
   document.body.appendChild(overlay);
 
   // ── Wiring ────────────────────────────────────────────────────
-  const close = (): void => overlay.remove();
+  let releaseTrap: (() => void) | null = null;
+  const close = (): void => {
+    releaseTrap?.();
+    releaseTrap = null;
+    overlay.remove();
+  };
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
@@ -257,8 +263,10 @@ function openModal(): void {
     }
   });
 
-  // Focus the textarea so a keyboard user lands on the primary input.
+  // Focus the textarea so a keyboard user lands on the primary input, and
+  // confine Tab to the dialog with Escape-to-close.
   bodyArea.focus();
+  releaseTrap = trapFocus(overlay, close);
 }
 
 function showToast(message: string): void {

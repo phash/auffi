@@ -207,7 +207,7 @@ export const renderAdminUserDetail: RouteRenderer = (
           : d.last_seen_at
             ? `Zuletzt gesehen: ${formatDate(d.last_seen_at)}`
             : "Noch nie verbunden";
-        if (d.online) right.style.color = "#2da44e";
+        if (d.online) right.style.color = "var(--success)";
         li.appendChild(left);
         li.appendChild(right);
         ul.appendChild(li);

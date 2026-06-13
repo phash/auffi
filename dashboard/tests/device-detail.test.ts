@@ -169,22 +169,21 @@ describe("renderDeviceDetail", () => {
         return jsonResponse({ ok: true });
       }) as unknown as typeof fetch,
     });
-    // Auto-confirm the window.confirm prompt.
-    const originalConfirm = window.confirm;
-    window.confirm = (() => true) as typeof window.confirm;
-    try {
-      const root = makeRoot();
-      renderDeviceDetail(root, ctx(SEED.id));
-      await flush();
-      const buttons = Array.from(root.querySelectorAll("button"));
-      const deleteBtn = buttons.find((b) => b.textContent === "Gerät entkoppeln") as HTMLButtonElement;
-      deleteBtn.click();
-      await flush();
-      expect(calls.some((c) => c.method === "DELETE")).toBe(true);
-      expect(window.location.pathname).toMatch(/\/dashboard\/devices$/);
-    } finally {
-      window.confirm = originalConfirm;
-    }
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    const buttons = Array.from(root.querySelectorAll("button"));
+    const deleteBtn = buttons.find((b) => b.textContent === "Gerät entkoppeln") as HTMLButtonElement;
+    deleteBtn.click();
+    await flush();
+    // Confirm in the styled dialog (replaces window.confirm).
+    const confirmBtn = document.querySelector(
+      "#admin-modal-backdrop .btn.danger",
+    ) as HTMLButtonElement;
+    confirmBtn.click();
+    await flush();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(true);
+    expect(window.location.pathname).toMatch(/\/dashboard\/devices$/);
   });
 
   it("DELETE no-ops when the user cancels the confirm prompt", async () => {
@@ -199,20 +198,20 @@ describe("renderDeviceDetail", () => {
         return jsonResponse({ ok: true });
       }) as unknown as typeof fetch,
     });
-    const originalConfirm = window.confirm;
-    window.confirm = (() => false) as typeof window.confirm;
-    try {
-      const root = makeRoot();
-      renderDeviceDetail(root, ctx(SEED.id));
-      await flush();
-      const buttons = Array.from(root.querySelectorAll("button"));
-      const deleteBtn = buttons.find((b) => b.textContent === "Gerät entkoppeln") as HTMLButtonElement;
-      deleteBtn.click();
-      await flush();
-      expect(deleteFired).toBe(false);
-    } finally {
-      window.confirm = originalConfirm;
-    }
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    const buttons = Array.from(root.querySelectorAll("button"));
+    const deleteBtn = buttons.find((b) => b.textContent === "Gerät entkoppeln") as HTMLButtonElement;
+    deleteBtn.click();
+    await flush();
+    // Cancel in the styled dialog → no DELETE.
+    const cancelBtn = Array.from(
+      document.querySelectorAll<HTMLButtonElement>("#admin-modal-backdrop .admin-modal-actions button"),
+    ).find((b) => b.textContent === "Abbrechen") as HTMLButtonElement;
+    cancelBtn.click();
+    await flush();
+    expect(deleteFired).toBe(false);
   });
 
   it("redirects to /login on 401", async () => {

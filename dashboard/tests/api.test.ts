@@ -114,7 +114,9 @@ describe("api response handling", () => {
     if (res.ok) return;
     expect(res.status).toBe(0);
     expect(res.code).toBe("network-error");
-    expect(res.message).toContain("ECONNREFUSED");
+    // Fixed friendly German copy — the raw exception must NOT leak through.
+    expect(res.message).toContain("Netzwerkfehler");
+    expect(res.message).not.toContain("ECONNREFUSED");
   });
 
   it("falls back to http-error when the body isn't JSON-shaped", async () => {
