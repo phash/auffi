@@ -91,6 +91,38 @@ const linkPhash = document.getElementById("link-phash")! as HTMLButtonElement;
 const linkMrd = document.getElementById("link-mrd")! as HTMLButtonElement;
 const aboutVersionEl = document.getElementById("about-version")!;
 
+// ── Modal focus trap ──────────────────────────────────────────────────────────
+// The sharer's overlays (peer-confirm, peer-remove, stop-confirm, monitor
+// picker, file-offer) all carry role="dialog" aria-modal but toggle via a
+// class / inline display. One global handler confines Tab to whichever dialog
+// is actually rendered (getClientRects() is true only for an on-screen element,
+// and unlike offsetParent it also works for position:fixed overlays). This
+// avoids per-dialog wiring and stale listeners.
+const DIALOG_FOCUSABLE =
+  'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])';
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab") return;
+  const open = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(
+    (d) => d.getClientRects().length > 0,
+  );
+  const modal = open[open.length - 1];
+  if (!modal) return;
+  const items = Array.from(modal.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE)).filter(
+    (el) => el.getClientRects().length > 0,
+  );
+  if (items.length === 0) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || !modal.contains(active))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || !modal.contains(active))) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
 // ── State ───────────────────────────────────────────────────────────────────
 
 let currentIpPrefix: string | null = null;
@@ -332,7 +364,7 @@ newCodeBtn.addEventListener("click", () => {
   resetCode();
   setStatus("Neuer Code wird angefragt…", "waiting");
   restartSignaling().catch((e: unknown) => {
-    setStatus(`Fehler: ${String(e)}`, "error");
+    showFriendlyError("Neuer Code konnte nicht angefragt werden. Bitte erneut versuchen.", e);
     showReconnect();
   });
 });
@@ -344,7 +376,7 @@ reconnectBtn.addEventListener("click", () => {
   resetCode();
   setStatus("Verbinde neu…", "waiting");
   restartSignaling().catch((e: unknown) => {
-    setStatus(`Fehler: ${String(e)}`, "error");
+    showFriendlyError("Neuverbindung fehlgeschlagen. Bitte erneut versuchen.", e);
     showReconnect();
   });
 });
@@ -390,7 +422,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
       openMonitorPicker("start");
     })
     .catch((err: unknown) => {
-      setStatus(`Fehler: ${String(err)}`, "error");
+      showFriendlyError("Verbindung konnte nicht akzeptiert werden. Bitte erneut versuchen.", err);
     });
 });
 
@@ -644,42 +676,19 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
   currentIpPrefix = e.payload.ipPrefix;
   newCodeBtn.classList.remove("visible");
 
+  // SECURITY: never auto-accept based on the IP prefix. The backend redacts
+  // the viewer IP to its first octet (~/8 — up to ~16M addresses), so a
+  // "trusted" match is far too coarse to authorise an unattended screen
+  // share, and CLAUDE.md requires the sharer to confirm every ad-hoc peer.
+  // A known prefix is surfaced as a hint in the dialog, but the human still
+  // clicks Akzeptieren. (Genuine unattended access is a separate, password-
+  // gated flow.)
   const trusted = await isTrustedPeer(e.payload.ipPrefix);
-  if (trusted) {
-    invoke("confirm_peer", { accepted: true, ipPrefix: currentIpPrefix })
-      .then(async () => {
-        // Same Wayland-skip logic as the manual-accept path: on Wayland
-        // the compositor's portal dialog handles monitor selection and
-        // showing our own picker would mean 2 dialogs for one share.
-        const usesPortal = await invoke<boolean>("capture_backend_uses_portal");
-        if (usesPortal) {
-          setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — wähle den Bildschirm im System-Dialog…`, "waiting");
-          streamBtn.disabled = true;
-          invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" })
-            .then(async () => {
-              streamingReady = true;
-              await replayPendingSignaling();
-              setStatus("Streaming läuft.", "success");
-              showStreamingActions();
-            })
-            .catch((err: unknown) => {
-              showFriendlyError("Streamen konnte nicht gestartet werden. Bitte erneut versuchen.", err);
-              streamBtn.disabled = false;
-            });
-          return;
-        }
-        setStatus(`Bekannter Helfer (${e.payload.ipPrefix}) — Bildschirm auswählen…`, "waiting");
-        const monitors = await invoke<DisplayInfo[]>("list_monitors");
-        renderMonitorChoices(monitors);
-        openMonitorPicker("start");
-      })
-      .catch((err: unknown) => {
-        setStatus(`Fehler: ${String(err)}`, "error");
-      });
-  } else {
-    confirmTextEl.textContent = `Verbindungsanfrage von ${e.payload.ipPrefix}`;
-    confirmEl.classList.add("visible");
-  }
+  confirmTextEl.textContent = trusted
+    ? `Verbindungsanfrage von ${e.payload.ipPrefix} — bekannter Helfer (frühere Verbindung)`
+    : `Verbindungsanfrage von ${e.payload.ipPrefix}`;
+  rememberPeerCheckbox.checked = trusted;
+  confirmEl.classList.add("visible");
 });
 
 listen<{ payload: RelayPayload }>("relay", (e) => {

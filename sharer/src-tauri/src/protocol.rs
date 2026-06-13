@@ -45,3 +45,40 @@ pub struct ViewerInfo {
     #[serde(rename = "country", default)]
     pub _country: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression guard for the rename documented above: a PeerJoined frame
+    // must deserialize whether `country` is present or absent. A wrong/missing
+    // rename silently dropped every PeerJoined (the sharer never saw incoming
+    // viewers).
+    #[test]
+    fn peer_joined_deserializes_with_country_present() {
+        let json = r#"{"type":"peer-joined","viewerInfo":{"ipPrefix":"84.xxx","country":"DE"}}"#;
+        match serde_json::from_str::<Incoming>(json).expect("parse") {
+            Incoming::PeerJoined { viewer_info } => {
+                assert_eq!(viewer_info.ip_prefix, "84.xxx");
+                assert_eq!(viewer_info._country.as_deref(), Some("DE"));
+            }
+            other => panic!("expected PeerJoined, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn peer_joined_deserializes_with_country_null_or_absent() {
+        for json in [
+            r#"{"type":"peer-joined","viewerInfo":{"ipPrefix":"10.xxx","country":null}}"#,
+            r#"{"type":"peer-joined","viewerInfo":{"ipPrefix":"10.xxx"}}"#,
+        ] {
+            match serde_json::from_str::<Incoming>(json).expect("parse") {
+                Incoming::PeerJoined { viewer_info } => {
+                    assert_eq!(viewer_info.ip_prefix, "10.xxx");
+                    assert_eq!(viewer_info._country, None);
+                }
+                other => panic!("expected PeerJoined, got {other:?}"),
+            }
+        }
+    }
+}

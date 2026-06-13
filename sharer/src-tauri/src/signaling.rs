@@ -160,3 +160,27 @@ pub async fn run(app: AppHandle, url: String) -> Signaling {
 
     Signaling { tx: tx_for_handle }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::derive_origin;
+
+    // The Origin header is security-relevant (the backend's WS verifyClient +
+    // TURN gate match against the allow-list). Guard the scheme mapping. The
+    // env-override branch is intentionally not exercised here to avoid the
+    // documented parallel-test env-var race (CQ M-20).
+    #[test]
+    fn wss_maps_to_https_origin_dropping_the_path() {
+        assert_eq!(derive_origin("wss://auffi.app/signal"), "https://auffi.app");
+    }
+
+    #[test]
+    fn ws_maps_to_http_origin() {
+        assert_eq!(derive_origin("ws://localhost:8080/signal"), "http://localhost:8080");
+    }
+
+    #[test]
+    fn unknown_scheme_falls_back_to_localhost() {
+        assert_eq!(derive_origin("https://auffi.app"), "http://localhost");
+    }
+}

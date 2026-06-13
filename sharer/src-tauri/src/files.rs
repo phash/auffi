@@ -317,8 +317,39 @@ impl FileTransferManager {
     fn open_output_file(filename: &str) -> std::io::Result<std::fs::File> {
         let dir = output_dir();
         std::fs::create_dir_all(&dir)?;
-        let path = dir.join(filename);
-        std::fs::File::create(path)
+        // De-duplicate instead of truncating: a viewer-chosen name must never
+        // silently overwrite an existing file in ~/Downloads/Auffi/. `create_new`
+        // (O_EXCL) also closes the check-then-create TOCTOU race.
+        let mut attempt = 0u32;
+        loop {
+            let candidate = if attempt == 0 {
+                dir.join(filename)
+            } else {
+                dir.join(dedupe_filename(filename, attempt))
+            };
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+            {
+                Ok(file) => return Ok(file),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 9999 => {
+                    attempt += 1;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
+/// Insert ` (n)` before the last extension so a colliding download lands as
+/// `report (1).pdf` rather than overwriting `report.pdf` — matching browser
+/// behaviour. A leading dot (hidden file, no real extension) is not treated
+/// as an extension boundary.
+fn dedupe_filename(filename: &str, n: u32) -> String {
+    match filename.rfind('.') {
+        Some(idx) if idx > 0 => format!("{} ({}){}", &filename[..idx], n, &filename[idx..]),
+        _ => format!("{filename} ({n})"),
     }
 }
 
@@ -487,6 +518,26 @@ fn mime_guess(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── dedupe_filename tests ────────────────────────────────────────────────
+
+    #[test]
+    fn dedupe_inserts_index_before_extension() {
+        assert_eq!(dedupe_filename("report.pdf", 1), "report (1).pdf");
+        assert_eq!(dedupe_filename("report.pdf", 2), "report (2).pdf");
+    }
+
+    #[test]
+    fn dedupe_handles_no_extension() {
+        assert_eq!(dedupe_filename("README", 1), "README (1)");
+    }
+
+    #[test]
+    fn dedupe_handles_multiple_dots_and_leading_dot() {
+        // Only the LAST extension is split; a leading dot is not an extension.
+        assert_eq!(dedupe_filename("archive.tar.gz", 1), "archive.tar (1).gz");
+        assert_eq!(dedupe_filename(".bashrc", 1), ".bashrc (1)");
+    }
 
     // ─── sanitize_filename tests ──────────────────────────────────────────────
 

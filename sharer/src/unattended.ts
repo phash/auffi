@@ -82,6 +82,7 @@ function makePasswordToggleIcon(slashed: boolean): SVGElement {
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { confirmDialog } from "./confirm-dialog.js";
 
 type ModeChoice = "adhoc" | "unattended";
 
@@ -143,6 +144,17 @@ function show(el: HTMLElement | null, kind: "block" | "inline-block" = "block"):
 
 function setStatusText(text: string): void {
   if (statusEl) statusEl.textContent = text;
+}
+
+/**
+ * Log the raw error for diagnosis but return a user-presentable string.
+ * Tauri command rejections are German message strings (shown as-is); any
+ * other thrown value collapses to a generic German fallback instead of
+ * dumping `[object Object]` into the UI.
+ */
+function detail(e: unknown): string {
+  console.warn("[unattended] action failed:", e);
+  return typeof e === "string" && e.trim().length > 0 ? e : "Unbekannter Fehler";
 }
 
 async function refresh(): Promise<void> {
@@ -217,7 +229,7 @@ pairBtn?.addEventListener("click", async () => {
     if (pairStatus) pairStatus.textContent = `Verbunden als ${deviceId}.`;
     await refresh();
   } catch (e) {
-    if (pairStatus) pairStatus.textContent = `Fehler: ${String(e)}`;
+    if (pairStatus) pairStatus.textContent = `Fehler: ${detail(e)}`;
   } finally {
     pairBtn.disabled = false;
   }
@@ -237,7 +249,7 @@ pwBtn?.addEventListener("click", async () => {
     if (pwStatus) pwStatus.textContent = "Passwort gespeichert.";
     await refresh();
   } catch (e) {
-    if (pwStatus) pwStatus.textContent = `Fehler: ${String(e)}`;
+    if (pwStatus) pwStatus.textContent = `Fehler: ${detail(e)}`;
   } finally {
     pwBtn.disabled = false;
   }
@@ -250,7 +262,7 @@ startBtn?.addEventListener("click", async () => {
     active = true;
     await refresh();
   } catch (e) {
-    setStatusText(`Fehler: ${String(e)}`);
+    setStatusText(`Fehler: ${detail(e)}`);
   } finally {
     startBtn.disabled = false;
   }
@@ -263,14 +275,20 @@ stopBtn?.addEventListener("click", async () => {
     active = false;
     await refresh();
   } catch (e) {
-    setStatusText(`Fehler: ${String(e)}`);
+    setStatusText(`Fehler: ${detail(e)}`);
   } finally {
     stopBtn.disabled = false;
   }
 });
 
 unpairBtn?.addEventListener("click", async () => {
-  if (!confirm("Gerät wirklich entkoppeln? Du musst dann erneut pairen.")) return;
+  const ok = await confirmDialog({
+    title: "Gerät entkoppeln",
+    message: "Gerät wirklich entkoppeln? Du musst dann erneut pairen.",
+    confirmLabel: "Entkoppeln",
+    danger: true,
+  });
+  if (!ok) return;
   unpairBtn.disabled = true;
   try {
     if (active) {
@@ -280,7 +298,7 @@ unpairBtn?.addEventListener("click", async () => {
     await invoke("unattended_unpair");
     await refresh();
   } catch (e) {
-    setStatusText(`Fehler: ${String(e)}`);
+    setStatusText(`Fehler: ${detail(e)}`);
   } finally {
     unpairBtn.disabled = false;
   }

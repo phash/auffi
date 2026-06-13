@@ -166,11 +166,10 @@ async fn start_signaling(
         *guard = None;
     }
 
-    let url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
-        std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
-            .unwrap_or("wss://auffi.app/signal")
-            .to_string()
-    });
+    // Reject cleartext ws:///http:// backend URLs (unless AUFFI_ALLOW_INSECURE=1)
+    // just like the unattended path — the 9-digit session code must not travel
+    // over an unencrypted WS.
+    let url = crate::unattended_cmd::backend_ws_url_secure()?;
 
     let sig = signaling::run(app, url).await;
     // gh #20: set the mode-agnostic OutboundSink so receive_offer +
@@ -282,11 +281,7 @@ async fn start_streaming(
     if rtc_state.0.lock().await.is_some() {
         return Err("ein Stream läuft bereits — disconnect_streaming zuerst aufrufen".to_string());
     }
-    let ws_url = std::env::var("AUFFI_BACKEND_WS").unwrap_or_else(|_| {
-        std::option_env!("AUFFI_DEFAULT_BACKEND_WS")
-            .unwrap_or("wss://auffi.app/signal")
-            .to_string()
-    });
+    let ws_url = crate::unattended_cmd::backend_ws_url_secure()?;
     let backend_http_url = turn_config::ws_url_to_http(&ws_url);
     dbg_log(&format!(
         "[start_streaming] backend_http_url={}",
@@ -877,13 +872,17 @@ async fn streaming_loop(
             }
         }
 
-        // Safety: `capturer.is_none()` was checked above and the only path
-        // that nulls it again is `Stop` which `continue`s back to the idle
-        // branch.
-        let cap = capturer
-            .as_mut()
-            .expect("capturer present in active branch");
-        let encoder = enc.as_mut().expect("encoder present in active branch");
+        // `capturer.is_none()` was checked above and the only path that nulls
+        // it again is `Stop`, which `continue`s back to the idle branch — so
+        // both are present here today. Degrade to a clean exit rather than a
+        // panic if a future change ever breaks that invariant.
+        let (cap, encoder) = match (capturer.as_mut(), enc.as_mut()) {
+            (Some(c), Some(e)) => (c, e),
+            _ => {
+                dbg_log("[streaming_loop] capturer/encoder unexpectedly absent in active branch; exiting");
+                return;
+            }
+        };
 
         let frame = match cap.next_frame() {
             Ok(f) => f,

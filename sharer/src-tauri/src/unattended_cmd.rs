@@ -122,7 +122,7 @@ fn backend_ws_url() -> String {
 /// [`validate_backend_url`]. Returns an error string when the URL is
 /// cleartext and the dev escape hatch is not set. All callers that send
 /// a Bearer token MUST use this variant.
-fn backend_ws_url_secure() -> Result<String, String> {
+pub(crate) fn backend_ws_url_secure() -> Result<String, String> {
     let url = backend_ws_url();
     let allow_insecure = std::env::var("AUFFI_ALLOW_INSECURE")
         .map(|v| v == "1")
