@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Db } from "../db.js";
 import { hashPassword, verifyPasswordTimingSafe } from "./argon.js";
 import { newToken, hashToken } from "./tokens.js";
+import { mailErrorInfo } from "../email/log_safe.js";
 import { maybePromoteToAdmin } from "../admin/bootstrap.js";
 import {
   createSession,
@@ -117,9 +118,10 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
     ).run(hashToken(verifyToken), accountId, now + VERIFY_TTL_MS);
 
     // Fire-and-forget mail; the user sees a generic success no matter what
-    // happens at the SMTP layer (cannot leak deliverability).
+    // happens at the SMTP layer (cannot leak deliverability). Log only the
+    // error class/code — the raw message can echo the recipient address.
     void mailer.sendVerifyEmail(email, verifyToken).catch((e) => {
-      req.log.warn({ err: e }, "verify-email send failed");
+      req.log.warn({ err: mailErrorInfo(e) }, "verify-email send failed");
     });
 
     return reply.status(202).send({ ok: true });
@@ -261,7 +263,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
         ).run(hashToken(token), account.id, Date.now() + RESET_TTL_MS);
 
         void mailer.sendResetEmail(email, token).catch((e) => {
-          req.log.warn({ err: e }, "reset-email send failed");
+          req.log.warn({ err: mailErrorInfo(e) }, "reset-email send failed");
         });
       }
 

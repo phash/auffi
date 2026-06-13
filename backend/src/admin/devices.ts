@@ -83,7 +83,7 @@ export function registerAdminDevicesRoutes(app: FastifyInstance, db: Db): void {
 
       const ownerId = q.owner_id ? Number(q.owner_id) : null;
       if (ownerId !== null) {
-        if (!Number.isFinite(ownerId)) return bad(reply, 400, "bad-owner-id", "owner_id must be numeric");
+        if (!Number.isInteger(ownerId) || ownerId <= 0) return bad(reply, 400, "bad-owner-id", "owner_id must be a positive integer");
         where.push("d.owner_account_id = ?");
         params.push(ownerId);
       }

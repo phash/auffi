@@ -1,4 +1,5 @@
 import * as argon2 from "argon2";
+import { randomBytes } from "node:crypto";
 
 /**
  * Argon2id parameters tuned for ~250 ms on a 1 vCPU VPS (per gh #10
@@ -61,7 +62,9 @@ async function getTimingDecoy(): Promise<string> {
     TIMING_DECOY = await hashPassword(
       // 256 bits of plaintext — never used for actual auth, just to feed
       // argon2 enough work that the timing matches a real hash compare.
-      "auffi-timing-decoy-" + Math.random().toString(36).slice(2),
+      // CSPRNG (not Math.random) keeps this auth file free of weak-random
+      // smells even though the value is throw-away.
+      "auffi-timing-decoy-" + randomBytes(16).toString("hex"),
     );
   }
   return TIMING_DECOY;

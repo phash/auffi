@@ -56,6 +56,14 @@ export type ServerConfig = {
   startPurgeScheduler?: boolean;
 };
 
+/**
+ * Hard ceiling on the ad-hoc 9-digit-code session TTL. CLAUDE.md § Product
+ * Goals pins this at 10 minutes "server-enforced, hard cap". The
+ * `SESSION_TTL_MS` env can lower it but MUST NOT be able to raise it — an
+ * oversized/misconfigured value is clamped here, not trusted.
+ */
+export const CODE_TTL_HARD_CAP_MS = 10 * 60 * 1000;
+
 function envNumber(key: string, fallback: number): number {
   const raw = process.env[key];
   if (!raw) return fallback;
@@ -136,6 +144,18 @@ function buildLoggerOptions(nodeEnv: string | undefined) {
 export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> {
   // Read env at call-time so tests can override values per-server.
   const env = readEnvConfig();
+  // Fail closed: never let a production deploy fall back to the localhost
+  // dev allow-list. That list feeds CORS (with credentials:true), the WS
+  // upgrade gate, AND TURN-credential issuance — a forgotten ALLOWED_ORIGINS
+  // would otherwise reflect cookies and mint TURN creds for http://localhost.
+  if (process.env.NODE_ENV === "production" && !process.env.ALLOWED_ORIGINS) {
+    throw new Error(
+      "ALLOWED_ORIGINS must be set in production — refusing to start with the localhost dev allow-list",
+    );
+  }
+  // Clamp the ad-hoc code TTL to the hard cap regardless of env (see
+  // CODE_TTL_HARD_CAP_MS). The browser-session TTL is separate (sessions.ts).
+  const codeTtlMs = Math.min(env.sessionTtlMs, CODE_TTL_HARD_CAP_MS);
   const turnSharedSecret = process.env.TURN_SHARED_SECRET ?? "";
   const turnRealm = process.env.TURN_REALM ?? "localhost";
   const turnHosts = envList("TURN_HOSTS", []);
@@ -190,8 +210,14 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // env vars are absent the tracker is a silent no-op. Carries no PII —
   // see src/tracking/matomo.ts and viewer/public/datenschutz.
   const matomo = matomoTrackerFromEnv();
+  if (codeTtlMs !== env.sessionTtlMs) {
+    app.log.warn(
+      { requested: env.sessionTtlMs, cap: CODE_TTL_HARD_CAP_MS },
+      "SESSION_TTL_MS exceeds the 10-minute code-TTL hard cap; clamping",
+    );
+  }
   const store = new SessionStore({
-    ttlMs: env.sessionTtlMs,
+    ttlMs: codeTtlMs,
     maxAttempts: env.maxFailedAttempts,
     onCodeCreated: () => {
       // DB ist die verlaessliche Single-Source-of-Truth fuer die

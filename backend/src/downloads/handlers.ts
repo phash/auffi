@@ -79,6 +79,16 @@ function defaultUpstreamFetcher(asset: string, tag?: string): Promise<Response> 
  */
 const VALID_TAG = /^v\d+\.\d+\.\d+$/;
 
+/**
+ * Defence-in-depth for the `Content-Disposition` filename. `asset` is
+ * already constrained to `KNOWN_ASSETS` (all `[A-Za-z0-9._-]`), so this
+ * is a no-op today — but it means a future allow-list entry containing a
+ * quote or CR/LF can never turn into a response-header injection.
+ */
+function safeFilename(asset: string): string {
+  return asset.replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
 export interface DownloadRoutesOptions {
   /** Inject a custom upstream fetcher (used by tests). */
   upstreamFetcher?: (asset: string, tag?: string) => Promise<Response>;
@@ -185,7 +195,7 @@ export function registerDownloadRoutes(
       // `curl -I` und Uptime-Checker korrekt informiert sind.
       if (req.method === "HEAD") {
         reply.header("content-type", "application/octet-stream");
-        reply.header("content-disposition", `attachment; filename="${asset}"`);
+        reply.header("content-disposition", `attachment; filename="${safeFilename(asset)}"`);
         return reply.status(200).send();
       }
 
@@ -212,7 +222,7 @@ export function registerDownloadRoutes(
       // weiterleiten. Attachment-Disposition + octet-stream zwingt
       // den Download-Pfad immer, egal was der Upstream sagt.
       reply.header("content-type", "application/octet-stream");
-      reply.header("content-disposition", `attachment; filename="${asset}"`);
+      reply.header("content-disposition", `attachment; filename="${safeFilename(asset)}"`);
       // Plus expliziter nosniff fuer die direkte Antwort — der Caddy-
       // Reverse-Proxy setzt das ohnehin global, aber doppelt haelt
       // besser und macht den Schutz auf der Route sichtbar.

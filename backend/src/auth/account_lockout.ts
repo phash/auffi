@@ -70,24 +70,23 @@ export function recordAccountPwFail(
   now: number = Date.now(),
 ): AccountFailOutcome {
   const key = bucketKey(accountId);
-  db.prepare(
-    `INSERT INTO rate_limit_buckets (key, fail_count, locked_until)
-     VALUES (?, 1, NULL)
-     ON CONFLICT(key) DO UPDATE SET fail_count = fail_count + 1`,
-  ).run(key);
-
+  // Increment AND latch the lock in one atomic statement so a burst of
+  // concurrent wrong-password requests can't read a sub-threshold count
+  // between a separate increment and a separate lock-write. `fail_count`
+  // inside DO UPDATE refers to the pre-increment value, so `+ 1` is the new
+  // count; RETURNING hands back the post-update row.
   const row = db
-    .prepare<[string], { fail_count: number; locked_until: number | null }>(
-      "SELECT fail_count, locked_until FROM rate_limit_buckets WHERE key = ?",
+    .prepare<[string, number, number], { fail_count: number; locked_until: number | null }>(
+      `INSERT INTO rate_limit_buckets (key, fail_count, locked_until)
+       VALUES (?, 1, NULL)
+       ON CONFLICT(key) DO UPDATE SET
+         fail_count = fail_count + 1,
+         locked_until = CASE WHEN fail_count + 1 >= ? THEN ? ELSE locked_until END
+       RETURNING fail_count, locked_until`,
     )
-    .get(key)!;
+    .get(key, ACCOUNT_PW_FAIL_THRESHOLD, now + ACCOUNT_PW_LOCKOUT_MS)!;
 
   if (row.fail_count >= ACCOUNT_PW_FAIL_THRESHOLD) {
-    const lockedUntil = now + ACCOUNT_PW_LOCKOUT_MS;
-    db.prepare("UPDATE rate_limit_buckets SET locked_until = ? WHERE key = ?").run(
-      lockedUntil,
-      key,
-    );
     return {
       failCount: row.fail_count,
       attemptsLeft: 0,

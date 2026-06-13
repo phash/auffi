@@ -151,7 +151,7 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
     { preHandler: [app.requireSession, app.requireAdmin] },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const id = Number((req.params as { id: string }).id);
-      if (!Number.isFinite(id)) return bad(reply, 400, "bad-id", "id must be numeric");
+      if (!Number.isInteger(id) || id <= 0) return bad(reply, 400, "bad-id", "id must be a positive integer");
 
       const account = db
         .prepare<
@@ -256,7 +256,7 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
     { preHandler: [app.requireSession, app.requireAdmin] },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const id = Number((req.params as { id: string }).id);
-      if (!Number.isFinite(id)) return bad(reply, 400, "bad-id", "id must be numeric");
+      if (!Number.isInteger(id) || id <= 0) return bad(reply, 400, "bad-id", "id must be a positive integer");
       const body = (req.body ?? {}) as { action?: unknown; reason?: unknown };
       const action = typeof body.action === "string" ? body.action : "";
       const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
@@ -317,7 +317,7 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
     { preHandler: [app.requireSession, app.requireAdmin] },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const id = Number((req.params as { id: string }).id);
-      if (!Number.isFinite(id)) return bad(reply, 400, "bad-id", "id must be numeric");
+      if (!Number.isInteger(id) || id <= 0) return bad(reply, 400, "bad-id", "id must be a positive integer");
       const body = (req.body ?? {}) as { reason?: unknown };
       const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : "";
       if (!reason.trim()) {

@@ -11,6 +11,7 @@ import {
   recordAccountPwFail,
   recordAccountPwSuccess,
 } from "../auth/account_lockout.js";
+import { mailErrorInfo } from "../email/log_safe.js";
 
 const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -176,7 +177,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
            VALUES (?, ?, ?, ?, NULL)`,
         ).run(hashToken(token), account.id, newEmail, Date.now() + EMAIL_CHANGE_TTL_MS);
         void mailer.sendEmailChangeVerification(newEmail, token).catch((e) => {
-          req.log.warn({ err: e }, "email-change verify send failed");
+          req.log.warn({ err: mailErrorInfo(e) }, "email-change verify send failed");
         });
       }
 

@@ -12,6 +12,7 @@ import {
   smtpConfigFromEnv,
   smtpTransport,
 } from "./transport.js";
+import { redactEmail } from "./log_safe.js";
 
 /**
  * Mails fired when an admin replies to user feedback in the dashboard.
@@ -114,12 +115,13 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
       const inner = captureTransport();
       return {
         async send(opts) {
-          // Always log recipient + subject so an operator knows mail is
-          // flowing. The body (which contains verify/reset token links)
-          // is only dumped when AUFFI_LOG_MAIL_BODIES=1 to avoid leaking
-          // tokens into container logs in production.
+          // Always log a redacted recipient + subject so an operator knows
+          // mail is flowing without writing a full address (PII) to the
+          // container logs. The body (which contains the verify/reset token
+          // link) is only dumped when AUFFI_LOG_MAIL_BODIES=1; the recipient
+          // stays redacted even then.
           const header =
-            `[mailer:no-smtp] to=${opts.to} subject=${JSON.stringify(opts.subject)}\n`;
+            `[mailer:no-smtp] to=${redactEmail(opts.to)} subject=${JSON.stringify(opts.subject)}\n`;
           const body =
             process.env.AUFFI_LOG_MAIL_BODIES === "1"
               ? `[mailer:no-smtp] body=\n${opts.text}\n`

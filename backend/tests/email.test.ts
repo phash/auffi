@@ -170,7 +170,9 @@ describe("mailerFromEnv — no-SMTP fallback token-leak fix", () => {
       (process.stderr as { write: (s: string) => boolean }).write = origWrite;
     }
     const combined = stderrLines.join("");
-    expect(combined).toContain("victim@example.com");
+    // Recipient is redacted — the full address (PII) must NEVER hit the logs.
+    expect(combined).toContain("v***@example.com");
+    expect(combined).not.toContain("victim@example.com");
     // Token must NOT appear in logs when body-dump is disabled.
     expect(combined).not.toContain("secret-token-abc");
   });
@@ -191,7 +193,9 @@ describe("mailerFromEnv — no-SMTP fallback token-leak fix", () => {
       delete process.env.AUFFI_LOG_MAIL_BODIES;
     }
     const combined = stderrLines.join("");
-    expect(combined).toContain("dev@example.com");
+    // Recipient stays redacted even with body-dump on.
+    expect(combined).toContain("d***@example.com");
+    expect(combined).not.toContain("dev@example.com");
     // Body dump is explicitly enabled — the token link must appear.
     expect(combined).toContain("dev-token-xyz");
   });

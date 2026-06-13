@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
 import type { FeedbackMailer } from "../email/mailer.js";
+import { mailErrorInfo } from "../email/log_safe.js";
 import { writeAudit } from "./middleware.js";
 
 const DEFAULT_LIMIT = 50;
@@ -281,8 +282,11 @@ export function registerAdminFeedbackRoutes(
         );
       } catch (err) {
         sendError = (err as Error).message;
+        // Log the class/code only — the raw SMTP message can echo the
+        // recipient address (PII). The admin-facing `sendError` in the
+        // response is fine: the admin already sees the user's email.
         req.log.warn(
-          { err: sendError, feedbackId: fid },
+          { err: mailErrorInfo(err), feedbackId: fid },
           "feedback reply email send failed (reply persisted as draft)",
         );
       }
