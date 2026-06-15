@@ -177,6 +177,14 @@
       </div>
 
       <nav class="topbar-actions" aria-label="Links">
+        <button
+          id="help-trigger"
+          type="button"
+          class="topbar-btn topbar-btn-icon"
+          aria-haspopup="dialog"
+          aria-controls="help-modal"
+          aria-label="Hilfe — So funktioniert Auffi"
+        >?</button>
         <a id="lang-switch" href="/en/" class="topbar-btn" aria-label="View in English" hreflang="en">EN</a>
         <a
           id="topbar-login"
@@ -206,6 +214,47 @@
         </a>
       </nav>
     </header>
+
+    <div id="help-modal" class="help-modal" hidden>
+      <div class="help-modal-backdrop" data-help-close></div>
+      <div
+        class="help-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-modal-title"
+      >
+        <div class="help-modal-head">
+          <h2 id="help-modal-title" class="help-modal-title">Hilfe — So funktioniert Auffi</h2>
+          <button type="button" class="help-modal-close" data-help-close aria-label="Hilfe schließen">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="help-modal-body">
+          <details class="help-section" open>
+            <summary>Ich möchte jemandem helfen</summary>
+            <p>Lass dir den 9-stelligen Code der anderen Person geben, tippe ihn oben ein und klicke <strong>Verbinden</strong>. Du siehst ihren Bildschirm live — und kannst ihn mit Erlaubnis fernsteuern. Kein Konto, keine Installation.</p>
+          </details>
+          <details class="help-section">
+            <summary>Ich brauche selbst Hilfe</summary>
+            <p><strong>Sharer herunterladen</strong>, starten, den angezeigten Code an deine Helferin oder deinen Helfer weitergeben und die Freigabe bestätigen. Schon sieht die andere Person deinen Bildschirm.</p>
+          </details>
+          <details class="help-section">
+            <summary>Was ist der 9-stellige Code?</summary>
+            <p>Ein einmaliger Verbindungscode, den der Sharer erzeugt. Er ist höchstens 10 Minuten gültig und wird nach 5 Fehlversuchen gesperrt — so kann niemand Codes durchprobieren.</p>
+          </details>
+          <details class="help-section">
+            <summary>Ist das sicher?</summary>
+            <p>Ja. Die Übertragung ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt, die Server stehen in Deutschland, jede Verbindung muss am Sharer bestätigt werden, und es gibt keine Tracker. <a href="/datenschutz/">Mehr zum Datenschutz</a>.</p>
+          </details>
+          <details class="help-section">
+            <summary>Brauche ich ein Konto?</summary>
+            <p>Für die spontane Hilfe nicht. Ein Konto brauchst du nur für den <strong>unbeaufsichtigten Dauerzugriff</strong> auf ein eigenes Gerät — etwa den eigenen Heim-PC.</p>
+          </details>
+        </div>
+      </div>
+    </div>
 
     <div class="hero">
       <p class="eyebrow">Open Source · DSGVO-konform · Server in Deutschland</p>

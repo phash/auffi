@@ -266,6 +266,18 @@
 }
 .topbar-btn-label { display: inline; }
 
+/* „?"-Hilfe-Trigger: rundes Icon-Button. */
+.topbar-btn-icon {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+}
+
 @media (max-width: 380px) {
   .topbar-btn-label { display: none; }
   .topbar-btn { padding: 0.4375rem 0.5rem; }
@@ -374,6 +386,108 @@
 }
 @media (max-width: 420px) {
   .topbar-cta { height: 30px; font-size: 0.625rem; padding: 0 0.875rem; }
+}
+
+/* ============================================================
+   Hilfe-Modal („?") — So funktioniert Auffi
+   ============================================================ */
+.help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.help-modal[hidden] { display: none; }
+.help-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 31, 26, 0.45);
+}
+.help-modal-dialog {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lift);
+}
+.help-modal-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.125rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.help-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.help-modal-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+  -webkit-appearance: none;
+}
+.help-modal-close:hover { background: var(--paper); color: var(--ink); }
+.help-modal-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.help-modal-body { padding: 0.25rem 1.25rem 1.25rem; }
+.help-section { border-bottom: 1px solid var(--line); }
+.help-section:last-child { border-bottom: none; }
+.help-section > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9375rem 0;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+.help-section > summary::-webkit-details-marker { display: none; }
+.help-section > summary::after {
+  content: "+";
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--muted);
+}
+.help-section[open] > summary::after { content: "–"; }
+.help-section > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.help-section > p {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.help-section a { color: var(--brand-strong); }
+@media (prefers-color-scheme: dark) {
+  .help-section a { color: var(--brand); }
 }
 
 /* ============================================================

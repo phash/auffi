@@ -2,6 +2,7 @@ import "./styles.css";
 import { bindUI } from "./ui.js";
 import { showSignupToastIfFlagged } from "./signup-toast.js";
 import { attachNotchHandler, focusCodeInput } from "./notch-connect.js";
+import { wireHelpModal } from "./help-modal.js";
 
 function deriveBackendWsUrl(): string {
   const explicit = import.meta.env.VITE_BACKEND_WS;
@@ -33,3 +34,8 @@ showSignupToastIfFlagged();
     focusCodeInput(codeInput, false);
   }
 }
+
+wireHelpModal(
+  document.getElementById("help-trigger"),
+  document.getElementById("help-modal"),
+);
