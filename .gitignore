@@ -34,3 +34,6 @@ screens/
 
 # Claude Code session-local state (lockfile etc.)
 .claude/
+
+# Superpowers brainstorming mockups — local, never committed
+.superpowers/
