@@ -15,10 +15,15 @@ use-auth-secret
 static-auth-secret=${TURN_SHARED_SECRET}
 realm=${TURN_REALM}
 total-quota=100
-# Per-credential allocation cap. A legit WebRTC session uses 1–2 relay
-# allocations; 12 leaves headroom while preventing one (possibly stolen,
-# ≤1h-TTL) ephemeral credential from monopolising the total-quota pool.
-user-quota=12
+# Per-credential allocation cap (per browser — makeCredentials mints a unique
+# username per peer). A multi-homed client burns ~3 allocations per local
+# interface address (UDP+TCP on :3478 + TLS on :5349), so the old cap of 12
+# was reached at just 4 interfaces (WLAN v4+v6 / Ethernet / WSL-vEthernet /
+# VPN on Windows is trivial) → spurious `486 Allocation Quota Reached` and a
+# "connected but no picture" stall for relay-dependent users (gh #112). 50
+# covers ~16 interface addresses while staying well under total-quota=100, so
+# a stolen ≤1h-TTL credential still can't monopolise the pool.
+user-quota=50
 max-bps=5000000
 lifetime=600
 no-multicast-peers
