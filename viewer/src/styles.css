@@ -163,6 +163,17 @@
   .topbar-wordmark { color: var(--ink-on-brand); }
 }
 
+/* 3-Zonen-Layout: links (Wordmark+Tagline) | Mitte (Verbinden+Sharer) |
+   rechts (Aktionen). Linke und rechte Zone wachsen gleich (flex: 1 1 0),
+   damit die mittlere Gruppe echt zentriert bleibt. */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .topbar-tagline {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
@@ -173,7 +184,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
   text-align: left;
   padding-left: 0.5rem;
 }
@@ -185,7 +197,9 @@
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  flex-shrink: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .topbar-btn {
@@ -252,6 +266,18 @@
 }
 .topbar-btn-label { display: inline; }
 
+/* „?"-Hilfe-Trigger: rundes Icon-Button. */
+.topbar-btn-icon {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+}
+
 @media (max-width: 380px) {
   .topbar-btn-label { display: none; }
   .topbar-btn { padding: 0.4375rem 0.5rem; }
@@ -259,66 +285,217 @@
 @media (max-width: 720px) {
   #topbar-login .topbar-btn-label,
   #topbar-signup .topbar-btn-label { display: inline; }
-  #topbar-download .topbar-btn-label,
   #topbar-coffee .topbar-btn-label { display: none; }
 }
 
-/* gh #104 — Notch CTA. Calm Fresh emerald pill tab. */
-.topbar-notch {
-  position: fixed;
-  top: var(--topbar-height);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 501;
-  height: 32px;
+/* Center-Zone: zwei gleich prominente CTAs — Verbinden + Sharer-Download.
+   (Ersetzt die frühere fixed `.topbar-notch` unter der Leiste; das
+   #notch-connect-Verhalten — Scroll/Fokus aufs Code-Feld — bleibt.) */
+.topbar-center {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.topbar-cta {
+  height: 34px;
   padding: 0 1.125rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5em;
-  background: var(--brand-strong);
-  color: #ffffff;
+  gap: 0.4375rem;
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 500;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   text-decoration: none;
-  border: none;
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: transform 150ms ease, background .12s ease, box-shadow .12s ease;
+  transition: background .12s ease, color .12s ease, box-shadow .12s ease, transform .12s ease;
   -webkit-appearance: none;
   outline: none;
 }
-@media (prefers-color-scheme: dark) {
-  .topbar-notch { color: var(--ink-on-brand); }
+.topbar-cta:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
-.topbar-notch::before {
+/* Label-Hook (spiegelt .topbar-btn-label): eigener Selektor, damit der Text
+   bei Bedarf responsiv ein-/ausgeblendet werden kann. */
+.topbar-cta-label { display: inline; }
+
+/* Verbinden — solide Emerald-Pille mit Punkt-Indikator. */
+.topbar-cta-connect {
+  background: var(--brand-strong);
+  border: 1px solid var(--brand-strong);
+  color: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+.topbar-cta-connect::before {
   content: "";
-  display: inline-block;
   width: 4px;
   height: 0.85em;
   border-radius: var(--radius-pill);
   background: rgba(255,255,255,0.55);
-  margin-right: 0.25em;
   flex-shrink: 0;
 }
-@media (prefers-color-scheme: dark) {
-  .topbar-notch::before { background: rgba(6,35,27,0.45); }
-}
-.topbar-notch:hover {
+.topbar-cta-connect:hover {
   background: var(--brand);
-  transform: translateX(-50%) translateY(2px);
+  border-color: var(--brand);
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-1px);
+}
+@media (prefers-color-scheme: dark) {
+  .topbar-cta-connect { color: var(--ink-on-brand); }
+  .topbar-cta-connect::before { background: rgba(6,35,27,0.45); }
+}
+
+/* Sharer — Outline-Pille mit Download-Icon. */
+.topbar-cta-sharer {
+  background: var(--surface);
+  border: 1.5px solid var(--brand-strong);
+  color: var(--brand-strong);
+}
+.topbar-cta-sharer:hover {
+  background: rgba(16,185,129,0.12);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+@media (prefers-color-scheme: dark) {
+  .topbar-cta-sharer { color: var(--brand); border-color: var(--brand); }
+}
+
+/* Bis ~1400px ist die Leiste zweizeilig: Wordmark + Aktionen oben,
+   Verbinden + Sharer zentriert darunter. Hält beide CTAs auch auf
+   Laptop/Tablet/Mobile sichtbar, ohne dass die zentrierte Gruppe mit der
+   (breiten) rechten Aktionsgruppe kollidiert. Erst auf breiten Desktops
+   passt alles in eine Zeile. Der --topbar-height-Override zieht
+   Body-Padding, Toast-Offsets und Scroll-Margins automatisch mit. */
+@media (max-width: 1400px) {
+  :root { --topbar-height: 100px; }
+  #top-bar {
+    height: auto;
+    min-height: var(--topbar-height);
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .topbar-left { order: 1; flex: 0 0 auto; }
+  .topbar-actions { order: 2; flex: 1 1 auto; justify-content: flex-end; }
+  .topbar-center { order: 3; flex-basis: 100%; justify-content: center; }
+}
+@media (max-width: 420px) {
+  .topbar-cta { height: 30px; font-size: 0.625rem; padding: 0 0.875rem; }
+}
+/* Touch-Geräte: 44px-Tap-Targets (WCAG 2.5.5), Parität mit topbar-footer.css. */
+@media (pointer: coarse) {
+  .topbar-btn,
+  .topbar-cta { min-height: 44px; }
+}
+
+/* ============================================================
+   Hilfe-Modal („?") — So funktioniert Auffi
+   ============================================================ */
+.help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.help-modal[hidden] { display: none; }
+.help-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 31, 26, 0.45);
+}
+.help-modal-dialog {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-lift);
 }
-.topbar-notch:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 3px;
+.help-modal-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.125rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
 }
-@media (max-width: 480px) {
-  .topbar-notch { height: 30px; padding: 0 0.875rem; font-size: 0.625rem; }
+.help-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.help-modal-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+  -webkit-appearance: none;
+}
+.help-modal-close:hover { background: var(--paper); color: var(--ink); }
+.help-modal-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.help-modal-body { padding: 0.25rem 1.25rem 1.25rem; }
+.help-section { border-bottom: 1px solid var(--line); }
+.help-section:last-child { border-bottom: none; }
+.help-section > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9375rem 0;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+.help-section > summary::-webkit-details-marker { display: none; }
+.help-section > summary::after {
+  content: "+";
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--muted);
+}
+.help-section[open] > summary::after { content: "–"; }
+.help-section > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.help-section > p {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.help-section a { color: var(--brand-strong); }
+@media (prefers-color-scheme: dark) {
+  .help-section a { color: var(--brand); }
 }
 
 /* ============================================================
@@ -649,6 +826,73 @@ body.streaming .hero-title { display: none; }
   transition: background .12s ease, box-shadow .12s ease;
 }
 .icon-btn:hover { background: var(--surface); box-shadow: var(--shadow-sm); }
+
+/* Sekundärer Hero-CTA: „oder jemand anderen um Hilfe bitten — Sharer laden".
+   Nur im Idle sichtbar; bei body.streaming ausgeblendet (wie eyebrow/title). */
+.hero-alt-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+}
+.hero-alt-cta-divider {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 0.625rem;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.hero-alt-cta-divider::before,
+.hero-alt-cta-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.hero-alt-cta-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+.hero-alt-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 1rem;
+  background: rgba(16,185,129,0.08);
+  color: var(--brand-strong);
+  border: 1.5px solid var(--brand-strong);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background .12s ease, box-shadow .12s ease, transform .12s ease;
+}
+.hero-alt-cta-btn:hover {
+  background: rgba(16,185,129,0.16);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+.hero-alt-cta-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  .hero-alt-cta-btn { color: var(--brand); border-color: var(--brand); }
+}
+body.streaming .hero-alt-cta { display: none; }
 
 .reconnect-wrap { display: none; }
 .reconnect-wrap.active { display: block; }

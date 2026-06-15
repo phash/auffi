@@ -150,9 +150,41 @@
   </head>
   <body>
     <header id="top-bar" role="banner">
-      <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
-      <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      <div class="topbar-left">
+        <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a
+          id="notch-connect"
+          class="topbar-cta topbar-cta-connect"
+          href="#code"
+          aria-label="Zum Verbindungscode springen"
+        >Verbinden</a>
+        <a
+          id="topbar-sharer"
+          class="topbar-cta topbar-cta-sharer"
+          href="/download/"
+          aria-label="Sharer herunterladen"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Sharer herunterladen</span>
+        </a>
+      </div>
+
       <nav class="topbar-actions" aria-label="Links">
+        <button
+          id="help-trigger"
+          type="button"
+          class="topbar-btn topbar-btn-icon"
+          aria-haspopup="dialog"
+          aria-controls="help-modal"
+          aria-label="Hilfe — So funktioniert Auffi"
+        >?</button>
         <a id="lang-switch" href="/en/" class="topbar-btn" aria-label="View in English" hreflang="en">EN</a>
         <a
           id="topbar-login"
@@ -171,18 +203,6 @@
           <span class="topbar-btn-label">Konto anlegen</span>
         </a>
         <a
-          id="topbar-download"
-          href="/download/"
-          class="topbar-btn"
-          aria-label="Sharer herunterladen"
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
-            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
-          </svg>
-          <span class="topbar-btn-label">Sharer herunterladen</span>
-        </a>
-        <a
           id="topbar-coffee"
           href="https://buymeacoffee.com/phash"
           target="_blank"
@@ -195,7 +215,46 @@
       </nav>
     </header>
 
-    <a id="notch-connect" class="topbar-notch" href="#code" aria-label="Zum Verbindungscode springen">Verbinden</a>
+    <div id="help-modal" class="help-modal" hidden>
+      <div class="help-modal-backdrop" data-help-close></div>
+      <div
+        class="help-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-modal-title"
+      >
+        <div class="help-modal-head">
+          <h2 id="help-modal-title" class="help-modal-title">Hilfe — So funktioniert Auffi</h2>
+          <button type="button" class="help-modal-close" data-help-close aria-label="Hilfe schließen">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="help-modal-body">
+          <details class="help-section" open>
+            <summary>Ich möchte jemandem helfen</summary>
+            <p>Lass dir den 9-stelligen Code der anderen Person geben, tippe ihn oben ein und klicke <strong>Verbinden</strong>. Du siehst ihren Bildschirm live — und kannst ihn mit Erlaubnis fernsteuern. Kein Konto, keine Installation.</p>
+          </details>
+          <details class="help-section">
+            <summary>Ich brauche selbst Hilfe</summary>
+            <p><strong>Sharer herunterladen</strong>, starten, den angezeigten Code an deine Helferin oder deinen Helfer weitergeben und die Freigabe bestätigen. Schon sieht die andere Person deinen Bildschirm.</p>
+          </details>
+          <details class="help-section">
+            <summary>Was ist der 9-stellige Code?</summary>
+            <p>Ein einmaliger Verbindungscode, den der Sharer erzeugt. Er ist höchstens 10 Minuten gültig und wird nach 5 Fehlversuchen gesperrt — so kann niemand Codes durchprobieren.</p>
+          </details>
+          <details class="help-section">
+            <summary>Ist das sicher?</summary>
+            <p>Ja. Die Übertragung ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt, die Server stehen in Deutschland, jede Verbindung muss am Sharer bestätigt werden, und es gibt keine Tracker. <a href="/datenschutz/">Mehr zum Datenschutz</a>.</p>
+          </details>
+          <details class="help-section">
+            <summary>Brauche ich ein Konto?</summary>
+            <p>Für die spontane Hilfe nicht. Ein Konto brauchst du nur für den <strong>unbeaufsichtigten Dauerzugriff</strong> auf ein eigenes Gerät — etwa den eigenen Heim-PC.</p>
+          </details>
+        </div>
+      </div>
+    </div>
 
     <div class="hero">
       <p class="eyebrow">Open Source · DSGVO-konform · Server in Deutschland</p>
@@ -252,6 +311,20 @@
             </svg>
           </button>
         </div>
+      </div>
+
+      <!-- Sekundärer CTA: macht die zweite Rolle (selbst Hilfe brauchen)
+           explizit. Nur im Idle sichtbar; bei body.streaming ausgeblendet. -->
+      <div class="hero-alt-cta">
+        <span class="hero-alt-cta-divider">oder</span>
+        <p class="hero-alt-cta-text">Jemand anderen um Hilfe bitten?</p>
+        <a id="hero-sharer-cta" class="hero-alt-cta-btn" href="/download/">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          Sharer herunterladen
+        </a>
       </div>
 
       <div id="status" role="status" aria-live="polite"></div>

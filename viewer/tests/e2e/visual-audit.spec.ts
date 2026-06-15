@@ -87,7 +87,7 @@ test("password eye-toggle on /dashboard/login", async ({ page }) => {
   expect(await pw.getAttribute("type")).toBe("password");
 });
 
-// Notch button — click on impressum should navigate to / with #code.
+// Topbar Verbinden CTA — click on impressum should navigate to / with #code.
 test("notch button focus flow from impressum", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -97,7 +97,7 @@ test("notch button focus flow from impressum", async ({ page }) => {
     fullPage: false,
     clip: { x: 0, y: 0, width: 1440, height: 200 },
   });
-  await page.locator(".topbar-notch").click();
+  await page.locator(".topbar-cta-connect").click();
   await page.waitForLoadState("networkidle");
   // Should land on /#code with the code input focused.
   await page.screenshot({

@@ -445,3 +445,59 @@ describe("POST /api/auth/forgot + /api/auth/reset", () => {
     expect(second.statusCode).toBe(410);
   });
 });
+
+describe("SIGNUP_DISABLED gate (gh #39)", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  beforeEach(async () => {
+    h = await build();
+  });
+  afterEach(async () => {
+    delete process.env.SIGNUP_DISABLED;
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("returns 403 and creates no account when SIGNUP_DISABLED=1", async () => {
+    process.env.SIGNUP_DISABLED = "1";
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "blocked@example.com", password: "correct-horse-battery" },
+    });
+    expect(res.statusCode).toBe(403);
+    const row = h.db
+      .prepare<[string], { id: number }>("SELECT id FROM accounts WHERE email = ?")
+      .get("blocked@example.com");
+    expect(row).toBeUndefined();
+    expect(h.mailer.sent).toHaveLength(0);
+  });
+
+  it("allows signup when SIGNUP_DISABLED is unset", async () => {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "allowed@example.com", password: "correct-horse-battery" },
+    });
+    expect(res.statusCode).toBe(202);
+  });
+
+  it("honours common truthy values with surrounding whitespace/case", async () => {
+    process.env.SIGNUP_DISABLED = " YES ";
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "x@example.com", password: "correct-horse-battery" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("treats falsy strings as enabled (does not close on '0' / 'false')", async () => {
+    process.env.SIGNUP_DISABLED = "false";
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "y@example.com", password: "correct-horse-battery" },
+    });
+    expect(res.statusCode).toBe(202);
+  });
+});

@@ -19,16 +19,34 @@ describe("Viewer top bar", () => {
     doc = loadDOM();
   });
 
-  it("download button navigates to the dedicated /download/ page", () => {
-    // /download/ is the canonical multi-platform download page (Windows
-    // + Linux + Source). The old in-page #download anchor was a Windows-
-    // only section and got removed when the unified topbar shipped
-    // (2026-05-17, commit d464f4a).
-    const btn = doc.getElementById("topbar-download") as HTMLAnchorElement | null;
+  it("Sharer-Download sits in the prominent topbar centre and links to /download/", () => {
+    // The download moved out of the right-hand action cluster into the
+    // centre zone next to Verbinden (2026-06-15) to make it prominent.
+    const btn = doc.getElementById("topbar-sharer") as HTMLAnchorElement | null;
     expect(btn).not.toBeNull();
     expect(btn!.getAttribute("href")).toBe("/download/");
     // No target=_blank — same-tab navigation is the expected default.
-    expect(btn!.target).toBe("");
+    expect(btn!.getAttribute("target")).toBe(null);
+    // Lives in the centre zone, not the right-hand actions.
+    expect(btn!.closest(".topbar-center")).not.toBeNull();
+  });
+
+  it("the old right-hand #topbar-download anchor is gone (moved to centre)", () => {
+    expect(doc.getElementById("topbar-download")).toBeNull();
+  });
+
+  it("Verbinden CTA sits in the centre and targets the code field", () => {
+    const cta = doc.getElementById("notch-connect") as HTMLAnchorElement | null;
+    expect(cta).not.toBeNull();
+    expect(cta!.getAttribute("href")).toBe("#code");
+    expect(cta!.classList.contains("topbar-cta-connect")).toBe(true);
+    expect(cta!.closest(".topbar-center")).not.toBeNull();
+  });
+
+  it("hero secondary CTA offers the Sharer download below Verbinden", () => {
+    const heroCta = doc.getElementById("hero-sharer-cta") as HTMLAnchorElement | null;
+    expect(heroCta).not.toBeNull();
+    expect(heroCta!.getAttribute("href")).toBe("/download/");
   });
 
   it("coffee button exists with correct href and target=_blank", () => {
@@ -40,10 +58,12 @@ describe("Viewer top bar", () => {
     expect(btn!.rel).toContain("noreferrer");
   });
 
-  it("both buttons have aria-label attributes", () => {
-    const download = doc.getElementById("topbar-download") as HTMLAnchorElement;
+  it("the prominent buttons all carry aria-label attributes", () => {
+    const sharer = doc.getElementById("topbar-sharer") as HTMLAnchorElement;
+    const connect = doc.getElementById("notch-connect") as HTMLAnchorElement;
     const coffee = doc.getElementById("topbar-coffee") as HTMLAnchorElement;
-    expect(download.getAttribute("aria-label")).toBeTruthy();
+    expect(sharer.getAttribute("aria-label")).toBeTruthy();
+    expect(connect.getAttribute("aria-label")).toBeTruthy();
     expect(coffee.getAttribute("aria-label")).toBeTruthy();
   });
 

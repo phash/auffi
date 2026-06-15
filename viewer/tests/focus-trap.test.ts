@@ -45,6 +45,27 @@ describe("trapFocus", () => {
     release();
   });
 
+  it("treats <summary> as focusable so a button before it is not the trap's last stop", () => {
+    // The help modal is built from <details><summary> rows. If the selector
+    // omits <summary>, the only focusable becomes the close button → the
+    // trap pins focus to it and Tab can never reach the accordion (gh review).
+    document.body.innerHTML = "";
+    const c = document.createElement("div");
+    const btn = document.createElement("button");
+    const details = document.createElement("details");
+    details.append(document.createElement("summary"));
+    c.append(btn, details);
+    document.body.append(c);
+    const release = trapFocus(c);
+    btn.focus();
+    const ev = tab();
+    c.dispatchEvent(ev);
+    // btn is NOT the last focusable (the summary is), so the trap must not
+    // force-wrap here — Tab is free to advance to the summary.
+    expect(ev.defaultPrevented).toBe(false);
+    release();
+  });
+
   it("restores focus to the previously-focused element on release", () => {
     const opener = document.createElement("button");
     document.body.append(opener);

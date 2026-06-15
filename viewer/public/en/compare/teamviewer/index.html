@@ -51,6 +51,7 @@
     <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
     <link rel="stylesheet" href="/matomo-consent.css" />
     <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
     <!-- End Matomo -->
 
     <script type="application/ld+json">
@@ -101,8 +102,22 @@
   </head>
   <body>
     <header id="top-bar" role="banner">
-      <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
-      <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download the sharer</span>
+        </a>
+      </div>
+
       <nav class="topbar-actions" aria-label="Links">
         <a id="lang-switch" href="/vergleich/teamviewer/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
         <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in (account)">
@@ -111,20 +126,11 @@
         <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create account">
           <span class="topbar-btn-label">Create account</span>
         </a>
-        <a id="topbar-download" href="/en/download/" class="topbar-btn" aria-label="Download the sharer">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
-            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
-          </svg>
-          <span class="topbar-btn-label">Download the sharer</span>
-        </a>
         <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
           ☕ <span class="topbar-btn-label">Buy me a coffee</span>
         </a>
       </nav>
     </header>
-
-    <a class="topbar-notch" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
 
     <main class="container">
       <h1>Auffi vs TeamViewer</h1>
