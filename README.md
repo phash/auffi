@@ -197,7 +197,7 @@ Detaillierte Pläne und Spezifikationen: [`docs/superpowers/`](docs/superpowers/
 - **Keine Inhalte im Backend:** Signaling-Server sieht nur SDP/ICE-Handshake, nie Pixel oder Events
 - **IPs pseudonymisiert:** Nur das Prefix (`84.xxx`) wird im Bestätigungsdialog angezeigt — niemals die vollständige IP gespeichert
 - **Kein Tracking:** Keine externen Cookies, kein Analytics, keine Drittanbieter-CDNs
-- **Code-TTL:** 9-stellige Codes verfallen nach 10 Minuten oder nach 5 Fehlversuchen
+- **Code-TTL:** 9-stellige Codes verfallen nach 10 Minuten; Rateraten ist serverseitig durch ein Per-IP-Rate-Limit gebremst
 - **Aktive Bestätigung:** Sharer muss jede Verbindung explizit annehmen
 - **Account-Sicherheit (Unattended-Modus):** argon2id für Passwörter, `__Host-`-Cookies (HttpOnly + Secure + SameSite=Strict), Per-IP-Rate-Limit auf WSS-Bearer-Auth (Sec H-1), Per-Account-Lockout (5 Fehlversuche / 15 min, Sec H-3), TLS-pinned Session-Tokens (nur sha256 in DB, Sec C-1)
 

@@ -56,7 +56,7 @@ Direkt nach `.input-group` (unter `.connect-row`): `.hero-alt-cta` mit „oder"-
 - **Inhalt — 5 `<details>`-Abschnitte (erster offen):**
   1. **Ich möchte jemandem helfen** — Code eingeben → Verbinden → Bildschirm live sehen & (mit Erlaubnis) steuern. Kein Konto, keine Installation.
   2. **Ich brauche selbst Hilfe** — Sharer herunterladen → starten → Code weitergeben → Freigabe bestätigen.
-  3. **Was ist der 9-stellige Code?** — einmalig, vom Sharer erzeugt, max. 10 Min gültig, nach 5 Fehlversuchen gesperrt.
+  3. **Was ist der 9-stellige Code?** — einmalig, vom Sharer erzeugt, max. 10 Min gültig, Rateraten per-IP-Rate-Limit gebremst (kein „nach 5 Fehlversuchen verbrannt" — diese Maschinerie feuerte nie, gh PR #114).
   4. **Ist das sicher?** — Ende-zu-Ende DTLS-SRTP-verschlüsselt, Server in Deutschland, Freigabe-Bestätigung Pflicht, keine Tracker.
   5. **Brauche ich ein Konto?** — Nein für spontane Hilfe; Konto nur für unbeaufsichtigten Dauerzugriff.
 - EN-Varianten der Texte für die `en/`-Seiten.
