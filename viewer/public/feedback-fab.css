@@ -39,6 +39,19 @@
   .feedback-fab-label { display: none; }
   .feedback-fab { padding: 0.5625rem; }
 }
+/* While the Matomo consent bar is up (full-width, bottom: footer) the FAB at
+   footer+1rem sits inside its band and covers the Annehmen/Ablehnen buttons.
+   Lift it clear of the banner — mirrors the banner's reserved body padding
+   (footer + 5rem desktop, + 8rem on narrow where the bar wraps to two rows).
+   The lift drops away automatically when the banner is dismissed. */
+body.matomo-consent-shown .feedback-fab {
+  bottom: calc(var(--footer-height, 48px) + 5.5rem);
+}
+@media (max-width: 580px) {
+  body.matomo-consent-shown .feedback-fab {
+    bottom: calc(var(--footer-height, 48px) + 8.5rem);
+  }
+}
 
 /* Modal overlay + card */
 .feedback-modal-overlay {
