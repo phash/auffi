@@ -80,7 +80,6 @@ function envList(key: string, fallback: string[]): string[] {
 function readEnvConfig() {
   return {
     sessionTtlMs: envNumber("SESSION_TTL_MS", 600_000),
-    maxFailedAttempts: envNumber("MAX_FAILED_ATTEMPTS", 5),
     rateLimitWindowMs: envNumber("RATE_LIMIT_WINDOW_MS", 60_000),
     rateLimitMax: envNumber("RATE_LIMIT_MAX", 5),
     registerRateLimitWindowMs: envNumber("REGISTER_RATE_LIMIT_WINDOW_MS", 60_000),
@@ -218,7 +217,6 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   }
   const store = new SessionStore({
     ttlMs: codeTtlMs,
-    maxAttempts: env.maxFailedAttempts,
     onCodeCreated: () => {
       // DB ist die verlaessliche Single-Source-of-Truth fuer die
       // "wie oft wurde ein Code gemintet"-Statistik. Matomo bleibt als

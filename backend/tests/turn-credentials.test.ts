@@ -229,7 +229,7 @@ describe("POST /turn-credentials — unattended session gate", () => {
   const DEAD_CODE = "000-000-000";
 
   beforeAll(async () => {
-    const store = new SessionStore({ ttlMs: 600_000, maxAttempts: 5 });
+    const store = new SessionStore({ ttlMs: 600_000 });
     // No ad-hoc sessions registered — only the unattended stub has the code.
     const unattendedSessions = {
       findByDeviceId(id: string): object | null {

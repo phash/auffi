@@ -370,7 +370,7 @@ describe("per-peer message rate limit", () => {
         },
       },
     });
-    const store = new SessionStore({ ttlMs: 60_000, maxAttempts: 5 });
+    const store = new SessionStore({ ttlMs: 60_000 });
     registerSignaling(
       rlApp,
       store,
@@ -432,7 +432,7 @@ describe("per-IP register rate limit", () => {
         },
       },
     });
-    const store = new SessionStore({ ttlMs: 60_000, maxAttempts: 5 });
+    const store = new SessionStore({ ttlMs: 60_000 });
     // Tight register cap (2/minute) so we can exhaust it without burning
     // dozens of test connections.
     registerSignaling(

@@ -424,15 +424,7 @@ export function registerSignaling(
             peer.close();
             return;
           }
-          // recordFailedAttempt is a no-op when no session exists (the code is
-          // simply unknown), so `burned` will be false here. The branch below
-          // only fires when a real session's attempt budget is exhausted.
-          const burned = store.recordFailedAttempt(normalized);
-          send(peer, {
-            type: "error",
-            code: burned ? "code-expired" : "invalid-code",
-            message: burned ? "code burned after too many attempts" : "no such session",
-          });
+          send(peer, { type: "error", code: "invalid-code", message: "no such session" });
           peer.close();
           return;
         }
