@@ -69,6 +69,17 @@ function bad(reply: FastifyReply, status: number, code: string, message: string)
   return reply.status(status).send({ error: code, message });
 }
 
+/**
+ * Self-host kill-switch (gh #39). When `SIGNUP_DISABLED` is set the public
+ * registration endpoint is closed; login + password-reset stay open so
+ * existing accounts keep working. Read per-request so a deploy can flip it
+ * without code changes.
+ */
+function signupDisabled(): boolean {
+  const v = process.env.SIGNUP_DISABLED;
+  return v === "1" || v?.toLowerCase() === "true";
+}
+
 export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   const { db, mailer } = deps;
 
@@ -81,6 +92,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       config: { rateLimit: { max: 3, timeWindow: "1 hour" } },
     },
     async (req: FastifyRequest, reply: FastifyReply) => {
+    if (signupDisabled())
+      return bad(reply, 403, "signup-disabled", "registration is disabled");
     const body = (req.body ?? {}) as SignupBody;
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body.password === "string" ? body.password : "";

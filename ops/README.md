@@ -106,6 +106,36 @@ matching account. Unset to keep every account non-admin.
 INITIAL_ADMIN_EMAIL=admin@yourdomain
 ```
 
+#### Closing public signups (single-tenant self-host)
+
+A typical self-host wants exactly one account — yours. After you have
+signed up and promoted yourself to admin (above), close the door:
+
+```sh
+SIGNUP_DISABLED=1
+```
+
+`POST /api/auth/signup` then returns `403 signup-disabled`; login and
+password-reset stay open, so your account keeps working. Restart the
+backend to apply. Leave the var unset/empty to keep signups open.
+
+#### Backing up the account database
+
+Accounts, devices, sessions and connection logs live in a single
+SQLite file at `/var/lib/auffi/auffi.db` inside the backend's data
+volume. The canonical, scheduled approach is `ops/backup.sh` — it takes
+a consistent online snapshot via better-sqlite3's `.backup()` API,
+gzips it, prunes old copies, and can rsync off-host. Wire it into cron:
+
+```sh
+0 3 * * * /opt/screenie/ops/backup.sh >> /opt/backup/auffi/backup.log 2>&1
+```
+
+For a one-off manual backup without the script, either run `ops/backup.sh`
+directly, or stop the backend, copy `auffi.db` out of the volume, and
+start it again (cold copy). Full restore steps are in
+`docs/ops-runbook.md` § Daily Backup + Restore.
+
 ### TLS for coturn
 
 Caddy handles its own cert (auffi.app) automatically. For the TURN subdomain (`turn.auffi.app`) coturn needs a separate cert. Two approaches:
