@@ -63,7 +63,7 @@ const MESSAGES: Record<Lang, Record<string, Entry>> = {
     "ice.lost": "Verbindung verloren.",
     // join errors (connect-messages.ts)
     "join.declined": "Der Sharer hat die Verbindung abgelehnt.",
-    "join.expired": "Der Code ist abgelaufen oder wurde nach zu vielen Fehlversuchen gesperrt. Bitte beim Helfer einen neuen Code anfragen.",
+    "join.expired": "Der Code ist abgelaufen. Bitte beim Helfer einen neuen Code anfragen.",
     "join.lockout": (p) => `Zu viele Fehlversuche. Gesperrt für ca. ${p.mins} Min — bitte später erneut versuchen.`,
     "join.sharerGone": "Der andere Computer ist nicht mehr erreichbar. Bitte beim Helfer nachfragen und erneut verbinden.",
     "join.invalidCode": "Dieser Code ist nicht (mehr) gültig. Bitte beim Helfer nach einem aktuellen Code fragen.",
@@ -112,7 +112,7 @@ const MESSAGES: Record<Lang, Record<string, Entry>> = {
     "ice.unstable": "Connection unstable — trying to recover…",
     "ice.lost": "Connection lost.",
     "join.declined": "The other side declined the connection.",
-    "join.expired": "The code has expired or was locked after too many failed attempts. Please ask the other person for a new code.",
+    "join.expired": "The code has expired. Please ask the other person for a new code.",
     "join.lockout": (p) => `Too many failed attempts. Locked for about ${p.mins} min — please try again later.`,
     "join.sharerGone": "The other computer is no longer reachable. Please check and try connecting again.",
     "join.invalidCode": "This code is not (or no longer) valid. Please ask the other person for a current code.",
