@@ -294,7 +294,7 @@ Contains `DEPLOY_SSH=musikersuche@musikersuche.org` and `DEPLOY_PATH=/opt/screen
 
 **Location:** `backend/src/codes.ts` (`getSession` → `sessions.get(code)`)
 
-JavaScript `Map.get` is effectively O(1) with a constant-time hash lookup, but the response time difference between "code exists and is valid" vs "code does not exist" is measurable over many samples because `getSession` additionally checks `expiresAt`. The rate-limit (5 attempts/IP/minute) and brute-force-burn (5 attempts/code) make this impractical to exploit. Document the explicit design decision so future changes don't inadvertently remove those protections while assuming timing is safe.
+JavaScript `Map.get` is effectively O(1) with a constant-time hash lookup, but the response time difference between "code exists and is valid" vs "code does not exist" is measurable over many samples because `getSession` additionally checks `expiresAt`. The rate-limit (5 attempts/IP/minute) and 10-min TTL on ad-hoc codes make this impractical to exploit (note: the 5-attempt lockout is a password-surface mechanism for account login and per-device unattended access, not the ad-hoc code path). Document the explicit design decision so future changes don't inadvertently remove those protections while assuming timing is safe.
 
 ---
 
@@ -401,7 +401,7 @@ All crypto CVEs trace to `webrtc = "=0.8.0"` pulling in `webrtc-dtls 0.7.2` whic
 |-----------------|--------|
 | DTLS-SRTP enforced (no plain-RTP path) | ✅ Implemented — `register_default_interceptors` + `MediaEngine::register_default_codecs` default to DTLS-SRTP; no insecure flags found |
 | Origin check on WebSocket upgrade | ✅ Implemented — `verifyClient` in `websocketPlugin` options, blocks unknown origins with 403 |
-| Code brute-force protection (burn after N fails) | ✅ Implemented — `recordFailedAttempt` + `maxAttempts` cap (default 5), session dropped on burn |
+| Code brute-force protection (ad-hoc) | ✅ Per-IP rate-limit (5/min) + 10-min TTL cap + mandatory sharer confirmation. The former ad-hoc code-burn (`recordFailedAttempt` / `maxAttempts`) was removed — it never fired (invoked only on the unknown-code branch, where it is a no-op). The separate 5-attempt password lockout (`account_lockout.ts`, per-device unattended) is a different mechanism and is unaffected |
 | Rate-limit per-IP for join attempts | ✅ Implemented — `checkRateLimit` + periodic sweep in `server.ts` |
 | Rate-limit map memory bounded (periodic sweep) | ✅ Implemented — `setInterval(60_000)` sweep in `server.ts:108-113` |
 | Session TTL enforced server-side | ✅ Implemented — `getSession` checks `expiresAt` on every lookup |
