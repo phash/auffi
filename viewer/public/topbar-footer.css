@@ -225,16 +225,18 @@ a:hover { border-bottom-color: var(--brand-strong); }
   transform: translateY(-1px);
 }
 
+/* Buy-Me-A-Coffee — branded BMC-yellow button (self-hosted, no external
+   script). Dark text on yellow works in both schemes — no dark override. */
 .topbar-btn-coffee {
-  background: var(--brand-strong);
-  border-color: var(--brand-strong);
-  color: #fff;
+  background: #ffdd00;
+  border-color: #ffdd00;
+  color: #0d0c22;
   box-shadow: var(--shadow-sm);
 }
 .topbar-btn-coffee:hover {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: var(--ink-on-brand);
+  background: #ffe24d;
+  border-color: #ffe24d;
+  color: #0d0c22;
   box-shadow: var(--shadow-lift);
 }
 
@@ -724,7 +726,6 @@ section:first-of-type { border-top: none; padding-top: 0; }
 /* Dark-mode AA contrast: brand-background elements with white text. */
 @media (prefers-color-scheme: dark) {
   .topbar-wordmark { color: var(--ink-on-brand); }
-  .topbar-btn-coffee { color: var(--ink-on-brand); }
   .topbar-btn-primary { color: var(--ink-on-brand); }
   .topbar-cta-connect { color: var(--ink-on-brand); }
   .topbar-cta-connect::before { background: rgba(6,35,27,0.45); }
