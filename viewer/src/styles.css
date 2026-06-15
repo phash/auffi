@@ -322,6 +322,9 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+/* Label-Hook (spiegelt .topbar-btn-label): eigener Selektor, damit der Text
+   bei Bedarf responsiv ein-/ausgeblendet werden kann. */
+.topbar-cta-label { display: inline; }
 
 /* Verbinden — solide Emerald-Pille mit Punkt-Indikator. */
 .topbar-cta-connect {
@@ -386,6 +389,11 @@
 }
 @media (max-width: 420px) {
   .topbar-cta { height: 30px; font-size: 0.625rem; padding: 0 0.875rem; }
+}
+/* Touch-Geräte: 44px-Tap-Targets (WCAG 2.5.5), Parität mit topbar-footer.css. */
+@media (pointer: coarse) {
+  .topbar-btn,
+  .topbar-cta { min-height: 44px; }
 }
 
 /* ============================================================

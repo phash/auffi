@@ -305,6 +305,8 @@ a:hover { border-bottom-color: var(--brand-strong); }
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+/* Label-Hook (spiegelt .topbar-btn-label). */
+.topbar-cta-label { display: inline; }
 .topbar-cta-connect {
   background: var(--brand-strong);
   border: 1px solid var(--brand-strong);

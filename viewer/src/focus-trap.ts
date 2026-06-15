@@ -9,8 +9,11 @@
  * `trapFocus` returns a release function: call it when the modal closes to
  * remove the listener and restore focus to whatever was focused before.
  */
+// `summary` is the native focusable toggle of a <details>; the help modal is
+// built entirely from <details><summary> rows, so it must be in the set or the
+// trap pins focus to the close button and Tab never reaches the accordion.
 const FOCUSABLE_SELECTOR =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
 
 export function trapFocus(container: HTMLElement, onEscape?: () => void): () => void {
   const previouslyFocused = document.activeElement as HTMLElement | null;

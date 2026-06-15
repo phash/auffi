@@ -262,11 +262,20 @@
   }
 
   function init() {
+    if (document.getElementById(TRIGGER_ID)) return;
+    // Prefer the right-hand action cluster; fall back to the centre group or
+    // the bar itself so pages with a reduced topbar (e.g. 404, which has no
+    // .topbar-actions) still get the help trigger.
     const actions = document.querySelector(".topbar-actions");
-    if (!actions || document.getElementById(TRIGGER_ID)) return;
+    const host =
+      actions ||
+      document.querySelector(".topbar-center") ||
+      document.getElementById("top-bar");
+    if (!host) return;
     const copy = COPY[lang()];
     const trigger = buildTrigger(copy);
-    actions.insertBefore(trigger, actions.firstChild);
+    if (actions) actions.insertBefore(trigger, actions.firstChild);
+    else host.appendChild(trigger);
     const modal = buildModal(copy);
     document.body.appendChild(modal);
     wire(trigger, modal);
