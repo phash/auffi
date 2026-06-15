@@ -94,7 +94,7 @@
           {
             "@type": "Question",
             "name": "How secure is the connection with Auffi?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The code expires after 10 minutes and is burned server-side after 5 failed attempts. The server only brokers the connection setup — video, mouse and files flow directly between the devices (peer-to-peer)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits connection attempts, and the sharer actively confirms every connection. The server only brokers the connection setup — video, mouse and files flow directly between the devices (peer-to-peer)." }
           }
         ]
       }
@@ -190,7 +190,7 @@
       <section>
         <h2>Auffi at a glance</h2>
         <ul>
-          <li><strong>9-digit connection code</strong>, valid for 10 minutes, burned server-side after 5 failed attempts.</li>
+          <li><strong>9-digit connection code</strong>, valid for 10 minutes, server-side rate-limited against guessing.</li>
           <li><strong>WebRTC P2P</strong> with DTLS-SRTP — video, mouse and files flow directly between the devices; TURN fallback when the direct connection is blocked.</li>
           <li><strong>The sharer actively confirms every connection</strong> (no silent joining in).</li>
           <li><strong>AGPL-3.0</strong>, source code and releases on <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.</li>

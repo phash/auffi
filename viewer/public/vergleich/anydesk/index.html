@@ -91,7 +91,7 @@
           {
             "@type": "Question",
             "name": "Wie sicher ist die Verbindung bei Auffi?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der Code läuft nach 10 Minuten ab und wird nach 5 Fehlversuchen serverseitig gesperrt. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen direkt zwischen den Geräten (Peer-to-Peer)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und der Teilende bestätigt jede Verbindung aktiv. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen direkt zwischen den Geräten (Peer-to-Peer)." }
           }
         ]
       }
@@ -190,7 +190,7 @@
       <section>
         <h2>Auffi auf einen Blick</h2>
         <ul>
-          <li><strong>9-stelliger Verbindungscode</strong>, 10 Minuten gültig, nach 5 Fehlversuchen serverseitig gesperrt.</li>
+          <li><strong>9-stelliger Verbindungscode</strong>, 10 Minuten gültig, serverseitig gegen Rateraten gedrosselt (Rate-Limit pro IP).</li>
           <li><strong>WebRTC P2P</strong> mit DTLS-SRTP — Bild, Maus und Dateien fließen direkt zwischen den Geräten; TURN-Fallback, wenn die direkte Verbindung blockiert ist.</li>
           <li><strong>Sharer bestätigt jede Verbindung</strong> aktiv (kein heimliches Zuschalten).</li>
           <li><strong>AGPL-3.0</strong>, Quellcode und Releases auf <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.</li>
@@ -208,7 +208,7 @@
         <h3>Kann Auffi AnyDesk komplett ersetzen?</h3>
         <p>Für spontane Bildschirmhilfe und Fernsteuerung ja. Für maximale Performance bei grafikintensiver Arbeit, sehr breite Plattform-Unterstützung (iOS/Android) und Enterprise-Funktionen bleibt AnyDesk stärker — das deckt Auffi bewusst nicht ab.</p>
         <h3>Wie sicher ist die Verbindung bei Auffi?</h3>
-        <p>Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der Code läuft nach 10 Minuten ab und wird nach 5 Fehlversuchen serverseitig gesperrt. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen direkt zwischen den Geräten (Peer-to-Peer).</p>
+        <p>Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und der Teilende bestätigt jede Verbindung aktiv. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen direkt zwischen den Geräten (Peer-to-Peer).</p>
       </section>
 
       <section>

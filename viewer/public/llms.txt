@@ -24,7 +24,7 @@ Auffi ersetzt TeamViewer-artige Tools für spontane Bildschirm-Hilfe (9-stellige
 
 - **Verschlüsselung**: WebRTC DTLS-SRTP für Medien, TLS 1.3 (Let's Encrypt) für Signaling und REST. Argon2id für Account-Passwörter, SHA-256 für Token-Hashes at rest.
 - **Datenfluss**: Pixel, Mausbewegungen und Dateien P2P zwischen Browsern; Server vermittelt nur Handshake. Bei strikten NATs Fallback auf eigenen TURN-Relay (turn.auffi.app).
-- **Datenhaltung**: SQLite auf einer IONOS-VPS in Frankfurt. Keine IPs im Klartext geloggt (truncated `84.xxx`). Session-Codes 10 min TTL, nach 5 falschen Versuchen serverseitig verbrannt. Keine Drittanbieter-Tracker.
+- **Datenhaltung**: SQLite auf einer IONOS-VPS in Frankfurt. Keine IPs im Klartext geloggt (truncated `84.xxx`). Session-Codes 10 min TTL, serverseitig gegen Rateraten gedrosselt (Rate-Limit pro IP), Sharer bestätigt jede Verbindung. Keine Drittanbieter-Tracker.
 - **Reichweitenmessung**: self-hosted Matomo (musikersuche.org/matomo), cookielos, DNT-respektierend, IP-anonymisiert, kein Cross-Site-Tracking.
 - **Unterstützte Sharer-Plattformen**: Linux (X11, Wayland via PipeWire/GStreamer-Portal), Windows. macOS-Sharer ist im Brainstorming, noch nicht released.
 - **Browser-Viewer**: Chromium-basierte Browser, Firefox, Safari (Safari mit WebRTC-Einschränkungen).
