@@ -19,11 +19,23 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+# DB-IP IP-to-Country Lite (CC-BY-4.0). Pinned per month for reproducible
+# builds; bump DBIP_MONTH monthly (see docs/ops-runbook.md). The build fails
+# loudly if the pinned month 404s so a roll-off is noticed.
+FROM alpine:3.23 AS geoip
+ARG DBIP_MONTH=2026-06
+WORKDIR /geoip
+RUN wget -qO dbip.mmdb.gz "https://download.db-ip.com/free/dbip-country-lite-${DBIP_MONTH}.mmdb.gz" \
+    && gunzip dbip.mmdb.gz \
+    && test -s dbip.mmdb
+
 FROM node:22.22.2-alpine3.23 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY --from=geoip /geoip/dbip.mmdb /app/data/dbip-country-lite.mmdb
+ENV GEOIP_DB_PATH=/app/data/dbip-country-lite.mmdb
 COPY migrations ./migrations
 COPY package.json ./
 # Pre-create the DB dir with `app` ownership so the persisted Docker
