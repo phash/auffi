@@ -97,7 +97,16 @@ Schema impact: extend `accounts` with `totp_secret_encrypted` (use libsodium / N
 
 Skipping unless explicitly asked — the dashboard frontend (#28-#35) is the bigger blocker right now and a 2FA-less admin login is fine for the small initial user base.
 
-## 6. Recommended follow-ups
+## 6. GeoIP country lookup — DSGVO posture
+
+The country lookup runs **locally** on the VPS using a static reference MMDB (DB-IP IP-to-Country
+Lite, CC-BY-4.0). The full viewer IP is resolved server-side only; it is never forwarded to any
+third-party service. The resolved ISO-3166-1-alpha-2 country code is sent live to the sharer via the
+existing `peer-joined` message for display in the confirm dialog. It is **not** written to any log
+and **not** persisted in the database. The MMDB itself is static reference data with no personal
+data content and therefore requires no retention policy.
+
+## 7. Recommended follow-ups
 
 1. (optional) Tarpaulin coverage measurement for sharer Rust crate once the long build completes.
 2. (optional) Direct unit tests for `tokens.ts` and the `reset-rate-limit` admin path to close the coverage gaps noted in §1.

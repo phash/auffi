@@ -156,6 +156,17 @@ rm -rf /tmp/caddy-restore
 
 Optionaler off-site Sync via `BACKUP_REMOTE_TARGET=user@host:/backups/auffi/` env-var (rsync, im Script bereits eingebaut, aktuell nicht gesetzt). User stellt den SSH-Key out-of-band bereit — kein Key im Repo.
 
+## GeoIP MMDB Monthly Bump
+
+The `geoip` build stage in `backend/Dockerfile` pins `DBIP_MONTH` (e.g. `2026-06`) to a specific
+DB-IP monthly snapshot. DB-IP rolls old monthly files after a few months, so the build fails loudly
+with a `wget` 404 if the pinned month is no longer available — this is intentional: a failed
+download is noticed at deploy time, not silently at lookup time.
+
+**To bump:** edit the `ARG DBIP_MONTH=` line in `backend/Dockerfile` to the current month
+(`YYYY-MM`), commit, and redeploy. Source: DB-IP IP-to-Country Lite (CC-BY-4.0,
+https://db-ip.com).
+
 ## Deploy-Skript-Robustheit
 
 `./ops/deploy.sh` (Refactor 2026-05-20) macht weit mehr als rsync + compose up. Was passiert in welcher Reihenfolge:

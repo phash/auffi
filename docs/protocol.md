@@ -65,6 +65,10 @@ Viewer has connected. Sharer must show confirmation dialog and reply with `confi
 ```json
 { "type": "peer-joined", "viewerInfo": { "ipPrefix": "84.xxx", "country": "DE" } }
 ```
+`viewerInfo.country` is the viewer's ISO-3166-1-alpha-2 country code (e.g. `"DE"`) or `null` when the
+lookup returns no result. Resolved server-side via a local MMDB lookup (no third-party call; the full
+viewer IP never leaves the VPS). Set **only** on the ad-hoc path; the unattended mirror always carries
+`null` because the device-password flow bypasses the confirm dialog.
 
 ### `peer-confirmed` (→ viewer)
 After sharer accepted.

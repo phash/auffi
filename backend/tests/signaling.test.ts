@@ -5,6 +5,7 @@ import websocketPlugin from "@fastify/websocket";
 import { createServer } from "../src/server.js";
 import { registerSignaling } from "../src/signaling.js";
 import { SessionStore } from "../src/codes.js";
+import type { CountryLookup } from "../src/geoip.js";
 
 let app: FastifyInstance;
 let url: string;
@@ -516,5 +517,72 @@ describe("per-IP register rate limit", () => {
           (m as Record<string, unknown>).type === "code-assigned",
       ),
     ).toBe(false);
+  });
+});
+
+describe("country lookup in ad-hoc peer-joined", () => {
+  let geoApp: ReturnType<typeof Fastify>;
+  let geoUrl: string;
+
+  beforeAll(async () => {
+    geoApp = Fastify({ logger: false });
+    await geoApp.register(websocketPlugin, {
+      options: {
+        maxPayload: 65_536,
+        verifyClient(_info: unknown, cb: (result: boolean) => void) {
+          cb(true);
+        },
+      },
+    });
+    const store = new SessionStore({ ttlMs: 60_000 });
+    // Fake CountryLookup that always returns "DE"
+    const fakeCountry: CountryLookup = {
+      get: () => ({ country: { iso_code: "DE" } }),
+    };
+    registerSignaling(
+      geoApp,
+      store,
+      { windowMs: 60_000, max: 100 },
+      new Map(),
+      undefined,
+      { windowMs: 60_000, max: 100 },
+      new Map(),
+      undefined,
+      { windowMs: 60_000, max: 10 },
+      new Map(),
+      fakeCountry,
+    );
+    await geoApp.listen({ port: 0, host: "127.0.0.1" });
+    const addr = geoApp.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    geoUrl = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await geoApp.close();
+  });
+
+  it("ad-hoc peer-joined carries viewerInfo.country resolved via the injected CountryLookup", async () => {
+    const sharer = new WebSocket(geoUrl);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const assigned = await new Promise<any>((r) =>
+      sharer.once("message", (d) => r(JSON.parse(d.toString()))),
+    );
+    const code = assigned.code as string;
+
+    const viewer = new WebSocket(geoUrl);
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+
+    const peerJoined = await new Promise<any>((r) =>
+      sharer.once("message", (d) => r(JSON.parse(d.toString()))),
+    );
+
+    expect(peerJoined.type).toBe("peer-joined");
+    expect(peerJoined.viewerInfo.country).toBe("DE");
+
+    sharer.close();
+    viewer.close();
   });
 });

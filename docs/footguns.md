@@ -89,6 +89,23 @@ Three things that took today's (2026-05-17) Matomo + Feedback deploys to find. T
 - **Cluster Caddyfile has `admin off`** (line 6), so `docker exec caddy-proxy caddy reload --config /etc/caddy/Caddyfile` fails with `connect: connection refused` on the admin-API port 2019. The only reload path is `docker restart caddy-proxy` (~3 s connection blip — acceptable for a tenant-shared host but document the blip if you're scheduling it). Always `docker exec caddy-proxy caddy validate --config /etc/caddy/Caddyfile` BEFORE the restart so a syntax error doesn't take auffi.app offline.
 - **`docker compose restart backend` does NOT re-read `.env.prod`.** `restart` recycles the existing container with its existing env-snapshot from start-time. New env-vars (e.g. adding `SMTP_FROM=…` or `MATOMO_*`) require `docker compose -f docker-compose.prod.yml -f docker-compose.cluster.yml --env-file .env.prod up -d --force-recreate --no-deps backend`. The deploy script does the right thing on full deploys; only manual env tweaks have this trap.
 
+## GeoIP Country Lookup
+
+Module: `backend/src/geoip.ts`. The MMDB (DB-IP IP-to-Country Lite, CC-BY-4.0) is baked into the
+Docker image at build time via the `geoip` stage in `backend/Dockerfile`. The destination path is
+`/app/data/dbip-country-lite.mmdb`, exposed to the app through the `GEOIP_DB_PATH` env var. The
+`DBIP_MONTH` build ARG (default: pinned per-month, e.g. `2026-06`) controls which monthly snapshot
+is downloaded; bump it monthly (see `docs/ops-runbook.md` § GeoIP MMDB monthly bump).
+
+**Graceful degradation.** `openCountryDb()` returns `null` if `GEOIP_DB_PATH` is unset or the file
+is absent (e.g. local `npm run dev` without Docker). `lookupCountry(null, ip)` returns `null`
+silently. A missing MMDB never throws, never breaks signaling — it only disables the country field
+in `peer-joined` (it will be `null`).
+
+**Privacy.** The lookup uses the full viewer IP locally on the VPS; no data is sent to a third
+party. The resolved country code is sent live to the sharer for the confirm dialog only; it is
+NOT logged and NOT persisted anywhere.
+
 ## Fixed-Position-Overlay darf Content nicht hiden
 
 Allgemeines UI-Pattern, das beim Matomo-Consent-Banner (audit 2026-05-23) schmerzhaft aufschlug. Ein `position: fixed; bottom: 0`-Overlay (Banner, Toast, Cookie-Hinweis…) verdeckt by-default Content unten — beim Matomo-Banner ursprünglich als floating-Card am rechten unteren Rand, der mid-page-Paragraphen überlagerte und im Visual-Audit nicht zu übersehen war.

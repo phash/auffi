@@ -12,6 +12,7 @@ import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted
 import { friendlyMonitorLabel } from "./monitor-display.js";
 import { setupTabs } from "./tabs.js";
 import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-banner.js";
+import { formatConnectionRequest } from "./connect-format.js";
 
 interface FileOfferPayload {
   id: string;
@@ -648,7 +649,7 @@ listen<{ code: string }>("code-assigned", (e) => {
   newCodeBtn.classList.add("visible");
 });
 
-listen<{ ipPrefix: string }>("peer-joined", async (e) => {
+listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) => {
   // If a previous helper was still attached when this new join arrived
   // (e.g., the prior viewer dropped the WS without us being notified)
   // tear down before accepting the new session. Otherwise start_streaming
@@ -684,9 +685,11 @@ listen<{ ipPrefix: string }>("peer-joined", async (e) => {
   // clicks Akzeptieren. (Genuine unattended access is a separate, password-
   // gated flow.)
   const trusted = await isTrustedPeer(e.payload.ipPrefix);
-  confirmTextEl.textContent = trusted
-    ? `Verbindungsanfrage von ${e.payload.ipPrefix} — bekannter Helfer (frühere Verbindung)`
-    : `Verbindungsanfrage von ${e.payload.ipPrefix}`;
+  confirmTextEl.textContent = formatConnectionRequest({
+    ipPrefix: e.payload.ipPrefix,
+    country: e.payload.country,
+    trusted,
+  });
   rememberPeerCheckbox.checked = trusted;
   confirmEl.classList.add("visible");
 });

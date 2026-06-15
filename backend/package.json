@@ -23,6 +23,7 @@
     "argon2": "0.44.0",
     "better-sqlite3": "12.11.1",
     "fastify": "5.8.5",
+    "maxmind": "5.0.6",
     "nodemailer": "9.0.0"
   },
   "devDependencies": {
