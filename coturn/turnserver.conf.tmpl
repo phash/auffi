@@ -46,14 +46,23 @@ denied-peer-ip=198.18.0.0-198.19.255.255
 denied-peer-ip=198.51.100.0-198.51.100.255
 denied-peer-ip=203.0.113.0-203.0.113.255
 denied-peer-ip=240.0.0.0-255.255.255.255
-denied-peer-ip=::
 denied-peer-ip=::1
 denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-# IPv4-mapped IPv6 (::ffff:a.b.c.d): the host's v6 stack is live, so block the
-# mapped form of every private/loopback/metadata v4 target too — belt-and-
-# suspenders in case coturn doesn't fold a mapped peer into the v4 deny-list.
+# IPv4-mapped IPv6 (::ffff:a.b.c.d): coturn evaluates a *mapped-form* peer in v6
+# space, so this single block denies the mapped form of every private/metadata
+# v4 target (e.g. ::ffff:169.254.169.254). It is the only rule that does — the
+# plain v4 ranges above match native-v4-form peers only. Keeping it is safe: a
+# real WebRTC candidate is always a native v4 or native v6 address, never an
+# ::ffff-mapped one, so no legitimate peer is ever presented in the form this
+# range matches. Verified on coturn 4.6.3: native-v4 public peers stay ALLOWED
+# while ::ffff:<private> is DENIED.
 denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+# NB: never add a bare `denied-peer-ip=::` alongside these. coturn parses the
+# unspecified address as match-ALL and denies every peer, public included, which
+# silently breaks ALL relayed sessions (viewer symptom: "Verbindung steht, aber
+# es kommt kein Bild an"). That line was the 2026-05-29 regression (commit
+# 6198a5f); removed 2026-06-15 after reproducing it against coturn 4.6.3.
 no-tlsv1
 no-tlsv1_1
 # Explicit cipher list: TLS 1.3 AEADs first, then TLS 1.2 AEAD suites.
