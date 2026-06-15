@@ -153,8 +153,32 @@
   </head>
   <body>
     <header id="top-bar" role="banner">
-      <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
-      <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a
+          id="notch-connect"
+          class="topbar-cta topbar-cta-connect"
+          href="#code"
+          aria-label="Jump to the connection code"
+        >Connect</a>
+        <a
+          id="topbar-sharer"
+          class="topbar-cta topbar-cta-sharer"
+          href="/en/download/"
+          aria-label="Download the sharer"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download the sharer</span>
+        </a>
+      </div>
+
       <nav class="topbar-actions" aria-label="Links">
         <a id="lang-switch" href="/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
         <a
@@ -174,18 +198,6 @@
           <span class="topbar-btn-label">Create account</span>
         </a>
         <a
-          id="topbar-download"
-          href="/en/download/"
-          class="topbar-btn"
-          aria-label="Download the sharer"
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
-            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
-          </svg>
-          <span class="topbar-btn-label">Download the sharer</span>
-        </a>
-        <a
           id="topbar-coffee"
           href="https://buymeacoffee.com/phash"
           target="_blank"
@@ -197,8 +209,6 @@
         </a>
       </nav>
     </header>
-
-    <a id="notch-connect" class="topbar-notch" href="#code" aria-label="Jump to the connection code">Connect</a>
 
     <div class="hero">
       <p class="eyebrow">Open source · GDPR-compliant · Servers in Germany</p>
@@ -255,6 +265,20 @@
             </svg>
           </button>
         </div>
+      </div>
+
+      <!-- Secondary CTA: makes the second role (needing help yourself)
+           explicit. Idle-only; hidden while body.streaming. -->
+      <div class="hero-alt-cta">
+        <span class="hero-alt-cta-divider">or</span>
+        <p class="hero-alt-cta-text">Want to ask someone else for help?</p>
+        <a id="hero-sharer-cta" class="hero-alt-cta-btn" href="/en/download/">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          Download the sharer
+        </a>
       </div>
 
       <div id="status" role="status" aria-live="polite"></div>
