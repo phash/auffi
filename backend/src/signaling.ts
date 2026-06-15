@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { WebSocket } from "ws";
 import type { SessionStore, Peer } from "./codes.js";
 import { normalizeCode } from "./codes.js";
+import { lookupCountry, type CountryLookup } from "./geoip.js";
 import type {
   IncomingMessage,
   OutgoingMessage,
@@ -110,6 +111,7 @@ export function registerSignaling(
    */
   bearerCfg: RateLimitConfig = DEFAULT_BEARER_AUTH_LIMIT,
   bearerCounts: Map<string, RateLimitEntry> = new Map(),
+  countryLookup: CountryLookup | null = null,
 ): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
@@ -443,7 +445,10 @@ export function registerSignaling(
         store.attachViewer(normalized, peer as Peer);
         send(session.sharer as WebSocket, {
           type: "peer-joined",
-          viewerInfo: { ipPrefix: ipPrefix(req), country: null },
+          viewerInfo: {
+            ipPrefix: ipPrefix(req),
+            country: lookupCountry(countryLookup, stripIpv4Mapped(req.ip ?? "")),
+          },
         });
         return;
       }

@@ -27,6 +27,7 @@ import { UnattendedSessions } from "./unattended_sessions.js";
 import { startPurgeScheduler } from "./purge.js";
 import { matomoTrackerFromEnv } from "./tracking/matomo.js";
 import { recordCodeCreated } from "./tracking/code_events.js";
+import { openCountryDb } from "./geoip.js";
 
 export type ServerConfig = {
   port: number;
@@ -248,6 +249,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // signaling maps below — otherwise it would grow one entry per source IP for
   // the process lifetime.
   const feedbackBearerCounts: Map<string, RateLimitEntry> = new Map();
+  const countryLookup = openCountryDb(process.env.GEOIP_DB_PATH);
   const attemptCounts = registerSignaling(
     app,
     store,
@@ -259,6 +261,7 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     { db, registry: unattendedRegistry, sessions: unattendedSessions },
     { windowMs: env.bearerAuthRateLimitWindowMs, max: env.bearerAuthRateLimitMax },
     bearerCounts,
+    countryLookup,
   );
 
   const sweepHandle = setInterval(() => {
