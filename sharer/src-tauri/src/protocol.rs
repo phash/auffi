@@ -37,13 +37,11 @@ pub enum Incoming {
 pub struct ViewerInfo {
     #[serde(rename = "ipPrefix")]
     pub ip_prefix: String,
-    // The backend sends `country: null` today; we deserialize but ignore
-    // it. Without the rename, serde looked for the literal "_country"
-    // key in JSON and failed the whole struct (Option<T> without
-    // #[serde(default)] is still required) — which silently dropped
-    // every PeerJoined message.
+    // `#[serde(default)]` so an absent `country` key (older backends that
+    // never send it) doesn't fail the whole struct and silently drop every
+    // PeerJoined frame.
     #[serde(rename = "country", default)]
-    pub _country: Option<String>,
+    pub country: Option<String>,
 }
 
 #[cfg(test)]
@@ -60,7 +58,7 @@ mod tests {
         match serde_json::from_str::<Incoming>(json).expect("parse") {
             Incoming::PeerJoined { viewer_info } => {
                 assert_eq!(viewer_info.ip_prefix, "84.xxx");
-                assert_eq!(viewer_info._country.as_deref(), Some("DE"));
+                assert_eq!(viewer_info.country.as_deref(), Some("DE"));
             }
             other => panic!("expected PeerJoined, got {other:?}"),
         }
@@ -75,7 +73,7 @@ mod tests {
             match serde_json::from_str::<Incoming>(json).expect("parse") {
                 Incoming::PeerJoined { viewer_info } => {
                     assert_eq!(viewer_info.ip_prefix, "10.xxx");
-                    assert_eq!(viewer_info._country, None);
+                    assert_eq!(viewer_info.country, None);
                 }
                 other => panic!("expected PeerJoined, got {other:?}"),
             }

@@ -129,7 +129,10 @@ pub async fn run(app: AppHandle, url: String) -> Signaling {
                         Incoming::PeerJoined { viewer_info } => {
                             let _ = app.emit(
                                 "peer-joined",
-                                serde_json::json!({ "ipPrefix": viewer_info.ip_prefix }),
+                                serde_json::json!({
+                                    "ipPrefix": viewer_info.ip_prefix,
+                                    "country": viewer_info.country,
+                                }),
                             );
                         }
                         Incoming::PeerConfirmed => {}
