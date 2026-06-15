@@ -76,8 +76,13 @@ function bad(reply: FastifyReply, status: number, code: string, message: string)
  * without code changes.
  */
 function signupDisabled(): boolean {
-  const v = process.env.SIGNUP_DISABLED;
-  return v === "1" || v?.toLowerCase() === "true";
+  // Accept the common truthy spellings (trimmed, case-insensitive) so a
+  // `SIGNUP_DISABLED=yes` or a stray trailing space from a .env paste still
+  // closes signup; everything else (incl. "0"/"false"/"no"/empty) leaves it
+  // open. Erring toward "open" on an unrecognised value is the safe default —
+  // an operator who wanted it closed used one of these spellings.
+  const v = process.env.SIGNUP_DISABLED?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
 export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {

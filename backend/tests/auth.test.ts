@@ -480,4 +480,24 @@ describe("SIGNUP_DISABLED gate (gh #39)", () => {
     });
     expect(res.statusCode).toBe(202);
   });
+
+  it("honours common truthy values with surrounding whitespace/case", async () => {
+    process.env.SIGNUP_DISABLED = " YES ";
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "x@example.com", password: "correct-horse-battery" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("treats falsy strings as enabled (does not close on '0' / 'false')", async () => {
+    process.env.SIGNUP_DISABLED = "false";
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "y@example.com", password: "correct-horse-battery" },
+    });
+    expect(res.statusCode).toBe(202);
+  });
 });
