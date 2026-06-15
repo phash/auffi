@@ -86,7 +86,7 @@ Forwarded `relay` message from the other peer.
 
 ### `error` (→ any)
 ```json
-{ "type": "error", "code": "invalid-code" | "code-expired" | "rate-limit" | "bad-message", "message": "human readable" }
+{ "type": "error", "code": "invalid-code" | "rate-limit" | "bad-message", "message": "human readable" }
 ```
 
 ## State Machine (Backend)

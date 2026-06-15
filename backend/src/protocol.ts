@@ -46,7 +46,7 @@ export type PeerRejected = {
 };
 export type ErrorMessage = {
   type: "error";
-  code: "invalid-code" | "code-expired" | "rate-limit" | "bad-message";
+  code: "invalid-code" | "rate-limit" | "bad-message";
   message: string;
 };
 
