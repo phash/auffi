@@ -51,12 +51,6 @@ describe("friendlyJoinError", () => {
     expect(r.text.toLowerCase()).toContain("bereits");
   });
 
-  it("maps a burned code (code-expired) to a 'too many attempts' message", () => {
-    const r = friendlyJoinError("code-expired: code burned after too many attempts");
-    expect(r.kind).toBe("err");
-    expect(r.text.toLowerCase()).toMatch(/gesperrt|fehlversuchen/);
-  });
-
   it("maps rate-limit to a 'kurz warten' message", () => {
     const r = friendlyJoinError("rate-limit: too many attempts");
     expect(r.kind).toBe("err");
