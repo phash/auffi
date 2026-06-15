@@ -196,7 +196,6 @@ jobs:
           PORT: 8080
           HOST: 127.0.0.1
           SESSION_TTL_MS: "600000"
-          MAX_FAILED_ATTEMPTS: "5"
           RATE_LIMIT_WINDOW_MS: "60000"
           RATE_LIMIT_MAX: "5"
           ALLOWED_ORIGINS: "http://localhost:5173"

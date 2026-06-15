@@ -47,8 +47,6 @@ function fromErrorCode(code: string, message: string, lang: Lang): JoinErrorMess
         return { text: t("join.sessionFull", {}, lang), kind: "err" };
       }
       return { text: t("join.invalidCode", {}, lang), kind: "err" };
-    case "code-expired":
-      return { text: t("join.codeExpired", {}, lang), kind: "err" };
     case "rate-limit":
       return { text: t("join.rateLimit", {}, lang), kind: "err" };
     case "bad-message":
@@ -60,7 +58,6 @@ function fromErrorCode(code: string, message: string, lang: Lang): JoinErrorMess
 
 const KNOWN_ERROR_CODES = new Set([
   "invalid-code",
-  "code-expired",
   "rate-limit",
   "bad-message",
 ]);

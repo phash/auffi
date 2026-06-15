@@ -37,7 +37,6 @@ services:
       TURN_HOSTS: turn:localhost:3478
       TURN_TTL_SEC: "3600"
       SESSION_TTL_MS: "600000"
-      MAX_FAILED_ATTEMPTS: "5"
       RATE_LIMIT_WINDOW_MS: "60000"
       RATE_LIMIT_MAX: "10"
       # Allow connections from localhost — the smoke WS test connects from the host.

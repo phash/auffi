@@ -58,7 +58,7 @@ None of these block the 70 % gate. Logging as a follow-up rather than a blocker.
 
 ## 3. Bot hardening
 
-The existing posture is already strong (Caddy-level UA filter + per-IP rate limit, backend-level per-endpoint rate limit, per-peer WS message cap, signaling-code burn after 5 wrong attempts, Origin + session-code gate on TURN). The remaining bot-vector worth considering is **automated mass signup**: even at the 3-per-hour limit, a distributed botnet could exhaust SMTP volume over time.
+The existing posture is already strong (Caddy-level UA filter + per-IP rate limit, backend-level per-endpoint rate limit, per-peer WS message cap, per-IP rate-limit on join attempts (5/min) + 10-min TTL on ad-hoc codes, Origin + session-code gate on TURN). The remaining bot-vector worth considering is **automated mass signup**: even at the 3-per-hour limit, a distributed botnet could exhaust SMTP volume over time.
 
 Possible follow-ups (none implemented):
 

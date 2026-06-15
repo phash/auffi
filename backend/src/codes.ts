@@ -21,13 +21,11 @@ export type Session = {
   sharer: Peer;
   viewer: Peer | null;
   expiresAt: number;
-  failedAttempts: number;
   confirmed: boolean;
 };
 
 export type StoreConfig = {
   ttlMs: number;
-  maxAttempts: number;
   /**
    * Called fire-and-forget after every successful code mint. Used for
    * aggregate "are we being used" counters (see tracking/matomo.ts).
@@ -62,7 +60,6 @@ export class SessionStore {
       sharer,
       viewer: null,
       expiresAt: Date.now() + this.cfg.ttlMs,
-      failedAttempts: 0,
       confirmed: false,
     };
     this.sessions.set(code, session);
@@ -92,17 +89,6 @@ export class SessionStore {
   findByPeer(peer: Peer): Session | null {
     const code = this.byPeer.get(peer);
     return code ? this.getSession(code) : null;
-  }
-
-  recordFailedAttempt(code: string): boolean {
-    const session = this.sessions.get(code);
-    if (!session) return false;
-    session.failedAttempts += 1;
-    if (session.failedAttempts >= this.cfg.maxAttempts) {
-      this.dropSession(session);
-      return true;
-    }
-    return false;
   }
 
   markConfirmed(code: string): boolean {

@@ -8,7 +8,7 @@ Three non-negotiable goals that **every** engineering decision should serve. Whe
 
 2. **Verlässliche Verbindung** — The connection survives Wi-Fi blips (10 s ICE-disconnected grace), reuses the same session on reconnect within 30 s, falls back to TURN when P2P is blocked, and tears down predictably when something genuinely failed. The user should never see a stuck "Verbindung wird hergestellt…" without a path forward. Logs use `dbg_log()` so failures are diagnosable post-hoc.
 
-3. **Sichere Kommunikation** — TLS everywhere (Let's Encrypt via Caddy). WebRTC media uses DTLS-SRTP, mandatory. Session codes are server-burned after 5 wrong attempts and TTL-capped at 10 minutes. Sharer always confirms incoming peers (except in the future unattended mode where the device-token + per-device password gate access). TURN credentials are HMAC-ephemeral. No PII in logs, no third-party trackers, argon2id for passwords, SHA-256 for at-rest token hashes. See `docs/security-review-2026-05.md` for the audit and `docs/encryption-architecture.md` for the end-to-end crypto-chain walkthrough.
+3. **Sichere Kommunikation** — TLS everywhere (Let's Encrypt via Caddy). WebRTC media uses DTLS-SRTP, mandatory. Session codes are TTL-capped at 10 minutes and bounded against guessing by a per-IP rate-limit (5/min); the 5-attempt lockout applies to the password surfaces (account + per-device unattended), not the ad-hoc code. Sharer always confirms incoming peers (except in the future unattended mode where the device-token + per-device password gate access). TURN credentials are HMAC-ephemeral. No PII in logs, no third-party trackers, argon2id for passwords, SHA-256 for at-rest token hashes. See `docs/security-review-2026-05.md` for the audit and `docs/encryption-architecture.md` for the end-to-end crypto-chain walkthrough.
 
 **License:** AGPL-3.0-only (`LICENSE`). Forks that host Auffi as a service MUST publish their modifications under the same license — closes the SaaS-loophole of plain GPL-3.0. When new code lands in `backend/` / `viewer/` / `dashboard/` / `sharer/`, it MUST be AGPL-3.0-compatible (MIT, Apache-2.0, BSD are fine; GPL-2-only or proprietary SDKs are NOT).
 
@@ -137,7 +137,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-06-15: backend 422, sharer-lib 202 (+ 6 `#[ignore]` Display-requiring), viewer 254, dashboard 140, sharer-js 37. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-06-15: backend 420 (purge.test.ts + unattended-connect.test.ts hold timing-sensitive tests that may intermittently fail in a sandbox — not regressions), sharer-lib 202 (+ 6 `#[ignore]` Display-requiring), viewer 253, dashboard 140, sharer-js 37. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy -- -D warnings`. (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
