@@ -138,7 +138,9 @@ jobs:
             libxdo-dev \
             libxtst-dev \
             libx11-dev \
-            libxrandr-dev
+            libxrandr-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
 
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -200,6 +202,10 @@ jobs:
           RATE_LIMIT_MAX: "5"
           ALLOWED_ORIGINS: "http://localhost:5173"
           NODE_ENV: test
+          # Don't try to mkdir the prod DB path (/var/lib/auffi) — not
+          # writable on the runner; the backend would crash and :8080 never
+          # come up (the old ECONNREFUSED). In-memory DB is fine for E2E.
+          AUFFI_DB_PATH: ":memory:"
 
       - name: Wait for backend to be ready
         run: |
@@ -229,7 +235,11 @@ jobs:
 
       - name: Run Playwright E2E tests
         working-directory: viewer
-        run: npm run test:e2e
+        # Only the local-backend specs run in CI. production.spec.ts and
+        # visual-audit.spec.ts hit live auffi.app (and get bot-blocked on a
+        # headless UA) — they are manual diagnostic tools (visual-audit
+        # Quick-Command), not a PR gate.
+        run: npx playwright test connect.spec.ts input.spec.ts unattended.spec.ts review-fixes.spec.ts
         env:
           VIEWER_URL: http://localhost:5173
 

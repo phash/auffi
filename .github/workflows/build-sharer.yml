@@ -38,7 +38,9 @@ jobs:
             libxdo-dev \
             libxtst-dev \
             libx11-dev \
-            libxrandr-dev
+            libxrandr-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
 
       - name: Install Rust stable toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -99,10 +101,17 @@ jobs:
         working-directory: sharer
         run: npm ci
 
+      - name: Install libvpx (vcpkg)
+        run: vcpkg install libvpx:x64-windows-static-md
+
       - name: Build Tauri app (Windows)
         working-directory: sharer
         run: npm run tauri:build
         env:
+          # build.rs finds libvpx via the vcpkg crate; the static-md triplet
+          # matches Rust's default dynamic-CRT MSVC linkage.
+          VCPKG_ROOT: ${{ env.VCPKG_INSTALLATION_ROOT }}
+          VCPKGRS_TRIPLET: x64-windows-static-md
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
