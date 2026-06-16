@@ -14,6 +14,14 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.6.0 — released 2026-06-16. Geo-country in confirm dialog, Calm-Fresh
+  // sharer recast, security guards. Linux + Windows via the release CI
+  // (build-sharer.yml). macOS not built — no macOS capture backend yet.
+  "Auffi_0.6.0_amd64.deb",
+  "Auffi-0.6.0-1.x86_64.rpm",
+  "Auffi_0.6.0_amd64.AppImage",
+  "Auffi_0.6.0_x64-setup.exe",
+  "Auffi_0.6.0_x64_en-US.msi",
   // 0.5.0 — released 2026-05-29. Security + UX review. Linux built locally,
   // Windows via the build box; promoted to `latest` once all 6 were uploaded.
   "Auffi_0.5.0_amd64.deb",
