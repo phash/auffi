@@ -34,10 +34,15 @@ Container names (`auffi-backend`, `auffi-caddy`, `auffi-coturn`, etc.), image na
 rsvg-convert -w 1200 -h 630 ops/og-image.svg -o viewer/public/og-image.png
 ```
 
-## Sharer Release (Linux only — Windows needs separate build via gh issue)
+## Sharer Release (Linux + Windows; no macOS)
+
+**Zwei Wege:**
+- **(a) CI per Tag-Push (empfohlen):** `git tag vX.Y.Z && git push origin vX.Y.Z` → `release.yml` ruft `build-sharer.yml` (baut **Linux + Windows** — seit PR #117 mit GStreamer-dev (Linux) + vcpkg-`libvpx`/`VCPKG_ROOT` (Windows)), baut das Backend-Image und erstellt das GH-Release automatisch. Vorher Version bumpen (Schritt 1 unten).
+- **(b) Lokaler Linux-Build (schneller für reine Linux-Iteration):** s. Skript unten — der AppImage-Wrapper umgeht DT_RELR-Strip + Icon-Pfad auf rolling-release-Distros (auf ubuntu-24.04-CI nicht nötig).
+- **Kein macOS:** der Sharer hat keinen macOS-Capture/-Input-Backend (`capture/mod.rs` nur Linux/Windows). Ein macOS-Build kompiliert nicht.
 
 ```bash
-# 1) Bump version in sharer/src-tauri/{tauri.conf.json,Cargo.toml}
+# 1) Bump version in sharer/src-tauri/{tauri.conf.json,Cargo.toml,package.json}
 # 2) Build .deb + .rpm + .AppImage (AppImage needs the wrapper for the
 #    DT_RELR + icon-path workarounds — see docs/footguns.md § AppImage-Build Footguns)
 ./ops/build-sharer-appimage.sh
@@ -49,8 +54,9 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 # 4) Bump filenames in viewer/public/download/index.html + the
 #    KNOWN_ASSETS-Set in backend/src/downloads/handlers.ts
 # 5) ./ops/deploy.sh --yes
-# Windows-Builds passieren auf einer separaten Windows-Box (siehe das
-# offene "Windows vX.Y.Z build (sharer)"-GH-Issue-Template).
+# Windows-Builds laufen jetzt im CI (release.yml / build-sharer.yml auf
+# windows-latest, seit PR #117). Die separate Windows-Box / das gh-Issue-
+# Template ist nur noch Fallback, falls die CI mal klemmt.
 ```
 
 **Mixed-platform-release-Gotcha:** Sobald vX.Y.Z released ist, zeigt `/releases/latest/download/...` auf die NEUE Tag. Solange Windows-Assets noch nicht hochgeladen sind (Windows-Build pending), wuerden die 3 Windows-Download-Buttons auf `/download/` als 404 antworten. Workaround: in `viewer/public/download/index.html` die 3 Windows-hrefs temporaer auf `/releases/download/v<PREVIOUS>/...` explizit pinnen (statt `/releases/latest/download/...`). Sobald der Windows-Sync-Commit landet: wieder auf `/latest/` zurueckstellen. Beispiel: Commit f34a445 (pin auf v0.4.1) + 5be400b (zurueck auf latest fuer v0.4.2).
