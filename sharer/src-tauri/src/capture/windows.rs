@@ -107,9 +107,7 @@ fn worker(
     };
 
     if let Err(e) = recorder.start() {
-        let _ = init_tx.send(Err(format!(
-            "screen-capture: recorder.start failed: {e}"
-        )));
+        let _ = init_tx.send(Err(format!("screen-capture: recorder.start failed: {e}")));
         return;
     }
 
