@@ -45,7 +45,7 @@
             "name": "Auffi",
             "applicationCategory": "BusinessApplication",
             "operatingSystem": "Windows, Linux, macOS",
-            "softwareVersion": "0.5.0",
+            "softwareVersion": "0.6.0",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
             "license": "https://github.com/phash/auffi/blob/main/LICENSE",
             "downloadUrl": "https://auffi.app/en/download/",
@@ -137,10 +137,10 @@
         <p class="lead">
           Open-source desktop app, AGPL-3.0. End-to-end encrypted,
           GDPR-compliant, no account required. Current version
-          <strong>0.5.0</strong> — downloads run directly through
+          <strong>0.6.0</strong> — downloads run directly through
           <code>auffi.app</code>.
           <a href="https://github.com/phash/auffi" rel="noopener noreferrer">Source on GitHub</a>
-          · <a href="https://github.com/phash/auffi/releases/tag/v0.5.0" rel="noopener noreferrer">Release notes</a>.
+          · <a href="https://github.com/phash/auffi/releases/tag/v0.6.0" rel="noopener noreferrer">Release notes</a>.
         </p>
       </section>
 
@@ -158,7 +158,7 @@
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_x64-setup.exe">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.0_x64-setup.exe">
               Download
             </a>
           </li>
@@ -180,11 +180,11 @@
               <h3>MSI package</h3>
               <p>
                 For domain deployment via GPO / Intune. Silent install with
-                <code>msiexec /i Auffi_0.5.0_x64_en-US.msi /qn</code>.<br />
+                <code>msiexec /i Auffi_0.6.0_x64_en-US.msi /qn</code>.<br />
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_x64_en-US.msi">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.0_x64_en-US.msi">
               Download
             </a>
           </li>
@@ -197,11 +197,11 @@
             <div class="download-meta">
               <h3>Debian / Ubuntu (.deb)</h3>
               <p>
-                <code>sudo dpkg -i Auffi_0.5.0_amd64.deb</code><br />
+                <code>sudo dpkg -i Auffi_0.6.0_amd64.deb</code><br />
                 <span class="size">~ 14 MB · x86_64 · Debian 12+, Ubuntu 22.04+</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_amd64.deb">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.0_amd64.deb">
               Download
             </a>
           </li>
@@ -209,11 +209,11 @@
             <div class="download-meta">
               <h3>Fedora / RHEL (.rpm)</h3>
               <p>
-                <code>sudo rpm -i Auffi-0.5.0-1.x86_64.rpm</code><br />
+                <code>sudo rpm -i Auffi-0.6.0-1.x86_64.rpm</code><br />
                 <span class="size">~ 14 MB · x86_64 · Fedora 40+, RHEL 9+</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi-0.5.0-1.x86_64.rpm">
+            <a class="download-btn" href="/api/downloads/file/Auffi-0.6.0-1.x86_64.rpm">
               Download
             </a>
           </li>
@@ -221,11 +221,11 @@
             <div class="download-meta">
               <h3>AppImage (cross-distro)</h3>
               <p>
-                <code>chmod +x Auffi_0.5.0_amd64.AppImage &amp;&amp; ./Auffi_0.5.0_amd64.AppImage</code><br />
+                <code>chmod +x Auffi_0.6.0_amd64.AppImage &amp;&amp; ./Auffi_0.6.0_amd64.AppImage</code><br />
                 <span class="size">~ 117 MB · x86_64 · runs on any glibc distro with PipeWire.</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.5.0_amd64.AppImage">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.0_amd64.AppImage">
               Download
             </a>
           </li>
@@ -274,6 +274,21 @@
 
       <section class="release-notes" aria-labelledby="releases-heading">
         <h2 id="releases-heading">What's new</h2>
+        <h3>0.6.0 (2026-06-16)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Viewer country in the confirm dialog</strong> — for ad-hoc
+            connections the sharer now shows the country of the requesting
+            person, so you can judge incoming requests more easily.
+          </li>
+          <li>
+            <strong>Fresh "Calm Fresh" design</strong> — the sharer UI was
+            recast to the emerald/mint design (AA contrast in light and dark),
+            plus hardening (no IP-based auto-accept, cleartext-URL guard) and
+            updated dependencies.
+          </li>
+          <li>Linux and Windows only for now — no macOS build yet.</li>
+        </ul>
         <h3>0.5.0 (2026-05-29)</h3>
         <ul class="release-list">
           <li>
