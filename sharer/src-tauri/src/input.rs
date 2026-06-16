@@ -494,7 +494,11 @@ mod tests {
             pressed: false,
         })
         .unwrap();
-        assert_eq!(ctrl.held_buttons_count(), 0, "release should clear tracking");
+        assert_eq!(
+            ctrl.held_buttons_count(),
+            0,
+            "release should clear tracking"
+        );
     }
 
     #[test]

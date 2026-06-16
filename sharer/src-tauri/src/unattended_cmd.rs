@@ -99,8 +99,7 @@ fn mode_path(app: &AppHandle) -> CmdResult<PathBuf> {
 /// unit-testable without touching process-wide env vars (CQ M-20: parallel
 /// tests racing on env vars flaked CI).
 pub(crate) fn validate_backend_url(url: &str, allow_insecure: bool) -> Result<(), String> {
-    let is_insecure =
-        url.starts_with("ws://") || url.starts_with("http://");
+    let is_insecure = url.starts_with("ws://") || url.starts_with("http://");
     if is_insecure && !allow_insecure {
         return Err(format!(
             "Unsicheres Backend-URL abgelehnt: {url:?}. \

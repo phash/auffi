@@ -179,7 +179,10 @@ mod tests {
 
     #[test]
     fn ws_maps_to_http_origin() {
-        assert_eq!(derive_origin("ws://localhost:8080/signal"), "http://localhost:8080");
+        assert_eq!(
+            derive_origin("ws://localhost:8080/signal"),
+            "http://localhost:8080"
+        );
     }
 
     #[test]

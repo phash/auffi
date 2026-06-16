@@ -444,6 +444,13 @@ log_step "Ensure .env.prod on remote"
 maybe_run "Place .env.prod.example if .env.prod absent" \
   remote "test -f '${DEPLOY_PATH}/.env.prod' || { echo '[deploy] .env.prod missing — placing .env.prod.example as .env.prod; EDIT before restarting'; cp '${DEPLOY_PATH}/.env.prod.example' '${DEPLOY_PATH}/.env.prod'; }"
 
+# Pin APP_VERSION in .env.prod to the SHA we just deployed, so compose runs
+# the freshly-loaded auffi-backend:${APP_VERSION} image AND /healthz reports
+# the right version. Without this, .env.prod keeps a stale hand-set APP_VERSION
+# (the backend mis-labels its version even though the new code is running).
+maybe_run "Sync APP_VERSION in .env.prod → ${APP_VERSION}" \
+  remote "sed -i 's|^APP_VERSION=.*|APP_VERSION=${APP_VERSION}|' '${DEPLOY_PATH}/.env.prod'"
+
 # ---------------------------------------------------------------------------
 # Step 13: docker compose up -d (recreatet bei Image-/Compose-Spec-Änderung)
 # ---------------------------------------------------------------------------
