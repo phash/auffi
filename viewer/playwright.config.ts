@@ -18,6 +18,10 @@ export default defineConfig({
         "--use-fake-device-for-media-stream",
         "--disable-web-security",
         "--allow-running-insecure-content",
+        // Send raw host (127.0.0.1) ICE candidates instead of mDNS .local
+        // hostnames — the node-webrtc mock sharer can't resolve mDNS in CI,
+        // so without this ICE never pairs and #remote-video stays hidden.
+        "--disable-features=WebRtcHideLocalIpsWithMdns",
       ],
     },
   },
