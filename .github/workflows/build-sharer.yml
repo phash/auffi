@@ -102,15 +102,18 @@ jobs:
         run: npm ci
 
       - name: Install libvpx (vcpkg)
-        run: vcpkg install libvpx:x64-windows-static-md
+        # VCPKG_INSTALLATION_ROOT is a runner-preset env var — it is NOT in the
+        # ${{ env }} expression context, so export it to GITHUB_ENV from the
+        # shell instead (the build.rs vcpkg crate looks up VCPKG_ROOT).
+        run: |
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          vcpkg install libvpx:x64-windows-static-md
 
       - name: Build Tauri app (Windows)
         working-directory: sharer
         run: npm run tauri:build
         env:
-          # build.rs finds libvpx via the vcpkg crate; the static-md triplet
-          # matches Rust's default dynamic-CRT MSVC linkage.
-          VCPKG_ROOT: ${{ env.VCPKG_INSTALLATION_ROOT }}
+          # static-md triplet matches Rust's default dynamic-CRT MSVC linkage.
           VCPKGRS_TRIPLET: x64-windows-static-md
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
