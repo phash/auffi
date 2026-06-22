@@ -38,6 +38,9 @@ rustls = { version = "=0.23.40", default-features = false, features = ["ring"] }
 uuid = { version = "=1.23.1", features = ["v4"] }
 tauri-plugin-store = "=2.4.3"
 tauri-plugin-shell = "=2.3.5"
+# Open the diagnostic log file in the OS default handler (diagnostics). The
+# blessed replacement for the now-deprecated `tauri_plugin_shell::Shell::open`.
+tauri-plugin-opener = "=2.5.4"
 # UPnP IGD client for discovering the home router's external IP without
 # round-tripping our STUN server. See `nat_traversal.rs` and issue #89.
 # The `aio_tokio` feature drives the SSDP/SOAP traffic on our existing

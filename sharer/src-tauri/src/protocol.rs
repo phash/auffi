@@ -14,7 +14,7 @@ pub enum Incoming {
     CodeAssigned {
         code: String,
         #[serde(rename = "expiresInSec")]
-        _expires_in_sec: u64,
+        expires_in_sec: u64,
     },
     PeerJoined {
         #[serde(rename = "viewerInfo")]
@@ -61,6 +61,24 @@ mod tests {
                 assert_eq!(viewer_info.country.as_deref(), Some("DE"));
             }
             other => panic!("expected PeerJoined, got {other:?}"),
+        }
+    }
+
+    // The sharer surfaces the code's time-to-live as a countdown, so the
+    // backend-stamped expiresInSec must survive deserialization (it was
+    // previously parsed into a discarded `_expires_in_sec` field).
+    #[test]
+    fn code_assigned_deserializes_expires_in_sec() {
+        let json = r#"{"type":"code-assigned","code":"123456789","expiresInSec":600}"#;
+        match serde_json::from_str::<Incoming>(json).expect("parse") {
+            Incoming::CodeAssigned {
+                code,
+                expires_in_sec,
+            } => {
+                assert_eq!(code, "123456789");
+                assert_eq!(expires_in_sec, 600);
+            }
+            other => panic!("expected CodeAssigned, got {other:?}"),
         }
     }
 

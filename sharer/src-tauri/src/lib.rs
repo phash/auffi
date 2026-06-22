@@ -19,43 +19,103 @@ mod unattended_cmd;
 mod update_check;
 mod webrtc_peer;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Runtime gate for `dbg_log`.
+///
+/// Defaults ON in dev builds (unchanged developer ergonomics) and OFF in
+/// release builds. A release build only ever touches the world-writable temp
+/// file once the user explicitly opts in — via the `--debug` launch flag or the
+/// Einstellungen toggle. Keeping it off by default preserves the "no diagnostic
+/// file unless requested" property: the temp dir is shared, so an always-on log
+/// would be a TOCTOU symlink target on Linux.
+static DEBUG_LOGGING: AtomicBool = AtomicBool::new(cfg!(debug_assertions));
+
+/// Enable or disable diagnostic logging at runtime.
+pub(crate) fn set_debug_logging_enabled(enabled: bool) {
+    DEBUG_LOGGING.store(enabled, Ordering::Relaxed);
+}
+
+/// Whether diagnostic logging is currently enabled.
+pub(crate) fn debug_logging_enabled() -> bool {
+    DEBUG_LOGGING.load(Ordering::Relaxed)
+}
+
+/// True if `--debug` appears anywhere in the process arguments.
+pub(crate) fn debug_flag_present(mut args: impl Iterator<Item = String>) -> bool {
+    args.any(|a| a == "--debug")
+}
+
 /// Resolve the destination path for `dbg_log()` writes.
 ///
 /// Uses the OS-specific temp dir so the helper works on both Linux/macOS
 /// (`/tmp/auffi-debug.log`) and Windows (`%TEMP%\auffi-debug.log`).
 /// Hard-coding `/tmp/` would silently no-op on Windows because the path
 /// is not valid there.
-#[cfg(debug_assertions)]
 fn dbg_log_path() -> std::path::PathBuf {
     std::env::temp_dir().join("auffi-debug.log")
 }
 
-/// Append a diagnostic line to the dbg-log file (`auffi-debug.log` in the
-/// OS temp directory) with an explicit flush. Stdio buffering eats
-/// println!/eprintln! when the tauri-cli pipes our streams, so for ad-hoc
-/// live diagnostics this writes to a known path that can be tailed.
-/// Errors are silently dropped — diagnostics must never crash the app.
+/// Append a timestamped diagnostic line to the dbg-log file (`auffi-debug.log`
+/// in the OS temp directory) with an explicit flush. Stdio buffering eats
+/// println!/eprintln! when the tauri-cli pipes our streams, and release builds
+/// have no console at all, so diagnostics go to a known tailable path.
 ///
-/// Debug-only: in release builds the function compiles to a no-op so the
-/// world-writable temp dir is not exposed (TOCTOU symlink risk on Linux).
-/// Production code paths should prefer `log::info!`/`log::warn!`.
-#[cfg(debug_assertions)]
-#[allow(dead_code)]
+/// No-op unless logging is enabled (see [`DEBUG_LOGGING`]). Errors are silently
+/// dropped — diagnostics must never crash the app.
 pub(crate) fn dbg_log(msg: &str) {
+    if !debug_logging_enabled() {
+        return;
+    }
     use std::io::Write;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(dbg_log_path())
     {
-        let _ = writeln!(f, "{}", msg);
+        let _ = writeln!(f, "[{ts}] {msg}");
         let _ = f.flush();
     }
 }
 
-#[cfg(not(debug_assertions))]
-#[allow(dead_code)]
-pub(crate) fn dbg_log(_msg: &str) {}
+/// Flip diagnostic logging at runtime. Persistence lives on the JS side (the
+/// settings store) — this command only mutates the in-process gate, so the
+/// store has a single writer and there is no cross-process race on the file.
+#[tauri::command]
+fn set_debug_logging(enabled: bool) {
+    set_debug_logging_enabled(enabled);
+    dbg_log(&format!("[debug-logging] runtime gate set to {enabled}"));
+}
+
+/// Current state of the diagnostic-logging gate (reflects the `--debug` flag
+/// applied at startup). The settings UI seeds its toggle from this.
+#[tauri::command]
+fn get_debug_logging() -> bool {
+    debug_logging_enabled()
+}
+
+/// Open `auffi-debug.log` in the OS default handler. Creates the (empty) file
+/// first so the button never dead-ends on a machine where logging has not yet
+/// produced output.
+#[tauri::command]
+fn open_debug_log(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = dbg_log_path();
+    if !path.exists() {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("create log file: {e}"))?;
+    }
+    app.opener()
+        .open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| format!("open log file: {e}"))
+}
 
 use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
 
@@ -269,8 +329,11 @@ async fn start_streaming(
     // unused but kept to preserve the existing command signature shape.
     let _ = &sig_state;
     dbg_log(&format!(
-        "[start_streaming] enter monitor_id={} session_code=***",
-        monitor_id
+        "[start_streaming] enter monitor_id={} session_code=*** os={} arch={} v{}",
+        monitor_id,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        env!("CARGO_PKG_VERSION")
     ));
 
     // Defensive guard: refuse to stack a second WebRTC peer on top of a
@@ -478,7 +541,16 @@ async fn start_streaming(
         }
     });
 
-    hotkey::register_pause_hotkey(&app, Arc::clone(&input_state.0))?;
+    // Best-effort: the pause hotkey is a convenience. If another app already
+    // owns Ctrl+Alt+P / Ctrl+Alt+Pause system-wide, registration fails — that
+    // must NOT abort the whole stream (a `?` here was a latent cause of
+    // "Streamen konnte nicht gestartet werden").
+    if let Err(e) = hotkey::register_pause_hotkey(&app, Arc::clone(&input_state.0)) {
+        log::warn!("pause hotkey registration failed (continuing without it): {e}");
+        dbg_log(&format!(
+            "[start_streaming] pause hotkey registration failed (non-fatal): {e}"
+        ));
+    }
 
     let track = peer.track.clone();
     {
@@ -486,7 +558,13 @@ async fn start_streaming(
         *guard = Some(peer);
     }
 
-    let enc = encoder::Vp8Encoder::new(width, height, 2000)?;
+    let enc = encoder::Vp8Encoder::new(width, height, 2000).map_err(|e| {
+        dbg_log(&format!(
+            "[start_streaming] Vp8Encoder::new FAILED ({width}x{height}): {e}"
+        ));
+        e
+    })?;
+    dbg_log("[start_streaming] encoder ready");
 
     // Install the switch-monitor command channel. The runtime command
     // builds a fresh capturer + encoder and pushes them through this
@@ -512,6 +590,7 @@ async fn start_streaming(
         .await;
     });
 
+    dbg_log("[start_streaming] success — streaming loop spawned");
     Ok(())
 }
 
@@ -1106,11 +1185,21 @@ pub fn run() {
     // harmless, swallow it.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    // `--debug` turns on diagnostic logging for the whole session (transient —
+    // not persisted). The settings toggle persists separately and is synced by
+    // the webview on startup. With it, a release build (which has no console)
+    // can still produce a tailable %TEMP%\auffi-debug.log.
+    if debug_flag_present(std::env::args()) {
+        set_debug_logging_enabled(true);
+        dbg_log("[startup] --debug flag present — diagnostic logging enabled");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         // Unattended-mode autostart: registered but defaults to off — the
         // settings UI (gh #20) flips it via the plugin's JS bindings
         // (`enable()` / `disable()` / `isEnabled()` from
@@ -1160,6 +1249,9 @@ pub fn run() {
             unattended_cmd::unattended_confirm,
             unattended_cmd::unattended_submit_feedback,
             update_check::check_for_update,
+            set_debug_logging,
+            get_debug_logging,
+            open_debug_log,
         ])
         // gh #26: tray icon + minimise-to-tray. Built in setup() so
         // the AppHandle is available. The window-close handler reads
@@ -1253,7 +1345,23 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(debug_assertions)]
+    use std::sync::Mutex;
+
+    // Serialises the tests that flip the process-global DEBUG_LOGGING atomic so
+    // cargo's parallel runner cannot interleave their enabled/disabled windows.
+    static LOG_GATE_LOCK: Mutex<()> = Mutex::new(());
+
+    fn unique_marker(tag: &str) -> String {
+        format!(
+            "dbg-log-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )
+    }
+
     #[test]
     fn dbg_log_path_lives_inside_os_temp_dir_and_is_named_auffi_debug_log() {
         let path = super::dbg_log_path();
@@ -1273,26 +1381,54 @@ mod tests {
         );
     }
 
-    #[cfg(debug_assertions)]
     #[test]
-    fn dbg_log_appends_message_to_dbg_log_path() {
-        let marker = format!(
-            "dbg-log-test-marker-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        );
+    fn dbg_log_writes_when_enabled() {
+        let _guard = LOG_GATE_LOCK.lock().unwrap();
+        let prev = super::debug_logging_enabled();
+        super::set_debug_logging_enabled(true);
+        let marker = unique_marker("enabled");
         super::dbg_log(&marker);
+        super::set_debug_logging_enabled(prev);
 
         let path = super::dbg_log_path();
         let contents =
             std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
         assert!(
             contents.contains(&marker),
-            "expected dbg_log to append marker {marker:?} to {path:?}"
+            "expected dbg_log to append marker {marker:?} to {path:?} when enabled"
         );
+    }
+
+    #[test]
+    fn dbg_log_silent_when_disabled() {
+        let _guard = LOG_GATE_LOCK.lock().unwrap();
+        let prev = super::debug_logging_enabled();
+        super::set_debug_logging_enabled(false);
+        let marker = unique_marker("disabled");
+        super::dbg_log(&marker);
+        super::set_debug_logging_enabled(prev);
+
+        // The file may already exist from prior runs — assert only that the
+        // disabled write did not land.
+        let path = super::dbg_log_path();
+        let contents = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            !contents.contains(&marker),
+            "dbg_log must not write {marker:?} while logging is disabled"
+        );
+    }
+
+    #[test]
+    fn debug_flag_present_detects_the_flag() {
+        assert!(super::debug_flag_present(
+            ["auffi.exe".to_string(), "--debug".to_string()].into_iter()
+        ));
+        assert!(!super::debug_flag_present(
+            ["auffi.exe".to_string()].into_iter()
+        ));
+        assert!(!super::debug_flag_present(
+            ["auffi.exe".to_string(), "--other".to_string()].into_iter()
+        ));
     }
 
     /// Pinned regression for the `bye`-to-new-viewer Critical that
