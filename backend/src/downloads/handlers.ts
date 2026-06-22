@@ -21,6 +21,9 @@ export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
   "Auffi_0.6.3_amd64.AppImage",
   "Auffi_0.6.3_x64-setup.exe",
   "Auffi_0.6.3_x64_en-US.msi",
+  // Portable single-exe — built locally (the release CI only bundles NSIS +
+  // MSI), uploaded to the v0.6.3 release manually. Served ?tag=v0.6.3-pinned.
+  "Auffi_0.6.3_x64_portable.exe",
   // 0.6.2 — released 2026-06-22. Windows capture fix (COM apartment + GDI/RDP
   // fallback for E_NOINTERFACE), visible code-expiry, security hardening.
   "Auffi_0.6.2_amd64.deb",
