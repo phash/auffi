@@ -120,10 +120,13 @@ pub async fn run(app: AppHandle, url: String) -> Signaling {
                         Err(_) => continue,
                     };
                     match parsed {
-                        Incoming::CodeAssigned { code, .. } => {
+                        Incoming::CodeAssigned {
+                            code,
+                            expires_in_sec,
+                        } => {
                             let _ = app.emit(
                                 "code-assigned",
-                                serde_json::json!({ "code": code }),
+                                serde_json::json!({ "code": code, "expiresInSec": expires_in_sec }),
                             );
                         }
                         Incoming::PeerJoined { viewer_info } => {
