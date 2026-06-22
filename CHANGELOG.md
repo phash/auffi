@@ -5,6 +5,57 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.3] — 2026-06-22
+
+### Behoben
+
+- **Flüssigere Übertragung auf Windows ohne GPU / über Remotedesktop.** Der
+  VP8-Encoder lief mit der langsamsten Bewegungssuche (cpu-used=0) und kam beim
+  Software-Encoding eines ganzen Desktops auf GPU-losen Hosts nicht hinterher —
+  das Bild ruckelte stark. Encoder jetzt auf Echtzeit getrimmt
+  (`VP8E_SET_CPUUSED=8`, `VPX_CBR`, geringe Latenz). Das „alive"-Diagnose-Log
+  nennt zusätzlich effektive FPS + mittlere Encode-Zeit zur weiteren Analyse.
+
+## [0.6.2] — 2026-06-22
+
+### Behoben
+
+- **Windows-Bildschirmaufnahme schlug fehl.** Der 0.6.0-Windows-Build brach mit
+  „Streamen konnte nicht gestartet werden" ab (`E_NOINTERFACE`), weil der
+  Capture-Worker-Thread kein initialisiertes COM/WinRT-Apartment hatte. Fix:
+  `CoInitializeEx(MTA)`-RAII-Guard auf dem Capture-Thread + GDI-BitBlt-Fallback
+  für RDP / Hosts ohne GPU (inkl. 3-s-First-Frame-Probe, ab der WGC als
+  unbrauchbar gilt).
+
+### Sicherheit
+
+- **Diagnose-Log gehärtet** — auf Unix mit `O_NOFOLLOW` + Mode `0600` atomar
+  angelegt (kein Symlink-Redirect, kein Mitlesen durch andere lokale Nutzer).
+- **TURN-URLs redacten IP-Literale** vor dem Logging (keine Relay-Infra-Preisgabe).
+- **GDI-Capture-Härtung** — als `!Send` markiert, `checked_mul` auf die
+  Frame-Buffer-Größe, `SelectObject`-`HGDI_ERROR`-Check; Dateiübertragung
+  schützt Windows-Reserved-Names (CON/NUL/COM1…).
+
+### Geändert
+
+- **Code-Ablauf-UX** — ein vollständiger Teardown (Beenden) gibt den Ad-hoc-Code
+  frei und entfernt ihn vom Bildschirm; ein reiner Viewer-Wechsel behält ihn.
+  Der Sekunden-Countdown spammt Screenreader nicht mehr (`aria-live` entfernt).
+
+## [0.6.0] — 2026-06-16
+
+### Hinzugefügt
+
+- **Land des Zuschauers im Bestätigungsdialog** — beim Ad-hoc-Verbinden zeigt
+  der Sharer das Land der anfragenden Person an (optionaler GeoIP-Lookup).
+
+### Geändert
+
+- **„Calm Fresh"-Design** für die Sharer-Oberfläche (emerald/mint, AA-Kontrast
+  in hell und dunkel), plus Härtungen (kein IP-basiertes Auto-Akzeptieren,
+  Cleartext-URL-Schutz) und aktualisierte Abhängigkeiten. Linux + Windows über
+  die Release-CI; macOS weiterhin nicht gebaut.
+
 ## [0.5.0] — 2026-05-29
 
 Bündelt die Ergebnisse eines Security- und UX-Reviews.

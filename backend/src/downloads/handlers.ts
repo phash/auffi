@@ -14,6 +14,20 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.6.3 — released 2026-06-22. VP8 realtime-encoder tuning fixes laggy
+  // capture on Windows servers / RDP / GPU-less hosts. Linux + Windows via CI.
+  "Auffi_0.6.3_amd64.deb",
+  "Auffi-0.6.3-1.x86_64.rpm",
+  "Auffi_0.6.3_amd64.AppImage",
+  "Auffi_0.6.3_x64-setup.exe",
+  "Auffi_0.6.3_x64_en-US.msi",
+  // 0.6.2 — released 2026-06-22. Windows capture fix (COM apartment + GDI/RDP
+  // fallback for E_NOINTERFACE), visible code-expiry, security hardening.
+  "Auffi_0.6.2_amd64.deb",
+  "Auffi-0.6.2-1.x86_64.rpm",
+  "Auffi_0.6.2_amd64.AppImage",
+  "Auffi_0.6.2_x64-setup.exe",
+  "Auffi_0.6.2_x64_en-US.msi",
   // 0.6.0 — released 2026-06-16. Geo-country in confirm dialog, Calm-Fresh
   // sharer recast, security guards. Linux + Windows via the release CI
   // (build-sharer.yml). macOS not built — no macOS capture backend yet.
