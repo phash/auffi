@@ -889,6 +889,10 @@ async fn streaming_loop(
     let mut frame_count = 0u64;
     let mut sample_count = 0u64;
     let mut last_log_at = std::time::Instant::now();
+    // Per-interval accumulators for the throughput diagnostic (effective fps +
+    // average encode time) — the key signal for capture/encode lag.
+    let mut frames_since_log = 0u64;
+    let mut encode_us_since_log = 0u64;
 
     async fn handle_switch_msg(
         msg: SwitchMsg,
@@ -997,6 +1001,7 @@ async fn streaming_loop(
                 frame.pts_us
             ));
         }
+        let enc_start = std::time::Instant::now();
         let packets = match encoder.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,
             Err(e) => {
@@ -1004,6 +1009,8 @@ async fn streaming_loop(
                 continue;
             }
         };
+        frames_since_log += 1;
+        encode_us_since_log += enc_start.elapsed().as_micros() as u64;
         if frame_count == 1 {
             dbg_log(&format!(
                 "[streaming_loop] first encode -> {} packets",
@@ -1035,9 +1042,18 @@ async fn streaming_loop(
         // Periodic heartbeat once per second so we know the loop is alive
         // even when frames flow silently.
         if last_log_at.elapsed() >= std::time::Duration::from_secs(2) {
+            let secs = last_log_at.elapsed().as_secs_f64();
+            let fps = frames_since_log as f64 / secs;
+            let avg_encode_ms = if frames_since_log > 0 {
+                (encode_us_since_log as f64 / frames_since_log as f64) / 1000.0
+            } else {
+                0.0
+            };
             dbg_log(&format!(
-                "[streaming_loop] alive: frames={frame_count} samples={sample_count} write_failures={write_failures}"
+                "[streaming_loop] alive: frames={frame_count} samples={sample_count} write_failures={write_failures} fps={fps:.1} avg_encode_ms={avg_encode_ms:.1}"
             ));
+            frames_since_log = 0;
+            encode_us_since_log = 0;
             last_log_at = std::time::Instant::now();
         }
     }

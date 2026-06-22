@@ -12,6 +12,14 @@
 #include <vpx/vp8cx.h>
 #include <vpx/vpx_image.h>
 
+/* VP8 realtime speed setting. Per libvpx, VP8E_SET_CPUUSED > 0 trades quality
+ * for speed (valid range -16..16); the default of 0 is the slowest path and
+ * software-encoding a full desktop on a GPU-less host (e.g. a server reached
+ * over RDP via the GDI capture fallback) cannot keep up → visible lag.
+ * 8 is a solid realtime balance: a large speedup, still fine for screen
+ * content. Must be applied via vpx_codec_control AFTER enc_init. */
+#define VPX_SHIM_CPU_USED 8
+
 /* Opaque handle returned to Rust. */
 typedef struct VpxEncoderCtx {
     vpx_codec_ctx_t   codec;
@@ -35,9 +43,25 @@ VpxEncoderCtx *vpx_shim_create(uint32_t width, uint32_t height, uint32_t bitrate
     ctx->cfg.rc_target_bitrate  = bitrate_kbps;
     ctx->cfg.g_threads          = 4;
     ctx->cfg.g_error_resilient  = VPX_ERROR_RESILIENT_DEFAULT;
+    /* Realtime streaming: CBR keeps the bitrate predictable, no frame lookahead
+     * keeps latency low, and small rate-control buffers avoid the multi-second
+     * default buffering that adds end-to-end delay. */
+    ctx->cfg.rc_end_usage       = VPX_CBR;
+    ctx->cfg.g_lag_in_frames    = 0;
+    ctx->cfg.rc_buf_sz          = 1000; /* ms */
+    ctx->cfg.rc_buf_initial_sz  = 500;
+    ctx->cfg.rc_buf_optimal_sz  = 600;
 
     err = vpx_codec_enc_init(&ctx->codec, vpx_codec_vp8_cx(), &ctx->cfg, 0);
     if (err) { free(ctx); return NULL; }
+
+    /* Speed setting must be applied after init. Without it VP8 uses cpu-used=0
+     * (slowest), the root cause of the realtime lag on weak/GPU-less hosts. */
+    if (vpx_codec_control(&ctx->codec, VP8E_SET_CPUUSED, VPX_SHIM_CPU_USED)) {
+        vpx_codec_destroy(&ctx->codec);
+        free(ctx);
+        return NULL;
+    }
 
     ctx->initialized = 1;
     return ctx;
