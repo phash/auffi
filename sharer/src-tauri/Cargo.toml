@@ -87,6 +87,13 @@ gstreamer-video = "=0.24.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 xcap = { version = "=0.9.4", features = ["wgc"] }
+# COM apartment init for the WGC capture thread (fixes E_NOINTERFACE from
+# video_recorder) + GDI BitBlt for the RDP/GPU-less fallback capture path.
+windows = { version = "=0.61.3", features = [
+    "Win32_System_Com",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+] }
 
 [target.'cfg(windows)'.build-dependencies]
 vcpkg = "=0.2.15"

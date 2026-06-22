@@ -402,6 +402,7 @@ dependencies = [
  "uuid",
  "vcpkg",
  "webrtc",
+ "windows 0.61.3",
  "x11rb",
  "xcap",
 ]
