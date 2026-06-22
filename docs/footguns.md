@@ -53,6 +53,15 @@ Beide Workarounds sind im Wrapper-Skript automatisiert (`./ops/build-sharer-appi
 
 Hängt unmittelbar von `fuse2` auf dem Build-Host ab (Arch: `sudo pacman -S fuse2`). Ohne libfuse2 startet linuxdeploy als AppImage gar nicht.
 
+## Windows Screen Capture (WGC + GDI-Fallback)
+
+`sharer/src-tauri/src/capture/windows.rs` nutzt primär **Windows Graphics Capture** über xcap (`Monitor::video_recorder`, feature `wgc`). Zwei Footguns, die beide zum generischen UI-Fehler „Streamen konnte nicht gestartet werden" führen:
+
+- **WGC braucht ein COM/WinRT-Apartment auf dem aufrufenden Thread.** xcaps `video_recorder()` ruft `factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()` (→ `RoGetActivationFactory`). Ein nackter `std::thread` hat kein Apartment → `video_recorder()` scheitert mit `E_NOINTERFACE` (0x80004002) auf **jeder** Maschine. xcap initialisiert selbst keins. Fix: `ComMta::init()` (`CoInitializeEx(MTA)`) am Anfang des Capture-Worker-Threads — MTA passt zum free-threaded Frame-Pool von WGC.
+- **WGC ist über RDP / auf GPU-losen Servern (z. B. Windows Server 2019) unzuverlässig.** xcaps D3D-Device ist `D3D_DRIVER_TYPE_HARDWARE`-only (kein WARP-Fallback); WGC kann initialisieren und dann nie ein Frame liefern. Deshalb: First-Frame-Probe (3 s Timeout) → bei Fehlschlag Fallback auf **GDI BitBlt** (`GdiCapture`), das über RDP und ohne GPU funktioniert. BGRA top-down, ohne Cursor (deckt sich mit WGC, das xcap cursor-los konfiguriert).
+
+Die display-/GPU-erfordernde Integrations-Regression liegt als `#[ignore]`-Test `windows_capturer_starts_and_yields_a_frame` vor — auf einem Host mit echter Session via `cargo test --lib -- --ignored windows_capturer` laufen lassen.
+
 ## Download-Proxy Patterns
 
 Seit dem DSGVO-Review 2026-05-21 laufen alle Sharer-Downloads stream-through über den Backend statt direkt zu GitHub zu redirecten — kostet uns ein bisschen VPS-Bandbreite, dafür landen alle Download-URLs auf `auffi.app` und der per-Asset-Counter bleibt zuverlässig server-side. Vier Architektur-Entscheidungen, die nicht trivial sind:
