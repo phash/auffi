@@ -343,6 +343,17 @@
         line-height: 1.45;
       }
 
+      .code-expiry {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin-top: 0.375rem;
+        line-height: 1.45;
+        min-height: 1.2em;
+      }
+      .code-expiry.expiring { color: var(--warning); }
+      .code-expiry.expired { color: var(--error); font-weight: 600; }
+      #code.expired { color: var(--text-secondary); text-decoration: line-through; opacity: 0.55; }
+
       #copy-btn {
         font-family: var(--font);
         font-size: 0.8125rem;
@@ -1115,8 +1126,9 @@
           <button id="copy-btn" type="button" aria-label="Code kopieren">Kopieren</button>
         </div>
         <p class="code-hint" id="code-hint">
-          Gib diesen Code dem Helfer am Telefon weiter. Er verfällt nach 10 Minuten.
+          Gib diesen Code dem Helfer am Telefon weiter.
         </p>
+        <div class="code-expiry" id="code-expiry" role="status" aria-live="polite"></div>
         <div class="code-actions">
           <button id="new-code-btn" type="button" aria-label="Neuen Code generieren">
             <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -1358,6 +1370,23 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+      </div>
+
+      <div class="card">
+        <p class="settings-section-title">Diagnose</p>
+        <div class="settings-toggle-row" style="margin-bottom: 0.75rem;">
+          <div>
+            <div class="settings-toggle-label">Diagnose-Protokoll</div>
+            <div class="settings-toggle-desc">
+              Schreibt ein technisches Log zur Fehlersuche. Nur bei Problemen aktivieren.
+            </div>
+          </div>
+          <label class="settings-toggle" aria-label="Diagnose-Protokoll umschalten">
+            <input type="checkbox" id="debug-log-toggle" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <button id="open-log-btn" class="btn btn-secondary" type="button">Log-Datei öffnen</button>
       </div>
     </div>
 

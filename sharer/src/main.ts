@@ -13,6 +13,7 @@ import { friendlyMonitorLabel } from "./monitor-display.js";
 import { setupTabs } from "./tabs.js";
 import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-banner.js";
 import { formatConnectionRequest } from "./connect-format.js";
+import { formatExpiry } from "./code-expiry.js";
 
 interface FileOfferPayload {
   id: string;
@@ -52,6 +53,7 @@ type RelayPayload =
 // ── DOM refs ────────────────────────────────────────────────────────────────
 
 const codeEl = document.getElementById("code")!;
+const codeExpiryEl = document.getElementById("code-expiry")!;
 const statusEl = document.getElementById("status")!;
 const confirmEl = document.getElementById("confirm")!;
 const confirmTextEl = document.getElementById("confirm-text")!;
@@ -85,6 +87,8 @@ const declineBtn = document.getElementById("decline")! as HTMLButtonElement;
 // Settings
 const trustedPeersList = document.getElementById("trusted-peers-list")!;
 const largeCodeToggle = document.getElementById("large-code-toggle") as HTMLInputElement;
+const debugLogToggle = document.getElementById("debug-log-toggle") as HTMLInputElement;
+const openLogBtn = document.getElementById("open-log-btn") as HTMLButtonElement;
 
 // About
 const bmcBtn = document.getElementById("bmc-btn")! as HTMLButtonElement;
@@ -202,6 +206,16 @@ async function loadSettings(): Promise<void> {
   const largeCode = (await store.get<boolean>("largeCode")) ?? false;
   largeCodeToggle.checked = largeCode;
   applyLargeCode(largeCode);
+
+  // Diagnostic logging: the store is the persisted source of truth; the
+  // `--debug` launch flag is a transient override already applied Rust-side.
+  // Effective = stored OR --debug. We push the effective value back into Rust
+  // so a stored "on" survives restarts without a CLI flag.
+  const storedDebug = (await store.get<boolean>("debugLogging")) ?? false;
+  const cliDebug = await invoke<boolean>("get_debug_logging");
+  const effectiveDebug = storedDebug || cliDebug;
+  await invoke("set_debug_logging", { enabled: effectiveDebug });
+  debugLogToggle.checked = effectiveDebug;
 }
 
 function applyLargeCode(enabled: boolean): void {
@@ -302,17 +316,69 @@ function showFriendlyError(message: string, err: unknown): void {
   setStatus(message, "error");
 }
 
-function showCode(code: string): void {
+// Code-Ablauf: der Server schickt expiresInSec mit jedem code-assigned. Wir
+// zählen lokal runter und markieren den Code bei 0 als abgelaufen, damit der
+// Sharer-User nicht stumm einen toten Code vorliest.
+let expiryTimer: ReturnType<typeof setInterval> | null = null;
+let expiryRemaining = 0;
+
+function renderExpiry(): void {
+  const view = formatExpiry(expiryRemaining);
+  codeExpiryEl.textContent = view.label;
+  codeExpiryEl.classList.toggle("expired", view.expired);
+  codeExpiryEl.classList.toggle("expiring", !view.expired && expiryRemaining <= 60);
+  codeEl.classList.toggle("expired", view.expired);
+}
+
+function stopExpiryCountdown(): void {
+  if (expiryTimer !== null) {
+    clearInterval(expiryTimer);
+    expiryTimer = null;
+  }
+}
+
+function startExpiryCountdown(expiresInSec: number): void {
+  stopExpiryCountdown();
+  expiryRemaining = Math.floor(expiresInSec);
+  renderExpiry();
+  if (expiryRemaining <= 0) return;
+  expiryTimer = setInterval(() => {
+    expiryRemaining -= 1;
+    renderExpiry();
+    if (expiryRemaining <= 0) {
+      stopExpiryCountdown();
+      setStatus("Code abgelaufen — bitte einen neuen Code erzeugen.", "error");
+    }
+  }, 1000);
+}
+
+function showCode(code: string, expiresInSec?: number): void {
   codeEl.textContent = code;
   codeEl.classList.remove("placeholder");
+  codeEl.classList.remove("expired");
   currentCode = code;
+  // The refresh button is always available whenever a code is shown — the
+  // sharer-user may want a fresh code at any time (gh: "new code button only
+  // seemed to exist on the website").
+  newCodeBtn.classList.add("visible");
+  if (typeof expiresInSec === "number") {
+    startExpiryCountdown(expiresInSec);
+  } else {
+    stopExpiryCountdown();
+    codeExpiryEl.textContent = "";
+    codeExpiryEl.classList.remove("expired", "expiring");
+  }
 }
 
 function resetCode(): void {
   codeEl.textContent = "— — —";
   codeEl.classList.add("placeholder");
+  codeEl.classList.remove("expired");
   currentCode = null;
   newCodeBtn.classList.remove("visible");
+  stopExpiryCountdown();
+  codeExpiryEl.textContent = "";
+  codeExpiryEl.classList.remove("expired", "expiring");
 }
 
 function showReconnect(): void {
@@ -641,12 +707,24 @@ largeCodeToggle.addEventListener("change", async () => {
   await store.set("largeCode", enabled);
 });
 
+debugLogToggle.addEventListener("change", async () => {
+  const enabled = debugLogToggle.checked;
+  await invoke("set_debug_logging", { enabled });
+  const store = await getStore();
+  await store.set("debugLogging", enabled);
+});
+
+openLogBtn.addEventListener("click", () => {
+  invoke("open_debug_log").catch((e: unknown) => {
+    showFriendlyError("Log-Datei konnte nicht geöffnet werden.", e);
+  });
+});
+
 // ── Signaling events ─────────────────────────────────────────────────────────
 
-listen<{ code: string }>("code-assigned", (e) => {
-  showCode(e.payload.code);
+listen<{ code: string; expiresInSec: number }>("code-assigned", (e) => {
+  showCode(e.payload.code, e.payload.expiresInSec);
   setStatus("Warte auf Verbindung…", "waiting");
-  newCodeBtn.classList.add("visible");
 });
 
 listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) => {
@@ -676,6 +754,11 @@ listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) =>
   }
   currentIpPrefix = e.payload.ipPrefix;
   newCodeBtn.classList.remove("visible");
+  // A helper is joining — the code has served its purpose; stop the countdown
+  // so an expiry mid-handshake doesn't flip the UI to "abgelaufen".
+  stopExpiryCountdown();
+  codeExpiryEl.textContent = "";
+  codeExpiryEl.classList.remove("expired", "expiring");
 
   // SECURITY: never auto-accept based on the IP prefix. The backend redacts
   // the viewer IP to its first octet (~/8 — up to ~16M addresses), so a
