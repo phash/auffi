@@ -53,6 +53,7 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
   sharer/src-tauri/target/release/bundle/appimage/Auffi_X.Y.Z_amd64.AppImage
 # 4) Bump filenames in viewer/public/download/index.html + the
 #    KNOWN_ASSETS-Set in backend/src/downloads/handlers.ts
+#    (Portable nicht vergessen — die CI baut keins, s. Gotcha unten)
 # 5) ./ops/deploy.sh --yes
 # Windows-Builds laufen jetzt im CI (release.yml / build-sharer.yml auf
 # windows-latest, seit PR #117). Die separate Windows-Box / das gh-Issue-
@@ -64,6 +65,8 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 **CLEANER METHOD (used for v0.5.0) — cut Linux-first as a PRE-RELEASE:** `gh release create vX.Y.Z --prerelease ...` (Linux assets only). A prerelease is NOT returned by GitHub's `/releases/latest`, so BOTH the download-proxy default (`releases/latest/download`) and the sharer update-notifier (`update_check.rs` → `/releases/latest`) stay on the previous full release — no download-page 404s, no update-loop, no temp Windows-pin. When the Windows build lands: `gh release edit vX.Y.Z --latest` to promote, together with the download-page + KNOWN_ASSETS bump + `./ops/deploy.sh`.
 
 **FOOTGUN:** `github.com/.../releases/latest/download/<asset>` (the web redirect) propagates a few minutes BEHIND the `/releases/latest` API after you create or `--prerelease`-toggle a release. The proxy can throw transient 502s for latest-routed assets in that window (the API already shows the right tag). It self-heals — don't redeploy in a panic. `?tag=vX.Y.Z` resolves immediately.
+
+**Portable-.exe-Gotcha (CI baut KEIN Portable):** `build-sharer.yml` bündelt für Windows nur **NSIS `setup.exe` + MSI** (`bundle/nsis/*.exe` + `bundle/msi/*.msi`) — **kein** Portable. Das `Auffi_X.Y.Z_x64_portable.exe` wird separat/lokal gebaut und ist NICHT auf dem CI-Release. Wer es anbieten will, muss es pro Release manuell nachziehen, sonst **502t der „Portable (.exe)"-Button** auf `/download/` (Asset fehlt auf `latest`). Schritte: (a) Portable bauen, (b) `gh release upload vX.Y.Z <…>/Auffi_X.Y.Z_x64_portable.exe`, (c) `SHA256SUMS` lokal um die Hash-Zeile ergänzen und `--clobber` neu hochladen — **die lokale Datei MUSS exakt `SHA256SUMS` heißen** (`gh` benennt das Asset nach dem Dateinamen; `SHA256SUMS.cur` o.ä. legt ein Zweit-Asset an statt zu überschreiben), (d) `Auffi_X.Y.Z_x64_portable.exe` in `KNOWN_ASSETS` + den Portable-Button-href setzen, **auf `?tag=vX.Y.Z` gepinnt** (das Portable ist nicht latest-getrackt). Beispiel: v0.6.3 = Commit f487524 (Upload + Wiring), der alte generische Name `auffi-sharer-windows-x64.exe` war der 502-Verursacher.
 
 ## Admin-Promote auf prod
 
