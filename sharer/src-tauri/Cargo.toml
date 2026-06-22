@@ -95,6 +95,10 @@ windows = { version = "=0.61.3", features = [
     "Win32_Graphics_Gdi",
 ] }
 
+[target.'cfg(unix)'.dependencies]
+# O_NOFOLLOW for the diagnostic log open on the world-writable Unix temp dir.
+libc = "=0.2.186"
+
 [target.'cfg(windows)'.build-dependencies]
 vcpkg = "=0.2.15"
 

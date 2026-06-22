@@ -410,10 +410,19 @@ pub fn sanitize_filename(input: &str) -> String {
     // Strip leading dot (hidden-file convention on Unix).
     let stripped = cleaned.trim_start_matches('.');
 
-    let result = if stripped.is_empty() {
+    let base = if stripped.is_empty() {
         "untitled".to_string()
     } else {
         stripped.to_string()
+    };
+
+    // Windows refuses files named after legacy DOS devices (CON, NUL, COM1…),
+    // even with an extension; prefix `_` so the write doesn't fail with a
+    // confusing PermissionDenied on Windows.
+    let result = if is_windows_reserved(&base) {
+        format!("_{base}")
+    } else {
+        base
     };
 
     // Enforce POSIX filename length limit.
@@ -427,6 +436,17 @@ pub fn sanitize_filename(input: &str) -> String {
         }
         result[..end].to_string()
     }
+}
+
+/// True if `name`'s stem matches a Windows reserved device name
+/// (case-insensitive, ignoring any extension).
+fn is_windows_reserved(name: &str) -> bool {
+    const RESERVED: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    let stem = name.split('.').next().unwrap_or(name);
+    RESERVED.iter().any(|r| stem.eq_ignore_ascii_case(r))
 }
 
 /// Build an 8-byte chunk frame header followed by the given payload.
@@ -587,6 +607,17 @@ mod tests {
     #[test]
     fn sanitize_strips_leading_dot() {
         assert_eq!(sanitize_filename(".hidden"), "hidden");
+    }
+
+    #[test]
+    fn sanitize_prefixes_windows_reserved_device_names() {
+        assert_eq!(sanitize_filename("NUL"), "_NUL");
+        assert_eq!(sanitize_filename("con"), "_con");
+        assert_eq!(sanitize_filename("COM1.txt"), "_COM1.txt");
+        assert_eq!(sanitize_filename("LPT9"), "_LPT9");
+        // Non-reserved names are untouched.
+        assert_eq!(sanitize_filename("console.txt"), "console.txt");
+        assert_eq!(sanitize_filename("normal.txt"), "normal.txt");
     }
 
     // ─── fnv1a32 tests ────────────────────────────────────────────────────────

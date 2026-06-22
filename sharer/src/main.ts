@@ -829,7 +829,7 @@ listen<{ paused: boolean }>("input-paused-changed", (e) => {
   }
 });
 
-listen("streaming-stopped", () => {
+listen<{ keepSignaling: boolean }>("streaming-stopped", (e) => {
   setStatus("Stream beendet.", "idle");
   streamBtn.disabled = false;
   pauseBannerEl.classList.remove("visible");
@@ -837,6 +837,12 @@ listen("streaming-stopped", () => {
   connTypeInfoEl.textContent = "";
   connTypeInfoEl.className = "";
   hideStreamingActions();
+  // Full teardown drops the signaling WS, so the ad-hoc code is released
+  // server-side — clear it instead of leaving a dead code on screen. A
+  // viewer-swap (keepSignaling) keeps the same code, so leave it shown.
+  if (!e.payload.keepSignaling) {
+    resetCode();
+  }
   newCodeBtn.classList.add("visible");
   // Reset the WebRTC handshake buffers so the next session can register
   // its own offer + ICE candidates. Without this reset, a stale

@@ -381,6 +381,7 @@ dependencies = [
  "igd-next",
  "image",
  "keyring",
+ "libc",
  "log",
  "mockito",
  "reqwest",

@@ -1128,7 +1128,9 @@
         <p class="code-hint" id="code-hint">
           Gib diesen Code dem Helfer am Telefon weiter.
         </p>
-        <div class="code-expiry" id="code-expiry" role="status" aria-live="polite"></div>
+        <!-- No aria-live: a per-second countdown would spam screen readers.
+             Expiry is announced via the #status region instead. -->
+        <div class="code-expiry" id="code-expiry"></div>
         <div class="code-actions">
           <button id="new-code-btn" type="button" aria-label="Neuen Code generieren">
             <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">

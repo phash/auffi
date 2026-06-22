@@ -334,6 +334,11 @@ struct GdiCapture {
     mem_dc: HDC,
     bitmap: HBITMAP,
     prev_obj: HGDIOBJ,
+    // GDI device contexts/bitmaps are thread-affine: they must be used on the
+    // thread that created them. The handle newtypes are `Send`, so without this
+    // marker `GdiCapture` would be accidentally `Send` and a future refactor
+    // could call `grab()` from another thread (UB per the Win32 contract).
+    _not_send: std::marker::PhantomData<*mut ()>,
 }
 
 impl GdiCapture {
@@ -355,6 +360,15 @@ impl GdiCapture {
                 return Err("CreateCompatibleBitmap failed".to_string());
             }
             let prev_obj = SelectObject(mem_dc, HGDIOBJ(bitmap.0));
+            // SelectObject returns HGDI_ERROR ((HGDIOBJ)-1) on failure; without
+            // the bitmap selected, BitBlt would draw into the DC's default 1×1
+            // bitmap and every frame would come back black.
+            if prev_obj == HGDIOBJ(-1isize as *mut std::ffi::c_void) {
+                let _ = DeleteObject(HGDIOBJ(bitmap.0));
+                let _ = DeleteDC(mem_dc);
+                ReleaseDC(None, screen_dc);
+                return Err("SelectObject failed".to_string());
+            }
             Ok(Self {
                 x,
                 y,
@@ -364,6 +378,7 @@ impl GdiCapture {
                 mem_dc,
                 bitmap,
                 prev_obj,
+                _not_send: std::marker::PhantomData,
             })
         }
     }
@@ -399,7 +414,11 @@ impl GdiCapture {
                 ..Default::default()
             };
 
-            let mut buf = vec![0u8; self.width as usize * self.height as usize * 4];
+            let buf_len = (self.width as usize)
+                .checked_mul(self.height as usize)
+                .and_then(|n| n.checked_mul(4))
+                .ok_or_else(|| "GDI: frame dimensions overflow buffer size".to_string())?;
+            let mut buf = vec![0u8; buf_len];
             let scanlines = GetDIBits(
                 self.mem_dc,
                 self.bitmap,

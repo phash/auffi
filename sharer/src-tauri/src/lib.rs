@@ -72,11 +72,18 @@ pub(crate) fn dbg_log(msg: &str) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dbg_log_path())
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).append(true);
+    // The Unix temp dir (/tmp) is world-writable, so refuse to follow a symlink
+    // planted at the log path and keep the file owner-only — diagnostic lines
+    // can carry connection metadata (URLs, redacted ICE) that other local users
+    // must not read or redirect. Windows %TEMP% is already per-user.
+    #[cfg(unix)]
     {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    if let Ok(mut f) = opts.open(dbg_log_path()) {
         let _ = writeln!(f, "[{ts}] {msg}");
         let _ = f.flush();
     }
@@ -105,15 +112,20 @@ fn get_debug_logging() -> bool {
 fn open_debug_log(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     let path = dbg_log_path();
-    if !path.exists() {
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| format!("create log file: {e}"))?;
+    // create_new is atomic (no exists()-then-create TOCTOU). AlreadyExists is
+    // the normal case once logging has run.
+    if let Err(e) = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+    {
+        if e.kind() != std::io::ErrorKind::AlreadyExists {
+            return Err(format!("create log file: {e}"));
+        }
     }
+    let path_str = path.to_str().ok_or("log path is not valid UTF-8")?;
     app.opener()
-        .open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .open_path(path_str, None::<&str>)
         .map_err(|e| format!("open log file: {e}"))
 }
 
@@ -854,8 +866,13 @@ async fn disconnect_streaming(
         *guard = None;
     }
 
-    // Notify the main window so it can reset its UI state.
-    let _ = app.emit("streaming-stopped", serde_json::json!({}));
+    // Notify the main window so it can reset its UI state. `keepSignaling`
+    // lets the UI tell a full teardown (code released — clear it) apart from a
+    // viewer-swap (same WS + code kept alive for the next viewer).
+    let _ = app.emit(
+        "streaming-stopped",
+        serde_json::json!({ "keepSignaling": keep_signaling }),
+    );
 
     Ok(())
 }

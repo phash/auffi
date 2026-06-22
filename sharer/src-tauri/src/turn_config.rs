@@ -88,9 +88,15 @@ pub async fn fetch_ice_servers(backend_http_url: &str, session_code: &str) -> Ve
     };
 
     log::debug!("TURN fetch: credentials valid for {} seconds", creds.ttl);
+    // Redact any IP literals in the TURN URLs before logging — don't expose
+    // relay infrastructure addresses in the diagnostic log.
+    let redacted_urls: Vec<String> = creds
+        .urls
+        .iter()
+        .map(|u| crate::ip_redact::redact_ips_in_text(u))
+        .collect();
     crate::dbg_log(&format!(
-        "[turn-fetch] urls={:?} username_len={} credential_len={} ttl={}",
-        creds.urls,
+        "[turn-fetch] urls={redacted_urls:?} username_len={} credential_len={} ttl={}",
         creds.username.len(),
         creds.credential.len(),
         creds.ttl
