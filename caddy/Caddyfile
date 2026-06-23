@@ -24,11 +24,19 @@ auffi.app {
         >X-Content-Type-Options "nosniff"
         >Referrer-Policy "no-referrer"
         # SHA-256 hashes whitelist EVERY inline <script type="application/
-        # ld+json"> block across all 12 served marketing pages (de + en):
-        # SoftwareApplication / FAQPage / BreadcrumbList structured data on
-        # /, /en/, /impressum/, /datenschutz/, /download/, /en/download/,
-        # /vergleich/, /en/compare/, /vergleich/teamviewer/,
-        # /en/compare/teamviewer/, /vergleich/anydesk/, /en/compare/anydesk/.
+        # ld+json"> block across all 20 served marketing pages (de + en):
+        # SoftwareApplication / FAQPage / BreadcrumbList / HowTo structured
+        # data on /, /en/, /impressum/, /datenschutz/, /download/,
+        # /en/download/, /vergleich/, /en/compare/, /vergleich/teamviewer/,
+        # /en/compare/teamviewer/, /vergleich/anydesk/, /en/compare/anydesk/,
+        # /vergleich/rustdesk/, /en/compare/rustdesk/,
+        # /vergleich/chrome-remote-desktop/,
+        # /en/compare/chrome-remote-desktop/,
+        # /vergleich/teamviewer-kommerzielle-nutzung/,
+        # /en/compare/teamviewer-commercial-use/,
+        # /bildschirm-teilen-ohne-installation/,
+        # /en/screen-sharing-without-install/.
+        # Source of truth for the page registry: viewer/tests/marketing-seo.test.ts
         # Each distinct
         # block needs its own hash — a single page edit changes one hash and
         # blocks that block until re-added (the 2026-05-29 SEO deploy added

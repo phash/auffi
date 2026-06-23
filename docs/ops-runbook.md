@@ -101,6 +101,22 @@ console.log(\"after :\", JSON.stringify(after));"'
 
 TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy cert volume to `turn-certs-staged`.
 
+### CSP script-src after adding marketing pages
+
+**`deploy.sh` does NOT ship the Caddyfile in cluster mode** (see § Cluster-Ops Footguns in `docs/footguns.md`). Every new batch of marketing pages adds JSON-LD inline scripts whose SHA-256 hashes must be whitelisted in the cluster Caddyfile's `Content-Security-Policy script-src` or the structured-data blocks will be CSP-blocked.
+
+**2026-06-23 SEO push:** added 8 new marketing pages (DE + EN) — RustDesk, Chrome Remote Desktop, TeamViewer commercial-use, no-install screen sharing. After `./ops/deploy.sh`, patch the cluster Caddyfile manually:
+
+1. On the prod host, recompute the full hash set from the deployed viewer HTML:
+   ```bash
+   python3 -c "import re,hashlib,base64,glob; files=['viewer/index.html','viewer/en/index.html']+sorted(glob.glob('viewer/public/**/index.html',recursive=True)); print('\n'.join(sorted({'sha256-'+base64.b64encode(hashlib.sha256(m.encode()).digest()).decode() for f in files for m in re.findall(r'<script(?:\\s[^>]*)?>(.*?)</script>', open(f).read(), re.DOTALL) if m.strip() and 'src=' not in m[:60]})))"
+   ```
+   (same one-liner as in `caddy/Caddyfile` § comment — run from the deployed viewer dist root)
+2. Replace the `sha256-…` tokens in `/opt/caddyserver/Caddyfile`'s `script-src` with the new set.
+3. Validate and restart: `docker exec caddy-proxy caddy validate --config /etc/caddy/Caddyfile && docker restart caddy-proxy`.
+
+The repo-side `caddy/Caddyfile` always carries the current full hash set. `viewer/tests/marketing-seo.test.ts` is the guard that keeps it in sync with the HTML sources — if it passes in CI, the repo Caddyfile is correct; the cluster file needs the same tokens applied by hand.
+
 ## Daily Backup
 
 Cron-Job auf prod (installiert 2026-05-18): `15 4 * * * /opt/screenie/ops/backup.sh >> /opt/backup/auffi/backup.log 2>&1`. Script-Quelle im Repo: `ops/backup.sh`. Wird bei jedem `./ops/deploy.sh` automatisch nach `/opt/screenie/ops/backup.sh` gerollt (separate `maybe_run`-Schritte). Für Ad-hoc-Runs ohne Deploy: `./ops/maintenance.sh backup`. Das Backup-Log liegt nur auf prod (`/opt/backup/auffi/backup.log`) — bei starkem Wachstum mit `logrotate` aufräumen.
