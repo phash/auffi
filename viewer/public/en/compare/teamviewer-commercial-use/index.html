@@ -59,7 +59,7 @@
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
-          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/" },
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/en/" },
           { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://auffi.app/en/compare/" },
           { "@type": "ListItem", "position": 3, "name": "TeamViewer commercial use — alternative", "item": "https://auffi.app/en/compare/teamviewer-commercial-use/" }
         ]
@@ -69,6 +69,7 @@
       {
         "@context": "https://schema.org",
         "@type": "FAQPage",
+        "inLanguage": "en-US",
         "mainEntity": [
           {
             "@type": "Question",
@@ -78,7 +79,7 @@
           {
             "@type": "Question",
             "name": "How do I get rid of the TeamViewer message for good?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Only two things fix it permanently: buy a paid TeamViewer license, or switch to a tool that is free without that distinction. Auffi is free for private and commercial use, open source (AGPL-3.0), and has no commercial-use lockout." }
+            "acceptedAnswer": { "@type": "Answer", "text": "There are three routes: (1) If you genuinely use TeamViewer only for private purposes, you can request a reset of the commercial-use flag via TeamViewer's reset form — success is not guaranteed and repeated flags are often not cleared permanently. (2) For commercial use, buying a paid TeamViewer license is the reliable fix. (3) Or you switch to a tool that makes no such distinction at all — Auffi is free for private and commercial use, open source (AGPL-3.0), and has no commercial-use lockout." }
           },
           {
             "@type": "Question",
@@ -159,6 +160,7 @@
       <section>
         <h2>Your options</h2>
         <ul>
+          <li><strong>Request a reset (private use only)</strong> — if you genuinely use TeamViewer only privately, you can ask TeamViewer to clear the commercial-use flag via their reset form. Success is not guaranteed; repeated flags are often not cleared permanently.</li>
           <li><strong>Buy a TeamViewer license</strong> — unlocks commercial use, but depending on the plan costs several hundred euros per year.</li>
           <li><strong>Switch to a free tool</strong> that makes no private/commercial distinction — e.g. Auffi (browser-based for the person helping) or RustDesk (app on both sides).</li>
         </ul>
@@ -199,7 +201,7 @@
         <h3>Why does TeamViewer say "commercial use suspected"?</h3>
         <p>TeamViewer is only free for private use. An automatic heuristic looks at session length, frequency and the number of endpoints; when it triggers, sessions are shortened or blocked and the commercial-use notice appears. It often hits private users as a false positive.</p>
         <h3>How do I get rid of the TeamViewer message for good?</h3>
-        <p>Only two things fix it permanently: buy a paid TeamViewer license, or switch to a tool that is free without that distinction. Auffi is free for private and commercial use, open source (AGPL-3.0), and has no commercial-use lockout.</p>
+        <p>There are three routes: (1) If you genuinely use TeamViewer only for private purposes, you can request a reset of the commercial-use flag via TeamViewer's reset form — success is not guaranteed and repeated flags are often not cleared permanently. (2) For commercial use, buying a paid TeamViewer license is the reliable fix. (3) Or you switch to a tool that makes no such distinction at all — Auffi is free for private and commercial use, open source (AGPL-3.0), and has no commercial-use lockout.</p>
         <h3>Is Auffi free for commercial remote support too?</h3>
         <p>Yes. Under the AGPL-3.0 Auffi is completely free — no usage cap and no private-vs-commercial distinction. There is no license fee and no session limit.</p>
         <h3>Does the person I help have to install anything?</h3>

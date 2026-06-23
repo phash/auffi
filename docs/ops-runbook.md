@@ -111,7 +111,7 @@ TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy c
    ```bash
    python3 -c "import re,hashlib,base64,glob; files=['viewer/index.html','viewer/en/index.html']+sorted(glob.glob('viewer/public/**/index.html',recursive=True)); print('\n'.join(sorted({'sha256-'+base64.b64encode(hashlib.sha256(m.encode()).digest()).decode() for f in files for m in re.findall(r'<script(?:\\s[^>]*)?>(.*?)</script>', open(f).read(), re.DOTALL) if m.strip() and 'src=' not in m[:60]})))"
    ```
-   (same one-liner as in `caddy/Caddyfile` § comment — run from the deployed viewer dist root)
+   (same one-liner as in `caddy/Caddyfile` § comment — run from a repo checkout root, where `viewer/` is a direct child directory)
 2. Replace the `sha256-…` tokens in `/opt/caddyserver/Caddyfile`'s `script-src` with the new set.
 3. Validate and restart: `docker exec caddy-proxy caddy validate --config /etc/caddy/Caddyfile && docker restart caddy-proxy`.
 
