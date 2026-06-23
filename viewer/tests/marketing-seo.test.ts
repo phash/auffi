@@ -90,6 +90,25 @@ describe("marketing pages — CSP hash parity", () => {
   });
 });
 
+describe("llms.txt lists the comparison surface (GEO)", () => {
+  const llms = readFileSync(f("viewer/public/llms.txt"), "utf-8");
+  const mustContain = [
+    "https://auffi.app/vergleich/",
+    "https://auffi.app/vergleich/teamviewer/",
+    "https://auffi.app/vergleich/anydesk/",
+    "https://auffi.app/vergleich/rustdesk/",
+    "https://auffi.app/vergleich/chrome-remote-desktop/",
+    "https://auffi.app/vergleich/teamviewer-kommerzielle-nutzung/",
+    "https://auffi.app/bildschirm-teilen-ohne-installation/",
+  ];
+  for (const url of mustContain) {
+    it(`mentions ${url}`, () => expect(llms).toContain(url));
+  }
+  it("states free for commercial use", () => {
+    expect(llms.toLowerCase()).toContain("gewerblich");
+  });
+});
+
 describe("marketing pages — on-page SEO invariants", () => {
   for (const page of PAGES) {
     describe(page.url, () => {
