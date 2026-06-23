@@ -73,6 +73,8 @@ const PAGES: Page[] = [
   { file: "viewer/public/en/compare/rustdesk/index.html", url: `${BASE}/en/compare/rustdesk/`, twin: `${BASE}/vergleich/rustdesk/`, lang: "en", faqSync: true },
   { file: "viewer/public/vergleich/chrome-remote-desktop/index.html", url: `${BASE}/vergleich/chrome-remote-desktop/`, twin: `${BASE}/en/compare/chrome-remote-desktop/`, lang: "de", faqSync: true },
   { file: "viewer/public/en/compare/chrome-remote-desktop/index.html", url: `${BASE}/en/compare/chrome-remote-desktop/`, twin: `${BASE}/vergleich/chrome-remote-desktop/`, lang: "en", faqSync: true },
+  { file: "viewer/public/bildschirm-teilen-ohne-installation/index.html", url: `${BASE}/bildschirm-teilen-ohne-installation/`, twin: `${BASE}/en/screen-sharing-without-install/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/screen-sharing-without-install/index.html", url: `${BASE}/en/screen-sharing-without-install/`, twin: `${BASE}/bildschirm-teilen-ohne-installation/`, lang: "en", faqSync: true },
   // NEW pages are appended here by Tasks 2–5.
 ];
 

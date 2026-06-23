@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bildschirm teilen ohne Installation — kostenlos im Browser | Auffi</title>
+    <meta name="description" content="Bildschirm teilen ohne Installation: Die helfende Person öffnet nur den Browser, tippt einen 9-stelligen Code und ist verbunden — kein Download, kein Konto. Kostenlos, Open Source, Server in Deutschland." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/bildschirm-teilen-ohne-installation/" />
+    <link rel="alternate" hreflang="de" href="https://auffi.app/bildschirm-teilen-ohne-installation/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/screen-sharing-without-install/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/bildschirm-teilen-ohne-installation/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Bildschirm teilen ohne Installation — kostenlos im Browser | Auffi" />
+    <meta property="og:description" content="Bildschirm teilen ohne Installation: Die helfende Person öffnet nur den Browser, tippt einen 9-stelligen Code und ist verbunden — kein Download, kein Konto." />
+    <meta property="og:url" content="https://auffi.app/bildschirm-teilen-ohne-installation/" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Bildschirm teilen ohne Installation — Auffi" />
+    <meta name="twitter:description" content="Kein Download, kein Konto für die helfende Person. Kostenlos, Open Source, Server in Deutschland." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.55rem 0.7rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/" },
+          { "@type": "ListItem", "position": 2, "name": "Bildschirm teilen ohne Installation", "item": "https://auffi.app/bildschirm-teilen-ohne-installation/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "Bildschirm teilen ohne Installation",
+        "description": "In drei Schritten den Bildschirm einer anderen Person sehen und fernsteuern — die helfende Person braucht nur einen Browser.",
+        "totalTime": "PT1M",
+        "step": [
+          { "@type": "HowToStep", "position": 1, "name": "auffi.app öffnen", "text": "Öffne auffi.app im Browser — kein Download, kein Konto." },
+          { "@type": "HowToStep", "position": 2, "name": "Code eingeben", "text": "Tippe den 9-stelligen Code ein, den dir die andere Person nennt." },
+          { "@type": "HowToStep", "position": 3, "name": "Verbinden", "text": "Klicke auf Verbinden — die andere Person bestätigt, und die Sitzung startet." }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Kann man wirklich ohne Installation den Bildschirm teilen?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Für die helfende Person ja: Sie öffnet nur auffi.app im Browser, tippt einen 9-stelligen Code und ist verbunden — ohne Download und ohne Konto. Nur die Person, deren Bildschirm geteilt wird, startet einmalig den kleinen Auffi-Sharer." }
+          },
+          {
+            "@type": "Question",
+            "name": "Warum muss die teilende Person doch etwas starten?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Browser dürfen aus Sicherheitsgründen nicht ungefragt den ganzen Bildschirm samt Fernsteuerung freigeben. Deshalb läuft auf der geteilten Seite der kleine Auffi-Sharer (Windows oder Linux). Die helfende Seite bleibt komplett im Browser." }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist das kostenlos?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Ja, komplett. Auffi ist Open Source unter der AGPL-3.0 — kostenlos für private und gewerbliche Nutzung, ohne Sitzungslimit." }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist die Verbindung sicher?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Rateversuche pro IP, und die teilende Person bestätigt jede Verbindung aktiv." }
+          },
+          {
+            "@type": "Question",
+            "name": "Funktioniert das auf jedem Gerät?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Die helfende Person braucht nur einen aktuellen Browser (Chrome, Edge, Firefox; Safari mit Einschränkungen). Der Sharer für die teilende Seite läuft unter Windows und Linux (macOS folgt)." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/#code" aria-label="Zur Verbindungscode-Eingabe auf der Hauptseite">Verbinden</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/download/" aria-label="Sharer herunterladen">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Sharer herunterladen</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/en/screen-sharing-without-install/" class="topbar-btn" aria-label="View in English" hreflang="en">EN</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Einloggen (Konto)">
+          <span class="topbar-btn-label">Einloggen</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Konto anlegen">
+          <span class="topbar-btn-label">Konto anlegen</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Bildschirm teilen ohne Installation</h1>
+
+      <p class="vs-lead">
+        Du willst jemandem helfen — Eltern, Großeltern, Kund:innen — und niemand
+        soll sich mit Downloads und Konten herumschlagen? Mit <strong>Auffi öffnet
+        die helfende Person nur den Browser</strong>, tippt einen 9-stelligen Code
+        und ist verbunden: <strong>keine Installation, kein Konto</strong>.
+        Kostenlos, Open Source, Server in Deutschland.
+      </p>
+
+      <section>
+        <h2>In drei Schritten verbunden</h2>
+        <ol>
+          <li><strong>auffi.app öffnen</strong> — im Browser, kein Download, kein Konto.</li>
+          <li><strong>Code eingeben</strong> — den 9-stelligen Code, den dir die andere Person nennt.</li>
+          <li><strong>Verbinden</strong> — die andere Person bestätigt, und die Sitzung startet.</li>
+        </ol>
+        <p>
+          Hinweis: Die Person, <strong>deren Bildschirm geteilt</strong> wird,
+          startet einmalig den kleinen <a href="/download/">Auffi-Sharer</a>
+          (Windows oder Linux) und nennt ihren Code. Die <strong>helfende Seite
+          bleibt komplett im Browser</strong> — das ist der Unterschied zu
+          TeamViewer, AnyDesk oder RustDesk, die auf beiden Seiten eine App
+          verlangen.
+        </p>
+      </section>
+
+      <section>
+        <h2>Warum das die helfende Person entlastet</h2>
+        <ul>
+          <li><strong>Kein Download</strong> auf der helfenden Seite — nichts, das an Firmen-Laptops blockiert ist.</li>
+          <li><strong>Kein Konto, keine Anmeldung</strong> — ein Code genügt, 10 Minuten gültig.</li>
+          <li><strong>DSGVO-konform</strong>: Server in Deutschland (Frankfurt), keine Tracker, Ende-zu-Ende verschlüsselt.</li>
+          <li><strong>Open Source (AGPL-3.0)</strong> und selbst hostbar.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Häufige Fragen</h2>
+        <h3>Kann man wirklich ohne Installation den Bildschirm teilen?</h3>
+        <p>Für die helfende Person ja: Sie öffnet nur auffi.app im Browser, tippt einen 9-stelligen Code und ist verbunden — ohne Download und ohne Konto. Nur die Person, deren Bildschirm geteilt wird, startet einmalig den kleinen Auffi-Sharer.</p>
+        <h3>Warum muss die teilende Person doch etwas starten?</h3>
+        <p>Browser dürfen aus Sicherheitsgründen nicht ungefragt den ganzen Bildschirm samt Fernsteuerung freigeben. Deshalb läuft auf der geteilten Seite der kleine Auffi-Sharer (Windows oder Linux). Die helfende Seite bleibt komplett im Browser.</p>
+        <h3>Ist das kostenlos?</h3>
+        <p>Ja, komplett. Auffi ist Open Source unter der AGPL-3.0 — kostenlos für private und gewerbliche Nutzung, ohne Sitzungslimit.</p>
+        <h3>Ist die Verbindung sicher?</h3>
+        <p>Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Rateversuche pro IP, und die teilende Person bestätigt jede Verbindung aktiv.</p>
+        <h3>Funktioniert das auf jedem Gerät?</h3>
+        <p>Die helfende Person braucht nur einen aktuellen Browser (Chrome, Edge, Firefox; Safari mit Einschränkungen). Der Sharer für die teilende Seite läuft unter Windows und Linux (macOS folgt).</p>
+      </section>
+
+      <section>
+        <h2>Jetzt ausprobieren</h2>
+        <p>
+          <a href="/#code">Bildschirm teilen — Code eingeben &amp; verbinden</a>
+          · <a href="/download/">Sharer herunterladen</a>
+          · <a href="/vergleich/">Alle Alternativen im Überblick</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        und
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>
