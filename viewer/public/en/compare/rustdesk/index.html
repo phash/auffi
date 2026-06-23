@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auffi vs RustDesk — open-source remote support compared</title>
+    <meta name="description" content="Auffi vs RustDesk: two open-source (AGPL-3.0), privacy-friendly remote-support tools compared honestly. With Auffi the helper only needs a browser; with RustDesk an app runs on both sides." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/compare/rustdesk/" />
+
+    <!-- hreflang alternates -->
+    <link rel="alternate" hreflang="de" href="https://auffi.app/vergleich/rustdesk/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/compare/rustdesk/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/vergleich/rustdesk/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Auffi vs RustDesk — open-source remote support compared" />
+    <meta property="og:description" content="An honest comparison: both free, open source (AGPL-3.0), self-hostable. With Auffi the helper only needs a browser — no install, no account." />
+    <meta property="og:url" content="https://auffi.app/en/compare/rustdesk/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Auffi vs RustDesk — open-source remote support compared" />
+    <meta name="twitter:description" content="Both free, AGPL-3.0, self-hostable. With Auffi the helper only needs a browser." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.55rem 0.7rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://auffi.app/en/compare/" },
+          { "@type": "ListItem", "position": 3, "name": "Auffi vs RustDesk", "item": "https://auffi.app/en/compare/rustdesk/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "inLanguage": "en-US",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the difference between Auffi and RustDesk?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Both are free, open source (AGPL-3.0) and self-hostable. The key difference is the helper: with Auffi they just open a browser and type a code — no install. With RustDesk an app runs on both sides." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is RustDesk or Auffi better for self-hosting?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Both are fully self-hostable. RustDesk ships its own relay/signal server you can run yourself; Auffi runs entirely via Docker Compose including signaling and TURN. If an app on both sides is fine, RustDesk is a great fit; if the helper should only need a browser, choose Auffi." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Auffi or RustDesk need an account?",
+            "acceptedAnswer": { "@type": "Answer", "text": "For ad-hoc help Auffi needs no account — a 9-digit code is enough. RustDesk also needs no account for direct access, just the remote ID and password." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which tool is more GDPR-friendly?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Both can be run GDPR-compliant because they are self-hostable. Auffi's public service runs in Germany (Frankfurt) and stores no clear-text IPs; with RustDesk it depends on which relay you use — the public default server is not necessarily in the EU." }
+          },
+          {
+            "@type": "Question",
+            "name": "Are Auffi and RustDesk really free for commercial use too?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Both are AGPL-3.0 and free for commercial use with no license fee — unlike TeamViewer or AnyDesk." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download the sharer</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/vergleich/rustdesk/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in (account)">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create account">
+          <span class="topbar-btn-label">Create account</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Auffi vs RustDesk</h1>
+
+      <p class="vs-lead">
+        <strong>Auffi and RustDesk are both free, open-source (AGPL-3.0)
+        and privacy-friendly</strong> — the key difference is the helper:
+        with <strong>Auffi they just open <code>auffi.app</code> in a
+        browser and type a 9-digit code — no installation, no
+        account</strong>. With RustDesk an app runs on both sides. Auffi
+        is focused on simple, browser-based screen sharing; RustDesk
+        offers broader platform and mobile support.
+      </p>
+
+      <section>
+        <h2>Comparison table</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr><th scope="col">Feature</th><th scope="col">Auffi</th><th scope="col">RustDesk</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Price</th><td class="vs-yes">Free (private &amp; commercial)</td><td class="vs-yes">Free (private &amp; commercial)</td></tr>
+              <tr><th scope="row">License / open source</th><td class="vs-yes">AGPL-3.0, open source</td><td class="vs-yes">AGPL-3.0, open source</td></tr>
+              <tr><th scope="row">Self-hostable</th><td class="vs-yes">Yes (Docker Compose)</td><td class="vs-yes">Yes (own relay server)</td></tr>
+              <tr><th scope="row">Installation (person helping)</th><td class="vs-yes">None — browser only</td><td class="vs-no">App on both sides</td></tr>
+              <tr><th scope="row">Account needed (ad-hoc)</th><td class="vs-yes">No</td><td>No (ID + password)</td></tr>
+              <tr><th scope="row">Encryption</th><td>End-to-end, DTLS-SRTP (WebRTC)</td><td>End-to-end (NaCl)</td></tr>
+              <tr><th scope="row">Server location (public service)</th><td class="vs-yes">Germany (Frankfurt)</td><td>Public default relay not necessarily EU</td></tr>
+              <tr><th scope="row">Platforms (sharer/client)</th><td>Windows, Linux (macOS coming)</td><td class="vs-yes">Windows, macOS, Linux, Android, iOS</td></tr>
+              <tr><th scope="row">Mobile support</th><td>No</td><td class="vs-yes">Yes</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">As of June 2026</p>
+      </section>
+
+      <section>
+        <h2>When Auffi is the better choice</h2>
+        <ul>
+          <li>The <strong>person helping should not install anything</strong> — a browser is all they need.</li>
+          <li>You want an <strong>EU/German service out-of-the-box</strong> without running your own server.</li>
+          <li>Simple, <strong>browser-based operation</strong> matters to you (9-digit code, no account).</li>
+        </ul>
+        <h2>When RustDesk is the better choice</h2>
+        <ul>
+          <li>An <strong>app on both sides</strong> is acceptable to you.</li>
+          <li>You need <strong>maximum platform and mobile coverage</strong> (Windows, macOS, Linux, Android, iOS).</li>
+          <li>You want to <strong>run your own relay server</strong> and already have the infrastructure.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>What is the difference between Auffi and RustDesk?</h3>
+        <p>Both are free, open source (AGPL-3.0) and self-hostable. The key difference is the helper: with Auffi they just open a browser and type a code — no install. With RustDesk an app runs on both sides.</p>
+        <h3>Is RustDesk or Auffi better for self-hosting?</h3>
+        <p>Both are fully self-hostable. RustDesk ships its own relay/signal server you can run yourself; Auffi runs entirely via Docker Compose including signaling and TURN. If an app on both sides is fine, RustDesk is a great fit; if the helper should only need a browser, choose Auffi.</p>
+        <h3>Does Auffi or RustDesk need an account?</h3>
+        <p>For ad-hoc help Auffi needs no account — a 9-digit code is enough. RustDesk also needs no account for direct access, just the remote ID and password.</p>
+        <h3>Which tool is more GDPR-friendly?</h3>
+        <p>Both can be run GDPR-compliant because they are self-hostable. Auffi's public service runs in Germany (Frankfurt) and stores no clear-text IPs; with RustDesk it depends on which relay you use — the public default server is not necessarily in the EU.</p>
+        <h3>Are Auffi and RustDesk really free for commercial use too?</h3>
+        <p>Yes. Both are AGPL-3.0 and free for commercial use with no license fee — unlike TeamViewer or AnyDesk.</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          <a href="/en/#code">Share your screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/">All comparisons</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

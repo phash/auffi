@@ -69,6 +69,8 @@ const PAGES: Page[] = [
   { file: "viewer/public/en/download/index.html", url: `${BASE}/en/download/`, twin: `${BASE}/download/`, lang: "en", faqSync: false },
   { file: "viewer/public/vergleich/teamviewer-kommerzielle-nutzung/index.html", url: `${BASE}/vergleich/teamviewer-kommerzielle-nutzung/`, twin: `${BASE}/en/compare/teamviewer-commercial-use/`, lang: "de", faqSync: true },
   { file: "viewer/public/en/compare/teamviewer-commercial-use/index.html", url: `${BASE}/en/compare/teamviewer-commercial-use/`, twin: `${BASE}/vergleich/teamviewer-kommerzielle-nutzung/`, lang: "en", faqSync: true },
+  { file: "viewer/public/vergleich/rustdesk/index.html", url: `${BASE}/vergleich/rustdesk/`, twin: `${BASE}/en/compare/rustdesk/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/rustdesk/index.html", url: `${BASE}/en/compare/rustdesk/`, twin: `${BASE}/vergleich/rustdesk/`, lang: "en", faqSync: true },
   // NEW pages are appended here by Tasks 2–5.
 ];
 
