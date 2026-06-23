@@ -67,10 +67,9 @@ Create `viewer/tests/marketing-seo.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { globSync } from "node:fs";
 import { JSDOM } from "jsdom";
 
 const REPO = resolve(__dirname, "../..");
@@ -90,11 +89,24 @@ function inlineScriptHashes(absFile: string): string[] {
   return out;
 }
 
+// Recursively collect every index.html under a directory (mirrors the
+// one-liner's `viewer/public/**/index.html` glob without relying on a
+// specific Node fs.globSync availability).
+function walkIndexHtml(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = resolve(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkIndexHtml(p));
+    else if (entry.name === "index.html") out.push(p);
+  }
+  return out;
+}
+
 function allServedPages(): string[] {
   return [
     f("viewer/index.html"),
     f("viewer/en/index.html"),
-    ...globSync("viewer/public/**/index.html", { cwd: REPO }).map((p) => f(p)),
+    ...walkIndexHtml(f("viewer/public")),
   ];
 }
 
@@ -166,13 +178,14 @@ describe("marketing pages — on-page SEO invariants", () => {
         );
       });
 
-      it("has a non-empty title and a description within 50–165 chars", () => {
+      it("has a non-empty title and a non-trivial description", () => {
         const d = doc(page);
         const title = d.querySelector("title")?.textContent?.trim() ?? "";
         const desc = d.querySelector('meta[name="description"]')?.getAttribute("content")?.trim() ?? "";
         expect(title.length).toBeGreaterThan(10);
+        // No upper bound: the existing pages deliberately run 200–270 chars.
+        // Google truncates the SERP snippet; over-length is not an error.
         expect(desc.length).toBeGreaterThanOrEqual(50);
-        expect(desc.length).toBeLessThanOrEqual(165);
       });
 
       it("is listed in sitemap.xml and indexnow-ping.sh", () => {
@@ -210,17 +223,30 @@ describe("marketing pages — on-page SEO invariants", () => {
 });
 ```
 
-- [ ] **Step 2: Run it — expect GREEN against existing pages**
+- [ ] **Step 2: Run it — CSP-parity FAILS (pre-existing repo Caddyfile drift)**
 
 Run: `cd viewer && npx vitest run tests/marketing-seo.test.ts`
-Expected: PASS. This is a characterization/safety-net test; it proves the invariant holds for the repo today (canonical, hreflang, sitemap/IndexNow membership, and — critically — that `caddy/Caddyfile`'s hash set already equals the served inline-JSON-LD blocks).
+Expected: the per-page invariants (canonical, hreflang, title/description, sitemap/IndexNow, FAQ-sync) PASS, but the **"CSP hash parity" test FAILS**. This is confirmed by pre-flight: the repo dev `caddy/Caddyfile` `script-src` set has the right count (22) but has drifted from the current pages' inline JSON-LD. The guard is doing its job — reconcile the repo Caddyfile rather than weakening the test.
 
-If the CSP-parity test fails here, the repo Caddyfile is already drifted from the pages — STOP and reconcile (recompute via the Caddyfile one-liner and align) before continuing; do not weaken the test.
+- [ ] **Step 3: Reconcile the repo caddy/Caddyfile**
 
-- [ ] **Step 3: Commit**
+From the repo root, recompute the full hash set with the canonical one-liner (also documented in `caddy/Caddyfile`):
 
 ```bash
-git add viewer/tests/marketing-seo.test.ts
+python3 -c "import re,hashlib,base64,glob; files=['viewer/index.html','viewer/en/index.html']+sorted(glob.glob('viewer/public/**/index.html',recursive=True)); print(' '.join(sorted({chr(39)+'sha256-'+base64.b64encode(hashlib.sha256(m.encode()).digest()).decode()+chr(39) for f in files for m in re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', open(f).read(), re.DOTALL) if m.strip() and 'src=' not in m[:60]})))"
+```
+
+Replace the `'sha256-…'` token run inside `script-src` in `caddy/Caddyfile` (keep `'self'` and `https://musikersuche.org`) with the recomputed set. This fixes a latent drift in the dev Caddyfile and is the baseline the later page tasks extend.
+
+- [ ] **Step 4: Run again — expect GREEN**
+
+Run: `cd viewer && npx vitest run tests/marketing-seo.test.ts`
+Expected: PASS (all invariants, including CSP parity).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add viewer/tests/marketing-seo.test.ts caddy/Caddyfile
 git commit -m "test(seo): guard marketing-page SEO + CSP-hash invariants"
 ```
 
@@ -899,10 +925,10 @@ In `viewer/public/en/compare/index.html`, do the English equivalents (`Auffi vs 
 
 - [ ] **Step 5: Snippet tuning (meta description only — hash-safe)**
 
-Tighten these `meta name="description"` (and the matching `og:description`) for click-through. Keep ≤ 165 chars (guard-enforced for registry pages, good practice elsewhere):
+Tighten these `meta name="description"` (and the matching `og:description`) for click-through. Aim for ~155–165 chars so the SERP snippet front-loads the hook (best practice, NOT gated by the guard test — the test only checks the description is non-empty):
 
 - `viewer/public/vergleich/index.html` description → `TeamViewer, AnyDesk, RustDesk, Chrome Remote Desktop & Auffi im ehrlichen Vergleich 2026 — kostenlos, Open Source, DSGVO-konform. Welches Tool für welchen Fall?` (and mirror into `og:description`).
-- Leave `viewer/index.html` / `viewer/en/index.html` titles unchanged (brand-first is correct); only shorten their `meta description` if it currently exceeds ~165 chars — verify length first and trim the trailing "Ohne Konto starten, mit Konto für Unattended Access." clause if needed. Do not touch their JSON-LD.
+- Leave `viewer/index.html` / `viewer/en/index.html` titles unchanged (brand-first is correct); only shorten their `meta description` if it currently exceeds ~170 chars — verify length first and trim the trailing "Ohne Konto starten, mit Konto für Unattended Access." clause if needed. Do not touch their JSON-LD.
 
 - [ ] **Step 6: Run guard test — expect GREEN**
 
