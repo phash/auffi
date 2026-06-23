@@ -16,6 +16,8 @@ URLS=(
   "https://auffi.app/en/compare/"
   "https://auffi.app/en/compare/teamviewer/"
   "https://auffi.app/en/compare/anydesk/"
+  "https://auffi.app/vergleich/teamviewer-kommerzielle-nutzung/"
+  "https://auffi.app/en/compare/teamviewer-commercial-use/"
 )
 body=$(printf '{"host":"%s","key":"%s","keyLocation":"https://%s/%s.txt","urlList":[%s]}' \
   "$HOST" "$KEY" "$HOST" "$KEY" \
