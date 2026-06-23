@@ -71,6 +71,8 @@ const PAGES: Page[] = [
   { file: "viewer/public/en/compare/teamviewer-commercial-use/index.html", url: `${BASE}/en/compare/teamviewer-commercial-use/`, twin: `${BASE}/vergleich/teamviewer-kommerzielle-nutzung/`, lang: "en", faqSync: true },
   { file: "viewer/public/vergleich/rustdesk/index.html", url: `${BASE}/vergleich/rustdesk/`, twin: `${BASE}/en/compare/rustdesk/`, lang: "de", faqSync: true },
   { file: "viewer/public/en/compare/rustdesk/index.html", url: `${BASE}/en/compare/rustdesk/`, twin: `${BASE}/vergleich/rustdesk/`, lang: "en", faqSync: true },
+  { file: "viewer/public/vergleich/chrome-remote-desktop/index.html", url: `${BASE}/vergleich/chrome-remote-desktop/`, twin: `${BASE}/en/compare/chrome-remote-desktop/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/chrome-remote-desktop/index.html", url: `${BASE}/en/compare/chrome-remote-desktop/`, twin: `${BASE}/vergleich/chrome-remote-desktop/`, lang: "en", faqSync: true },
   // NEW pages are appended here by Tasks 2–5.
 ];
 
