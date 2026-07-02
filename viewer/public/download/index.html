@@ -42,7 +42,7 @@
             "name": "Auffi",
             "applicationCategory": "BusinessApplication",
             "operatingSystem": "Windows, Linux, macOS",
-            "softwareVersion": "0.6.3",
+            "softwareVersion": "0.6.4",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
             "license": "https://github.com/phash/auffi/blob/main/LICENSE",
             "downloadUrl": "https://auffi.app/download/",
@@ -133,10 +133,10 @@
         <p class="lead">
           Open-Source-Desktop-App, AGPL-3.0. Ende-zu-Ende verschlüsselt,
           DSGVO-konform, kein Konto erforderlich. Aktuelle Version
-          <strong>0.6.3</strong> — Downloads laufen direkt über
+          <strong>0.6.4</strong> — Downloads laufen direkt über
           <code>auffi.app</code>.
           <a href="https://github.com/phash/auffi" rel="noopener noreferrer">Source auf GitHub</a>
-          · <a href="https://github.com/phash/auffi/releases/tag/v0.6.3" rel="noopener noreferrer">Release-Notes</a>.
+          · <a href="https://github.com/phash/auffi/releases/tag/v0.6.4" rel="noopener noreferrer">Release-Notes</a>.
         </p>
       </section>
 
@@ -154,7 +154,7 @@
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.3_x64-setup.exe">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_x64-setup.exe">
               Download
             </a>
           </li>
@@ -176,11 +176,11 @@
               <h3>MSI-Paket</h3>
               <p>
                 Für Domain-Deployment via GPO / Intune. Silent-Install per
-                <code>msiexec /i Auffi_0.6.3_x64_en-US.msi /qn</code>.<br />
+                <code>msiexec /i Auffi_0.6.4_x64_en-US.msi /qn</code>.<br />
                 <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.3_x64_en-US.msi">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_x64_en-US.msi">
               Download
             </a>
           </li>
@@ -193,11 +193,11 @@
             <div class="download-meta">
               <h3>Debian / Ubuntu (.deb)</h3>
               <p>
-                <code>sudo dpkg -i Auffi_0.6.3_amd64.deb</code><br />
+                <code>sudo dpkg -i Auffi_0.6.4_amd64.deb</code><br />
                 <span class="size">~ 14 MB · x86_64 · Debian 12+, Ubuntu 22.04+</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.3_amd64.deb">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_amd64.deb">
               Download
             </a>
           </li>
@@ -205,11 +205,11 @@
             <div class="download-meta">
               <h3>Fedora / RHEL (.rpm)</h3>
               <p>
-                <code>sudo rpm -i Auffi-0.6.3-1.x86_64.rpm</code><br />
+                <code>sudo rpm -i Auffi-0.6.4-1.x86_64.rpm</code><br />
                 <span class="size">~ 14 MB · x86_64 · Fedora 40+, RHEL 9+</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi-0.6.3-1.x86_64.rpm">
+            <a class="download-btn" href="/api/downloads/file/Auffi-0.6.4-1.x86_64.rpm">
               Download
             </a>
           </li>
@@ -217,11 +217,11 @@
             <div class="download-meta">
               <h3>AppImage (distroübergreifend)</h3>
               <p>
-                <code>chmod +x Auffi_0.6.3_amd64.AppImage &amp;&amp; ./Auffi_0.6.3_amd64.AppImage</code><br />
+                <code>chmod +x Auffi_0.6.4_amd64.AppImage &amp;&amp; ./Auffi_0.6.4_amd64.AppImage</code><br />
                 <span class="size">~ 117 MB · x86_64 · läuft auf jeder glibc-Distro mit PipeWire.</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.3_amd64.AppImage">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_amd64.AppImage">
               Download
             </a>
           </li>
@@ -270,6 +270,24 @@
 
       <section class="release-notes" aria-labelledby="releases-heading">
         <h2 id="releases-heading">Was ist neu</h2>
+        <h3>0.6.4 (2026-07-02)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Unbeaufsichtigter Zugriff: Folge-Verbindungen funktionieren</strong>
+            — bei gepaarten Geräten konnte sich bisher nur der erste Helfer
+            verbinden; jeder weitere bekam einen schwarzen Bildschirm. Jetzt
+            klappt jede weitere Verbindung ohne Neustart.
+          </li>
+          <li>
+            <strong>Stabilere Reconnects</strong> — nach kurzen WLAN-Aussetzern
+            verbindet sich das Gerät wieder schnell statt mit langer
+            Verzögerung.
+          </li>
+          <li>
+            Kleinere Verbesserungen: Hinweis zur kostenlosen Relay-Zeit auch
+            beim Teilenden, robusteres Fehler-Logging bei der Bildschirmaufnahme.
+          </li>
+        </ul>
         <h3>0.6.3 (2026-06-22)</h3>
         <ul class="release-list">
           <li>

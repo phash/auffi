@@ -5,6 +5,40 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.6.4] — 2026-07-02
+
+### Behoben
+
+- **Unbeaufsichtigter Zugriff: nur der erste Helfer konnte sich verbinden.**
+  `disconnect_streaming` verwarf beim Teardown den vom Heartbeat verwalteten
+  Outbound-Kanal, sodass jeder weitere Viewer keine SDP-Antwort mehr erhielt
+  (schwarzer Bildschirm). Der Unattended-Kanal überlebt jetzt den
+  Per-Viewer-Teardown; die Webview räumt einen stehengebliebenen Peer vor dem
+  Neustart ab.
+- **Reconnect-Backoff wurde nach einer gesunden Sitzung nicht zurückgesetzt** —
+  nach mehreren kurzen Aussetzern konnte ein Reconnect bis zu ~90 s dauern.
+  Eine gesunde Verbindung startet die Backoff-Kurve jetzt neu (hält die
+  30-s-Session-Reuse-Zusage).
+- **Ad-hoc: ein Ersatz-Helfer auf demselben Code muss neu bestätigt werden.**
+  Nach dem Verlassen des ersten Helfers blieb die Sitzung „bestätigt", sodass
+  ein neuer Helfer ohne Freigabe durchgereicht wurde und der Teilende ihn nicht
+  ablehnen konnte.
+- **Dashboard:** eine langsame Server-Antwort überschrieb nicht mehr die neue
+  Seite nach schnellem Weiterklicken; Router-/Timer-Listener-Leaks behoben.
+- Hinweis zur kostenlosen Relay-Zeit wird jetzt auch dem Teilenden angezeigt;
+  Bildschirmaufnahme-Fehler landen im Diagnose-Log statt verloren zu gehen.
+
+### Sicherheit
+
+- **Löschen eines Geräts/Accounts trennt die aktive Verbindung sofort.** Zuvor
+  blieb ein widerrufenes Gerät bis zum nächsten Reconnect verbunden.
+- **Der Sharer kann sich per eigenem Geräte-Token selbst entkoppeln** (der
+  „Entkoppeln"-Button widerruft jetzt auch serverseitig; ein Token kann nur das
+  eigene Gerät löschen).
+- **Signaling gegen einen Absturz gehärtet:** eine FK-Verletzung beim
+  Verbindungs-Log (Gerät während offener Verbindung gelöscht) beendet nicht mehr
+  den ganzen Backend-Prozess.
+
 ## [0.6.3] — 2026-06-22
 
 ### Behoben

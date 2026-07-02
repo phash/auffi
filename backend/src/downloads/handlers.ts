@@ -14,6 +14,16 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.6.4 — released 2026-07-02. Sharer reliability: unattended multi-viewer
+  // fix (only the first viewer worked), heartbeat reconnect-backoff reset,
+  // free-tier warning surfaced to the sharer, x11 capture logs via dbg_log.
+  // Linux + Windows via CI (release.yml). Portable stays pinned to v0.6.3
+  // (CI builds no portable).
+  "Auffi_0.6.4_amd64.deb",
+  "Auffi-0.6.4-1.x86_64.rpm",
+  "Auffi_0.6.4_amd64.AppImage",
+  "Auffi_0.6.4_x64-setup.exe",
+  "Auffi_0.6.4_x64_en-US.msi",
   // 0.6.3 — released 2026-06-22. VP8 realtime-encoder tuning fixes laggy
   // capture on Windows servers / RDP / GPU-less hosts. Linux + Windows via CI.
   "Auffi_0.6.3_amd64.deb",
