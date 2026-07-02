@@ -137,7 +137,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-06-16: backend 427 (purge.test.ts + unattended-connect.test.ts hold timing-sensitive tests that may intermittently fail in a sandbox — not regressions), sharer-lib 205 (+ 7 `#[ignore]` Display-requiring), viewer 253, dashboard 140, sharer-js 46. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-07-02 (v0.6.4): backend 441 (purge.test.ts + unattended-connect.test.ts hold timing-sensitive tests that may intermittently fail under parallel load / in a sandbox — re-run the flaked file ISOLATED before believing a red run; not regressions), sharer-lib 207 (+ 6 `#[ignore]` Display-requiring), viewer 350, dashboard 142, sharer-js 46. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy -- -D warnings`. (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
