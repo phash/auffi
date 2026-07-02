@@ -37,28 +37,23 @@ describe("mountLogoutButton", () => {
     expect(btn.type).toBe("button");
   });
 
-  it("appends the button to the container when no .topbar-viewer-link is present", () => {
+  it("appends the button directly to the container when no .topbar-actions zone is present", () => {
     const container = makeContainer();
     mountLogoutButton(container);
     expect(container.querySelector(".topbar-logout-btn")).not.toBeNull();
   });
 
-  it("wraps an existing .topbar-viewer-link and the logout button in .topbar-actions", () => {
+  it("appends the button into an existing .topbar-actions right-zone when present", () => {
     const container = makeContainer();
-    const viewerLink = document.createElement("a");
-    viewerLink.className = "topbar-viewer-link";
-    viewerLink.href = "/";
-    viewerLink.textContent = "Hauptseite";
-    container.appendChild(viewerLink);
+    const actions = document.createElement("div");
+    actions.className = "topbar-actions";
+    container.appendChild(actions);
 
     mountLogoutButton(container);
 
-    const actions = container.querySelector(".topbar-actions");
-    expect(actions).not.toBeNull();
-    expect(actions!.querySelector(".topbar-viewer-link")).not.toBeNull();
-    expect(actions!.querySelector(".topbar-logout-btn")).not.toBeNull();
-    // The viewer-link should be first child of .topbar-actions.
-    expect(actions!.firstElementChild!.className).toBe("topbar-viewer-link");
+    // Button lands inside the right-zone, not loose in the container.
+    expect(actions.querySelector(".topbar-logout-btn")).not.toBeNull();
+    expect(container.children).toHaveLength(1);
   });
 
   it("calls POST /api/auth/logout and then navigates to /login on success", async () => {
