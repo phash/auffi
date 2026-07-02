@@ -291,7 +291,3 @@ function formatDate(ms: number): string {
     day: "2-digit",
   });
 }
-
-// Re-export for compatibility with the BASE_PATH-based deep-link path
-// (used by the row-onClick + the "Mehr laden"-cursor fetch).
-export const __BASE_PATH = BASE_PATH;

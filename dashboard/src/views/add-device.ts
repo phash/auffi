@@ -107,6 +107,14 @@ function renderSuccess(root: HTMLElement, code: string, expiresAt: number): void
   // Countdown — recompute each tick so the timer survives tab-sleep
   // without drifting (no accumulated `seconds--`).
   const updateExpiry = (): void => {
+    // Self-clean when the user navigated away: the router detaches this
+    // view's container, so the countdown node is no longer in the document
+    // and the interval would otherwise tick against detached DOM until the
+    // 10-min TTL (finding F2). Clears on the first tick after navigation.
+    if (!expiryText.isConnected) {
+      window.clearInterval(handle);
+      return;
+    }
     const text = renderExpiryText(expiresAt, Date.now());
     if (text === "expired") {
       expiryText.style.color = "var(--error)";

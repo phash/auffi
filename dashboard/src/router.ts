@@ -191,11 +191,20 @@ export function createRouter(
   const render = (): void => {
     const path = pathUnderBase(location.pathname);
     const match = matchRoute(routes, path);
+    // Each render gets its own container which we swap into `root`,
+    // detaching the previous render's container. Views do async work
+    // (fetch → replaceChildren(root, …)) AFTER their synchronous return;
+    // giving every render a fresh container means a slow fetch that
+    // resolves after the user already navigated writes into a now-detached
+    // node instead of clobbering the new page (finding F1). Views receive
+    // this container as their `root` param, so no view needs to change.
+    const container = document.createElement("div");
+    replaceChildren(root, container);
     if (!match) {
       const p = document.createElement("p");
       p.className = "error";
       p.textContent = "Seite nicht gefunden.";
-      replaceChildren(root, p);
+      container.appendChild(p);
       return;
     }
     const segments = path === "/" ? [] : path.slice(1).split("/");
@@ -214,9 +223,9 @@ export function createRouter(
       options.isAdmin !== undefined &&
       !options.isAdmin();
     if (useForbidden && options.renderAdminForbidden) {
-      options.renderAdminForbidden(root, ctx);
+      options.renderAdminForbidden(container, ctx);
     } else {
-      match.route.render(root, ctx);
+      match.route.render(container, ctx);
     }
     focusNewView();
     // Notify subscribers (e.g. nav active-state highlighter) that the
@@ -226,6 +235,24 @@ export function createRouter(
   };
 
   const onPopState = (): void => render();
+
+  // Intercept internal link clicks so the page doesn't full-reload when
+  // navigating between dashboard routes. Named (not an inline closure) so
+  // stop() can removeEventListener it — otherwise a stopped router keeps
+  // hijacking clicks and repeated start/stop cycles stack handlers (F3).
+  const onDocumentClick = (e: MouseEvent): void => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    const anchor = target.closest("a");
+    if (!(anchor instanceof HTMLAnchorElement)) return;
+    const href = anchor.getAttribute("href");
+    if (!href || !href.startsWith(BASE_PATH)) return;
+    if (anchor.target === "_blank") return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    history.pushState({}, "", href);
+    render();
+  };
 
   const router: Router = {
     navigate(path: string): void {
@@ -238,25 +265,12 @@ export function createRouter(
     },
     start(): void {
       window.addEventListener("popstate", onPopState);
-      // Intercept internal link clicks so the page doesn't full-reload
-      // when navigating between dashboard routes.
-      document.addEventListener("click", (e: MouseEvent) => {
-        const target = e.target;
-        if (!(target instanceof HTMLElement)) return;
-        const anchor = target.closest("a");
-        if (!(anchor instanceof HTMLAnchorElement)) return;
-        const href = anchor.getAttribute("href");
-        if (!href || !href.startsWith(BASE_PATH)) return;
-        if (anchor.target === "_blank") return;
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        e.preventDefault();
-        history.pushState({}, "", href);
-        render();
-      });
+      document.addEventListener("click", onDocumentClick);
       render();
     },
     stop(): void {
       window.removeEventListener("popstate", onPopState);
+      document.removeEventListener("click", onDocumentClick);
       if (_activeRouter === router) {
         _activeRouter = null;
       }
