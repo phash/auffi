@@ -866,6 +866,21 @@ listen<string>("connection-type", (e) => {
   }
 });
 
+// Free-tier relay timer (only armed on relay connections, see
+// free_tier_timer.rs / start_streaming). The Rust side emits these two
+// events; the viewer enforces the actual cutoff (tears its side down and
+// shows "Relay-Limit erreicht"), so here we only keep the SHARER user
+// informed — otherwise the emitted events would reach no listener.
+listen("free-tier-warning", () => {
+  setStatus(
+    "Kostenlose Relay-Zeit endet in ca. 2 Minuten — danach wird die Verbindung getrennt.",
+    "waiting",
+  );
+});
+listen("free-tier-cutoff", () => {
+  setStatus("Relay-Limit erreicht — die Verbindung wird beendet.", "error");
+});
+
 let pendingFileOfferId: string | null = null;
 
 function showFileOfferDialog(id: string, name: string, size: number): void {

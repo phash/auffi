@@ -322,8 +322,16 @@ async fn run_loop(
             ConnectOutcome::Shutdown => {
                 return;
             }
-            ConnectOutcome::Disconnected { reason } => {
+            ConnectOutcome::ConnectFailed { reason } => {
+                // Never got a live session — let the backoff keep growing.
                 let _ = evt_tx.send(HeartbeatEvent::Disconnected { reason }).await;
+            }
+            ConnectOutcome::Disconnected { reason } => {
+                // A healthy session dropped. Reset the backoff so a brief
+                // blip after hours of uptime reconnects at backoff_initial
+                // instead of the pinned 60 s cap (Product Goal #2).
+                let _ = evt_tx.send(HeartbeatEvent::Disconnected { reason }).await;
+                attempt = 0;
             }
         }
 
@@ -356,7 +364,14 @@ enum ConnectOutcome {
     Superseded,
     /// Caller asked us to stop.
     Shutdown,
-    /// Transient — reconnect after backoff.
+    /// The WS handshake never completed (bad URL, connect refused). The
+    /// backoff curve keeps growing so we don't hammer an unreachable
+    /// backend.
+    ConnectFailed { reason: String },
+    /// A live (handshake-completed) session dropped. Transient — reconnect
+    /// after backoff, and RESET the backoff curve: this was a healthy
+    /// connection, not a connect-failure loop, so the next outage should
+    /// start again at `backoff_initial` (≤30 s session-reuse promise).
     Disconnected { reason: String },
 }
 
@@ -368,7 +383,7 @@ async fn connect_and_run(
     let mut request = match config.backend_ws_url.as_str().into_client_request() {
         Ok(r) => r,
         Err(e) => {
-            return ConnectOutcome::Disconnected {
+            return ConnectOutcome::ConnectFailed {
                 reason: format!("invalid ws url: {e}"),
             };
         }
@@ -387,7 +402,7 @@ async fn connect_and_run(
     let (ws, _) = match tokio_tungstenite::connect_async(request).await {
         Ok(v) => v,
         Err(e) => {
-            return ConnectOutcome::Disconnected {
+            return ConnectOutcome::ConnectFailed {
                 reason: format!("connect: {e}"),
             };
         }

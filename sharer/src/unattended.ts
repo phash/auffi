@@ -310,6 +310,15 @@ unpairBtn?.addEventListener("click", async () => {
 // impossible (Sec M-1).
 let activeConfirmId: number | null = null;
 
+// Whether a WebRTC stream is currently live for this device. Set when a
+// viewer's peer-joined kicks off start_streaming, cleared on bye/teardown.
+// An unattended viewer that drops WITHOUT sending bye is invisible to the
+// sharer (the backend's viewer-close is silent to the unattended sharer),
+// so this lets the NEXT peer-joined tear the stale peer down before
+// start_streaming — otherwise its rtc_state guard rejects the new viewer
+// and every viewer after the first gets a black screen (finding S1).
+let unattendedStreaming = false;
+
 confirmYes?.addEventListener("click", async () => {
   hide(confirmToast);
   const id = activeConfirmId;
@@ -326,7 +335,7 @@ confirmNo?.addEventListener("click", async () => {
   await invoke("unattended_confirm", { confirmId: id, accepted: false }).catch(() => {});
 });
 
-void listen<UnattendedEvent>("unattended-event", (e) => {
+void listen<UnattendedEvent>("unattended-event", async (e) => {
   const ev = e.payload;
   switch (ev.kind) {
     case "connected":
@@ -349,6 +358,18 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
     case "peer-joined":
       setStatusText("Helfer verbunden");
       hide(confirmToast);
+      // A prior viewer may have dropped without sending bye — the backend
+      // does not notify the unattended sharer of a viewer-close, so the
+      // previous peer's rtc_state can still be live. Tear it down first
+      // (keepSignaling:true preserves the heartbeat WSS + its OutboundSink
+      // so THIS viewer's SDP answer/ICE still routes back), then start
+      // fresh. Without this, start_streaming's rtc_state guard rejects
+      // every viewer after the first (finding S1).
+      if (unattendedStreaming) {
+        await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+        unattendedStreaming = false;
+      }
+      unattendedStreaming = true;
       // gh #20 + heartbeat→webrtc_peer integration: kick off the
       // WebRTC pipeline. The viewer will follow up with an SDP offer
       // forwarded via "relay".
@@ -356,6 +377,7 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       break;
     case "peer-rejected":
       setStatusText(`Helfer getrennt: ${ev.reason ?? ""}`);
+      unattendedStreaming = false;
       break;
     case "revoked":
       setStatusText("Token widerrufen — bitte erneut pairen.");
@@ -384,7 +406,11 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
             () => {},
           );
         } else if (p.kind === "bye") {
-          void invoke("disconnect_streaming").catch(() => {});
+          // Viewer left gracefully. Tear the stream down but KEEP the
+          // heartbeat WSS + OutboundSink alive (keepSignaling:true) so the
+          // device stays reachable for the next viewer (finding S1).
+          unattendedStreaming = false;
+          void invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
         }
       }
       break;

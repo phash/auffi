@@ -708,15 +708,33 @@ async fn switch_monitor(
 /// "Der Sharer hat den Stream beendet." instead of the generic ICE-fail
 /// "Verbindung verloren" message. **But** when `keep_signaling = true`
 /// (the viewer-swap path) the backend has already moved `session.viewer`
-/// to the brand-new viewer (and `session.confirmed` stays true across
-/// `detachViewer` — see `backend/src/codes.ts`). The bye would therefore
-/// reach the new viewer instead of the prior one and tear THEIR session
-/// down before any offer is exchanged.
+/// to the brand-new viewer. The bye would therefore reach the new viewer
+/// instead of the prior one and tear THEIR session down before any offer
+/// is exchanged. (The backend resets `session.confirmed` on `detachViewer`
+/// so the new viewer is re-confirmed — see `backend/src/codes.ts` — but the
+/// bye-suppression is independent of that: relays from the sharer always go
+/// to the current `session.viewer`.)
 ///
 /// Pure helper so the policy is easy to unit-test; production passes the
 /// `keep_signaling` flag through verbatim.
 fn should_send_bye(keep_signaling: bool) -> bool {
     !keep_signaling
+}
+
+/// Whether a `disconnect_streaming` teardown should null the shared
+/// `OutboundSink`.
+///
+/// The unattended sink (`OutboundSink::Unattended`) is owned by the
+/// heartbeat lifecycle — `unattended_start` installs it, `unattended_stop`
+/// (and the forwarder's terminal branches) clear it. Its WSS survives a
+/// per-viewer streaming teardown so the NEXT viewer can connect. Nulling it
+/// on a full streaming teardown (`keep_signaling = false`, e.g. viewer 1's
+/// `bye`) stranded every subsequent viewer: the heartbeat stayed up but the
+/// sink the new viewer's SDP answer / ICE needs was gone (finding S1). The
+/// ad-hoc sink, by contrast, IS owned by `start_signaling` and must be
+/// cleared on full teardown. Pure helper for unit-testing.
+fn should_clear_outbound_sink(keep_signaling: bool, sink_is_unattended: bool) -> bool {
+    !keep_signaling && !sink_is_unattended
 }
 
 /// Reentrancy guards for `start_signaling`. Each of the four sub-resources
@@ -813,14 +831,21 @@ async fn disconnect_streaming(
             let mut guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
             *guard = None;
         }
-        // Clear the OutboundSink only on the full-teardown path. The
-        // viewer-swap path (keep_signaling=true) keeps the same WSS
-        // and the same sink — the new viewer's offer must answer
-        // through the channel still in flight. Scoped block above
-        // drops the std::sync::MutexGuard before the await on the
-        // tokio::sync::Mutex (the guard isn't `Send`).
+        // Clear the OutboundSink only on the full-teardown path AND only
+        // when it's the ad-hoc sink. The viewer-swap path
+        // (keep_signaling=true) keeps the same WSS and sink so the new
+        // viewer's offer can answer through the channel still in flight.
+        // The unattended sink is owned by the heartbeat lifecycle and must
+        // survive per-viewer teardowns (finding S1) — see
+        // `should_clear_outbound_sink`. Scoped block above drops the
+        // std::sync::MutexGuard before this await on the tokio::sync::Mutex
+        // (the guard isn't `Send`).
         let mut sink_guard = outbound_state.0.lock().await;
-        *sink_guard = None;
+        let sink_is_unattended =
+            matches!(*sink_guard, Some(outbound::OutboundSink::Unattended(_)));
+        if should_clear_outbound_sink(keep_signaling, sink_is_unattended) {
+            *sink_guard = None;
+        }
     }
 
     // Drop the peer — this closes all ICE/DTLS transports.
@@ -1472,6 +1497,28 @@ mod tests {
     fn should_send_bye_only_when_not_keeping_signaling() {
         assert!(super::should_send_bye(false));
         assert!(!super::should_send_bye(true));
+    }
+
+    /// Pinned regression for finding S1 (2026-07-02): a full streaming
+    /// teardown must NOT null the unattended OutboundSink — its lifecycle is
+    /// owned by the heartbeat (unattended_start/stop). Only the ad-hoc sink
+    /// is cleared on full teardown; the viewer-swap path keeps every sink.
+    /// Anyone "simplifying" this back to `*sink_guard = None` on the full
+    /// path recreates the "only the first unattended viewer works" bug.
+    #[test]
+    fn should_clear_outbound_sink_spares_the_unattended_sink() {
+        // Full teardown (keep_signaling=false):
+        assert!(
+            super::should_clear_outbound_sink(false, false),
+            "ad-hoc sink must be cleared on full teardown"
+        );
+        assert!(
+            !super::should_clear_outbound_sink(false, true),
+            "unattended sink must survive a full teardown (finding S1)"
+        );
+        // Viewer-swap (keep_signaling=true): never clear, regardless of kind.
+        assert!(!super::should_clear_outbound_sink(true, false));
+        assert!(!super::should_clear_outbound_sink(true, true));
     }
 
     /// Pinned regression for the monitor-switch ordering chain in
