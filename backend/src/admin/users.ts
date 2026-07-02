@@ -2,6 +2,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
 import { writeAudit } from "./middleware.js";
 import { deleteAllSessionsForAccount } from "../auth/sessions.js";
+import {
+  evictAccountDevices,
+  type UnattendedRegistry,
+} from "../unattended.js";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -53,7 +57,11 @@ interface ListItem {
   last_login_at: number | null;
 }
 
-export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
+export function registerAdminUsersRoutes(
+  app: FastifyInstance,
+  db: Db,
+  registry?: UnattendedRegistry,
+): void {
   // ── GET /api/admin/users ────────────────────────────────────────────
   // Paginated, filterable, searchable user list (gh #45).
   app.get(
@@ -353,6 +361,11 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
             "SELECT COUNT(*) AS c FROM devices WHERE owner_account_id = ?",
           )
           .get(id)?.c) ?? 0;
+
+      // Force-close the target's live unattended sharers before the cascade
+      // removes their device rows. An admin deleting an abusive account must
+      // cut its sharers off immediately, not at their next reconnect.
+      if (registry) evictAccountDevices(db, registry, id);
 
       const tx = db.transaction(() => {
         // Snapshot what's about to vanish — audit_log row survives the cascade

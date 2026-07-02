@@ -323,10 +323,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   decorateRequireAdmin(app, db);
 
   registerAuthRoutes(app, { db, mailer });
-  registerMeRoutes(app, { db, mailer: accountMailer });
+  registerMeRoutes(app, { db, mailer: accountMailer, registry: unattendedRegistry });
   registerDeviceRoutes(app, { db, registry: unattendedRegistry });
-  registerAdminUsersRoutes(app, db);
-  registerAdminDevicesRoutes(app, db);
+  registerAdminUsersRoutes(app, db, unattendedRegistry);
+  registerAdminDevicesRoutes(app, db, unattendedRegistry);
   registerAdminAuditRoutes(app, db);
   registerAdminStatsRoutes(app, db);
   registerAdminTimeseriesRoutes(app, db);

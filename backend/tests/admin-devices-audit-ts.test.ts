@@ -356,3 +356,65 @@ describe("GET /api/admin/audit-log", () => {
     }
   });
 });
+
+// Coverage T1 #1 (review 2026-07-02): these admin routes previously had only
+// happy-path body tests — no assertion that the [requireSession, requireAdmin]
+// gate is actually wired. Dropping the preHandler from any one of them would
+// silently expose device data / the audit log / user PII to a logged-in
+// non-admin. Anonymous → 401, non-admin session → 403.
+describe("admin device/audit routes enforce the auth boundary", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  let userCookie: string;
+
+  async function signupUser(app: FastifyInstance, db: Db, email: string): Promise<string> {
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email, password: "normal-user-pw-123" },
+    });
+    db.prepare("UPDATE accounts SET email_verified_at = ? WHERE email = ?").run(Date.now(), email);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email, password: "normal-user-pw-123" },
+    });
+    const sc = login.headers["set-cookie"] as string | string[] | undefined;
+    const raw = Array.isArray(sc) ? sc[0] : sc!;
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
+  }
+
+  beforeEach(async () => {
+    h = await build();
+    seedDevices(h.db);
+    userCookie = await signupUser(h.app, h.db, "plain@example.com");
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  const routes = [
+    { method: "GET" as const, url: "/api/admin/devices" },
+    { method: "DELETE" as const, url: "/api/admin/devices/111-111-111", payload: { reason: "x" } },
+    { method: "POST" as const, url: "/api/admin/devices/111-111-111/reset-rate-limit" },
+    { method: "GET" as const, url: "/api/admin/audit-log" },
+    { method: "GET" as const, url: "/api/admin/stats/timeseries?from=2026-05-09&to=2026-05-11" },
+  ];
+
+  for (const r of routes) {
+    it(`${r.method} ${r.url} → 401 without a session`, async () => {
+      const res = await h.app.inject({ method: r.method, url: r.url, payload: r.payload });
+      expect(res.statusCode).toBe(401);
+    });
+
+    it(`${r.method} ${r.url} → 403 for a non-admin session`, async () => {
+      const res = await h.app.inject({
+        method: r.method,
+        url: r.url,
+        headers: { cookie: `__Host-auffi_session=${userCookie}` },
+        payload: r.payload,
+      });
+      expect(res.statusCode).toBe(403);
+    });
+  }
+});

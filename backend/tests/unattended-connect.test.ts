@@ -637,4 +637,206 @@ describe("device DELETE force-closes a live unattended WSS (TC C-5)", () => {
     expect(closed.code).toBe(4401);
     expect(closed.reason).toMatch(/revoked/i);
   });
+
+  // Seed a device with a KNOWN plaintext token directly in the DB (owned by
+  // the TC-C5 cookie's account). Avoids the pairing-code 5/h rate-limit that
+  // several device-minting tests in one describe would otherwise trip, and
+  // gives us the plaintext token for bearer auth. `id` doubles as a unique
+  // 9-digit device-id; `token` must be 64 hex chars (parseBearerAuth shape).
+  let seedCounter = 0;
+  async function pairDevice(_alias: string): Promise<{ deviceId: string; token: string }> {
+    seedCounter += 1;
+    const deviceId = `900-000-${String(seedCounter).padStart(3, "0")}`;
+    const token = seedCounter.toString(16).padStart(64, "0");
+    const owner = db
+      .prepare<[string], { id: number }>("SELECT id FROM accounts WHERE email = ?")
+      .get("owner-tcc5@example.com")!;
+    db.prepare(
+      `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
+       VALUES (?, ?, 'seed', ?, 1, ?)`,
+    ).run(deviceId, owner.id, await hashPassword(token), Date.now());
+    return { deviceId, token };
+  }
+
+  function openSharerWss(deviceId: string, token: string): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(url, {
+        headers: {
+          origin: ORIGIN,
+          authorization: `Bearer ${token}`,
+          "x-auffi-device-id": deviceId,
+        },
+      });
+      ws.once("message", () => resolve(ws)); // unattended-hello → registered
+      ws.once("error", reject);
+    });
+  }
+
+  function nextClose(ws: WebSocket): Promise<{ code: number; reason: string }> {
+    return new Promise((resolve) => {
+      ws.once("close", (code, reasonBuf) => resolve({ code, reason: reasonBuf.toString() }));
+    });
+  }
+
+  // I-B1 (review 2026-07-02): a SHARER can revoke ITSELF using its own device
+  // bearer token (the "Entkoppeln" button). Previously the DELETE route only
+  // accepted a session cookie, so the sharer's bearer DELETE always 401'd and
+  // the server-side token was never revoked.
+  it("device self-revoke via its own bearer token deletes the row + closes the WSS (I-B1)", async () => {
+    const { deviceId, token } = await pairDevice("self-revoke");
+    const ws = await openSharerWss(deviceId, token);
+    const closed = nextClose(ws);
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/devices/${deviceId}`,
+      headers: { authorization: `Bearer ${token}`, "x-auffi-device-id": deviceId },
+    });
+    expect(del.statusCode).toBe(204);
+
+    const c = await closed;
+    expect(c.code).toBe(4401);
+    const row = db.prepare("SELECT id FROM devices WHERE id = ?").get(deviceId);
+    expect(row).toBeUndefined();
+  });
+
+  it("self-revoke with a wrong token is rejected 401 and keeps the device (I-B1)", async () => {
+    const { deviceId } = await pairDevice("wrong-token");
+    const wrongToken = "0".repeat(64);
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/devices/${deviceId}`,
+      headers: { authorization: `Bearer ${wrongToken}`, "x-auffi-device-id": deviceId },
+    });
+    expect(del.statusCode).toBe(401);
+    const row = db.prepare("SELECT id FROM devices WHERE id = ?").get(deviceId);
+    expect(row).toBeTruthy();
+  });
+
+  it("a device token cannot delete a DIFFERENT device (403) (I-B1)", async () => {
+    const a = await pairDevice("device-a");
+    const b = await pairDevice("device-b");
+    // Present device A's token but target device B's id in the path.
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/devices/${b.deviceId}`,
+      headers: { authorization: `Bearer ${a.token}`, "x-auffi-device-id": a.deviceId },
+    });
+    expect(del.statusCode).toBe(403);
+    const row = db.prepare("SELECT id FROM devices WHERE id = ?").get(b.deviceId);
+    expect(row).toBeTruthy();
+  });
+
+  // B2 (review 2026-07-02): deleting the owning ACCOUNT must force-close its
+  // devices' live unattended WSS — otherwise a revoked account keeps relaying
+  // on its already-authenticated socket until the next reconnect.
+  it("DELETE /api/me force-closes the account's live unattended WSS (B2)", async () => {
+    const { deviceId, token } = await pairDevice("account-delete");
+    const ws = await openSharerWss(deviceId, token);
+    const closed = nextClose(ws);
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "owner-account-pw", confirm: "LÖSCHEN" },
+    });
+    expect(del.statusCode).toBe(204);
+
+    const c = await closed;
+    expect(c.code).toBe(4401);
+  });
+});
+
+// B1 (review 2026-07-02): if a device row vanishes (account/device
+// hard-delete) while its unattended WSS stays open, a subsequent
+// `connection-started` used to throw a FK SqliteError inside the ws
+// 'message' listener — an uncaughtException that could drop every session.
+// The handler now catches it at the module boundary. This simulates the
+// delete-without-evict race by deleting the row directly (bypassing the
+// route's registry.evict) and asserts the backend neither crashes nor
+// kills the sharer socket.
+describe("connection-started after the device row vanished is handled, not fatal (B1)", () => {
+  let app: FastifyInstance;
+  let url: string;
+  let db: Db;
+  const token = "beef00".repeat(10) + "beef"; // 64 hex chars
+  const deviceId = "555-000-555";
+
+  beforeAll(async () => {
+    db = openDb(":memory:");
+    applyMigrations(db, defaultMigrationsDir());
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, email_verified_at, created_at) VALUES (9, 'b1@a', 'x', ?, ?)",
+    ).run(Date.now(), Date.now());
+    db.prepare(
+      `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
+       VALUES (?, 9, 'B1', ?, 1, ?)`,
+    ).run(deviceId, await hashPassword(token), Date.now());
+
+    process.env.REGISTER_RATE_LIMIT_MAX = "1000";
+    process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
+    app = await createServer({ port: 0, host: "127.0.0.1", db });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const addr = app.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    url = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await app.close();
+    db.close();
+  });
+
+  function recv(ws: WebSocket): Promise<any> {
+    return new Promise((resolve) => ws.once("message", (d) => resolve(JSON.parse(d.toString()))));
+  }
+
+  it("swallows the FK error, keeps the sharer socket open, sends no error frame", async () => {
+    const sharer = new WebSocket(url, {
+      headers: { origin: ORIGIN, authorization: `Bearer ${token}`, "x-auffi-device-id": deviceId },
+    });
+    await recv(sharer); // unattended-hello
+
+    const viewer = new WebSocket(url, { headers: { origin: ORIGIN } });
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await recv(viewer); // needs-password
+
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "whatever" }));
+    await recv(sharer); // pw-check
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    await recv(viewer); // peer-confirmed
+    await recv(sharer); // peer-joined — session is now "confirmed"
+
+    // Simulate the delete-without-evict race: the device row vanishes while
+    // the WSS is still open and registered.
+    db.prepare("DELETE FROM devices WHERE id = ?").run(deviceId);
+
+    // The sharer reports ICE finished → startConnectionLog would FK-throw.
+    const stray: unknown[] = [];
+    const onMessage = (d: Buffer): void => {
+      stray.push(JSON.parse(d.toString()));
+    };
+    sharer.on("message", onMessage);
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
+    await new Promise((r) => setTimeout(r, 80));
+    sharer.off("message", onMessage);
+
+    // No crash (the process is still serving), no error frame pushed back,
+    // and the sharer socket stays open.
+    expect(stray).toEqual([]);
+    expect(sharer.readyState).toBe(sharer.OPEN);
+
+    // A fresh request still works — the server did not fall over.
+    const probe = new WebSocket(url, { headers: { origin: ORIGIN } });
+    await new Promise<void>((r) => probe.once("open", () => r()));
+    probe.send(JSON.stringify({ type: "join", role: "viewer", code: "000-000-000" }));
+    const msg = await recv(probe);
+    expect(msg.type).toBe("error");
+
+    sharer.close();
+    viewer.close();
+    probe.close();
+  });
 });

@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import type { Db } from "../db.js";
 import { hashPassword } from "../auth/argon.js";
 import { newToken, hashToken } from "../auth/tokens.js";
-import type { UnattendedRegistry } from "../unattended.js";
+import { parseBearerAuth, verifyBearerAuth, type UnattendedRegistry } from "../unattended.js";
 import { listConnectionLog, MAX_LIMIT as LOG_MAX_LIMIT } from "../connection_log.js";
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
@@ -220,10 +220,21 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
   // bearer token, `registry.evict()` below force-closes the
   // connection immediately (gh #16) — the heartbeat layer doesn't
   // need to time out.
+  //
+  // Two auth modes (gh #16/#17): the dashboard owner deletes any of
+  // their devices via the session cookie; the SHARER can revoke ITSELF
+  // via its own device bearer token (the "Entkoppeln" button) — a
+  // device token may only delete the row it belongs to. The preHandler
+  // lets a well-formed bearer through and the handler verifies it; a
+  // cookie-only request goes through the normal session gate.
   app.delete(
     "/api/devices/:id",
     {
-      preHandler: app.requireSession,
+      preHandler: async (req: FastifyRequest, reply: FastifyReply) => {
+        const bearer = parseBearerAuth(req.headers);
+        if (bearer !== null && bearer !== "malformed") return;
+        return app.requireSession(req, reply);
+      },
       // Sec M-5: tighter cap. Lower than PATCH because deletion is
       // a one-shot per device — a legitimate user has no reason to
       // call DELETE 30 times per minute.
@@ -231,6 +242,24 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
     },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
+
+      const bearer = parseBearerAuth(req.headers);
+      if (bearer !== null && bearer !== "malformed") {
+        // Device self-revoke: the token must belong to the device it is
+        // trying to delete, and it must argon2-verify.
+        if (bearer.deviceId !== id) {
+          return bad(reply, 403, "forbidden", "token does not match device");
+        }
+        const ok = await verifyBearerAuth(db, bearer);
+        if (!ok) {
+          return bad(reply, 401, "bad-token", "invalid device token");
+        }
+        db.prepare("DELETE FROM devices WHERE id = ?").run(id);
+        registry?.evict(id);
+        return reply.status(204).send();
+      }
+
+      // Owner path (session cookie).
       const dev = db
         .prepare<[string], { owner_account_id: number }>(
           "SELECT owner_account_id FROM devices WHERE id = ?",

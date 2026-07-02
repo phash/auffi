@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
 import { writeAudit } from "./middleware.js";
+import type { UnattendedRegistry } from "../unattended.js";
 
 const ONLINE_WINDOW_MS = 90 * 1000;
 const STALE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -36,7 +37,11 @@ function decodeCursor(raw: string): CursorPayload | null {
   }
 }
 
-export function registerAdminDevicesRoutes(app: FastifyInstance, db: Db): void {
+export function registerAdminDevicesRoutes(
+  app: FastifyInstance,
+  db: Db,
+  registry?: UnattendedRegistry,
+): void {
   // ── GET /api/admin/devices ──────────────────────────────────────────
   app.get(
     "/api/admin/devices",
@@ -162,8 +167,11 @@ export function registerAdminDevicesRoutes(app: FastifyInstance, db: Db): void {
         );
       });
       tx();
-      // WSS eager-evict deferred to follow-up on top of #16 — for now
-      // the sharer's next heartbeat fails the token lookup and dies.
+      // Force-close the live WSS with 4401 (same as owner-side delete). The
+      // heartbeat only re-verifies the bearer token at connect time, so
+      // without eager eviction a revoked device keeps relaying on its open
+      // socket until it happens to reconnect.
+      registry?.evict(id);
       return reply.status(204).send();
     },
   );

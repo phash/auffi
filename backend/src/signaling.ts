@@ -300,12 +300,29 @@ export function registerSignaling(
           const sess = sessions.findBySharer(peer);
           if (!sess || sess.state !== "confirmed") return;
           if (msg.connectionType !== "p2p" && msg.connectionType !== "relay") return;
-          const id = startConnectionLog(
-            db,
-            sess.deviceId,
-            sess.viewerIpPrefix,
-            msg.connectionType,
-          );
+          // A second connection-started (e.g. after an ICE restart) must not
+          // orphan the first row: without this guard we would INSERT a new
+          // row and overwrite sess.logId, leaving the prior row ended_at=NULL
+          // until the 30-day purge and double-counting the session in stats.
+          if (sess.logId !== null) return;
+          // The device row can be hard-deleted (DELETE /api/me cascade, or
+          // an admin delete) while this WSS stays open. connection_log has a
+          // FK on device_id, so the INSERT would throw a SqliteError. Handle
+          // it at this module boundary: a throw escaping the ws 'message'
+          // listener would surface as an uncaughtException (no global
+          // handler) and drop every active session. Skip logging instead.
+          let id: number;
+          try {
+            id = startConnectionLog(
+              db,
+              sess.deviceId,
+              sess.viewerIpPrefix,
+              msg.connectionType,
+            );
+          } catch (err) {
+            app.log.error({ err }, "startConnectionLog failed (device removed?)");
+            return;
+          }
           sessions.attachLog(sess.deviceId, id);
           return;
         }

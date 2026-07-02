@@ -12,6 +12,10 @@ import {
   recordAccountPwSuccess,
 } from "../auth/account_lockout.js";
 import { mailErrorInfo } from "../email/log_safe.js";
+import {
+  evictAccountDevices,
+  type UnattendedRegistry,
+} from "../unattended.js";
 
 const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -27,6 +31,12 @@ export interface AccountMailer {
 export interface MeDeps {
   db: Db;
   mailer: AccountMailer;
+  /**
+   * Live-WSS registry. When provided, DELETE /api/me force-closes the
+   * account's unattended sharers before the row is cascade-deleted so
+   * revocation is immediate (see `evictAccountDevices`).
+   */
+  registry?: UnattendedRegistry;
 }
 
 interface PatchMeBody {
@@ -53,7 +63,7 @@ function isAcceptablePassword(s: string): boolean {
 }
 
 export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
-  const { db, mailer } = deps;
+  const { db, mailer, registry } = deps;
 
   // ── GET /api/me ─────────────────────────────────────────────────────
   app.get(
@@ -245,9 +255,14 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
       }
       recordAccountPwSuccess(db, account.id);
 
+      // Force-close any live unattended sharers BEFORE the cascade removes
+      // their device rows — otherwise a deleted account's sharers keep
+      // relaying on their already-authenticated WSS until the next reconnect.
+      if (registry) evictAccountDevices(db, registry, account.id);
+
       // Hard-delete. Foreign-key cascades on sessions, email_verifications,
-      // password_resets, pending_email_changes (and devices / log once #14
-      // adds them) take everything related with it.
+      // password_resets, pending_email_changes, devices and connection_log
+      // take everything related with it.
       db.prepare("DELETE FROM accounts WHERE id = ?").run(account.id);
 
       clearSessionCookie(reply);
