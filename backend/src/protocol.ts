@@ -16,7 +16,11 @@ export type IceCandidateInit = {
 export type RelaySdp = { kind: "sdp"; sdp: SdpDescription };
 export type RelayIce = { kind: "ice"; candidate: IceCandidateInit };
 export type RelayHello = { kind: "hello"; ts: number };
-export type RelayPayload = RelaySdp | RelayIce | RelayHello;
+// Teardown signal — a peer relays this on graceful disconnect so the other
+// side ends cleanly (accepted by `RELAY_KINDS` in signaling.ts; handled by
+// viewer/src/ui.ts and sharer/src/{main,unattended}.ts).
+export type RelayBye = { kind: "bye" };
+export type RelayPayload = RelaySdp | RelayIce | RelayHello | RelayBye;
 
 export type RelayMsg = { type: "relay"; payload: RelayPayload };
 
@@ -42,7 +46,10 @@ export type PeerJoined = {
 export type PeerConfirmed = { type: "peer-confirmed" };
 export type PeerRejected = {
   type: "peer-rejected";
-  reason: "declined" | "expired" | "sharer-gone";
+  // Only these two are ever emitted (signaling.ts). An expired ad-hoc code
+  // produces an `error: invalid-code` instead, so there is no "expired"
+  // peer-rejected reason.
+  reason: "declined" | "sharer-gone";
 };
 export type ErrorMessage = {
   type: "error";

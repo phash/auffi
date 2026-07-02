@@ -45,6 +45,16 @@ The `payload` field is a discriminated union on `kind`:
 { "type": "relay", "payload": { "kind": "hello", "ts": 1715000000000 } }
 ```
 
+**Bye (graceful teardown):**
+```json
+{ "type": "relay", "payload": { "kind": "bye" } }
+```
+Sent by either peer on a clean disconnect so the other side shows
+"Der Sharer/Helfer hat den Stream beendet." instead of the generic
+ICE-fail message. `bye` is one of the four accepted `kind` values
+(`RELAY_KINDS` in `signaling.ts`); handled by `viewer/src/ui.ts` and
+`sharer/src/{main,unattended}.ts`.
+
 ## Viewer-Initiated Messages
 
 ### `join`
@@ -77,9 +87,11 @@ After sharer accepted.
 ```
 
 ### `peer-rejected` (→ viewer)
-After sharer declined or session ended.
+After sharer declined (`declined`) or the sharer's socket dropped
+(`sharer-gone`). An **expired** code is reported as `error: invalid-code`,
+not a `peer-rejected` — there is no `"expired"` reason.
 ```json
-{ "type": "peer-rejected", "reason": "declined" | "expired" | "sharer-gone" }
+{ "type": "peer-rejected", "reason": "declined" | "sharer-gone" }
 ```
 
 ### `relay` (→ peer)
@@ -200,9 +212,11 @@ accounting (feeds the free-tier relay cap).
 { "type": "connection-started", "connectionType": "p2p" | "relay" }
 { "type": "connection-ended", "bytesRelayed": 1048576 }
 ```
-> Currently emitted only by the **ad-hoc** signaling path. The unattended
-> heartbeat path defines these wire shapes but does not yet emit them
-> (gh #109).
+> Wired on the **unattended** path only: the backend handles these frames in
+> the unattended-sharer message handler (`signaling.ts`); the ad-hoc handler
+> has no case for them and would answer `error: bad-message`. No sharer emits
+> them yet — the unattended `SharerFrame::ConnectionStarted/Ended` shapes are
+> defined but not sent (gh #109).
 
 ---
 
