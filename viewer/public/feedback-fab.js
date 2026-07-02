@@ -183,7 +183,6 @@
       // throw inside the .then() — e.g. a future close()-throw — would
       // surface as a misleading "Netzwerkfehler" toast (code-review
       // CODE-H4, 2026-05-17).
-      let response;
       fetch("/api/feedback", {
         method: "POST",
         credentials: "same-origin",
@@ -204,7 +203,6 @@
         })
         .then(function (r) {
           if (r === null) return;
-          response = r;
           if (r.ok) {
             close();
             showToast("Danke für dein Feedback!");
