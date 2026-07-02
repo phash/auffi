@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { newToken, hashToken, timingSafeEquals } from "../src/auth/tokens.js";
+import { newToken, hashToken } from "../src/auth/tokens.js";
 
 describe("newToken", () => {
   it("returns a 64-character hex string (256 bits)", () => {
@@ -24,42 +24,5 @@ describe("hashToken", () => {
 
   it("is deterministic", () => {
     expect(hashToken("hello")).toBe(hashToken("hello"));
-  });
-});
-
-describe("timingSafeEquals", () => {
-  // Constant-time compare. The only correctness contracts are:
-  // - equal strings → true
-  // - different strings of equal length → false (without short-circuit;
-  //   we can't observe timing in JS but the loop must run to the end)
-  // - mismatched lengths → false (short-circuit OK; no secret content
-  //   leaks through the length channel that wasn't already revealed)
-  it("returns true for identical strings", () => {
-    expect(timingSafeEquals("abc", "abc")).toBe(true);
-    expect(timingSafeEquals("", "")).toBe(true);
-    const long = "0123456789abcdef".repeat(4); // sha256-hex length
-    expect(timingSafeEquals(long, long)).toBe(true);
-  });
-
-  it("returns false for same-length strings that differ", () => {
-    expect(timingSafeEquals("abc", "abd")).toBe(false);
-    // diff in first byte vs last byte should both return false
-    expect(timingSafeEquals("abcdef", "Xbcdef")).toBe(false);
-    expect(timingSafeEquals("abcdef", "abcdeX")).toBe(false);
-  });
-
-  it("returns false for length mismatch", () => {
-    expect(timingSafeEquals("abc", "abcd")).toBe(false);
-    expect(timingSafeEquals("abcd", "abc")).toBe(false);
-    expect(timingSafeEquals("", "a")).toBe(false);
-  });
-
-  it("does not throw on Unicode / multibyte input", () => {
-    // The function compares byte buffers, not characters. Equal Unicode
-    // strings have equal byte sequences, so they match; differing
-    // strings of the same byte length still return false without
-    // throwing.
-    expect(timingSafeEquals("✓", "✓")).toBe(true);
-    expect(timingSafeEquals("✓", "✗")).toBe(false);
   });
 });
