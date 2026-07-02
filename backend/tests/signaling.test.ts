@@ -355,6 +355,105 @@ describe("signaling handshake", () => {
     sharer.close();
     viewer.close();
   });
+
+  // Regression (review 2026-07-02, finding B3): a replacement viewer that
+  // redeems the SAME still-valid code after the first viewer left must be
+  // re-confirmed. `detachViewer` now resets `Session.confirmed`, so the
+  // relay gate stays closed for viewer2 until the sharer confirms again.
+  it("replacement viewer on the same code must be re-confirmed (relay stays gated)", async () => {
+    const sharer = openWs(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer1 = openWs(url);
+    await new Promise((r) => viewer1.once("open", r));
+    viewer1.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await recv(viewer1); // peer-confirmed
+
+    // Viewer1 leaves; the sharer stays online with the same code.
+    viewer1.close();
+    await new Promise((r) => setTimeout(r, 30));
+
+    const viewer2 = openWs(url);
+    await new Promise((r) => viewer2.once("open", r));
+    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined for viewer2
+
+    // Without the reset, `confirmed` would still be latched true and this
+    // relay would be forwarded to the sharer before any re-confirmation.
+    viewer2.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 1 } }));
+    const leaked = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 100);
+      sharer.once("message", () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+    expect(leaked).toBe(false);
+
+    sharer.close();
+    viewer2.close();
+  });
+
+  it("sharer CAN decline a replacement viewer on the reused code", async () => {
+    const sharer = openWs(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer1 = openWs(url);
+    await new Promise((r) => viewer1.once("open", r));
+    viewer1.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer);
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await recv(viewer1);
+    viewer1.close();
+    await new Promise((r) => setTimeout(r, 30));
+
+    const viewer2 = openWs(url);
+    await new Promise((r) => viewer2.once("open", r));
+    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined for viewer2
+
+    // The sharer declines viewer2. Because confirmed was reset, the decline
+    // path runs (rather than being swallowed by the already-confirmed guard).
+    sharer.send(JSON.stringify({ type: "confirm", accepted: false }));
+    const rej = await recv(viewer2);
+    expect(rej.type).toBe("peer-rejected");
+    expect(rej.reason).toBe("declined");
+
+    sharer.close();
+    viewer2.close();
+  });
+
+  // Coverage pin (review 2026-07-02, finding #10): the already-confirmed
+  // guard still protects a LIVE viewer — a stray sharer `confirm:false`
+  // against the currently-streaming peer must be ignored (no teardown).
+  it("confirm:false against the live confirmed viewer is ignored", async () => {
+    const { sharer, viewer } = await establishConfirmedPair(url);
+
+    sharer.send(JSON.stringify({ type: "confirm", accepted: false }));
+    const gotRejected = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), 120);
+      viewer.once("message", () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+    expect(gotRejected).toBe(false);
+    expect(viewer.readyState).toBe(WebSocket.OPEN);
+
+    // Relay still flows — the session is intact.
+    viewer.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 2 } }));
+    const relayed = await recv(sharer);
+    expect(relayed.type).toBe("relay");
+
+    sharer.close();
+    viewer.close();
+  });
 });
 
 describe("per-peer message rate limit", () => {
