@@ -1,0 +1,41 @@
+# Windows-Installer-Test für den Auffi-Sharer via QEMU-in-Docker (dockur/windows).
+# Vorbild: t2controller/.win-test. Bootet Windows 11, führt nach der OOBE
+# automatisch oem/install.bat als Administrator aus: installiert die MSI still,
+# startet Auffi.exe, prüft Prozess + Debug-Log. Ergebnis (RESULT=PASS/FAIL) ->
+# share/install-result.txt.
+#
+#   1) share/ enthält Auffi_0.6.4_x64_en-US.msi
+#   2) docker compose -f .win-test/docker-compose.yml up -d
+#   3) Mitschauen: http://localhost:8007 (noVNC)
+#   4) Ergebnis: .win-test/share/install-result.txt (auf RESULT=PASS prüfen)
+#   5) docker compose -f .win-test/docker-compose.yml down -v
+#
+# WICHTIG: explizites `name:` — sonst teilt sich dieses Dir (.win-test) den
+# Default-Compose-Projektnamen mit t2controller/.win-test und `up` entfernt
+# dessen t2cw-windows als vermeintlichen Orphan.
+name: auffi-wintest
+services:
+  windows:
+    image: ghcr.io/dockur/windows
+    container_name: auffi-win-test
+    environment:
+      VERSION: "11"
+      RAM_SIZE: "4G"
+      CPU_CORES: "4"
+      DISK_SIZE: "48G"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "8007:8006"   # noVNC-Web-Viewer (8007 host → 8006 guest; meidet t2cw:8006)
+    volumes:
+      - auffi-win-data:/storage
+      - ./oem:/oem
+      - ./share:/data
+    stop_grace_period: 2m
+    restart: "no"
+
+volumes:
+  auffi-win-data:
