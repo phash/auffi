@@ -16,7 +16,9 @@
 name: auffi-wintest
 services:
   windows:
-    image: ghcr.io/dockur/windows
+    # Pinned by digest — a mutable :latest tag is non-reproducible and a
+    # supply-chain risk (the image runs privileged: /dev/kvm + NET_ADMIN).
+    image: ghcr.io/dockur/windows@sha256:20b398ab935465f97ec8ab06489f7a85a5ad58e74e036ce66cc3c9172e7dbea8
     container_name: auffi-win-test
     environment:
       VERSION: "11"
@@ -29,7 +31,9 @@ services:
     cap_add:
       - NET_ADMIN
     ports:
-      - "8007:8006"   # noVNC-Web-Viewer (8007 host → 8006 guest; meidet t2cw:8006)
+      # Bind noVNC to loopback only — the web viewer has no auth, so it must
+      # not be reachable from the network. (8007 host → 8006 guest; meidet t2cw:8006)
+      - "127.0.0.1:8007:8006"
     volumes:
       - auffi-win-data:/storage
       - ./oem:/oem
