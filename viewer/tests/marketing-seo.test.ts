@@ -1,58 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
 import { JSDOM } from "jsdom";
+import {
+  computeServedHashes,
+  caddyScriptSrcHashes,
+  CADDYFILE_REL,
+} from "../scripts/csp-hashes";
 
 const REPO = resolve(__dirname, "../..");
 const f = (p: string) => resolve(REPO, p);
 
-// --- CSP hash parity (mirrors the one-liner in caddy/Caddyfile) -------------
-function inlineScriptHashes(absFile: string): string[] {
-  const html = readFileSync(absFile, "utf-8");
-  const out: string[] = [];
-  const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    const inner = m[1];
-    if (inner.trim() === "" || inner.slice(0, 60).includes("src=")) continue;
-    out.push("sha256-" + createHash("sha256").update(inner, "utf-8").digest("base64"));
-  }
-  return out;
-}
-
-// Recursively collect every index.html under a directory (mirrors the
-// one-liner's `viewer/public/**/index.html` glob without relying on a
-// specific Node fs.globSync availability).
-function walkIndexHtml(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const p = resolve(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walkIndexHtml(p));
-    else if (entry.name === "index.html") out.push(p);
-  }
-  return out;
-}
-
-function allServedPages(): string[] {
-  return [
-    f("viewer/index.html"),
-    f("viewer/en/index.html"),
-    ...walkIndexHtml(f("viewer/public")),
-  ];
-}
-
-function computedHashSet(): Set<string> {
-  const s = new Set<string>();
-  for (const file of allServedPages()) for (const h of inlineScriptHashes(file)) s.add(h);
-  return s;
-}
-
-function caddyHashSet(): Set<string> {
-  const caddy = readFileSync(f("caddy/Caddyfile"), "utf-8");
-  const line = caddy.split("\n").find((l) => l.includes("Content-Security-Policy")) ?? "";
-  return new Set([...line.matchAll(/'(sha256-[A-Za-z0-9+/=]+)'/g)].map((x) => x[1]));
-}
+// CSP hash parity: the recipe (which inline scripts hash to what) lives in
+// scripts/csp-hashes.ts — the SAME module the `npm run csp:sync` regenerator
+// uses, so the guard and the fixer can never disagree.
 
 // --- Page registry ----------------------------------------------------------
 type Page = { file: string; url: string; twin: string; lang: "de" | "en"; faqSync: boolean };
@@ -84,8 +45,8 @@ function doc(page: Page): Document {
 
 describe("marketing pages — CSP hash parity", () => {
   it("Caddyfile script-src whitelists exactly the inline JSON-LD blocks that are served", () => {
-    const computed = [...computedHashSet()].sort();
-    const caddy = [...caddyHashSet()].sort();
+    const computed = computeServedHashes(REPO);
+    const caddy = caddyScriptSrcHashes(readFileSync(f(CADDYFILE_REL), "utf-8"));
     expect(caddy).toEqual(computed);
   });
 });
@@ -107,6 +68,103 @@ describe("llms.txt lists the comparison surface (GEO)", () => {
   it("states free for commercial use", () => {
     expect(llms.toLowerCase()).toContain("gewerblich");
   });
+});
+
+// --- Hub/spoke keyword targeting -------------------------------------------
+// Search Console (2026-07-26) showed the hub /vergleich/ taking 190 impressions at
+// position 51 for "teamviewer alternative" while its own spoke /vergleich/teamviewer/
+// sat at position 8 with 3 impressions: the hub title led with the head term and every
+// spoke title led with the near-zero-volume "Auffi vs X", so Google kept picking the
+// hub. Contract: exactly one page per intent — the hub owns list intent, each spoke
+// owns one "<tool> alternative" head term — and the hub passes equity down with
+// exact-match anchors.
+type Target = { path: string; lang: "de" | "en"; role: "hub" | "spoke"; keyword: string };
+
+const TARGETS: Target[] = [
+  { path: "/vergleich/", lang: "de", role: "hub", keyword: "fernwartungssoftware im vergleich" },
+  { path: "/vergleich/teamviewer/", lang: "de", role: "spoke", keyword: "teamviewer alternative" },
+  { path: "/vergleich/anydesk/", lang: "de", role: "spoke", keyword: "anydesk alternative" },
+  { path: "/vergleich/rustdesk/", lang: "de", role: "spoke", keyword: "rustdesk alternative" },
+  { path: "/vergleich/chrome-remote-desktop/", lang: "de", role: "spoke", keyword: "chrome remote desktop alternative" },
+  { path: "/vergleich/teamviewer-kommerzielle-nutzung/", lang: "de", role: "spoke", keyword: "teamviewer kommerzielle nutzung" },
+  { path: "/bildschirm-teilen-ohne-installation/", lang: "de", role: "spoke", keyword: "bildschirm teilen ohne installation" },
+  { path: "/en/compare/", lang: "en", role: "hub", keyword: "remote support software compared" },
+  { path: "/en/compare/teamviewer/", lang: "en", role: "spoke", keyword: "teamviewer alternative" },
+  { path: "/en/compare/anydesk/", lang: "en", role: "spoke", keyword: "anydesk alternative" },
+  { path: "/en/compare/rustdesk/", lang: "en", role: "spoke", keyword: "rustdesk alternative" },
+  { path: "/en/compare/chrome-remote-desktop/", lang: "en", role: "spoke", keyword: "chrome remote desktop alternative" },
+  { path: "/en/compare/teamviewer-commercial-use/", lang: "en", role: "spoke", keyword: "teamviewer commercial use" },
+  { path: "/en/screen-sharing-without-install/", lang: "en", role: "spoke", keyword: "screen sharing without installation" },
+];
+
+const targetFile = (t: Target) => `viewer/public${t.path}index.html`;
+const targetDoc = (t: Target) => new JSDOM(readFileSync(f(targetFile(t)), "utf-8")).window.document;
+
+/** Case- and separator-insensitive so "TeamViewer-Alternative" matches "teamviewer alternative". */
+const norm = (s: string) =>
+  s.toLowerCase().replace(/[-–—_/&:,.?!"'|]/g, " ").replace(/\s+/g, " ").trim();
+
+const titleOf = (t: Target) => norm(targetDoc(t).querySelector("title")?.textContent ?? "");
+const h1Of = (t: Target) => norm(targetDoc(t).querySelector("h1")?.textContent ?? "");
+
+describe("comparison cluster — hub/spoke keyword targeting", () => {
+  for (const t of TARGETS) {
+    describe(t.path, () => {
+      it("title carries its own primary keyword", () => {
+        expect(titleOf(t), `title of ${t.path}`).toContain(t.keyword);
+      });
+
+      it("h1 carries its own primary keyword", () => {
+        expect(h1Of(t), `h1 of ${t.path}`).toContain(t.keyword);
+      });
+
+      it("does not claim another page's primary keyword in title or h1", () => {
+        const foreign = TARGETS.filter(
+          (o) => o.lang === t.lang && o.path !== t.path && !t.keyword.includes(o.keyword),
+        );
+        const title = titleOf(t);
+        const h1 = h1Of(t);
+        for (const o of foreign) {
+          expect(title, `${t.path} title must not target ${o.path}`).not.toContain(o.keyword);
+          expect(h1, `${t.path} h1 must not target ${o.path}`).not.toContain(o.keyword);
+        }
+      });
+    });
+  }
+
+  for (const lang of ["de", "en"] as const) {
+    const hub = TARGETS.find((t) => t.lang === lang && t.role === "hub")!;
+    const spokes = TARGETS.filter((t) => t.lang === lang && t.role === "spoke");
+
+    describe(`${hub.path} passes equity to its spokes`, () => {
+      for (const spoke of spokes) {
+        it(`links to ${spoke.path} with an anchor containing "${spoke.keyword}"`, () => {
+          const anchors = Array.from(targetDoc(hub).querySelectorAll(`a[href="${spoke.path}"]`));
+          expect(anchors.length, `hub links to ${spoke.path}`).toBeGreaterThan(0);
+          const texts = anchors.map((a) => norm(a.textContent ?? ""));
+          expect(texts.some((x) => x.includes(spoke.keyword)), `anchor texts: ${texts.join(" | ")}`).toBe(true);
+        });
+      }
+
+      it("declares itself a list page via ItemList schema covering every spoke", () => {
+        const schema = Array.from(targetDoc(hub).querySelectorAll('script[type="application/ld+json"]'))
+          .map((s) => JSON.parse(s.textContent ?? "{}"))
+          .find((j) => j["@type"] === "ItemList");
+        expect(schema, "ItemList schema present").toBeTruthy();
+        const urls = schema.itemListElement.map((e: { url: string }) => e.url);
+        for (const spoke of spokes) expect(urls).toContain(`${BASE}${spoke.path}`);
+      });
+    });
+
+    describe(`${hub.path} spokes link back`, () => {
+      for (const spoke of spokes) {
+        it(`${spoke.path} links up to the hub`, () => {
+          const up = targetDoc(spoke).querySelectorAll(`a[href="${hub.path}"]`);
+          expect(up.length, `${spoke.path} → ${hub.path}`).toBeGreaterThan(0);
+        });
+      }
+    });
+  }
 });
 
 describe("marketing pages — on-page SEO invariants", () => {
