@@ -12,7 +12,7 @@ import { randomBytes } from "node:crypto";
  * with the new defaults — argon2id encoded strings carry their own
  * params so old hashes verify correctly without a migration.
  */
-const ARGON_OPTS: argon2.HashOptions = {
+const ARGON_OPTS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 1 << 16, // 64 MiB
   timeCost: 3,

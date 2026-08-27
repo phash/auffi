@@ -496,8 +496,12 @@ describe("/signal unattended connect flow (gh #17)", () => {
   // TC C-2 (review 2026-05-13): a sharer that lands its pw-check-
   // result AFTER the viewer dropped must NOT receive a backend
   // error frame. The heartbeat treats `error` / `backend-error`
-  // as a fatal disconnect and would force the sharer to reconnect
-  // — collateral damage from a perfectly benign viewer give-up.
+  // as a fatal disconnect (heartbeat.rs: BackendError => returns
+  // ConnectOutcome::Disconnected) and would force the sharer to
+  // reconnect — collateral damage from a perfectly benign viewer
+  // give-up. The synthesized `relay`/`bye` from the viewer-close
+  // path is expected here and is NOT fatal (heartbeat.rs forwards
+  // Relay as a plain event); the test above owns that assertion.
   it("late pw-check-result after viewer drop is silently ignored (TC C-2)", async () => {
     const sharer = await openSharer();
     const viewer = openViewer();
@@ -526,7 +530,16 @@ describe("/signal unattended connect flow (gh #17)", () => {
     await new Promise((r) => setTimeout(r, 80));
 
     sharer.off("message", onMessage);
-    expect(stray).toEqual([]);
+    // The invariant is "nothing fatal", not "nothing at all": a
+    // synthesized bye may race in from the viewer's close handler.
+    const fatal = stray.filter(
+      (m) => (m as { type?: string }).type === "error"
+        || (m as { type?: string }).type === "backend-error",
+    );
+    expect(fatal, `fatal frames: ${JSON.stringify(fatal)}`).toEqual([]);
+    for (const m of stray) {
+      expect(m).toEqual({ type: "relay", payload: { kind: "bye" } });
+    }
     // And the sharer's WSS is still open.
     expect(sharer.readyState).toBe(sharer.OPEN);
     sharer.close();
