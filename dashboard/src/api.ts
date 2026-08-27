@@ -133,6 +133,17 @@ export function verifyEmail(token: string): Promise<ApiResult<{ ok: true }>> {
 }
 
 /**
+ * Confirms a pending email change. GET for the same reason verifyEmail is:
+ * the user arrives by clicking a link in a mail client. The backend performs
+ * the swap and clears the session cookie on the same response.
+ */
+export function confirmEmailChange(token: string): Promise<ApiResult<{ ok: true }>> {
+  return request(`/api/me/email-change/${encodeURIComponent(token)}`, {
+    method: "GET",
+  });
+}
+
+/**
  * Initiates a password-reset flow. Backend ALWAYS returns 200 — we
  * cannot let the response distinguish "email exists" from "email
  * unknown" (would enable enumeration). The caller therefore shows a

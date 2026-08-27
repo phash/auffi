@@ -3,6 +3,7 @@ import { _setApiClientForTests } from "../src/api.js";
 import { renderLogin } from "../src/views/login.js";
 import { renderSignup } from "../src/views/signup.js";
 import { renderVerify } from "../src/views/verify.js";
+import { renderVerifyEmailChange } from "../src/views/verify-email-change.js";
 import { renderAdminFeedback } from "../src/views/admin-feedback.js";
 
 function makeRoot(): HTMLElement {
@@ -406,5 +407,87 @@ describe("renderAdminFeedback — inline reply UI", () => {
     await flush();
     const shown = root.querySelector(".feedback-admin-reply-shown") as HTMLElement;
     expect(shown.textContent).toContain("Mail-Versand fehlgeschlagen");
+  });
+});
+
+// The email-change confirmation mail linked /verify-email-change/:token, but
+// no such route or view existed — the click landed on the SPA's not-found
+// page and the address swap never completed. Mirrors renderVerify, against
+// GET /api/me/email-change/:token.
+describe("renderVerifyEmailChange", () => {
+  afterEach(() => _setApiClientForTests(null));
+
+  const ctx = (token: string) => ({
+    path: `/verify-email-change/${token}`,
+    segments: ["verify-email-change", token],
+    params: { token },
+    query: new URLSearchParams(),
+  });
+
+  it("fires GET against the account endpoint on mount and reports success", async () => {
+    let seen = "";
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (input, init) => {
+        seen = input.toString();
+        expect((init as RequestInit).method).toBe("GET");
+        return jsonResponse({ ok: true });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderVerifyEmailChange(root, ctx("tok789"));
+    await flush();
+    expect(seen).toBe("/api/me/email-change/tok789");
+    const status = root.querySelector('[role="status"]') as HTMLElement;
+    expect(status.textContent).toContain("geändert");
+    // The backend clears the session cookie on success, so the only sensible
+    // next step is signing in again with the new address.
+    expect(root.querySelector('a[href$="/login"]')).not.toBeNull();
+  });
+
+  it("explains an expired or already-used link", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ error: "token-used", message: "x" }, 410),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderVerifyEmailChange(root, ctx("x"));
+    await flush();
+    const status = root.querySelector('[role="status"]') as HTMLElement;
+    expect(status.className).toBe("error");
+    expect(status.textContent).toMatch(/verwendet|abgelaufen/);
+  });
+
+  it("explains that the address was claimed elsewhere", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ error: "email-taken", message: "x" }, 409),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderVerifyEmailChange(root, ctx("y"));
+    await flush();
+    const status = root.querySelector('[role="status"]') as HTMLElement;
+    expect(status.className).toBe("error");
+    expect(status.textContent).toContain("vergeben");
+  });
+
+  it("does not call the API for an empty token", async () => {
+    let called = false;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () => {
+        called = true;
+        return jsonResponse({ ok: true });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderVerifyEmailChange(root, ctx(""));
+    await flush();
+    expect(called).toBe(false);
+    expect((root.querySelector('[role="status"]') as HTMLElement).className).toBe("error");
   });
 });

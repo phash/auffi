@@ -30,6 +30,7 @@ import { renderNotFound } from "./views/not-found.js";
 import { renderReset } from "./views/reset.js";
 import { renderSignup } from "./views/signup.js";
 import { renderVerify } from "./views/verify.js";
+import { renderVerifyEmailChange } from "./views/verify-email-change.js";
 
 const routes: Route[] = [
   // Default post-login destination (spec §8.3).
@@ -38,6 +39,8 @@ const routes: Route[] = [
   { pattern: "/login", render: renderLogin },
   { pattern: "/signup", render: renderSignup },
   { pattern: "/verify/:token", render: renderVerify },
+  // The email-change confirmation mail links here (backend mailer.ts).
+  { pattern: "/verify-email-change/:token", render: renderVerifyEmailChange },
   // gh #30: password-reset flow
   { pattern: "/forgot", render: renderForgot },
   { pattern: "/reset/:token", render: renderReset },
