@@ -18,9 +18,11 @@ async function build(): Promise<{
   applyMigrations(db, defaultMigrationsDir());
   const transport = captureTransport();
   const mailer = buildAuthMailer({ dashboardUrl: "https://t/", transport });
-  // trustProxy: 1 matches production (one reverse-proxy hop via Caddy).
+  // Address-range trust matches production (server.ts): the immediate peer
+  // (loopback in inject/tests, the docker-bridge Caddy in prod) is trusted,
+  // public XFF entries terminate the proxy-addr walk.
   // Without it req.ip is always 127.0.0.1 and adminIpPrefix is meaningless.
-  const app = Fastify({ trustProxy: 1 });
+  const app = Fastify({ trustProxy: "loopback, linklocal, uniquelocal" });
   await app.register(rateLimit, { global: false });
   decorateRequireSession(app, db);
   decorateRequireAdmin(app, db);
@@ -115,7 +117,7 @@ describe("requireAdmin middleware", () => {
   it("writes an audit_log row with the admin id and an IP-prefix", async () => {
     const c = await h.adminCookie();
     // Single-entry XFF as set by Caddy in production (one trusted proxy hop).
-    // trustProxy:1 resolves req.ip to this value.
+    // the trusted loopback peer resolves req.ip to this value.
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
@@ -147,7 +149,7 @@ describe("writeAudit IP-prefix shaping", () => {
   it("redacts to the first octet for IPv4 — matches connection_log's viewer_ip_prefix format", async () => {
     const h = await build();
     const c = await h.adminCookie();
-    // Single-entry XFF: trustProxy:1 sets req.ip = 203.0.113.42.
+    // Single-entry XFF: trusted-peer walk sets req.ip = 203.0.113.42.
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
@@ -166,7 +168,7 @@ describe("writeAudit IP-prefix shaping", () => {
   it("redacts to the first two hextets for IPv6", async () => {
     const h = await build();
     const c = await h.adminCookie();
-    // Single-entry XFF: trustProxy:1 sets req.ip = the IPv6 address.
+    // Single-entry XFF: trusted-peer walk sets req.ip = the IPv6 address.
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
@@ -210,13 +212,13 @@ describe("writeAudit IP-prefix shaping", () => {
 
   it("uses req.ip (not raw x-forwarded-for) — attacker-prepended header cannot spoof audit log", async () => {
     // An attacker sending X-Forwarded-For: 1.2.3.4, <real-client-ip>
-    // cannot control the audit-log IP prefix. With trustProxy:1, Fastify
+    // cannot control the audit-log IP prefix. With the address-range trust, Fastify
     // resolves req.ip to the rightmost entry (the proxy-validated real IP),
     // ignoring attacker-injected leftmost entries.
     const h = await build();
     const c = await h.adminCookie();
     // The attacker prepends "1.2.3.4," hoping to appear in the audit log
-    // as that address. With trustProxy:1, req.ip = 5.6.7.8 (rightmost).
+    // as that address. The walk stops at 5.6.7.8 (rightmost non-private).
     await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",

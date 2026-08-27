@@ -163,15 +163,18 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     // production, our own Caddy in standalone), which sets X-Forwarded-For.
     // Without trusting it, req.ip resolves to the proxy's address for every
     // request and the per-IP rate limiters (signaling joins,
-    // /turn-credentials, auth endpoints) collapse to a single bucket. We pin
-    // the trust to a single hop rather than `true`: `true` trusts the ENTIRE
-    // client-supplied XFF chain, so a caller could spoof
-    // `X-Forwarded-For: 1.2.3.4` to mint a fresh rate-limit bucket per request
-    // and defeat every brute-force protection. `1` trusts only the nearest
-    // proxy and takes the rightmost XFF entry as the real client. The backend
-    // port is not exposed outside the internal docker network today, so this
-    // is defence-in-depth against a future port-publish misconfiguration.
-    trustProxy: 1,
+    // /turn-credentials, auth endpoints) collapse to a single bucket. We
+    // trust by ADDRESS RANGE rather than `true` or a hop count: `true`
+    // trusts the ENTIRE client-supplied XFF chain (spoofable — a caller
+    // could mint a fresh rate-limit bucket per request), and the numeric
+    // hop-count form fails closed since fastify 5.12 (it cannot validate
+    // the immediate peer). Private ranges cover the docker-bridge Caddy in
+    // every deployment shape; proxy-addr walks the XFF chain right-to-left
+    // and stops at the first non-private address, so an attacker-prepended
+    // XFF entry is never reached. Bonus over the old `1`: if the backend
+    // port is ever published by misconfiguration, a direct public client is
+    // NOT trusted at all and its spoofed XFF is ignored outright.
+    trustProxy: "loopback, linklocal, uniquelocal",
   });
 
   await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });

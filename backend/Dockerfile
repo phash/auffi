@@ -4,11 +4,12 @@ FROM node:22.22.2-alpine3.23 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # `npm ci --ignore-scripts` keeps untrusted postinstalls out of the
-# build, but better-sqlite3 ships its native binding via a postinstall
-# (`prebuild-install`). Rebuild it explicitly after the install. The
-# build-deps (python3, make, g++) are needed only when prebuild-install
-# can't find a prebuilt binary for the current node/abi — kept as a
-# virtual package so they're removed before the layer is finalised.
+# build, but better-sqlite3 needs its native binding materialised.
+# Since v13 (N-API) prebuilts ship INSIDE the npm package — the explicit
+# rebuild covers the case where none matches this Alpine/musl runtime
+# and falls back to a node-gyp source build. The build-deps (python3,
+# make, g++) exist only for that fallback — kept as a virtual package
+# so they're removed before the layer is finalised.
 RUN npm ci --ignore-scripts \
     && apk add --no-cache --virtual .build-deps python3 make g++ \
     && npm rebuild better-sqlite3 \
