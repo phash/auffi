@@ -153,9 +153,12 @@ jobs:
         working-directory: sharer/src-tauri
         run: cargo fmt --check
 
+      # --lib --tests matches the Definition-of-Done gate in CLAUDE.md —
+      # without --tests, warnings in #[cfg(test)] code pass CI but fail
+      # the documented local command.
       - name: Clippy (deny warnings)
         working-directory: sharer/src-tauri
-        run: cargo clippy --no-deps -- -D warnings
+        run: cargo clippy --lib --tests --no-deps -- -D warnings
 
       - name: Run unit tests
         working-directory: sharer/src-tauri
@@ -193,7 +196,10 @@ jobs:
 
       - name: Start backend
         working-directory: backend
-        run: npm run dev &
+        # Log to a file so the wait step below can dump it when the
+        # backend never comes up (the backgrounded process's output is
+        # otherwise lost once this step ends).
+        run: npm run dev > /tmp/backend-dev.log 2>&1 &
         env:
           PORT: 8080
           HOST: 127.0.0.1
@@ -210,31 +216,43 @@ jobs:
           # come up (the old ECONNREFUSED). In-memory DB is fine for E2E.
           AUFFI_DB_PATH: ":memory:"
 
+      # Fail the job HERE when the server never comes up — without the
+      # final probe + exit 1 the step passes and the failure surfaces
+      # later as opaque Playwright timeouts.
       - name: Wait for backend to be ready
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/healthz > /dev/null 2>&1; then
               echo "Backend ready"
-              break
+              exit 0
             fi
             sleep 1
           done
+          echo "::error::Backend did not become ready within 30s"
+          cat /tmp/backend-dev.log || true
+          exit 1
 
       - name: Start viewer dev server
         working-directory: viewer
-        run: npm run dev &
+        run: npm run dev > /tmp/viewer-dev.log 2>&1 &
         env:
-          VITE_WS_URL: ws://127.0.0.1:8080/signal
+          # The viewer reads VITE_BACKEND_WS (viewer/src/env.d.ts) —
+          # VITE_WS_URL was a dead variable and the E2E run silently
+          # rode the built-in localhost fallback.
+          VITE_BACKEND_WS: ws://127.0.0.1:8080/signal
 
       - name: Wait for viewer dev server to be ready
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS http://localhost:5173/ > /dev/null 2>&1; then
               echo "Viewer ready"
-              break
+              exit 0
             fi
             sleep 1
           done
+          echo "::error::Viewer dev server did not become ready within 30s"
+          cat /tmp/viewer-dev.log || true
+          exit 1
 
       - name: Run Playwright E2E tests
         working-directory: viewer

@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # ops/update.sh — incremental update of backend + viewer only.
 #
+# ============================================================================
+# HINWEIS: ops/deploy.sh ist der KANONISCHE Deploy-Pfad — auch für Routine-
+# Updates (es überspringt unveränderte Builds selbst). Dieses Skript ist der
+# schlanke Notnagel für backend+viewer-only-Hotfixes und lässt bewusst aus:
+#   * Deploy-Lock (parallel zu deploy.sh möglich)
+#   * Deploy-Log-Append (deploy.sh-Diff-Preview, Image-Prune-KEEP_LIST und
+#     --rollback kennen hiermit deployte Versionen NICHT)
+#   * Dashboard-Build, Config-Sync, erweiterte Health-Checks
+# --rollback wählt Tarballs nach mtime, nicht nach Deploy-Log.
+# ============================================================================
+#
 # Usage:
 #   ./ops/update.sh [--dry-run] [--version <tag>] [--rollback]
 #   ./ops/update.sh --help
@@ -131,11 +142,22 @@ maybe_run "rsync viewer/dist → viewer-dist/" \
     "${DEPLOY_PATH}/viewer-dist/" \
     --delete
 
-maybe_run "Copy viewer-dist into viewer-static volume" \
-  remote "docker run --rm \
-    -v screenshare_viewer-static:/data \
-    -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
-    busybox sh -c 'cp -a /src/. /data/'"
+# Volume-Copy nur standalone — im Cluster-Modus bind-mountet der
+# auffi-viewer-Container ${DEPLOY_PATH}/viewer-dist direkt (siehe
+# docker-compose.cluster.yml), der rsync oben reicht dort. Volume-Name
+# `screenie_viewer-static` wie in deploy.sh Step 11: Compose-Project auf
+# prod ist `screenie` (DEPLOY_PATH=/opt/screenie, s. CLAUDE.md Rebrand-
+# Notizen) — ein falscher Prefix würde von `docker run -v` still als
+# neues, von Caddy nie gelesenes Volume angelegt.
+if [[ -z "${CLUSTER_PROXY:-}" ]]; then
+  maybe_run "Copy viewer-dist into viewer-static volume" \
+    remote "docker run --rm \
+      -v screenie_viewer-static:/data \
+      -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
+      busybox sh -c 'cp -a /src/. /data/'"
+else
+  log_info "Cluster mode — viewer container bind-mounts viewer-dist directly"
+fi
 
 # Update APP_VERSION in .env.prod so compose picks it up on restart
 maybe_run "Update APP_VERSION in .env.prod" \

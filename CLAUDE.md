@@ -71,7 +71,7 @@ cd dashboard && npm run dev        # vite on :5174
 cd dashboard && npm test           # vitest (jsdom + custom router)
 cd dashboard && npm run build      # static dist/
 
-# Local stack (backend + coturn behind dev Caddy)
+# Local stack (nur backend — voller Stack lokal via ./ops/smoke.sh)
 docker compose up --build
 
 # Production deploy

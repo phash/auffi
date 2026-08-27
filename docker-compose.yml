@@ -8,7 +8,9 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=development
-      - PORT=${BACKEND_PORT:-8080}
+      # In-Container-Port bleibt fix auf 8080 — Port-Mapping und Healthcheck
+      # unten sind darauf gepinnt. BACKEND_PORT variiert nur die Host-Seite.
+      - PORT=8080
       - HOST=${BACKEND_HOST:-0.0.0.0}
     ports:
       - "${BACKEND_PORT:-8080}:8080"

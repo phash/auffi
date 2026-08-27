@@ -30,7 +30,6 @@ COMPOSE_CMD="docker compose -f ${COMPOSE_PROD} -f ${COMPOSE_SMOKE}"
 # The smoke stack uses non-conflicting ports to avoid clashing with other local
 # services that may hold 80/443.
 SMOKE_HTTPS_PORT=8443
-SMOKE_HTTP_PORT=8080
 SMOKE_BASE_URL="https://localhost:${SMOKE_HTTPS_PORT}"
 # Backend is exposed on 8081 in the smoke overlay (8080 may conflict with other services).
 BACKEND_WS_URL="ws://localhost:8081/signal"   # direct to backend (bypasses Caddy)
@@ -131,9 +130,13 @@ if [[ "${NO_BUILD}" == "false" ]]; then
     npm run build --silent
   )
   echo "Dashboard built → dashboard/dist/"
+fi
 
-  # docker-compose.prod.yml bind-mounts ./dashboard-dist into the
-  # auffi-dashboard nginx sidecar. Mirror dashboard/dist there.
+# docker-compose.prod.yml bind-mounts ./dashboard-dist into the
+# auffi-dashboard nginx sidecar. Mirror dashboard/dist there on EVERY run —
+# cleanup() removes dashboard-dist on exit, so a --no-build run must
+# re-stage it from the cached dashboard/dist or the precheck below fails.
+if [[ -d "${REPO_ROOT}/dashboard/dist" ]]; then
   rm -rf "${REPO_ROOT}/dashboard-dist"
   cp -r "${REPO_ROOT}/dashboard/dist" "${REPO_ROOT}/dashboard-dist"
   echo "Synced dashboard-dist/ ← dashboard/dist/"

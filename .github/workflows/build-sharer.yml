@@ -1,5 +1,9 @@
 name: Build Sharer Binaries
 
+# Kein eigener push:tags-Trigger — release.yml (v*-Tags) ruft dieses
+# Workflow via workflow_call auf; ein zusätzlicher Tag-Trigger hier würde
+# jeden Release-Build doppelt laufen lassen (die Artifacts des Standalone-
+# Runs würden nie verwendet).
 on:
   workflow_dispatch:
   workflow_call:
@@ -10,9 +14,6 @@ on:
       artifact-windows:
         description: "Windows artifact name"
         value: ${{ jobs.build-windows.outputs.artifact-name }}
-  push:
-    tags:
-      - "v*"
 
 jobs:
   build-linux:

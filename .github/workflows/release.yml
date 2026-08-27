@@ -65,9 +65,15 @@ jobs:
           name: sharer-windows
           path: release-artifacts/windows/
 
+      # Basenames only: gh-release uploads assets flat, so lines like
+      # `release-artifacts/linux/deb/…` would make the release body's
+      # documented `sha256sum --check SHA256SUMS` fail for every asset.
       - name: Generate SHA256SUMS
         run: |
-          find release-artifacts/ -type f | sort | xargs sha256sum > SHA256SUMS
+          find release-artifacts/ -type f -print0 | sort -z | \
+            while IFS= read -r -d '' f; do
+              ( cd "$(dirname "$f")" && sha256sum "$(basename "$f")" )
+            done > SHA256SUMS
           cat SHA256SUMS
 
       - name: Extract tag name

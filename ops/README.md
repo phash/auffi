@@ -142,6 +142,14 @@ Caddy handles its own cert (auffi.app) automatically. For the TURN subdomain (`t
 
 **Approach A — certbot on the host (recommended for simplicity)**
 
+coturn (`coturn/entrypoint.sh` + `turnserver.conf.tmpl`) reads FLAT files
+`cert.pem` + `key.pem` from the `turn-certs` volume (mounted at
+`/var/lib/turn`). certbot's `live/` paths are symlinks into `archive/` —
+mount all of `/etc/letsencrypt` and resolve them with `cp -L`. The volume
+name carries the `screenie_` prefix: that is the compose project name on
+prod (`DEPLOY_PATH=/opt/screenie`, see CLAUDE.md rebrand notes) — a wrong
+prefix is silently auto-created as a fresh empty volume coturn never reads.
+
 ```sh
 ssh musikersuche@musikersuche.org
 sudo apt install certbot
@@ -149,11 +157,13 @@ sudo certbot certonly --standalone \
   -d turn.auffi.app \
   -m m.roedig@gmail.com \
   --agree-tos --non-interactive
-# certbot writes to /etc/letsencrypt — populate the Docker volume:
+# Stage the flat cert pair into the Docker volume:
 docker run --rm \
   -v /etc/letsencrypt:/src:ro \
-  -v screenshare_turn-certs:/dst \
-  busybox sh -c 'cp -a /src/. /dst/'
+  -v screenie_turn-certs:/dst \
+  busybox sh -c 'cp -L /src/live/turn.auffi.app/fullchain.pem /dst/cert.pem \
+    && cp -L /src/live/turn.auffi.app/privkey.pem /dst/key.pem \
+    && chmod 644 /dst/cert.pem /dst/key.pem'
 ```
 
 Set up certbot auto-renewal:
@@ -161,8 +171,10 @@ Set up certbot auto-renewal:
 echo '0 3 * * * root certbot renew --quiet && \
   docker run --rm \
     -v /etc/letsencrypt:/src:ro \
-    -v screenshare_turn-certs:/dst \
-    busybox sh -c "cp -a /src/. /dst/" && \
+    -v screenie_turn-certs:/dst \
+    busybox sh -c "cp -L /src/live/turn.auffi.app/fullchain.pem /dst/cert.pem \
+      && cp -L /src/live/turn.auffi.app/privkey.pem /dst/key.pem \
+      && chmod 644 /dst/cert.pem /dst/key.pem" && \
   docker compose -f /opt/screenie/docker-compose.prod.yml restart coturn' \
   | sudo tee /etc/cron.d/certbot-auffi
 ```
@@ -211,20 +223,31 @@ Preview without executing anything:
 ## 4. Routine Update
 
 ```sh
-./ops/update.sh
+./ops/deploy.sh
 ```
 
-Builds and transfers only the backend image and viewer dist, then restarts only the backend container. Caddy and coturn are untouched. Auto-rolls back to the previous image if the health check fails within 60 seconds.
+`deploy.sh` is the canonical path for routine updates too — it is idempotent
+and skips unchanged builds itself (image build is skipped when the tag
+already exists on prod, `npm ci` when the lockfile is unchanged), takes the
+deploy lock, and appends to the deploy-log that the diff preview, image
+prune, and rollback rely on.
+
+`ops/update.sh` still exists as a minimal backend+viewer-only hotfix
+path, but it bypasses the deploy lock and the deploy-log — see the
+warning header in the script before using it.
 
 ---
 
 ## 5. Rollback
 
 ```sh
-./ops/update.sh --rollback
+./ops/deploy.sh --rollback
 ```
 
-Finds the second-most-recent image tarball on the VPS, loads it, sets `APP_VERSION` in `.env.prod`, and restarts the backend. Up to 3 previous tarballs are kept automatically.
+Reads the previous SHA from the deploy-log on the VPS (falling back to the
+last logged entry when the most recent deploy failed before being logged),
+sets `APP_VERSION` in `.env.prod`, and recreates the stack. The image prune
+keeps the last 3 deployed SHAs, so the rollback target is still loaded.
 
 ---
 

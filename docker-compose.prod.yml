@@ -1,10 +1,13 @@
 # Production compose — backend + Caddy reverse-proxy + coturn TURN relay.
 #
 # TLS cert sharing: Caddy manages Let's Encrypt for auffi.app.
-# coturn requires its own cert for turn.auffi.app — this must
-# be provisioned separately (e.g. certbot on the host, writing into a named
-# volume) and mounted at /etc/letsencrypt inside coturn. See ops/README.md for
-# the one-time cert setup procedure.
+# coturn requires its own cert for turn.auffi.app — this must be provisioned
+# separately (e.g. certbot on the host) and staged as FLAT files
+# `cert.pem` + `key.pem` into the turn-certs volume, which is mounted at
+# /var/lib/turn inside coturn (the path coturn/entrypoint.sh and
+# turnserver.conf.tmpl read). See ops/README.md § TLS for coturn for the
+# one-time cert setup procedure. Missing certs are non-fatal: the entrypoint
+# strips the TLS listener and plain TURN on 3478 keeps working.
 #
 # coturn runs with network_mode: host because TURN allocates dynamic UDP ports
 # (49152-65535 by default) and Docker's UDP-port-range mapping is fragile at
@@ -82,7 +85,16 @@ services:
       - internal
 
   caddy:
-    image: caddy:2.10.0-alpine
+    # Custom build: stock caddy kennt die `rate_limit`-Directive aus
+    # caddy/Caddyfile nicht (mholt/caddy-ratelimit-Plugin) und würde am
+    # unbekannten Directive crash-loopen. caddy/Dockerfile kompiliert das
+    # Plugin via xcaddy ein; `docker compose up` baut das Image beim
+    # ersten Start. Nach Änderungen am caddy/Dockerfile auf dem Host:
+    # `docker compose -f docker-compose.prod.yml build caddy`.
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    image: auffi-caddy:2.11.2-ratelimit
     container_name: auffi-caddy
     restart: unless-stopped
     ports:
@@ -114,7 +126,11 @@ services:
     volumes:
       - ./coturn/turnserver.conf.tmpl:/etc/coturn/turnserver.conf.tmpl:ro
       - ./coturn/entrypoint.sh:/entrypoint.sh:ro
-      - turn-certs:/etc/letsencrypt:ro
+      # Muss /var/lib/turn sein — entrypoint.sh + turnserver.conf.tmpl lesen
+      # /var/lib/turn/{cert,key}.pem. Der Cluster-Overlay mountet dort sein
+      # turn-certs-staged-Volume; standalone staged ops/README § TLS for
+      # coturn die flachen cert.pem/key.pem in dieses Volume.
+      - turn-certs:/var/lib/turn:ro
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     environment:
       TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}

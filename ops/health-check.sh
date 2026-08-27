@@ -4,8 +4,13 @@
 # Usage:
 #   ./ops/health-check.sh [--help]
 #
-# Cron example (every 5 minutes on the VPS):
+# Deploy: ops/deploy.sh Step 10 shippt dieses Skript (+ lib.sh) nach
+# ${DEPLOY_PATH}/ops/ auf den VPS. Cron dort einrichten (alle 5 Minuten):
 #   */5 * * * * /opt/screenie/ops/health-check.sh >> /var/log/screenie-health.log 2>&1
+#
+# MRD-API-Reporting (optional): MRD_API_KEY + MRD_CLUSTER_ID entweder in
+# der Crontab-Environment setzen oder in /opt/screenie/.env.prod ablegen —
+# das Skript liest die beiden Keys gezielt aus ../.env.prod (siehe unten).
 #
 # Can also be run from a dev box — it probes the public URLs, not the containers.
 
@@ -54,6 +59,18 @@ probe "https://${DEPLOY_DOMAIN}/readyz"  || true
 # ---------------------------------------------------------------------------
 # Post result to MRD-API if credentials are available
 # ---------------------------------------------------------------------------
+# ops/README § 9 dokumentiert MRD_* in ${DEPLOY_PATH}/.env.prod (liegt auf
+# dem VPS neben ops/). Nur die zwei Keys gezielt herausgreifen statt die
+# Datei zu sourcen — .env.prod enthält Secrets mit potentiellen
+# Shell-Metazeichen (SMTP_PASS etc.), die `source` brechen würden.
+ENV_PROD_FILE="${SCRIPT_DIR}/../.env.prod"
+if [[ -f "${ENV_PROD_FILE}" ]]; then
+  # `|| true`: fehlende Keys sind legitim (Reporting optional) — ohne das
+  # würde set -e -o pipefail das Skript am erfolglosen grep beenden.
+  MRD_API_KEY="${MRD_API_KEY:-$(grep -E '^MRD_API_KEY=' "${ENV_PROD_FILE}" | tail -n 1 | cut -d= -f2- || true)}"
+  MRD_CLUSTER_ID="${MRD_CLUSTER_ID:-$(grep -E '^MRD_CLUSTER_ID=' "${ENV_PROD_FILE}" | tail -n 1 | cut -d= -f2- || true)}"
+fi
+
 if [[ -n "${MRD_API_KEY:-}" ]] && [[ -n "${MRD_CLUSTER_ID:-}" ]]; then
   STATE="operational"
   [[ "${FAILURES}" -gt 0 ]] && STATE="degraded"

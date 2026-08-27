@@ -19,15 +19,38 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-# DB-IP IP-to-Country Lite (CC-BY-4.0). Pinned per month for reproducible
-# builds; bump DBIP_MONTH monthly (see docs/ops-runbook.md). The build fails
-# loudly if the pinned month 404s so a roll-off is noticed.
+# DB-IP IP-to-Country Lite (CC-BY-4.0). Default "auto" tries the current
+# month and walks back up to 3 months — upstream hosts only recent months,
+# and a fixed month pin hard-blocked every build (incl. hotfix deploys)
+# once it rolled off (2026-08 incident). Pass --build-arg DBIP_MONTH=YYYY-MM
+# for a reproducible pinned build; a pinned month that 404s fails loudly.
 FROM alpine:3.23 AS geoip
-ARG DBIP_MONTH=2026-06
+ARG DBIP_MONTH=auto
 WORKDIR /geoip
-RUN wget -qO dbip.mmdb.gz "https://download.db-ip.com/free/dbip-country-lite-${DBIP_MONTH}.mmdb.gz" \
-    && gunzip dbip.mmdb.gz \
-    && test -s dbip.mmdb
+RUN set -eu; \
+    if [ "${DBIP_MONTH}" = "auto" ]; then \
+      y=$(date -u +%Y); m=$(date -u +%m); tries=4; \
+    else \
+      y=${DBIP_MONTH%-*}; m=${DBIP_MONTH#*-}; tries=1; \
+    fi; \
+    m=${m#0}; found=""; \
+    while [ "${tries}" -gt 0 ]; do \
+      month=$(printf '%s-%02d' "${y}" "${m}"); \
+      url="https://download.db-ip.com/free/dbip-country-lite-${month}.mmdb.gz"; \
+      echo "geoip: trying ${url}"; \
+      rm -f dbip.mmdb.gz; \
+      if wget -qO dbip.mmdb.gz "${url}" && [ -s dbip.mmdb.gz ]; then found="${month}"; break; fi; \
+      m=$((m - 1)); if [ "${m}" -eq 0 ]; then m=12; y=$((y - 1)); fi; \
+      tries=$((tries - 1)); \
+    done; \
+    if [ -z "${found}" ]; then \
+      echo "geoip: ERROR — no dbip-country-lite database downloadable (DBIP_MONTH=${DBIP_MONTH})." >&2; \
+      echo "geoip: check https://db-ip.com/db/download/ip-to-country-lite or pass --build-arg DBIP_MONTH=YYYY-MM." >&2; \
+      exit 1; \
+    fi; \
+    gunzip dbip.mmdb.gz \
+    && test -s dbip.mmdb \
+    && echo "geoip: using dbip-country-lite ${found}"
 
 FROM node:22.22.2-alpine3.23 AS runner
 WORKDIR /app

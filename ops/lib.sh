@@ -55,6 +55,13 @@ remote() {
   ssh "${SSH_OPTS[@]}" "${DEPLOY_SSH}" "$@"
 }
 
+remote_tty() {
+  # Wie remote(), aber mit forciertem TTY-Allocate (-tt) — nötig für
+  # interaktive Kommandos wie `docker compose exec <svc> sh`, die ohne
+  # TTY sofort mit EOF beenden.
+  ssh -tt "${SSH_OPTS[@]}" "${DEPLOY_SSH}" "$@"
+}
+
 remote_compose() {
   # Run docker compose on the remote host inside DEPLOY_PATH.
   # --env-file .env.prod feeds variable interpolation in docker-compose.prod.yml
@@ -65,6 +72,16 @@ remote_compose() {
   local cluster_flag=""
   [[ -n "${CLUSTER_PROXY:-}" ]] && cluster_flag="-f docker-compose.cluster.yml"
   remote "cd ${DEPLOY_PATH} && docker compose --env-file .env.prod -f docker-compose.prod.yml ${cluster_flag} $*"
+}
+
+remote_compose_tty() {
+  # Wie remote_compose(), aber über remote_tty — für `exec`-Subcommands,
+  # die ein interaktives Terminal brauchen. Identische Overlay-/env-file-
+  # Behandlung, damit z.B. `shell viewer` auch auf Cluster-Hosts den
+  # Service findet und keine Unset-Variable-Warnungen entstehen.
+  local cluster_flag=""
+  [[ -n "${CLUSTER_PROXY:-}" ]] && cluster_flag="-f docker-compose.cluster.yml"
+  remote_tty "cd ${DEPLOY_PATH} && docker compose --env-file .env.prod -f docker-compose.prod.yml ${cluster_flag} $*"
 }
 
 rsync_to() {
@@ -223,15 +240,31 @@ caddy_validate_local() {
     log_error "caddy validate: file not found: ${caddyfile}"
     return 1
   fi
-  local out
+  # caddy/Caddyfile nutzt das rate_limit-Plugin — stock caddy kennt die
+  # Directive nicht und würde die Validation (und den Container) an einer
+  # gültigen Config scheitern lassen. Deshalb mit demselben Plugin-Image
+  # validieren, das docker-compose.prod.yml baut (caddy/Dockerfile liegt
+  # neben dem Caddyfile). Ohne Dockerfile daneben: Fallback aufs
+  # Stock-Image (z.B. für ein plugin-freies Caddyfile.local).
+  local caddy_dir image out
+  caddy_dir="$(cd "$(dirname "${caddyfile}")" && pwd)"
+  image="caddy:2.11.2-alpine"
+  if [[ -f "${caddy_dir}/Dockerfile" ]]; then
+    image="auffi-caddy:validate"
+    if ! out=$(docker build -q -t "${image}" "${caddy_dir}" 2>&1); then
+      log_error "caddy validate: build of ${caddy_dir}/Dockerfile failed:"
+      printf '%s\n' "${out}" >&2
+      return 1
+    fi
+  fi
   if ! out=$(docker run --rm \
       -v "${caddyfile}:/etc/caddy/Caddyfile:ro" \
-      caddy:2.10.0-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
+      "${image}" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
     log_error "caddy validate failed for ${caddyfile}:"
     printf '%s\n' "${out}" >&2
     return 1
   fi
-  log_ok "caddy validate ok: $(basename "${caddyfile}")"
+  log_ok "caddy validate ok: $(basename "${caddyfile}") (image ${image})"
 }
 
 # ---------------------------------------------------------------------------
@@ -269,4 +302,12 @@ deploy_log_last_sha() {
 deploy_log_previous_sha() {
   # Vorletzte Zeile — für Rollback.
   remote "tail -n 2 '${DEPLOY_LOG_REMOTE}' 2>/dev/null | head -n 1 | awk -F'\t' '{print \$2}'" || true
+}
+
+remote_env_app_version() {
+  # APP_VERSION aus dem Remote-.env.prod — der SHA, den compose gerade
+  # tatsächlich fährt. Weicht er vom letzten Deploy-Log-Eintrag ab, ist
+  # der letzte Deploy VOR dem Log-Append gescheitert (Health-Check-Abort
+  # nach Step 13) und der Log-Tail ist bereits der letzte GUTE SHA.
+  remote "grep -E '^APP_VERSION=' '${DEPLOY_PATH}/.env.prod' 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\"'" || true
 }

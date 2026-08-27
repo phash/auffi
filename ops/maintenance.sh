@@ -27,7 +27,7 @@ Subcommands:
   down                    Stop all services (volumes are NOT removed). Requires confirmation.
   up                      Start all services.
   backup                  Run the daily DB + caddy-data backup on prod (writes to /opt/backup/auffi/, 7-day retention).
-  backup-certs            Tar up the turn-certs volume to ~/auffi-backups/certs-<date>.tar.gz.
+  backup-certs            Tar up the turn-certs volume to /opt/backup/auffi/certs-<date>.tar.gz.
   cert-info               Show TLS certificate expiry for main and TURN domains.
   secret-rotate           Rotate TURN_SHARED_SECRET: generate new, update .env.prod, restart affected services.
   shell <service>         Drop into a shell in a running container.
@@ -102,16 +102,24 @@ case "${SUBCOMMAND}" in
     ;;
 
   backup-certs)
-    BACKUP_DIR="~/auffi-backups"
+    # Absoluter Pfad statt "~": Tilde in Quotes expandiert nie (die alte
+    # Fassung legte ein literales `~`-Verzeichnis an), und Docker-Bind-
+    # Mounts verlangen absolute Host-Pfade. Gleiches Zielverzeichnis-
+    # Schema wie ops/backup.sh (/opt/backup/auffi).
+    BACKUP_DIR="/opt/backup/auffi"
     DATE="$(date +%Y-%m-%d)"
     BACKUP_FILE="${BACKUP_DIR}/certs-${DATE}.tar.gz"
-    log_step "Backing up turn-certs volume to ${BACKUP_FILE}"
-    remote "mkdir -p '${BACKUP_DIR}'"
     # Volume-Prefix `screenie_` ergibt sich aus dem Compose-Project-Namen
     # (DEPLOY_PATH=/opt/screenie); siehe CLAUDE.md "Rebrand Naming
-    # Inconsistencies".
+    # Inconsistencies". Im Cluster-Modus staged der turn-cert-stage-
+    # Sidecar in `turn-certs-staged`; das standalone `turn-certs`-Volume
+    # existiert dort nicht.
+    CERT_VOLUME="screenie_turn-certs"
+    [[ -n "${CLUSTER_PROXY:-}" ]] && CERT_VOLUME="screenie_turn-certs-staged"
+    log_step "Backing up ${CERT_VOLUME} volume to ${BACKUP_FILE}"
+    remote "mkdir -p '${BACKUP_DIR}'"
     remote "docker run --rm \
-      -v screenie_turn-certs:/certs:ro \
+      -v ${CERT_VOLUME}:/certs:ro \
       -v '${BACKUP_DIR}':/backup \
       busybox tar czf '/backup/certs-${DATE}.tar.gz' /certs"
     log_ok "Cert backup written to ${DEPLOY_SSH}:${BACKUP_FILE}"
@@ -152,9 +160,11 @@ case "${SUBCOMMAND}" in
       exit 1
     fi
     log_info "Opening shell in ${SERVICE} on ${DEPLOY_SSH}"
-    # shellcheck disable=SC2029
-    ssh -t "${SSH_OPTS[@]}" "${DEPLOY_SSH}" \
-      "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml exec ${SERVICE} sh"
+    # remote_compose_tty statt raw ssh: gleiche --env-file-/Cluster-Overlay-
+    # Behandlung wie alle anderen Subcommands — sonst fehlt z.B. `shell
+    # viewer` auf Cluster-Hosts der Service und compose warnt über unset
+    # ${TURN_SHARED_SECRET} etc.
+    remote_compose_tty "exec ${SERVICE} sh"
     ;;
 
   *)

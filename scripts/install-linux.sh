@@ -4,15 +4,22 @@
 #   curl -fsSL https://auffi.app/download/install-linux.sh | bash
 #   bash install-linux.sh --uninstall
 #
-# Binaries are hosted on auffi.app/download/ (not on GitHub Releases).
-# The script reads /download/latest.txt to discover the current version,
-# then fetches the matching .deb / .rpm / .AppImage asset.
+# Release binaries live on GitHub Releases (github.com/phash/auffi); the
+# current version is discovered via the GitHub releases API. Downloads go
+# through the auffi.app stream-proxy (/api/downloads/file/…, which counts
+# downloads server-side) and fall back to the GitHub release asset URL
+# when the proxy does not know the asset yet (its allow-list is bumped
+# per release).
+#
+# Overrides:
+#   AUFFI_VERSION=v0.6.4   pin a version instead of resolving latest
 #
 # Supports: Debian/Ubuntu (.deb), Fedora/RHEL (.rpm), Arch (AppImage), others (AppImage)
 
 set -euo pipefail
 
-DOWNLOAD_BASE_URL="${AUFFI_DOWNLOAD_BASE:-https://auffi.app/download}"
+GITHUB_REPO="phash/auffi"
+PROXY_BASE_URL="https://auffi.app/api/downloads/file"
 APP_NAME="auffi"
 INSTALL_BIN="/usr/local/bin/$APP_NAME"
 DESKTOP_FILE="/usr/share/applications/$APP_NAME.desktop"
@@ -85,14 +92,17 @@ install_deps() {
 
 # Custom UA so the cluster Caddy bot-filter does not block these requests
 # (default `curl/X.Y` matches the scraper regex).
-INSTALLER_UA="auffi-installer/0.2.0"
+INSTALLER_UA="auffi-installer/0.3.0"
 
-# Reads /download/latest.txt from the auffi.app server. Returns "v<semver>".
+# Resolves the newest release tag via the GitHub releases API (the old
+# /download/latest.txt is unmaintained and stale). Returns "v<semver>".
 get_latest_version() {
   local v
-  v="$(curl -fsSL -A "$INSTALLER_UA" "$DOWNLOAD_BASE_URL/latest.txt" 2>/dev/null | tr -d '\r\n[:space:]')"
+  v="$(curl -fsSL -A "$INSTALLER_UA" \
+        "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null |
+      sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
   if [[ -z "$v" ]]; then
-    err "Could not read latest version from $DOWNLOAD_BASE_URL/latest.txt"
+    err "Could not resolve the latest release from api.github.com/repos/$GITHUB_REPO"
   fi
   # Normalise to v-prefixed for downstream `${VERSION#v}` stripping.
   [[ "$v" =~ ^v ]] && echo "$v" || echo "v$v"
@@ -101,8 +111,19 @@ get_latest_version() {
 download_asset() {
   local asset_name="$1"
   local dest="$2"
-  info "Downloading $asset_name from $DOWNLOAD_BASE_URL ..."
-  curl -fsSL -A "$INSTALLER_UA" -o "$dest" "$DOWNLOAD_BASE_URL/$asset_name" || return 1
+  # Primary: auffi.app stream-proxy (counts the download server-side).
+  # `?tag=` pins the release so assets missing from `latest` still resolve.
+  info "Downloading $asset_name via $PROXY_BASE_URL ..."
+  if curl -fsSL -A "$INSTALLER_UA" -o "$dest" \
+      "$PROXY_BASE_URL/$asset_name?tag=$VERSION"; then
+    return 0
+  fi
+  # Fallback: direct GitHub release asset — the proxy 404s assets that are
+  # not on its per-release allow-list yet.
+  warn "Proxy download failed — falling back to GitHub release asset."
+  info "Downloading $asset_name from github.com/$GITHUB_REPO ..."
+  curl -fsSL -A "$INSTALLER_UA" -o "$dest" \
+    "https://github.com/$GITHUB_REPO/releases/download/$VERSION/$asset_name" || return 1
   return 0
 }
 
@@ -112,8 +133,8 @@ install_deb() {
   local tmpdir
   tmpdir="$(mktemp -d)"
   local deb_file="$tmpdir/auffi.deb"
-  # Try versioned name pattern; fall back to generic
-  local asset_name="auffi_${VERSION#v}_amd64.deb"
+  # Capitalised `Auffi_` — the exact name the Tauri bundler/release CI produces.
+  local asset_name="Auffi_${VERSION#v}_amd64.deb"
   download_asset "$asset_name" "$deb_file" || err "Could not download $asset_name from GitHub release $VERSION."
   info "Installing .deb package..."
   $SUDO dpkg -i "$deb_file" || $SUDO apt-get install -f -y
@@ -125,7 +146,7 @@ install_rpm() {
   local tmpdir
   tmpdir="$(mktemp -d)"
   local rpm_file="$tmpdir/auffi.rpm"
-  local asset_name="auffi-${VERSION#v}-1.x86_64.rpm"
+  local asset_name="Auffi-${VERSION#v}-1.x86_64.rpm"
   download_asset "$asset_name" "$rpm_file" || err "Could not download $asset_name from GitHub release $VERSION."
   info "Installing .rpm package..."
   if command -v dnf &>/dev/null; then
@@ -141,7 +162,7 @@ install_appimage() {
   local tmpdir
   tmpdir="$(mktemp -d)"
   local appimage_file="$tmpdir/auffi.AppImage"
-  local asset_name="auffi_${VERSION#v}_amd64.AppImage"
+  local asset_name="Auffi_${VERSION#v}_amd64.AppImage"
   download_asset "$asset_name" "$appimage_file" || err "Could not download $asset_name from GitHub release $VERSION."
   chmod +x "$appimage_file"
   $SUDO mv "$appimage_file" "$INSTALL_BIN"
@@ -206,8 +227,14 @@ main() {
   detect_distro
   install_deps
 
-  VERSION="$(get_latest_version)"
-  info "Latest release: $VERSION"
+  if [[ -n "${AUFFI_VERSION:-}" ]]; then
+    VERSION="${AUFFI_VERSION}"
+    [[ "$VERSION" =~ ^v ]] || VERSION="v$VERSION"
+    info "Pinned release (AUFFI_VERSION): $VERSION"
+  else
+    VERSION="$(get_latest_version)"
+    info "Latest release: $VERSION"
+  fi
 
   if is_debian_based; then
     install_deb

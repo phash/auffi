@@ -9,13 +9,14 @@
 #
 # Default-Flow:
 #   1) Pre-flight (lock, ssh, docker, nginx -t, caddy validate)
-#   2) Tests (viewer + backend + sharer-lib) — skip mit --skip-tests
+#   2) Tests (viewer + backend + dashboard) — skip mit --skip-tests
 #   3) Diff-Preview (git log seit dem zuletzt deployten SHA) + Confirm
 #   4) Build backend image — skip wenn :${APP_VERSION} schon remote
 #   5) Build viewer + dashboard (npm ci wird übersprungen wenn package-lock unverändert)
 #   6) Transfer image-tarball (mit Trap-Cleanup)
 #   7) Hash-Diff der Configs gegen prod → Liste der zu restartenden Services
-#   8) rsync Compose, Configs, viewer-dist, dashboard-dist, ops/backup.sh
+#   8) rsync Compose, Configs, viewer-dist, dashboard-dist, ops-Skripte
+#      (backup.sh, health-check.sh, lib.sh)
 #   9) docker compose up -d (recreatet bei Image- oder Compose-Spec-Änderung)
 #  10) Service-Restart für geänderte Configs (Single-File-Bind-Mount-Stale-Fix)
 #  11) Erweiterte Health-Checks (homepage, healthz, llms.txt, robots.txt, 404)
@@ -108,7 +109,18 @@ if [[ "${ROLLBACK}" == "true" ]]; then
     exit 1
   }
 
-  PREV_SHA="$(deploy_log_previous_sha)"
+  # Häufigster Rollback-Fall: der letzte Deploy ist an den Health-Checks
+  # gescheitert und hat NIE einen Log-Eintrag bekommen (Step 16 läuft nach
+  # Step 15) — .env.prod trägt aber schon den kaputten SHA. Dann ist der
+  # LETZTE Log-Eintrag der letzte gute Stand, nicht der vorletzte.
+  LAST_LOGGED_SHA="$(deploy_log_last_sha)"
+  RUNNING_SHA="$(remote_env_app_version)"
+  if [[ -n "${LAST_LOGGED_SHA}" && -n "${RUNNING_SHA}" && "${LAST_LOGGED_SHA}" != "${RUNNING_SHA}" ]]; then
+    PREV_SHA="${LAST_LOGGED_SHA}"
+    log_info "Laufender SHA ${RUNNING_SHA} ist nicht im Deploy-Log (gescheiterter Deploy) — Rollback auf letzten geloggten SHA."
+  else
+    PREV_SHA="$(deploy_log_previous_sha)"
+  fi
   if [[ -z "${PREV_SHA}" ]]; then
     log_error "Kein vorheriger SHA im Deploy-Log gefunden (${DEPLOY_LOG_REMOTE}). Mindestens 2 Einträge nötig."
     exit 1
@@ -215,12 +227,20 @@ else
     exit 1
   }
 
+  # dashboard-dist wird in Step 6+10 genauso gebaut und deployed wie der
+  # viewer — also auch genauso gaten.
+  log_info "dashboard: npm test"
+  ( cd "${REPO_ROOT}/dashboard" && npm test --silent ) || {
+    log_error "dashboard-Tests rot — Deploy abgebrochen."
+    exit 1
+  }
+
   # Sharer wird NICHT auf den Server deployed (Desktop-App, separater
   # Release-Flow). Cargo-Tests sind langsam (~5min cold) und nicht
   # Deploy-Critical. Manuell laufen lassen vor dem Sharer-Release:
   #   cd sharer/src-tauri && cargo test --lib
 
-  log_ok "Backend + viewer Tests grün"
+  log_ok "Backend + viewer + dashboard Tests grün"
 fi
 
 # ---------------------------------------------------------------------------
@@ -347,7 +367,10 @@ log_step "Config-Diff (welche Service-Configs haben sich geändert?)"
 
 SERVICES_TO_RESTART=()
 if [[ "${DRY_RUN}" == "false" ]]; then
-  if file_changed_on_remote \
+  # auffi-viewer existiert nur im Cluster-Overlay (standalone served Caddy
+  # den Viewer aus dem viewer-static-Volume) — ein `docker restart` auf
+  # den nicht existenten Container würde den Deploy unter set -e abbrechen.
+  if [[ -n "${CLUSTER_PROXY:-}" ]] && file_changed_on_remote \
       "${REPO_ROOT}/nginx/auffi-viewer.conf" \
       "${DEPLOY_PATH}/nginx/auffi-viewer.conf"; then
     SERVICES_TO_RESTART+=("auffi-viewer")
@@ -381,9 +404,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 10: rsync compose, config, viewer-dist, dashboard-dist, ops/backup.sh
+# Step 10: rsync compose, config, viewer-dist, dashboard-dist, ops-Skripte
 # ---------------------------------------------------------------------------
-log_step "rsync compose + config + dist + ops/backup.sh"
+log_step "rsync compose + config + dist + ops-Skripte"
 
 maybe_run "rsync docker-compose.prod.yml" \
   rsync_to "${REPO_ROOT}/docker-compose.prod.yml" "${DEPLOY_PATH}/"
@@ -391,12 +414,17 @@ maybe_run "rsync docker-compose.prod.yml" \
 if [[ -n "${CLUSTER_PROXY:-}" ]]; then
   maybe_run "rsync docker-compose.cluster.yml" \
     rsync_to "${REPO_ROOT}/docker-compose.cluster.yml" "${DEPLOY_PATH}/"
-  maybe_run "rsync nginx/" \
-    rsync_to "${REPO_ROOT}/nginx/" "${DEPLOY_PATH}/nginx/" --delete
 else
   maybe_run "rsync caddy/" \
     rsync_to "${REPO_ROOT}/caddy/" "${DEPLOY_PATH}/caddy/" --delete
 fi
+
+# nginx/ wird in BEIDEN Modi gebraucht: docker-compose.prod.yml bind-mountet
+# ./nginx/auffi-dashboard.conf in den Dashboard-Sidecar. Fehlt die Datei,
+# legt Docker ein Verzeichnis am Mount-Pfad an und nginx startet ohne
+# Server-Config (/dashboard/* tot).
+maybe_run "rsync nginx/" \
+  rsync_to "${REPO_ROOT}/nginx/" "${DEPLOY_PATH}/nginx/" --delete
 
 maybe_run "rsync coturn/" \
   rsync_to "${REPO_ROOT}/coturn/" "${DEPLOY_PATH}/coturn/" --delete
@@ -407,6 +435,17 @@ maybe_run "rsync .env.prod.example" \
 maybe_run "rsync ops/backup.sh" \
   rsync_to "${REPO_ROOT}/ops/backup.sh" "${DEPLOY_PATH}/ops/backup.sh"
 
+# health-check.sh läuft als Cron auf dem VPS (ops/README § 9) und sourced
+# lib.sh — beide müssen mitgeshippt werden, sonst schlägt der dokumentierte
+# Crontab-Eintrag mit "No such file" fehl.
+maybe_run "rsync ops/health-check.sh" \
+  rsync_to "${REPO_ROOT}/ops/health-check.sh" "${DEPLOY_PATH}/ops/health-check.sh"
+maybe_run "rsync ops/lib.sh" \
+  rsync_to "${REPO_ROOT}/ops/lib.sh" "${DEPLOY_PATH}/ops/lib.sh"
+
+# Excludes: manuell auf dem Server platzierte Sharer-Binaries in /download/
+# (Flat-Hosting-Altbestand, siehe nginx/auffi-viewer.conf) überleben das
+# --delete. Kein *.dmg — es gibt keinen macOS-Build (CLAUDE.md).
 maybe_run "rsync viewer/dist → viewer-dist/" \
   rsync_to "${REPO_ROOT}/viewer/dist/" "${DEPLOY_PATH}/viewer-dist/" \
     --delete \
@@ -414,7 +453,7 @@ maybe_run "rsync viewer/dist → viewer-dist/" \
     --exclude=/download/*.rpm \
     --exclude=/download/*.AppImage \
     --exclude=/download/*.msi \
-    --exclude=/download/*.dmg \
+    --exclude=/download/*.exe \
     --exclude=/download/*.sh \
     --exclude=/download/latest.txt
 
@@ -485,10 +524,14 @@ if [[ "${DRY_RUN}" == "false" ]]; then
   # Smoke-Tests — Hard-fail bei Regression. wait_healthy decken den
   # Backend-Start ab, hier prüfen wir dass die Marketing- und SEO-Pfade
   # noch antworten.
+  # Eigener UA: curls Default-UA matcht den @scrapers-Filter im Standalone-
+  # Caddyfile (403 auf allem außer /healthz + /readyz) — die Checks hier
+  # prüfen aber gerade die Marketing-/SEO-Pfade.
+  DEPLOY_CHECK_UA="auffi-deploy-check/1.0"
   check_url_status() {
     local url="$1"; local expected="$2"
     local got
-    got=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${url}" || echo "000")
+    got=$(curl -s -A "${DEPLOY_CHECK_UA}" -o /dev/null -w "%{http_code}" --max-time 10 "${url}" || echo "000")
     if [[ "${got}" != "${expected}" ]]; then
       log_error "${url} → ${got} (expected ${expected})"
       return 1
@@ -500,10 +543,17 @@ if [[ "${DRY_RUN}" == "false" ]]; then
   check_url_status "https://${DEPLOY_DOMAIN}/llms.txt" "200"
   check_url_status "https://${DEPLOY_DOMAIN}/robots.txt" "200"
   check_url_status "https://${DEPLOY_DOMAIN}/sitemap.xml" "200"
-  # Smoke-404 mit URL OHNE führenden Dot, weil die Caddy-dotfile_protection-
-  # Regel (siehe CLAUDE.md "Caddyfile Footguns") alle /. -Pfade mit 403
-  # blockt — was zwar kein 404 ist, aber semantisch auch "nicht da".
-  check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "404"
+  # Smoke-Check unbekannter Pfad — Erwartung ist Mode-abhängig:
+  #   Cluster: nginx/auffi-viewer.conf → try_files =404 → echte 404.
+  #   Standalone: caddy/Caddyfile SPA-Fallback (try_files {path}
+  #   /index.html) → 200 mit index.html.
+  # URL OHNE führenden Dot, weil die Caddy-dotfile_protection-Regel
+  # (siehe CLAUDE.md "Caddyfile Footguns") alle /. -Pfade mit 403 blockt.
+  if [[ -n "${CLUSTER_PROXY:-}" ]]; then
+    check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "404"
+  else
+    check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "200"
+  fi
 else
   log_dry "skip health checks in dry-run"
 fi
