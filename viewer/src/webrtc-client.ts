@@ -97,7 +97,7 @@ export class ViewerPeer {
       }
     };
 
-    this.dataHub = new DataChannelHub(pc, "caller");
+    this.dataHub = new DataChannelHub(pc);
 
     pc.addTransceiver("video", { direction: "recvonly" });
     const offer = await pc.createOffer();

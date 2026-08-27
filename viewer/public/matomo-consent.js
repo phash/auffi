@@ -26,6 +26,31 @@
   var TRACKER_URL = "https://musikersuche.org/matomo/";
   var SITE_ID = "6";
 
+  // Opt-in ist nur informierte Einwilligung, wenn der Besucher den Text
+  // lesen kann — Sprache anhand <html lang>, wie help-overlay.js.
+  var COPY = {
+    de: {
+      ariaLabel: "Datenschutz-Hinweis zur Reichweitenmessung",
+      text: "Wir messen anonym, wie oft auffi.app aufgerufen wird — selbst-gehostetes Matomo, ohne Cookies, ohne IP-Speicherung. ",
+      moreInfo: "Mehr Info",
+      decline: "Ablehnen",
+      accept: "Statistik OK",
+    },
+    en: {
+      ariaLabel: "Privacy notice about anonymous usage statistics",
+      text: "We measure anonymously how often auffi.app is visited — self-hosted Matomo, no cookies, no IP storage. ",
+      moreInfo: "More info",
+      decline: "Decline",
+      accept: "Allow statistics",
+    },
+  };
+
+  function lang() {
+    return (document.documentElement.lang || "de").toLowerCase().startsWith("en")
+      ? "en"
+      : "de";
+  }
+
   function readConsent() {
     try {
       var v = localStorage.getItem(STORAGE_KEY);
@@ -68,24 +93,21 @@
   }
 
   function buildBanner() {
+    var copy = COPY[lang()];
     var banner = document.createElement("div");
     banner.id = "matomo-consent-banner";
     banner.className = "matomo-consent-banner";
     banner.setAttribute("role", "dialog");
     banner.setAttribute("aria-live", "polite");
-    banner.setAttribute("aria-label", "Datenschutz-Hinweis zur Reichweitenmessung");
+    banner.setAttribute("aria-label", copy.ariaLabel);
 
     var text = document.createElement("p");
     text.className = "matomo-consent-text";
-    text.appendChild(
-      document.createTextNode(
-        "Wir messen anonym, wie oft auffi.app aufgerufen wird — selbst-gehostetes Matomo, ohne Cookies, ohne IP-Speicherung. ",
-      ),
-    );
+    text.appendChild(document.createTextNode(copy.text));
     var link = document.createElement("a");
     link.href = "/datenschutz/#matomo";
     link.className = "matomo-consent-link";
-    link.textContent = "Mehr Info";
+    link.textContent = copy.moreInfo;
     text.appendChild(link);
     text.appendChild(document.createTextNode("."));
     banner.appendChild(text);
@@ -96,7 +118,7 @@
     var no = document.createElement("button");
     no.type = "button";
     no.className = "matomo-consent-btn matomo-consent-no";
-    no.textContent = "Ablehnen";
+    no.textContent = copy.decline;
     no.addEventListener("click", function () {
       writeConsent("no");
       dismissBanner(banner);
@@ -105,7 +127,7 @@
     var ok = document.createElement("button");
     ok.type = "button";
     ok.className = "matomo-consent-btn matomo-consent-ok";
-    ok.textContent = "Statistik OK";
+    ok.textContent = copy.accept;
     ok.addEventListener("click", function () {
       writeConsent("ok");
       dismissBanner(banner);

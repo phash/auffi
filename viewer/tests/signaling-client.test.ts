@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { SignalingClient } from "../src/signaling-client.js";
+import type { PwAttempt, ViewerJoin } from "../src/protocol.js";
 
 class MockWS {
   static OPEN = 1;
@@ -22,11 +23,13 @@ describe("SignalingClient", () => {
     mock.fakeOpen();
     mock.fakeMessage({ type: "peer-confirmed" });
     await p;
+    // `satisfies` pins the expected literal to the documented wire type —
+    // a drift in either the frame or protocol.ts fails to compile.
     expect(JSON.parse(mock.sent[0])).toEqual({
       type: "join",
       role: "viewer",
       code: "284-915-073",
-    });
+    } satisfies ViewerJoin);
   });
 
   it("resolves connect promise on peer-confirmed", async () => {
@@ -115,7 +118,9 @@ describe("SignalingClient", () => {
     mock.fakeOpen();
     mock.fakeMessage({ type: "needs-password" });
     client.sendPwAttempt("hunter2");
-    expect(JSON.parse(mock.sent[1])).toEqual({ type: "pw-attempt", password: "hunter2" });
+    expect(JSON.parse(mock.sent[1])).toEqual(
+      { type: "pw-attempt", password: "hunter2" } satisfies PwAttempt,
+    );
     // Resolve to keep the test clean.
     mock.fakeMessage({ type: "peer-confirmed" });
     await p;

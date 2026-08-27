@@ -3,7 +3,7 @@
 // (und in der vanilla `help-overlay.js` für die statischen Seiten). Diese
 // Funktion verdrahtet nur Öffnen/Schließen + Focus-Management.
 
-import { trapFocus } from "./focus-trap.js";
+import { FOCUSABLE_SELECTOR, trapFocus } from "./focus-trap.js";
 
 /**
  * Verdrahtet den Hilfe-Trigger mit dem Modal: Klick öffnet, Escape /
@@ -31,9 +31,7 @@ export function wireHelpModal(
     if (!modal.hidden) return;
     modal.hidden = false;
     release = trapFocus(dialog, close);
-    const first = dialog.querySelector<HTMLElement>(
-      'button:not([disabled]),a[href],summary,input:not([disabled]),[tabindex]:not([tabindex="-1"])',
-    );
+    const first = dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
     (first ?? dialog).focus();
   };
 

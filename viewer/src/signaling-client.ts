@@ -1,4 +1,10 @@
-import type { OutgoingMessage, RelayPayload } from "./protocol.js";
+import type {
+  OutgoingMessage,
+  PwAttempt,
+  RelayMsg,
+  RelayPayload,
+  ViewerJoin,
+} from "./protocol.js";
 
 export type WSFactory = (url: string) => WebSocket;
 
@@ -24,7 +30,7 @@ export class SignalingClient {
 
     return new Promise((resolve, reject) => {
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "join", role: "viewer", code }));
+        ws.send(JSON.stringify({ type: "join", role: "viewer", code } satisfies ViewerJoin));
       };
       ws.onmessage = (ev: MessageEvent) => {
         // Don't let a malformed frame throw out of the handler — that
@@ -79,8 +85,8 @@ export class SignalingClient {
     });
   }
 
-  sendRelay(payload: unknown): void {
-    this.ws?.send(JSON.stringify({ type: "relay", payload }));
+  sendRelay(payload: RelayPayload): void {
+    this.ws?.send(JSON.stringify({ type: "relay", payload } satisfies RelayMsg));
   }
 
   /**
@@ -90,7 +96,7 @@ export class SignalingClient {
    * on the same WS.
    */
   sendPwAttempt(password: string): void {
-    this.ws?.send(JSON.stringify({ type: "pw-attempt", password }));
+    this.ws?.send(JSON.stringify({ type: "pw-attempt", password } satisfies PwAttempt));
   }
 
   onRelay(fn: (payload: RelayPayload) => void): void {

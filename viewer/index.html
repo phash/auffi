@@ -52,12 +52,12 @@
             "@id": "https://auffi.app/#software",
             "name": "Auffi",
             "applicationCategory": "BusinessApplication",
-            "operatingSystem": "Linux, Windows, macOS",
+            "operatingSystem": "Linux, Windows",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
             "description": "Open-Source-Bildschirm-Sharing mit aktiver Bestätigung, DSGVO-konform und Ende-zu-Ende DTLS-SRTP-verschlüsselt.",
             "url": "https://auffi.app/",
             "inLanguage": "de-DE",
-            "softwareVersion": "0.5.0",
+            "softwareVersion": "0.6.4",
             "license": "https://github.com/phash/auffi/blob/main/LICENSE",
             "downloadUrl": "https://auffi.app/download/",
             "sameAs": ["https://github.com/phash/auffi"],
@@ -508,10 +508,12 @@
            GitHub — sonst würde die Client-IP an GitHub/Azure-CDN leaken (die
            "Keine Daten bei uns / Server in Deutschland"-Zusage unten gilt nur,
            wenn der Download auch über auffi.app läuft) und der server-seitige
-           Download-Counter würde umgangen. Die un-versionierte .exe zeigt via
-           latest auf die aktuelle Version; der versionierte Setup-Dateiname
-           wird wie auf /download/ pro Windows-Release nachgezogen (siehe
-           CLAUDE.md "Download-Proxy Patterns"). -->
+           Download-Counter würde umgangen. Beide Dateinamen sind versioniert
+           und werden wie auf /download/ pro Windows-Release nachgezogen —
+           zusammen mit softwareVersion im JSON-LD oben und der Backend-
+           Allow-List (KNOWN_ASSETS); der Guard dafür ist
+           tests/marketing-pages.test.ts (siehe docs/footguns.md
+           "Download-Proxy Patterns"). -->
       <section id="download" class="download-section" aria-labelledby="download-heading">
         <h2 id="download-heading">Sharer für Windows herunterladen</h2>
 
@@ -531,7 +533,7 @@
         <div class="download-buttons">
           <a
             class="download-btn-primary"
-            href="/api/downloads/file/auffi-sharer-windows-x64.exe"
+            href="/api/downloads/file/Auffi_0.6.4_x64_portable.exe"
             rel="noopener"
             aria-label="Auffi Sharer für Windows herunterladen (.exe, ca. 30 MB)"
           >
@@ -544,7 +546,7 @@
 
           <a
             class="download-btn-secondary"
-            href="/api/downloads/file/Auffi_0.5.0_x64-setup.exe"
+            href="/api/downloads/file/Auffi_0.6.4_x64-setup.exe"
             rel="noopener"
             aria-label="Setup-Installer für Windows (Fallback mit WebView2-Offline)"
           >

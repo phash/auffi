@@ -12,7 +12,9 @@
 // `summary` is the native focusable toggle of a <details>; the help modal is
 // built entirely from <details><summary> rows, so it must be in the set or the
 // trap pins focus to the close button and Tab never reaches the accordion.
-const FOCUSABLE_SELECTOR =
+// Exported as the single source of truth for "what is focusable" — help-modal
+// uses it for its initial-focus query (previously a drifted inline copy).
+export const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
 
 export function trapFocus(container: HTMLElement, onEscape?: () => void): () => void {
@@ -42,9 +44,16 @@ export function trapFocus(container: HTMLElement, onEscape?: () => void): () => 
     }
   };
 
-  container.addEventListener("keydown", onKeydown);
+  // Document-level, not container-level: the guarded toasts are
+  // position:fixed dialogs without a backdrop, so one click on the page
+  // behind them moves focus outside the container — a container-scoped
+  // listener would then never fire again and both the Tab-trap and
+  // Escape-to-close would be dead while aria-modal still promises
+  // confinement. The `!container.contains(active)` branches above pull
+  // focus back in exactly that case.
+  document.addEventListener("keydown", onKeydown);
   return () => {
-    container.removeEventListener("keydown", onKeydown);
+    document.removeEventListener("keydown", onKeydown);
     previouslyFocused?.focus?.();
   };
 }

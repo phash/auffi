@@ -629,6 +629,16 @@ body.streaming .hero-title { display: none; }
   aspect-ratio: 16 / 9;
   width: 100%;
 }
+/* The wrapper is fixed at 16:9 with overflow:hidden — without contain, a
+   non-16:9 share (16:10 laptop, 4:3 or portrait monitor) keeps the video's
+   intrinsic ratio and the overhang is clipped, unreachable at any zoom
+   (pan.ts clamps to the wrapper box). contain letterboxes instead, so the
+   whole remote screen is visible at zoom 1. Pointer coordinates are mapped
+   to the rendered content box in input-capture.ts (videoContentRect). */
+#app.streaming #remote-video {
+  height: 100%;
+  object-fit: contain;
+}
 
 /* gh #40 Collapse-Toggle ── */
 .card-toggle {
@@ -944,27 +954,6 @@ body.streaming .hero-alt-cta { display: none; }
 #status.err { color: var(--error); }
 #status.err::before { background: var(--error); }
 #status.info::before { background: var(--brand); }
-
-/* Pause banner ── */
-#pause-banner {
-  display: none;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.625rem 0.875rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--brand);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  font-weight: 500;
-  color: var(--ink);
-  width: 100%;
-}
-#pause-banner.visible { display: flex; }
-.pause-icon { flex-shrink: 0; width: 16px; height: 16px; color: var(--brand); }
 
 /* ============================================================
    Video area
@@ -1827,19 +1816,9 @@ body.streaming .landing-sections { display: none; }
   color: var(--ink);
 }
 
-/* SR-only / hidden ── */
+/* Hidden ── (the static pages' .visually-hidden lives in
+   public/topbar-footer.css — the app bundle has no user of it) */
 .hidden { display: none !important; }
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 
 /* Respect the OS "reduce motion" setting (WCAG 2.3.3): neutralise all
    animation/transition/auto-scroll for users who get motion sick. */

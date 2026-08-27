@@ -12,6 +12,7 @@
  *
  * Standalone vanilla JS, no Vite, no TS — so the same file works
  * unchanged on the static legal/download pages outside the SPA bundle.
+ * Wählt die Sprache anhand <html lang>, wie help-overlay.js.
  * CSS sibling at /feedback-fab.css.
  */
 
@@ -20,6 +21,55 @@
   const MODAL_ID = "feedback-modal";
   const TOAST_ID = "feedback-toast";
   const SVG_NS = "http://www.w3.org/2000/svg";
+
+  const COPY = {
+    de: {
+      fabLabel: "Feedback geben",
+      fabText: "Feedback",
+      title: "Feedback geben",
+      close: "Schließen",
+      bodyLabel: "Was funktioniert nicht / was fehlt / was magst du?",
+      placeholder: "Schreib uns ein paar Sätze — wir antworten per Mail.",
+      cancel: "Abbrechen",
+      send: "Senden",
+      emptyBody: "Bitte Text eingeben.",
+      sending: "Sende …",
+      networkError: "Netzwerkfehler. Bitte später erneut.",
+      sendFailed: "Konnte nicht gesendet werden.",
+      thanks: "Danke für dein Feedback!",
+    },
+    en: {
+      fabLabel: "Give feedback",
+      fabText: "Feedback",
+      title: "Give feedback",
+      close: "Close",
+      bodyLabel: "What's broken / what's missing / what do you like?",
+      placeholder: "Write us a few sentences — we'll reply by email.",
+      cancel: "Cancel",
+      send: "Send",
+      emptyBody: "Please enter some text.",
+      sending: "Sending …",
+      networkError: "Network error. Please try again later.",
+      sendFailed: "Could not send your feedback.",
+      thanks: "Thanks for your feedback!",
+    },
+  };
+
+  function lang() {
+    return (document.documentElement.lang || "de").toLowerCase().startsWith("en")
+      ? "en"
+      : "de";
+  }
+
+  function focusableIn(container) {
+    // help-overlay.js's selector plus textarea — this modal's main
+    // control is one.
+    return Array.prototype.slice.call(
+      container.querySelectorAll(
+        'a[href],button:not([disabled]),summary,input:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      ),
+    );
+  }
 
   function init() {
     // Probe login state. /api/me is the canonical "who am I" endpoint;
@@ -37,12 +87,13 @@
 
   function mount() {
     if (document.getElementById(FAB_ID)) return;
+    const copy = COPY[lang()];
     const btn = document.createElement("button");
     btn.id = FAB_ID;
     btn.className = "feedback-fab";
     btn.type = "button";
-    btn.setAttribute("aria-label", "Feedback geben");
-    btn.title = "Feedback geben";
+    btn.setAttribute("aria-label", copy.fabLabel);
+    btn.title = copy.fabLabel;
 
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "22");
@@ -60,7 +111,7 @@
     btn.appendChild(svg);
     const label = document.createElement("span");
     label.className = "feedback-fab-label";
-    label.textContent = "Feedback";
+    label.textContent = copy.fabText;
     btn.appendChild(label);
 
     btn.addEventListener("click", openModal);
@@ -68,6 +119,7 @@
   }
 
   function openModal() {
+    const copy = COPY[lang()];
     const existing = document.getElementById(MODAL_ID);
     if (existing) existing.remove();
 
@@ -86,12 +138,12 @@
     header.className = "feedback-modal-header";
     const h2 = document.createElement("h2");
     h2.id = "feedback-modal-title";
-    h2.textContent = "Feedback geben";
+    h2.textContent = copy.title;
     header.appendChild(h2);
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "feedback-modal-close";
-    closeBtn.setAttribute("aria-label", "Schließen");
+    closeBtn.setAttribute("aria-label", copy.close);
     closeBtn.textContent = "×";
     header.appendChild(closeBtn);
     card.appendChild(header);
@@ -104,14 +156,14 @@
     const label = document.createElement("label");
     label.className = "feedback-modal-label";
     const labelText = document.createElement("span");
-    labelText.textContent = "Was funktioniert nicht / was fehlt / was magst du?";
+    labelText.textContent = copy.bodyLabel;
     label.appendChild(labelText);
     const ta = document.createElement("textarea");
     ta.name = "body";
     ta.rows = 5;
     ta.maxLength = 4000;
     ta.required = true;
-    ta.placeholder = "Schreib uns ein paar Sätze — wir antworten per Mail.";
+    ta.placeholder = copy.placeholder;
     label.appendChild(ta);
     form.appendChild(label);
 
@@ -120,12 +172,12 @@
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.className = "feedback-modal-btn feedback-modal-btn-secondary";
-    cancelBtn.textContent = "Abbrechen";
+    cancelBtn.textContent = copy.cancel;
     actions.appendChild(cancelBtn);
     const submitBtn = document.createElement("button");
     submitBtn.type = "submit";
     submitBtn.className = "feedback-modal-btn feedback-modal-btn-primary";
-    submitBtn.textContent = "Senden";
+    submitBtn.textContent = copy.send;
     actions.appendChild(submitBtn);
     form.appendChild(actions);
 
@@ -157,6 +209,22 @@
       if (e.key === "Escape") {
         e.preventDefault();
         close();
+        return;
+      }
+      // aria-modal promises focus confinement — wrap Tab inside the card
+      // (same trap as help-overlay.js in this asset set).
+      if (e.key !== "Tab") return;
+      const items = focusableIn(card);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !card.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !card.contains(active))) {
+        e.preventDefault();
+        first.focus();
       }
     }
     document.addEventListener("keydown", onKey);
@@ -170,20 +238,19 @@
       e.preventDefault();
       const text = ta.value.trim();
       if (text.length === 0) {
-        status.textContent = "Bitte Text eingeben.";
+        status.textContent = copy.emptyBody;
         status.className = "feedback-modal-status err";
         return;
       }
       submitBtn.disabled = true;
       cancelBtn.disabled = true;
-      status.textContent = "Sende …";
+      status.textContent = copy.sending;
       status.className = "feedback-modal-status info";
       // Separate the network-error path (.catch on fetch) from the
       // HTTP-error path (response.ok=false). Without this split, any
       // throw inside the .then() — e.g. a future close()-throw — would
       // surface as a misleading "Netzwerkfehler" toast (code-review
       // CODE-H4, 2026-05-17).
-      let response;
       fetch("/api/feedback", {
         method: "POST",
         credentials: "same-origin",
@@ -198,30 +265,28 @@
         .catch(function () {
           submitBtn.disabled = false;
           cancelBtn.disabled = false;
-          status.textContent = "Netzwerkfehler. Bitte später erneut.";
+          status.textContent = copy.networkError;
           status.className = "feedback-modal-status err";
           return null;
         })
         .then(function (r) {
           if (r === null) return;
-          response = r;
           if (r.ok) {
             close();
-            showToast("Danke für dein Feedback!");
+            showToast(copy.thanks);
             return;
           }
           return r.json().then(
             function (j) {
               submitBtn.disabled = false;
               cancelBtn.disabled = false;
-              status.textContent =
-                (j && j.message) || "Konnte nicht gesendet werden.";
+              status.textContent = (j && j.message) || copy.sendFailed;
               status.className = "feedback-modal-status err";
             },
             function () {
               submitBtn.disabled = false;
               cancelBtn.disabled = false;
-              status.textContent = "Konnte nicht gesendet werden.";
+              status.textContent = copy.sendFailed;
               status.className = "feedback-modal-status err";
             },
           );

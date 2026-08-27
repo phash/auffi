@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   CompactBarController,
-  formatBytes,
   formatDuration,
 } from "../src/compact-bar.js";
 
@@ -20,27 +19,6 @@ describe("formatDuration", () => {
   });
   it("clamps negative input to 00:00", () => {
     expect(formatDuration(-5_000)).toBe("00:00");
-  });
-});
-
-describe("formatBytes", () => {
-  it("returns raw bytes under 1 KiB", () => {
-    expect(formatBytes(0)).toBe("0 B");
-    expect(formatBytes(512)).toBe("512 B");
-  });
-  it("uses KB up to 1 MiB", () => {
-    expect(formatBytes(1024)).toBe("1.0 KB");
-    expect(formatBytes(1500)).toBe("1.5 KB");
-  });
-  it("uses MB up to 1 GiB", () => {
-    expect(formatBytes(2 * 1024 * 1024)).toBe("2.0 MB");
-  });
-  it("uses GB past 1 GiB", () => {
-    expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe("3.00 GB");
-  });
-  it("handles NaN / negative defensively", () => {
-    expect(formatBytes(NaN)).toBe("0 B");
-    expect(formatBytes(-100)).toBe("0 B");
   });
 });
 

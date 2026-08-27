@@ -1,8 +1,9 @@
 import { SignalingClient } from "./signaling-client.js";
 import { ViewerPeer } from "./webrtc-client.js";
 import type { ConnectionType } from "./webrtc-client.js";
+import type { RelayBye, RelayIce, RelaySdp } from "./protocol.js";
 import { fetchIceServers } from "./turn-config.js";
-import { FreeTierTimer } from "./free-tier-timer.js";
+import { createConnectionTypeHandler } from "./connection-type-handler.js";
 import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
@@ -22,8 +23,8 @@ import {
   SessionTracker,
   formatConnectionType,
   formatDuration,
-  formatFileSize,
 } from "./session-summary.js";
+import { formatBytes } from "./format.js";
 
 // Backstop timeouts so the connect flow never dead-ends in a spinner. The
 // visible Abbrechen button is the primary escape; these fire only if the user
@@ -359,7 +360,6 @@ export function bindUI(backendWsUrl: string): void {
   });
   let capture: InputCapture | null = null;
   let fileManager: FileTransferManager | null = null;
-  let freeTierTimer: FreeTierTimer | null = null;
   let lastCode: string | null = null;
   let manualDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
   const MANUAL_DISCONNECT_RECONNECT_WINDOW_MS = 30_000;
@@ -440,7 +440,7 @@ export function bindUI(backendWsUrl: string): void {
         ul.className = "session-summary-files-list";
         for (const f of summary.receivedFiles) {
           const li = document.createElement("li");
-          li.textContent = `${f.name} — ${formatFileSize(f.size)}`;
+          li.textContent = `${f.name} — ${formatBytes(f.size)}`;
           ul.appendChild(li);
         }
         sessionSummaryFilesEl.replaceChildren(ul);
@@ -462,6 +462,16 @@ export function bindUI(backendWsUrl: string): void {
   });
   const clearIceGraceTimer = (): void => iceState.clear();
 
+  // Detached, unit-testable handler for relay ⇄ p2p switches: owns the
+  // free-tier timer so a relay→p2p switch stops the cutoff (and clears the
+  // warning), and a relay re-entry can never leak a replaced timer whose
+  // onCutoff would kill a later session.
+  const connectionTypeHandler = createConnectionTypeHandler({
+    onWarning: () => showFreeTierWarning(),
+    onCutoff: () => teardown(t("teardown.relayLimit"), "info"),
+    onLeftRelay: () => hideFreeTierWarning(),
+  });
+
   let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
   let fileOfferTrapRelease: (() => void) | null = null;
 
@@ -481,6 +491,48 @@ export function bindUI(backendWsUrl: string): void {
       setInputTogglePressed(inputToggleBtn, false);
     }
   };
+
+  // gh #36: unattended-mode password prompt. Hoisted to bindUI level
+  // (mirroring closeFileOffer) so the generic teardown() can close the modal
+  // and release its focus trap — otherwise a cancel/timeout while the prompt
+  // is open leaves a password dialog for a session that no longer exists.
+  // Only submitPw lives in doConnect: it needs the per-connect backstop.
+  const pwToast = document.getElementById("pw-prompt-toast");
+  const pwInput = document.getElementById("pw-prompt-input") as HTMLInputElement | null;
+  const pwSubmit = document.getElementById("pw-prompt-submit") as HTMLButtonElement | null;
+  const pwCancel = document.getElementById("pw-prompt-cancel") as HTMLButtonElement | null;
+  const pwMessage = document.getElementById("pw-prompt-message");
+  // The pw-prompt scaffolding lives in index.html and is missing only in
+  // test-DOM stubs. In production all five are present; guarding makes the
+  // existing test fixtures keep working without every one of them having to
+  // be updated.
+  const havePwPrompt = !!(pwToast && pwInput && pwSubmit && pwCancel && pwMessage);
+  let pwTrapRelease: (() => void) | null = null;
+  const showPwPrompt = (text: string, wrong: boolean): void => {
+    if (!havePwPrompt) return;
+    pwMessage!.textContent = text;
+    pwMessage!.classList.toggle("wrong", wrong);
+    pwInput!.value = "";
+    pwToast!.classList.add("active");
+    pwSubmit!.disabled = false;
+    pwInput!.focus();
+    // Confine Tab to the dialog; Escape cancels (same as the Cancel button).
+    pwTrapRelease?.();
+    pwTrapRelease = trapFocus(pwToast!, () => pwCancel!.click());
+  };
+  const hidePwPrompt = (): void => {
+    if (!pwToast || !pwInput) return;
+    pwTrapRelease?.();
+    pwTrapRelease = null;
+    pwToast.classList.remove("active");
+    pwInput.value = "";
+  };
+  if (havePwPrompt) {
+    pwCancel!.onclick = (): void => {
+      hidePwPrompt();
+      teardown(t("teardown.cancelledByHelper"), "info", true);
+    };
+  }
 
   codeInput.addEventListener("input", () => {
     codeInput.value = normaliseCodeInput(codeInput.value);
@@ -516,14 +568,14 @@ export function bindUI(backendWsUrl: string): void {
     clearIceGraceTimer();
     clearConnectTimeout();
     hideConnectingControls();
-    freeTierTimer?.stop();
-    freeTierTimer = null;
+    connectionTypeHandler.stop();
     hideFreeTierWarning();
     capture?.disable();
     capture = null;
     fileManager?.cancelAll();
     fileManager = null;
     closeFileOffer(false);
+    hidePwPrompt();
     setInputTogglePressed(inputToggleBtn, false);
     peer?.close();
     signaling?.close();
@@ -557,7 +609,7 @@ export function bindUI(backendWsUrl: string): void {
     // surface as the less-friendly "Verbindung verloren". Best-effort —
     // if the WS already closed the message is dropped silently.
     try {
-      signaling?.sendRelay({ kind: "bye" });
+      signaling?.sendRelay({ kind: "bye" } satisfies RelayBye);
     } catch {
       /* ignore */
     }
@@ -583,7 +635,7 @@ export function bindUI(backendWsUrl: string): void {
     // Let the sharer know we gave up so its confirm dialog can dismiss,
     // best-effort. Then return to the entry screen with reconnect offered.
     try {
-      signaling?.sendRelay({ kind: "bye" });
+      signaling?.sendRelay({ kind: "bye" } satisfies RelayBye);
     } catch {
       /* ignore */
     }
@@ -617,9 +669,22 @@ export function bindUI(backendWsUrl: string): void {
     fileInput.value = "";
   });
 
+  // A file dragged anywhere over the app must never trigger the browser
+  // default of navigating to the dropped file — that unloads the page and
+  // kills a live session when the helper misses the video wrapper by a few
+  // pixels (toolbar, status bar, background). Text drags keep their native
+  // behavior so dragging the 9-digit code into the input still works.
+  const guardFileDrag = (e: DragEvent): void => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+      e.preventDefault();
+    }
+  };
+  document.addEventListener("dragover", guardFileDrag);
+  document.addEventListener("drop", guardFileDrag);
+
   videoWrapper.addEventListener("dragover", (e) => {
-    if (!fileManager) return;
     e.preventDefault();
+    if (!fileManager) return;
     videoWrapper.classList.add("drop-over");
   });
 
@@ -628,9 +693,11 @@ export function bindUI(backendWsUrl: string): void {
   });
 
   videoWrapper.addEventListener("drop", (e) => {
+    // Unconditional preventDefault: before the data channels are ready
+    // (fileManager still null) the drop is swallowed, not navigated to.
+    e.preventDefault();
     videoWrapper.classList.remove("drop-over");
     if (!fileManager) return;
-    e.preventDefault();
     const file = e.dataTransfer?.files[0];
     if (file) {
       fileManager.send(file).catch(() => {
@@ -747,23 +814,13 @@ export function bindUI(backendWsUrl: string): void {
         });
       });
       peer.onIceCandidate((candidate) => {
-        if (candidate) signaling?.sendRelay({ kind: "ice", candidate });
+        if (candidate) signaling?.sendRelay({ kind: "ice", candidate } satisfies RelayIce);
       });
       peer.onIceState((state) => iceState.handle(state));
       peer.onConnectionType((type) => {
         setConnectionType(type);
         sessionTracker.setConnectionType(type);
-        if (type === "relay") {
-          freeTierTimer = new FreeTierTimer();
-          freeTierTimer.start({
-            onWarning: () => {
-              showFreeTierWarning();
-            },
-            onCutoff: () => {
-              teardown(t("teardown.relayLimit"), "info");
-            },
-          });
-        }
+        connectionTypeHandler.handle(type);
       });
 
       signaling.onRelay((payload) => {
@@ -782,41 +839,12 @@ export function bindUI(backendWsUrl: string): void {
 
       // gh #36: unattended-mode password prompt. The backend emits
       // `needs-password` after the JOIN when the code resolves to a
-      // registered device. We don't tear down on this; we show a
-      // modal that lets the user type the device password and
-      // `sendPwAttempt` it back. wrong-password keeps the modal up
-      // and shows attempts-left; the terminal failures (locked,
-      // rejected-by-user) are caught by the join() .catch below.
-      const pwToast = document.getElementById("pw-prompt-toast");
-      const pwInput = document.getElementById("pw-prompt-input") as HTMLInputElement | null;
-      const pwSubmit = document.getElementById("pw-prompt-submit") as HTMLButtonElement | null;
-      const pwCancel = document.getElementById("pw-prompt-cancel") as HTMLButtonElement | null;
-      const pwMessage = document.getElementById("pw-prompt-message");
-      // The pw-prompt scaffolding lives in index.html and is missing
-      // only in test-DOM stubs. In production all five are present;
-      // guarding makes the existing test fixtures keep working without
-      // every one of them having to be updated.
-      const havePwPrompt = !!(pwToast && pwInput && pwSubmit && pwCancel && pwMessage);
-      let pwTrapRelease: (() => void) | null = null;
-      const showPwPrompt = (text: string, wrong: boolean): void => {
-        if (!havePwPrompt) return;
-        pwMessage!.textContent = text;
-        pwMessage!.classList.toggle("wrong", wrong);
-        pwInput!.value = "";
-        pwToast!.classList.add("active");
-        pwSubmit!.disabled = false;
-        pwInput!.focus();
-        // Confine Tab to the dialog; Escape cancels (same as the Cancel button).
-        pwTrapRelease?.();
-        pwTrapRelease = trapFocus(pwToast!, () => pwCancel!.click());
-      };
-      const hidePwPrompt = (): void => {
-        if (!havePwPrompt) return;
-        pwTrapRelease?.();
-        pwTrapRelease = null;
-        pwToast!.classList.remove("active");
-        pwInput!.value = "";
-      };
+      // registered device. We don't tear down on this; we show the
+      // (bindUI-level) modal and `sendPwAttempt` the typed password back.
+      // wrong-password keeps the modal up and shows attempts-left; the
+      // terminal failures (locked, rejected-by-user) are caught by the
+      // join() .catch below. Only the submit wiring lives here — it re-arms
+      // this connect's backstop.
       const submitPw = (): void => {
         if (!havePwPrompt) return;
         const password = pwInput!.value;
@@ -834,10 +862,6 @@ export function bindUI(backendWsUrl: string): void {
         pwSubmit!.onclick = submitPw;
         pwInput!.onkeydown = (e: KeyboardEvent): void => {
           if (e.key === "Enter") submitPw();
-        };
-        pwCancel!.onclick = (): void => {
-          hidePwPrompt();
-          teardown(t("teardown.cancelledByHelper"), "info", true);
         };
       }
 
@@ -872,7 +896,7 @@ export function bindUI(backendWsUrl: string): void {
           armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
           hidePwPrompt();
           const offer = await peer.start();
-          signaling.sendRelay({ kind: "sdp", sdp: offer });
+          signaling.sendRelay({ kind: "sdp", sdp: offer } satisfies RelaySdp);
           // Spec gh #82: green dot only AFTER the first frame is composited;
           // until then the spinner overlay is still up so the status must
           // stay informational (blue dot). setVideoStream() flips this to

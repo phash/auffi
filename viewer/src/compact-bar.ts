@@ -12,6 +12,7 @@
 // die WebRTC-Peer-Implementation weiß.
 
 import { t } from "./i18n.js";
+import { formatBytes } from "./format.js";
 
 const STORAGE_KEY = "auffi.viewer.compactBar.collapsed";
 
@@ -120,15 +121,6 @@ export function formatDuration(ms: number): string {
   const pad = (n: number): string => n.toString().padStart(2, "0");
   if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
   return `${pad(m)}:${pad(s)}`;
-}
-
-/** Binär-präfixe (KiB/MiB/GiB) — passt zu wie OS-Datei-Größen anzeigen. */
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function readPrefersCollapsed(): boolean {

@@ -180,6 +180,109 @@ describe("FileTransferManager — send", () => {
     expect(lastEvent.kind).toBe("file-done");
   });
 
+  it("rejects the send() promise when the sharer answers the offer with file-error", async () => {
+    // The sharer really does answer offers with file-error (too-many-active,
+    // file-too-large). Previously only pendingReceive was cleaned up and the
+    // awaited send() stayed pending until session teardown.
+    const file = new File([new Uint8Array([1, 2, 3])], "big.iso", { type: "application/octet-stream" });
+    const sendPromise = manager.send(file);
+
+    await vi.waitFor(() => {
+      expect(sentEvents.length).toBeGreaterThan(0);
+    });
+    const offer = sentEvents[0];
+    if (offer.kind !== "file-offer") throw new Error("expected file-offer");
+
+    manager.handle({ kind: "file-error", id: offer.id, message: "file-too-large" });
+
+    await expect(sendPromise).rejects.toThrow("file-too-large");
+  });
+
+  it("file-error mid-stream aborts the chunk loop (no further chunks, no file-done)", async () => {
+    let awaitResolve: () => void = () => {};
+    const awaitLow = (): Promise<void> =>
+      new Promise((resolve) => {
+        awaitResolve = resolve;
+      });
+    // High bufferedAmount from the start → streamFile blocks on the first
+    // chunk's backpressure wait, giving the test a window to inject the error.
+    const mgr = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      (buf) => sentChunks.push(buf),
+      () => 2 * 1024 * 1024,
+      awaitLow,
+    );
+
+    const file = new File([new Uint8Array(20000)], "abort.bin", { type: "application/octet-stream" });
+    const sendPromise = mgr.send(file);
+    await vi.waitFor(() => {
+      expect(sentEvents.length).toBeGreaterThan(0);
+    });
+    const offer = sentEvents[0];
+    if (offer.kind !== "file-offer") throw new Error("expected file-offer");
+
+    mgr.handle({ kind: "file-accept", id: offer.id });
+    // Let streamFile reach the backpressure wait, then error + unblock.
+    await new Promise((r) => setTimeout(r, 10));
+    mgr.handle({ kind: "file-error", id: offer.id, message: "cannot-open-file" });
+    awaitResolve();
+
+    await expect(sendPromise).rejects.toThrow(/aborted/i);
+    expect(sentChunks).toHaveLength(0);
+    expect(sentEvents.some((e) => e.kind === "file-done")).toBe(false);
+  });
+
+  it("cancelAll aborts an accepted in-flight stream so send() settles", async () => {
+    let awaitResolve: () => void = () => {};
+    const awaitLow = (): Promise<void> =>
+      new Promise((resolve) => {
+        awaitResolve = resolve;
+      });
+    const mgr = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      (buf) => sentChunks.push(buf),
+      () => 2 * 1024 * 1024,
+      awaitLow,
+    );
+
+    const file = new File([new Uint8Array(20000)], "teardown.bin", { type: "application/octet-stream" });
+    const sendPromise = mgr.send(file);
+    await vi.waitFor(() => {
+      expect(sentEvents.length).toBeGreaterThan(0);
+    });
+    const offer = sentEvents[0];
+    if (offer.kind !== "file-offer") throw new Error("expected file-offer");
+
+    mgr.handle({ kind: "file-accept", id: offer.id });
+    await new Promise((r) => setTimeout(r, 10));
+    mgr.cancelAll();
+    awaitResolve();
+
+    await expect(sendPromise).rejects.toThrow(/aborted/i);
+    expect(sentEvents.some((e) => e.kind === "file-done")).toBe(false);
+  });
+
+  it("send() rejects instead of hanging when the backpressure wait rejects (channel closed)", async () => {
+    const mgr = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      (buf) => sentChunks.push(buf),
+      () => 2 * 1024 * 1024,
+      () => Promise.reject(new Error("files channel closed")),
+    );
+
+    const file = new File([new Uint8Array(20000)], "closed.bin", { type: "application/octet-stream" });
+    const sendPromise = mgr.send(file);
+    await vi.waitFor(() => {
+      expect(sentEvents.length).toBeGreaterThan(0);
+    });
+    const offer = sentEvents[0];
+    if (offer.kind !== "file-offer") throw new Error("expected file-offer");
+
+    mgr.handle({ kind: "file-accept", id: offer.id });
+    await expect(sendPromise).rejects.toThrow(/closed/);
+    expect(sentEvents.some((e) => e.kind === "file-done")).toBe(false);
+  });
+
   it("respects backpressure threshold — waits when bufferedAmount is high", async () => {
     let awaitCalled = false;
     let awaitResolve: () => void = () => {};

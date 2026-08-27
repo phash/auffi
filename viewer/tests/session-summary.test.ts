@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   SessionTracker,
   formatDuration,
-  formatFileSize,
   formatConnectionType,
 } from "../src/session-summary.js";
 
@@ -90,14 +89,6 @@ describe("formatDuration", () => {
     expect(formatDuration(60_000)).toBe("1 min 00 s");
     expect(formatDuration(65_000)).toBe("1 min 05 s");
     expect(formatDuration(12 * 60_000 + 34_000)).toBe("12 min 34 s");
-  });
-});
-
-describe("formatFileSize", () => {
-  it("uses B / kB / MB depending on magnitude", () => {
-    expect(formatFileSize(512)).toBe("512 B");
-    expect(formatFileSize(2048)).toBe("2.0 kB");
-    expect(formatFileSize(3 * 1024 * 1024)).toBe("3.00 MB");
   });
 });
 

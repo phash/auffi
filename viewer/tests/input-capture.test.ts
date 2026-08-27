@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { InputCapture } from "../src/input-capture.js";
+import { InputCapture, videoContentRect } from "../src/input-capture.js";
 
 function makeVideo(width = 1920, height = 1080): HTMLVideoElement {
   const v = document.createElement("video");
@@ -71,6 +71,91 @@ describe("InputCapture", () => {
     cap.enable();
     video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 120 }));
     expect(emit).toHaveBeenCalledWith({ kind: "scroll", dx: 0, dy: 120 });
+  });
+
+  // The sharer converts dy → wheel notches via trunc(dy / 120) and skips the
+  // scroll when the result is 0 — so the viewer must only emit whole 120-px
+  // notches and accumulate everything smaller (trackpad pixel streams,
+  // Firefox line-mode events, Chrome's 100-px notches).
+  it("normalizes DOM_DELTA_LINE wheel events so one 3-line notch becomes one 120-px notch", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 3, deltaMode: WheelEvent.DOM_DELTA_LINE }));
+    expect(emit).toHaveBeenCalledWith({ kind: "scroll", dx: 0, dy: 120 });
+  });
+
+  it("accumulates sub-notch pixel deltas until a whole notch is reached", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 60 }));
+    expect(emit).not.toHaveBeenCalled();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 60 }));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "scroll", dx: 0, dy: 120 });
+  });
+
+  it("keeps the sub-notch remainder after emitting whole notches", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 300 }));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "scroll", dx: 0, dy: 240 });
+    // 60 px remainder + 60 px → next whole notch.
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 60 }));
+    expect(emit).toHaveBeenLastCalledWith({ kind: "scroll", dx: 0, dy: 120 });
+  });
+
+  it("accumulates negative deltas symmetrically", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: -100 }));
+    expect(emit).not.toHaveBeenCalled();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: -100 }));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "scroll", dx: 0, dy: -120 });
+  });
+
+  it("clamps a huge wheel delta to 100 notches and drops the excess", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 1e9 }));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "scroll", dx: 0, dy: 100 * 120 });
+    // The excess must not linger in the accumulator: the next notch is exact.
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 120 }));
+    expect(emit).toHaveBeenLastCalledWith({ kind: "scroll", dx: 0, dy: 120 });
+    expect(emit).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores non-finite wheel deltas without polluting the accumulator", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    // The WheelEvent constructor (WebIDL double) rejects non-finite values,
+    // so inject one the way a hostile/buggy dispatcher could: via property
+    // override on a real event object.
+    const ev = new WheelEvent("wheel", { deltaX: 0, deltaY: 0 });
+    Object.defineProperty(ev, "deltaY", { value: Infinity });
+    video.dispatchEvent(ev);
+    expect(emit).not.toHaveBeenCalled();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, deltaY: 120 }));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "scroll", dx: 0, dy: 120 });
+  });
+
+  it("forwards horizontal wheel deltas in whole notches too", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new WheelEvent("wheel", { deltaX: 240, deltaY: 0 }));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "scroll", dx: 240, dy: 0 });
   });
 
   it("emits key events with modifiers when video has focus", () => {
@@ -160,5 +245,178 @@ describe("InputCapture", () => {
     cap.enable();
     video.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
     expect(emit).toHaveBeenCalledTimes(1);
+  });
+
+  it("captures the pointer on pointerdown so releases outside the video still arrive", () => {
+    const video = makeVideo();
+    const setPointerCapture = vi.fn();
+    (video as HTMLVideoElement & { setPointerCapture: (id: number) => void }).setPointerCapture = setPointerCapture;
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0, pointerId: 7 }));
+    expect(setPointerCapture).toHaveBeenCalledWith(7);
+  });
+
+  it("does not capture the pointer for unmapped buttons", () => {
+    const video = makeVideo();
+    const setPointerCapture = vi.fn();
+    (video as HTMLVideoElement & { setPointerCapture: (id: number) => void }).setPointerCapture = setPointerCapture;
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 5, pointerId: 7 }));
+    expect(setPointerCapture).not.toHaveBeenCalled();
+  });
+
+  it("synthesizes button releases on pointercancel", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    emit.mockClear();
+    video.dispatchEvent(new PointerEvent("pointercancel"));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "mouse-button", button: "left", pressed: false });
+    // The held-set is cleared — a second cancel must not re-release.
+    emit.mockClear();
+    video.dispatchEvent(new PointerEvent("pointercancel"));
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("synthesizes button releases on lostpointercapture", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 2 }));
+    emit.mockClear();
+    video.dispatchEvent(new Event("lostpointercapture"));
+    expect(emit).toHaveBeenCalledExactlyOnceWith({ kind: "mouse-button", button: "right", pressed: false });
+  });
+
+  it("does not synthesize a release after a normal pointerup already released", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    video.dispatchEvent(new PointerEvent("pointerup", { button: 0 }));
+    emit.mockClear();
+    // Browsers fire lostpointercapture after the pointerup that ends an
+    // implicit capture — that must not produce a duplicate release.
+    video.dispatchEvent(new Event("lostpointercapture"));
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  // Escape is the advertised local off-switch ("Esc zum Beenden"): ui.ts
+  // disables capture on the document-level keydown right after this event, so
+  // a forwarded Escape press could never be released and would stay held on
+  // the shared machine for the rest of the stream.
+  it("never forwards Escape (local off-switch, would stick remotely)", () => {
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape" }));
+    video.dispatchEvent(new KeyboardEvent("keyup", { code: "Escape" }));
+    expect(emit).not.toHaveBeenCalled();
+    document.body.removeChild(video);
+  });
+
+  it("disable() releases everything still held before detaching (buttons + keys)", () => {
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "ShiftLeft", shiftKey: true }));
+    emit.mockClear();
+    cap.disable();
+    expect(emit).toHaveBeenCalledWith({ kind: "mouse-button", button: "left", pressed: false });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "key", code: "ShiftLeft", pressed: false,
+      modifiers: { shift: false, ctrl: false, alt: false, meta: false },
+    });
+    expect(emit).toHaveBeenCalledTimes(2);
+    // Second disable must not re-release.
+    emit.mockClear();
+    cap.disable();
+    expect(emit).not.toHaveBeenCalled();
+    document.body.removeChild(video);
+  });
+
+  it("does not release keys on disable that already got their keyup", () => {
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA" }));
+    video.dispatchEvent(new KeyboardEvent("keyup", { code: "KeyA" }));
+    emit.mockClear();
+    cap.disable();
+    expect(emit).not.toHaveBeenCalled();
+    document.body.removeChild(video);
+  });
+});
+
+describe("videoContentRect", () => {
+  // With object-fit: contain the video ELEMENT box is the 16:9 wrapper while
+  // the CONTENT is letterboxed inside — pointer coordinates must be
+  // normalized against the content box or clicks land offset on non-16:9
+  // shares.
+  it("matches the element box when aspect ratios agree", () => {
+    const rect = { left: 10, top: 20, width: 960, height: 540 };
+    expect(videoContentRect(rect, 1920, 1080)).toEqual({ left: 10, top: 20, width: 960, height: 540 });
+  });
+
+  it("pillarboxes a 4:3 video inside a 16:9 element box", () => {
+    const rect = { left: 0, top: 0, width: 960, height: 540 };
+    // scale = min(960/1600, 540/1200) = 0.45 → 720 × 540, centered → left 120.
+    expect(videoContentRect(rect, 1600, 1200)).toEqual({ left: 120, top: 0, width: 720, height: 540 });
+  });
+
+  it("letterboxes a 16:10 video inside a 16:9 element box", () => {
+    const rect = { left: 0, top: 0, width: 960, height: 540 };
+    // scale = min(960/1920, 540/1200) = 0.45 → 864 × 540, centered → left 48.
+    expect(videoContentRect(rect, 1920, 1200)).toEqual({ left: 48, top: 0, width: 864, height: 540 });
+  });
+
+  it("falls back to the element box while video metadata is missing", () => {
+    const rect = { left: 5, top: 5, width: 960, height: 540 };
+    expect(videoContentRect(rect, 0, 0)).toEqual(rect);
+  });
+});
+
+describe("InputCapture — non-16:9 coordinate mapping", () => {
+  it("normalizes pointer coordinates against the letterboxed content box", async () => {
+    // 4:3 source in a 960×540 element: content is 720×540 at left offset 120.
+    const video = makeVideo(1600, 1200);
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 540, right: 960, bottom: 540, x: 0, y: 0, toJSON: () => ({}) });
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 480, clientY: 270 }));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    expect(emit).toHaveBeenCalledWith({ kind: "mouse-move", x: 0.5, y: 0.5 });
+    document.body.removeChild(video);
+  });
+
+  it("clamps coordinates in the pillarbox bars to the content edge", async () => {
+    const video = makeVideo(1600, 1200);
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 540, right: 960, bottom: 540, x: 0, y: 0, toJSON: () => ({}) });
+    // 60 px into the left pillarbox bar (content starts at 120).
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 60, clientY: 270 }));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    expect(emit).toHaveBeenCalledWith({ kind: "mouse-move", x: 0, y: 0.5 });
+    document.body.removeChild(video);
   });
 });

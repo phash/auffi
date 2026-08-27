@@ -8,10 +8,21 @@
  *
  * Asset name is derived from the href (last path segment of the
  * /api/downloads/file/ URL). Vanilla JS so the file works outside the
- * Vite bundle.
+ * Vite bundle. Wählt die Sprache anhand <html lang>, wie help-overlay.js
+ * — die Datei wird auch von /en/download/ geladen.
  */
 
 (function () {
+  var COPY = {
+    de: { zero: "Noch kein Download", one: "1 Download", many: "Downloads", locale: "de-DE" },
+    en: { zero: "No downloads yet", one: "1 download", many: "downloads", locale: "en-US" },
+  };
+
+  function lang() {
+    return (document.documentElement.lang || "de").toLowerCase().startsWith("en")
+      ? "en"
+      : "de";
+  }
   function init() {
     fetch("/api/downloads", { credentials: "same-origin" })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -59,9 +70,10 @@
   }
 
   function formatCount(n) {
-    if (n === 0) return "Noch kein Download";
-    if (n === 1) return "1 Download";
-    return n.toLocaleString("de-DE") + " Downloads";
+    var copy = COPY[lang()];
+    if (n === 0) return copy.zero;
+    if (n === 1) return copy.one;
+    return n.toLocaleString(copy.locale) + " " + copy.many;
   }
 
   if (document.readyState === "loading") {

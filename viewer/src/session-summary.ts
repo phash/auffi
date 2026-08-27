@@ -69,12 +69,6 @@ export function formatDuration(ms: number): string {
   return `${minutes} min ${seconds.toString().padStart(2, "0")} s`;
 }
 
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} kB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
 export function formatConnectionType(type: ConnectionType | null): string {
   if (type === "p2p") return t("summary.connDirect");
   if (type === "relay") return t("summary.connRelay");

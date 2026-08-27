@@ -25,6 +25,9 @@ class MockDataChannel {
   }
 
   send(data: string | ArrayBuffer): void {
+    if (this.readyState !== "open") {
+      throw new DOMException("channel not open", "InvalidStateError");
+    }
     this.sent.push(data);
   }
 
@@ -62,9 +65,8 @@ class MockDataChannel {
   }
 }
 
-class MockPeerConnectionCaller {
+class MockPeerConnection {
   channels: MockDataChannel[] = [];
-  ondatachannel: null = null;
 
   createDataChannel(label: string, init?: RTCDataChannelInit): MockDataChannel {
     const ch = new MockDataChannel(label, init);
@@ -73,27 +75,22 @@ class MockPeerConnectionCaller {
   }
 }
 
-class MockPeerConnectionCallee {
-  channels: MockDataChannel[] = [];
-  ondatachannel: ((e: { channel: MockDataChannel }) => void) | null = null;
-
-  simulateIncoming(ch: MockDataChannel): void {
-    this.channels.push(ch);
-    this.ondatachannel?.({ channel: ch });
-  }
-}
-
-describe("DataChannelHub — caller role", () => {
-  let pc: MockPeerConnectionCaller;
+describe("DataChannelHub", () => {
+  let pc: MockPeerConnection;
   let hub: DataChannelHub;
 
   beforeEach(() => {
-    pc = new MockPeerConnectionCaller();
-    hub = new DataChannelHub(
-      pc as unknown as RTCPeerConnection,
-      "caller",
-    );
+    pc = new MockPeerConnection();
+    hub = new DataChannelHub(pc as unknown as RTCPeerConnection);
   });
+
+  function openAll(): { input: MockDataChannel; files: MockDataChannel } {
+    const input = pc.channels.find((c) => c.label === "input")!;
+    const files = pc.channels.find((c) => c.label === "files")!;
+    input.simulateOpen();
+    files.simulateOpen();
+    return { input, files };
+  }
 
   it("opens both 'input' and 'files' channels on construction", () => {
     const labels = pc.channels.map((c) => c.label);
@@ -102,10 +99,13 @@ describe("DataChannelHub — caller role", () => {
     expect(pc.channels).toHaveLength(2);
   });
 
-  it("creates input channel as lossy (ordered:false, maxRetransmits:0)", () => {
+  it("creates the input channel ordered + reliable (protocol.md: buttons/keys must not be lost)", () => {
+    // A lost or reordered key-up / button-up leaves a stuck key on the
+    // sharer mid-session — the same failure class the sharer's Drop-release
+    // only covers for disconnects (gh #97).
     const input = pc.channels.find((c) => c.label === "input")!;
-    expect(input.ordered).toBe(false);
-    expect(input.maxRetransmits).toBe(0);
+    expect(input.ordered).toBe(true);
+    expect(input.maxRetransmits).toBeNull();
   });
 
   it("creates files channel as reliable ordered", () => {
@@ -113,25 +113,16 @@ describe("DataChannelHub — caller role", () => {
     expect(files.ordered).toBe(true);
   });
 
-  it("sendInput JSON-serializes and sends on the input channel", () => {
-    const input = pc.channels.find((c) => c.label === "input")!;
+  it("sendInput JSON-serializes and sends on the open input channel", () => {
+    const { input } = openAll();
     const event: InputEvent = { kind: "mouse-move", x: 0.5, y: 0.25 };
     hub.sendInput(event);
     expect(input.getSent()).toHaveLength(1);
     expect(JSON.parse(input.getSent()[0] as string)).toEqual(event);
   });
 
-  it("onInput handler fires with parsed InputEvent when input channel receives text", () => {
-    const input = pc.channels.find((c) => c.label === "input")!;
-    const handler = vi.fn();
-    hub.onInput(handler);
-    const event: InputEvent = { kind: "key", code: "KeyA", pressed: true, modifiers: { shift: false, ctrl: false, alt: false, meta: false } };
-    input.simulateMessage(JSON.stringify(event));
-    expect(handler).toHaveBeenCalledWith(event);
-  });
-
-  it("sendFile JSON-serializes and sends on the files channel", () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+  it("sendFile JSON-serializes and sends on the open files channel", () => {
+    const { files } = openAll();
     const event: FileEvent = { kind: "file-offer", id: "abc", name: "test.pdf", size: 1024, mime: "application/pdf" };
     hub.sendFile(event);
     expect(files.getSent()).toHaveLength(1);
@@ -139,7 +130,7 @@ describe("DataChannelHub — caller role", () => {
   });
 
   it("onFile handler fires with parsed FileEvent when files channel receives text", () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+    const { files } = openAll();
     const handler = vi.fn();
     hub.onFile(handler);
     const event: FileEvent = { kind: "file-accept", id: "abc" };
@@ -147,8 +138,8 @@ describe("DataChannelHub — caller role", () => {
     expect(handler).toHaveBeenCalledWith(event);
   });
 
-  it("sendFileChunk sends ArrayBuffer on the files channel", () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+  it("sendFileChunk sends ArrayBuffer on the open files channel", () => {
+    const { files } = openAll();
     const buf = new ArrayBuffer(8);
     hub.sendFileChunk(buf);
     expect(files.getSent()).toHaveLength(1);
@@ -156,7 +147,7 @@ describe("DataChannelHub — caller role", () => {
   });
 
   it("onFileChunk handler fires with ArrayBuffer on binary messages", () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+    const { files } = openAll();
     const handler = vi.fn();
     hub.onFileChunk(handler);
     const buf = new ArrayBuffer(16);
@@ -164,13 +155,24 @@ describe("DataChannelHub — caller role", () => {
     expect(handler).toHaveBeenCalledWith(buf);
   });
 
-  it("ready() resolves when both channels open", async () => {
-    const input = pc.channels.find((c) => c.label === "input")!;
-    const files = pc.channels.find((c) => c.label === "files")!;
+  it("silently drops sends on a channel that is not open (no InvalidStateError)", () => {
+    // Teardown closes the channels before the last queued microtasks run
+    // (e.g. rejecting a still-open file-offer toast) — send() on a closed
+    // RTCDataChannel throws InvalidStateError, which previously surfaced as
+    // an unhandled promise rejection on every teardown with an open offer.
+    const { input, files } = openAll();
+    input.close();
+    files.close();
+    expect(() => hub.sendInput({ kind: "scroll", dx: 0, dy: 120 })).not.toThrow();
+    expect(() => hub.sendFile({ kind: "file-reject", id: "x" })).not.toThrow();
+    expect(() => hub.sendFileChunk(new ArrayBuffer(8))).not.toThrow();
+    expect(input.getSent()).toHaveLength(0);
+    expect(files.getSent()).toHaveLength(0);
+  });
 
+  it("ready() resolves when both channels open", async () => {
     const promise = hub.ready();
-    input.simulateOpen();
-    files.simulateOpen();
+    openAll();
     await expect(promise).resolves.toBeUndefined();
   });
 
@@ -193,29 +195,18 @@ describe("DataChannelHub — caller role", () => {
   });
 
   it("close() settles pending ready() promises so they don't leak", async () => {
-    // ready() returns a pending promise because channels haven't opened yet
     const promise = hub.ready();
     let settled = false;
     promise.then(() => { settled = true; });
 
-    // close() must resolve the pending resolver
     hub.close();
 
     await new Promise((r) => setTimeout(r, 10));
     expect(settled).toBe(true);
   });
 
-  it("input channel onmessage ignores malformed JSON without throwing", () => {
-    const input = pc.channels.find((c) => c.label === "input")!;
-    const handler = vi.fn();
-    hub.onInput(handler);
-    // Malformed JSON must not propagate — handler must not be called
-    expect(() => input.simulateMessage("not-valid-json{")).not.toThrow();
-    expect(handler).not.toHaveBeenCalled();
-  });
-
   it("files channel onmessage ignores malformed JSON without throwing", () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+    const { files } = openAll();
     const handler = vi.fn();
     hub.onFile(handler);
     expect(() => files.simulateMessage("{broken")).not.toThrow();
@@ -223,19 +214,19 @@ describe("DataChannelHub — caller role", () => {
   });
 
   it("filesBufferedAmount returns the files channel bufferedAmount", () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+    const { files } = openAll();
     files.bufferedAmount = 512;
     expect(hub.filesBufferedAmount()).toBe(512);
   });
 
   it("awaitFilesBufferedLow resolves immediately when bufferedAmount is within threshold", async () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+    const { files } = openAll();
     files.bufferedAmount = 100;
     await expect(hub.awaitFilesBufferedLow(1024)).resolves.toBeUndefined();
   });
 
   it("awaitFilesBufferedLow resolves on bufferedamountlow event when above threshold", async () => {
-    const files = pc.channels.find((c) => c.label === "files")!;
+    const { files } = openAll();
     files.bufferedAmount = 2 * 1024 * 1024;
 
     const promise = hub.awaitFilesBufferedLow(1024 * 1024);
@@ -243,62 +234,48 @@ describe("DataChannelHub — caller role", () => {
 
     await expect(promise).resolves.toBeUndefined();
   });
-});
 
-describe("DataChannelHub — callee role", () => {
-  let pc: MockPeerConnectionCallee;
-  let hub: DataChannelHub;
+  it("awaitFilesBufferedLow rejects when the channel closes while above threshold", async () => {
+    // Without this, a disconnect mid-transfer leaves the waiter pending
+    // forever and the suspended streamFile frame retains the whole file
+    // buffer (up to 2 GB) — the send() promise never settles.
+    const { files } = openAll();
+    files.bufferedAmount = 2 * 1024 * 1024;
 
-  beforeEach(() => {
-    pc = new MockPeerConnectionCallee();
-    hub = new DataChannelHub(
-      pc as unknown as RTCPeerConnection,
-      "callee",
-    );
+    const promise = hub.awaitFilesBufferedLow(1024 * 1024);
+    files.readyState = "closed";
+    files.simulateEvent("close");
+
+    await expect(promise).rejects.toThrow(/closed/);
   });
 
-  it("callee does not call createDataChannel on construction", () => {
-    expect(pc.channels).toHaveLength(0);
+  it("awaitFilesBufferedLow rejects on a channel error while above threshold", async () => {
+    const { files } = openAll();
+    files.bufferedAmount = 2 * 1024 * 1024;
+
+    const promise = hub.awaitFilesBufferedLow(1024 * 1024);
+    files.simulateEvent("error");
+
+    await expect(promise).rejects.toThrow(/closed/);
   });
 
-  it("callee receives input channel via ondatachannel", () => {
-    const ch = new MockDataChannel("input");
-    pc.simulateIncoming(ch);
-    const event: InputEvent = { kind: "scroll", dx: 0, dy: 120 };
-    const handler = vi.fn();
-    hub.onInput(handler);
-    ch.simulateMessage(JSON.stringify(event));
-    expect(handler).toHaveBeenCalledWith(event);
+  it("hub.close() rejects outstanding buffered-low waiters", async () => {
+    // close() must settle these like it settles ready() resolvers — the
+    // channel's own close event fires asynchronously (or not at all in a
+    // torn-down peer), so the hub cannot rely on it.
+    const { files } = openAll();
+    files.bufferedAmount = 2 * 1024 * 1024;
+
+    const promise = hub.awaitFilesBufferedLow(1024 * 1024);
+    hub.close();
+
+    await expect(promise).rejects.toThrow(/closed/);
   });
 
-  it("callee receives files channel via ondatachannel", () => {
-    const ch = new MockDataChannel("files");
-    pc.simulateIncoming(ch);
-    const event: FileEvent = { kind: "file-done", id: "xyz" };
-    const handler = vi.fn();
-    hub.onFile(handler);
-    ch.simulateMessage(JSON.stringify(event));
-    expect(handler).toHaveBeenCalledWith(event);
-  });
-
-  it("callee ready() resolves when both channels arrive and open", async () => {
-    const inputCh = new MockDataChannel("input");
-    const filesCh = new MockDataChannel("files");
-
-    const promise = hub.ready();
-    pc.simulateIncoming(inputCh);
-    pc.simulateIncoming(filesCh);
-    inputCh.simulateOpen();
-    filesCh.simulateOpen();
-
-    await expect(promise).resolves.toBeUndefined();
-  });
-
-  it("filesBufferedAmount returns 0 when files channel is not yet available", () => {
-    expect(hub.filesBufferedAmount()).toBe(0);
-  });
-
-  it("awaitFilesBufferedLow resolves immediately when no files channel exists", async () => {
-    await expect(hub.awaitFilesBufferedLow(1024)).resolves.toBeUndefined();
+  it("awaitFilesBufferedLow rejects immediately on an already-closed channel", async () => {
+    const { files } = openAll();
+    files.bufferedAmount = 2 * 1024 * 1024;
+    files.close();
+    await expect(hub.awaitFilesBufferedLow(1024)).rejects.toThrow(/closed/);
   });
 });

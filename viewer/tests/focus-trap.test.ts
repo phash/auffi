@@ -75,4 +75,52 @@ describe("trapFocus", () => {
     release();
     expect(document.activeElement).toBe(opener);
   });
+
+  // The guarded toasts are position:fixed without a backdrop — one click on
+  // the page behind them moves focus outside the container. A container-scoped
+  // keydown listener then never fires again and the trap (plus Escape) is
+  // dead, despite aria-modal="true" promising confinement. The listener must
+  // live on document so these events still reach the trap.
+  it("pulls focus back into the container when Tab is pressed while focus escaped", () => {
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    const release = trapFocus(modal);
+    outside.focus();
+    const ev = tab();
+    outside.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first);
+    release();
+  });
+
+  it("pulls focus back to the last focusable on Shift+Tab while focus escaped", () => {
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    const release = trapFocus(modal);
+    outside.focus();
+    const ev = tab(true);
+    outside.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(last);
+    release();
+  });
+
+  it("still invokes onEscape when focus has left the container", () => {
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    const onEscape = vi.fn();
+    const release = trapFocus(modal, onEscape);
+    outside.focus();
+    outside.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it("release removes the document-level listener", () => {
+    const onEscape = vi.fn();
+    const release = trapFocus(modal, onEscape);
+    release();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(onEscape).not.toHaveBeenCalled();
+  });
 });

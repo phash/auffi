@@ -27,9 +27,14 @@ export type FileEvent =
   | { kind: "file-error"; id: string; message: string };
 
 // --- Signaling protocol types ---
+//
+// Only the VIEWER's side of the wire lives here (docs/protocol.md is the
+// full spec): frames this client sends and frames the backend can deliver
+// to a viewer connection. The sharer-side messages (register / confirm /
+// code-assigned / peer-joined) never cross a viewer WS and are typed in
+// the sharer's Rust code instead.
 
-export type SharerRegister = { type: "register"; role: "sharer" };
-export type SharerConfirm = { type: "confirm"; accepted: boolean };
+/** First frame after the WS opens — sent by SignalingClient.join(). */
 export type ViewerJoin = { type: "join"; role: "viewer"; code: string };
 
 export type RelaySdp = { kind: "sdp"; sdp: RTCSessionDescriptionInit };
@@ -50,22 +55,6 @@ export type RelayMsg = { type: "relay"; payload: RelayPayload };
  */
 export type PwAttempt = { type: "pw-attempt"; password: string };
 
-export type IncomingMessage =
-  | SharerRegister
-  | SharerConfirm
-  | ViewerJoin
-  | RelayMsg
-  | PwAttempt;
-
-export type CodeAssigned = {
-  type: "code-assigned";
-  code: string;
-  expiresInSec: number;
-};
-export type PeerJoined = {
-  type: "peer-joined";
-  viewerInfo: { ipPrefix: string; country: string | null };
-};
 export type PeerConfirmed = { type: "peer-confirmed" };
 export type PeerRejected = {
   type: "peer-rejected";
@@ -96,9 +85,9 @@ export type WrongPassword = { type: "wrong-password"; attemptsLeft: number };
 export type LockedOut = { type: "locked"; retryAfterSec: number };
 export type RejectedByUser = { type: "rejected-by-user" };
 
+/** Every frame the backend can deliver on a VIEWER connection —
+ *  SignalingClient parses incoming WS messages against this union. */
 export type OutgoingMessage =
-  | CodeAssigned
-  | PeerJoined
   | PeerConfirmed
   | PeerRejected
   | RelayMsg
