@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
-import { confirmDialog } from "../src/confirm-dialog.js";
+import { confirmDialog, dismissConfirmDialog } from "../src/confirm-dialog.js";
 
 function backdrop(): HTMLElement {
   return document.getElementById("sharer-confirm-backdrop")!;
@@ -55,5 +55,16 @@ describe("confirmDialog (sharer)", () => {
     expect(await p1).toBe(false);
     btn("Ja").click();
     expect(await p2).toBe(true);
+  });
+
+  it("dismissConfirmDialog closes the open dialog resolving false", async () => {
+    const p = confirmDialog({ title: "T", message: "m", confirmLabel: "Ja" });
+    dismissConfirmDialog();
+    expect(await p).toBe(false);
+    expect(document.getElementById("sharer-confirm-backdrop")).toBeNull();
+  });
+
+  it("dismissConfirmDialog without an open dialog is a no-op", () => {
+    expect(() => dismissConfirmDialog()).not.toThrow();
   });
 });

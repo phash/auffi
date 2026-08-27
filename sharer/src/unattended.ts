@@ -82,7 +82,7 @@ function makePasswordToggleIcon(slashed: boolean): SVGElement {
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { confirmDialog } from "./confirm-dialog.js";
+import { confirmDialog, dismissConfirmDialog } from "./confirm-dialog.js";
 import { UNATTENDED_CONFIRM_OPTIONS } from "./unattended-confirm.js";
 import { SignalingBuffer, type WireIceCandidate } from "./signaling-buffer.js";
 import { wireAutostartToggle } from "./autostart-toggle.js";
@@ -93,6 +93,7 @@ interface UnattendedEvent {
   kind:
     | "connected"
     | "needs-confirm"
+    | "confirm-expired"
     | "peer-joined"
     | "relay"
     | "disconnected"
@@ -149,6 +150,9 @@ const autostart = autostartCheckbox
 // unattended_is_active because a webview reload (F5 / hot-reload)
 // resets this flag while the heartbeat keeps running.
 let active = false;
+// confirmId of the manual-confirm dialog currently on screen (null when
+// none) — lets a Rust-side "confirm-expired" dismiss exactly that dialog.
+let openConfirmId: number | null = null;
 
 // SDP/ICE buffering for the unattended relay path — same race as the
 // ad-hoc flow: the viewer sends its offer while start_streaming is
@@ -390,11 +394,26 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       // to a no-longer-pending confirmId and is a silent no-op.
       const id = ev.confirmId;
       if (id === undefined) break;
+      openConfirmId = id;
       void confirmDialog(UNATTENDED_CONFIRM_OPTIONS)
-        .then((accepted) => invoke("unattended_confirm", { confirmId: id, accepted }))
+        .then((accepted) => {
+          if (openConfirmId === id) openConfirmId = null;
+          return invoke("unattended_confirm", { confirmId: id, accepted });
+        })
         .catch(() => {});
       break;
     }
+    case "confirm-expired":
+      // Rust-side 60 s auto-decline (or eviction by a newer attempt):
+      // the open dialog's answer would be a dead-id no-op — close it.
+      // Id match guards the race where a NEWER dialog already replaced
+      // the expired one.
+      if (ev.confirmId !== undefined && ev.confirmId === openConfirmId) {
+        openConfirmId = null;
+        dismissConfirmDialog();
+        setStatusText("Zugriffsanfrage abgelaufen — automatisch abgelehnt.");
+      }
+      break;
     case "peer-joined":
       setStatusText("Helfer verbunden");
       // gh #20 + heartbeat→webrtc_peer integration: kick off the

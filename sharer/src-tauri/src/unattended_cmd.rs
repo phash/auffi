@@ -671,21 +671,34 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                         );
                         let cmds_for_waiter = cmds.clone();
                         let pending_for_waiter = pending_confirms.clone();
+                        let app_for_waiter = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let accepted =
+                            let (accepted, answered_by_user) =
                                 match tokio::time::timeout(std::time::Duration::from_secs(60), rx)
                                     .await
                                 {
-                                    Ok(Ok(v)) => v,
+                                    Ok(Ok(v)) => (v, true),
                                     // timeout OR sender dropped (a
                                     // newer attempt evicted this one) →
                                     // decline. Without this the viewer
                                     // would hang for the full 60 s.
-                                    _ => false,
+                                    _ => (false, false),
                                 };
                             // Belt-and-braces cleanup in case the
                             // confirm command was never invoked.
                             pending_for_waiter.lock().await.remove(&confirm_id);
+                            if !answered_by_user {
+                                // The webview dialog would otherwise stand
+                                // open while any answer routes to a dead
+                                // confirm_id — tell it to dismiss.
+                                let _ = app_for_waiter.emit(
+                                    "unattended-event",
+                                    UnattendedEvent {
+                                        confirm_id: Some(confirm_id),
+                                        ..UnattendedEvent::kind("confirm-expired")
+                                    },
+                                );
+                            }
                             let result = if accepted {
                                 heartbeat::PwResult::Ok
                             } else {

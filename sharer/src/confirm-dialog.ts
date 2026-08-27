@@ -19,6 +19,16 @@ const FOCUSABLE = "button:not([disabled])";
 // forever.
 let closeActive: ((value: boolean) => void) | null = null;
 
+/**
+ * Programmatically close the open dialog as if the user had cancelled.
+ * Used when the question expired elsewhere (e.g. the Rust-side 60 s
+ * unattended auto-decline) — the answer would be a dead-id no-op, so
+ * leaving the dialog standing only misleads the user.
+ */
+export function dismissConfirmDialog(): void {
+  closeActive?.(false);
+}
+
 export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
   closeActive?.(false);
 
