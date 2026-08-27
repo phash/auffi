@@ -3,6 +3,7 @@ import {
   CompactBarController,
   formatDuration,
 } from "../src/compact-bar.js";
+import { stubLocalStorage } from "./helpers/local-storage-stub";
 
 describe("formatDuration", () => {
   it("pads to mm:ss under one hour", () => {
@@ -41,19 +42,7 @@ describe("CompactBarController", () => {
     statusTextEl = document.createElement("span");
     document.body.append(app, toggle, durationEl, bytesEl, statusTextEl);
 
-    // jsdom 29 doesn't ship localStorage by default in our vitest
-    // env — stub a Map-backed Storage so the controller's
-    // persistence path still gets exercised.
-    const store = new Map<string, string>();
-    const stub: Storage = {
-      get length() { return store.size; },
-      clear: () => store.clear(),
-      getItem: (k) => (store.has(k) ? store.get(k)! : null),
-      setItem: (k, v) => { store.set(k, String(v)); },
-      removeItem: (k) => { store.delete(k); },
-      key: (i) => Array.from(store.keys())[i] ?? null,
-    };
-    vi.stubGlobal("localStorage", stub);
+    stubLocalStorage();
 
     getBytesMock = vi.fn().mockResolvedValue(0);
     controller = new CompactBarController({

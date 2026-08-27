@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execPublicScript } from "./helpers/exec-public-script";
+import { stubLocalStorage } from "./helpers/local-storage-stub";
 
 // matomo-consent.js is loaded by German AND English marketing pages. An
 // opt-in banner is only informed consent if the visitor can read it, so
@@ -16,12 +17,11 @@ function showBanner(lang: "de" | "en"): HTMLElement {
 }
 
 beforeEach(() => {
-  localStorage.clear();
+  stubLocalStorage();
   document.body.innerHTML = "";
 });
 
 afterEach(() => {
-  localStorage.clear();
   document.body.innerHTML = "";
   document.documentElement.lang = "de";
 });
