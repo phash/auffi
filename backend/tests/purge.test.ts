@@ -115,31 +115,6 @@ describe("runPurge", () => {
     expect(rep.auditLog).toBe(1);
   });
 
-  it("hard-deletes soft-deleted accounts past the 30-day grace", () => {
-    db.prepare(
-      "INSERT INTO accounts (id, email, password_hash, created_at, deleted_at) VALUES (2, 'old@a', 'x', ?, ?)",
-    ).run(now - 100 * DAY, now - 31 * DAY); // grace expired
-    db.prepare(
-      "INSERT INTO accounts (id, email, password_hash, created_at, deleted_at) VALUES (3, 'recent@a', 'x', ?, ?)",
-    ).run(now - 100 * DAY, now - 7 * DAY); // still in grace
-    db.prepare(
-      "INSERT INTO accounts (id, email, password_hash, created_at, deleted_at) VALUES (4, 'live@a', 'x', ?, NULL)",
-    ).run(now - 100 * DAY); // never deleted
-
-    const rep = runPurge(db, now);
-    expect(rep.softDeletedAccounts).toBe(1);
-    expect(
-      db
-        .prepare<[number], { id: number }>("SELECT id FROM accounts WHERE id = ?")
-        .all(2).length,
-    ).toBe(0);
-    expect(
-      db
-        .prepare<[number], { id: number }>("SELECT id FROM accounts WHERE id = ?")
-        .all(3).length,
-    ).toBe(1);
-  });
-
   it("drops fully-recovered rate_limit_buckets but keeps active ones", () => {
     db.prepare(
       "INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES ('a', 0, NULL)",
@@ -153,9 +128,14 @@ describe("runPurge", () => {
     db.prepare(
       "INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES ('d', 0, ?)",
     ).run(now + HOUR); // still locked — keep
+    db.prepare(
+      "INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES ('e', 5, ?)",
+    ).run(now - 1); // lock expired — drop even with fail_count > 0
+    // (recordPwFail starts a fresh streak after an expired lock, so the
+    // stale counter carries no state worth keeping)
 
     const rep = runPurge(db, now);
-    expect(rep.rateLimitBuckets).toBe(2);
+    expect(rep.rateLimitBuckets).toBe(3);
     const rest = db
       .prepare<[], { key: string }>("SELECT key FROM rate_limit_buckets ORDER BY key")
       .all()
@@ -179,7 +159,6 @@ describe("runPurge", () => {
       connectionLog: 0,
       auditLog: 0,
       codeEvents: 0,
-      softDeletedAccounts: 0,
       rateLimitBuckets: 0,
       feedback: 0,
       feedbackAuditCascade: 0,

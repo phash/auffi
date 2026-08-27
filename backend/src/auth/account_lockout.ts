@@ -72,19 +72,29 @@ export function recordAccountPwFail(
   const key = bucketKey(accountId);
   // Increment AND latch the lock in one atomic statement so a burst of
   // concurrent wrong-password requests can't read a sub-threshold count
-  // between a separate increment and a separate lock-write. `fail_count`
-  // inside DO UPDATE refers to the pre-increment value, so `+ 1` is the new
-  // count; RETURNING hands back the post-update row.
+  // between a separate increment and a separate lock-write. `fail_count` /
+  // `locked_until` inside DO UPDATE refer to the pre-update row, so `+ 1` is
+  // the new count; RETURNING hands back the post-update row. An EXPIRED lock
+  // decays here: the first failure after it lapsed starts a fresh streak
+  // (fail_count = 1, lock cleared) instead of instantly re-latching a full
+  // lockout forever (mirrors unattended_sessions.ts:recordPwFail).
   const row = db
-    .prepare<[string, number, number], { fail_count: number; locked_until: number | null }>(
+    .prepare<[string, number, number, number, number], { fail_count: number; locked_until: number | null }>(
       `INSERT INTO rate_limit_buckets (key, fail_count, locked_until)
        VALUES (?, 1, NULL)
        ON CONFLICT(key) DO UPDATE SET
-         fail_count = fail_count + 1,
-         locked_until = CASE WHEN fail_count + 1 >= ? THEN ? ELSE locked_until END
+         fail_count = CASE
+           WHEN locked_until IS NOT NULL AND locked_until <= ? THEN 1
+           ELSE fail_count + 1
+         END,
+         locked_until = CASE
+           WHEN locked_until IS NOT NULL AND locked_until <= ? THEN NULL
+           WHEN fail_count + 1 >= ? THEN ?
+           ELSE locked_until
+         END
        RETURNING fail_count, locked_until`,
     )
-    .get(key, ACCOUNT_PW_FAIL_THRESHOLD, now + ACCOUNT_PW_LOCKOUT_MS)!;
+    .get(key, now, now, ACCOUNT_PW_FAIL_THRESHOLD, now + ACCOUNT_PW_LOCKOUT_MS)!;
 
   if (row.fail_count >= ACCOUNT_PW_FAIL_THRESHOLD) {
     return {

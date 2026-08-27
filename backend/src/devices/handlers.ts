@@ -5,6 +5,7 @@ import { hashPassword } from "../auth/argon.js";
 import { newToken, hashToken } from "../auth/tokens.js";
 import type { UnattendedRegistry } from "../unattended.js";
 import { listConnectionLog, MAX_LIMIT as LOG_MAX_LIMIT } from "../connection_log.js";
+import { deleteDeviceCascade } from "./store.js";
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const ONLINE_WINDOW_MS = 90 * 1000;
@@ -140,17 +141,23 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
       const tokenHash = await hashPassword(token);
       const now = Date.now();
 
-      const tx = db.transaction(() => {
+      // The used_at pre-check above and this transaction straddle the
+      // ~250 ms argon2 token-hash, so two overlapping redeems can both
+      // pass the pre-check. The guarded claim-UPDATE is what actually
+      // enforces one-shot: only the request whose UPDATE matches the
+      // still-unused row gets to insert the device.
+      const claimed = db.transaction((): boolean => {
+        const claim = db
+          .prepare("UPDATE device_pairings SET used_at = ? WHERE code_hash = ? AND used_at IS NULL")
+          .run(now, hashToken(code));
+        if (claim.changes === 0) return false;
         db.prepare(
           `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at, last_seen_at)
            VALUES (?, ?, ?, ?, 1, ?, NULL)`,
         ).run(deviceId, row.account_id, alias, tokenHash, now);
-        db.prepare("UPDATE device_pairings SET used_at = ? WHERE code_hash = ?").run(
-          now,
-          hashToken(code),
-        );
-      });
-      tx();
+        return true;
+      })();
+      if (!claimed) return bad(reply, 410, "code-used", "pairing code already used");
 
       // Token leaves the API exactly once — the sharer must persist it
       // to Tauri Secure Storage immediately. After this response is
@@ -239,7 +246,7 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
       if (!dev || dev.owner_account_id !== req.account!.id) {
         return bad(reply, 403, "forbidden", "not your device");
       }
-      db.prepare("DELETE FROM devices WHERE id = ?").run(id);
+      db.transaction(() => deleteDeviceCascade(db, id))();
       // Force-close any live WSS for this device with WS code 4401
       // so the sharer's reconnect loop immediately sees "auth
       // failed" instead of relaying frames for the next 30 s window.

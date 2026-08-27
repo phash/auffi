@@ -123,16 +123,16 @@ export function findSession(
 ): { tokenHash: string; accountId: number } | null {
   if (!cookieValue) return null;
   const tokenHash = hashToken(cookieValue);
+  // Kein Account-JOIN nötig: Konten werden hart gelöscht und der
+  // FK-Cascade nimmt die Sessions mit — eine gefundene Session gehört
+  // immer zu einem existierenden Konto.
   const row = db
-    .prepare<[string, number], { account_id: number; account_deleted_at: number | null }>(
-      `SELECT s.account_id, a.deleted_at AS account_deleted_at
-         FROM sessions s
-         JOIN accounts a ON a.id = s.account_id
-        WHERE s.token_hash = ? AND s.expires_at > ?`,
+    .prepare<[string, number], { account_id: number }>(
+      `SELECT account_id FROM sessions
+        WHERE token_hash = ? AND expires_at > ?`,
     )
     .get(tokenHash, Date.now());
   if (!row) return null;
-  if (row.account_deleted_at !== null) return null;
   return { tokenHash, accountId: row.account_id };
 }
 

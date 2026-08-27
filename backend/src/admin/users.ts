@@ -2,31 +2,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
 import { writeAudit } from "./middleware.js";
 import { deleteAllSessionsForAccount } from "../auth/sessions.js";
+import { encodeCursor, decodeNumericCursor, clampLimit, paginate } from "./pagination.js";
+import type { UnattendedRegistry } from "../unattended.js";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
-
-interface CursorPayload {
-  createdAt: number;
-  id: number;
-}
-
-function encodeCursor(c: CursorPayload): string {
-  return Buffer.from(`${c.createdAt}|${c.id}`, "utf-8").toString("base64url");
-}
-
-function decodeCursor(raw: string): CursorPayload | null {
-  try {
-    const s = Buffer.from(raw, "base64url").toString("utf-8");
-    const [aStr, bStr] = s.split("|");
-    const a = Number(aStr);
-    const b = Number(bStr);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-    return { createdAt: a, id: b };
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Escape % and _ wildcards in a LIKE pattern so a malicious search input
@@ -42,6 +22,20 @@ function bad(reply: FastifyReply, status: number, code: string, message: string)
   return reply.status(status).send({ error: code, message });
 }
 
+/**
+ * Admins who can actually reach the admin surface: suspended admins are
+ * blocked at login, so they don't count when deciding whether an action
+ * would leave the deployment without a working admin.
+ */
+function countActiveAdmins(db: Db): number {
+  const row = db
+    .prepare<[], { c: number }>(
+      "SELECT COUNT(*) AS c FROM accounts WHERE admin = 1 AND suspended_at IS NULL",
+    )
+    .get();
+  return row?.c ?? 0;
+}
+
 interface ListItem {
   id: number;
   email: string;
@@ -53,7 +47,11 @@ interface ListItem {
   last_login_at: number | null;
 }
 
-export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
+export function registerAdminUsersRoutes(
+  app: FastifyInstance,
+  db: Db,
+  registry?: UnattendedRegistry,
+): void {
   // ── GET /api/admin/users ────────────────────────────────────────────
   // Paginated, filterable, searchable user list (gh #45).
   app.get(
@@ -67,14 +65,10 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
         status?: string;
       };
 
-      const rawLimit = Number(q.limit ?? DEFAULT_LIMIT);
-      const limit =
-        Number.isFinite(rawLimit) && rawLimit > 0
-          ? Math.min(rawLimit, MAX_LIMIT)
-          : DEFAULT_LIMIT;
+      const limit = clampLimit(q.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
       // Build WHERE clauses dynamically.
-      const where: string[] = ["a.deleted_at IS NULL"];
+      const where: string[] = [];
       const params: (string | number)[] = [];
 
       const status = q.status;
@@ -98,7 +92,7 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
       }
 
       if (q.cursor) {
-        const cur = decodeCursor(q.cursor);
+        const cur = decodeNumericCursor(q.cursor);
         if (!cur) return bad(reply, 400, "bad-cursor", "cursor invalid");
         // Tie-break: (created_at, id) so duplicate timestamps still paginate
         // deterministically. We sort DESC so the cursor advances backward
@@ -112,7 +106,7 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
                (SELECT COUNT(*) FROM devices d WHERE d.owner_account_id = a.id) AS device_count,
                (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.account_id = a.id) AS last_login_at
           FROM accounts a
-         WHERE ${where.join(" AND ")}
+         ${where.length > 0 ? "WHERE " + where.join(" AND ") : ""}
          ORDER BY a.created_at DESC, a.id DESC
          LIMIT ?
       `;
@@ -122,10 +116,9 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
         Omit<ListItem, "admin"> & { admin: number }
       >;
 
-      const hasMore = rows.length > limit;
-      const visible = hasMore ? rows.slice(0, limit) : rows;
-      const last = visible[visible.length - 1];
-      const next_cursor = hasMore && last ? encodeCursor({ createdAt: last.created_at, id: last.id }) : null;
+      const { visible, nextCursor: next_cursor } = paginate(rows, limit, (last) =>
+        encodeCursor({ createdAt: last.created_at, id: last.id }),
+      );
 
       const items: ListItem[] = visible.map((r) => ({
         id: r.id,
@@ -166,7 +159,7 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
           }
         >(
           `SELECT id, email, admin, suspended_at, email_verified_at, created_at
-             FROM accounts WHERE id = ? AND deleted_at IS NULL`,
+             FROM accounts WHERE id = ?`,
         )
         .get(id);
       if (!account) return bad(reply, 404, "not-found", "user not found");
@@ -269,20 +262,28 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
         .prepare<
           [number],
           { id: number; email: string; admin: number; suspended_at: number | null }
-        >("SELECT id, email, admin, suspended_at FROM accounts WHERE id = ? AND deleted_at IS NULL")
+        >("SELECT id, email, admin, suspended_at FROM accounts WHERE id = ?")
         .get(id);
       if (!before) return bad(reply, 404, "not-found", "user not found");
 
-      // Refuse to demote the last admin standing — including self-demote.
-      if (action === "demote" && before.admin === 1) {
-        const admins = db
-          .prepare<[], { c: number }>(
-            "SELECT COUNT(*) AS c FROM accounts WHERE admin = 1 AND deleted_at IS NULL",
-          )
-          .get();
-        if ((admins?.c ?? 0) <= 1) {
-          return bad(reply, 409, "last-admin", "refusing to leave zero admins");
-        }
+      // Refuse to demote OR suspend the last ACTIVE admin — including
+      // self. Suspend needs the same guard as demote: it kills the
+      // target's sessions and blocks their login, so a sole admin
+      // self-suspending would brick the entire admin surface (recovery
+      // only via manual DB surgery). Suspended admins don't count as a
+      // remaining fallback — they can't log in either.
+      if (
+        (action === "demote" || action === "suspend") &&
+        before.admin === 1 &&
+        before.suspended_at === null &&
+        countActiveAdmins(db) <= 1
+      ) {
+        return bad(
+          reply,
+          409,
+          "last-admin",
+          "Der letzte aktive Admin kann nicht gesperrt oder degradiert werden.",
+        );
       }
 
       const now = Date.now();
@@ -331,28 +332,27 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
       const target = db
         .prepare<
           [number],
-          { id: number; email: string; admin: number }
-        >("SELECT id, email, admin FROM accounts WHERE id = ? AND deleted_at IS NULL")
+          { id: number; email: string; admin: number; suspended_at: number | null }
+        >("SELECT id, email, admin, suspended_at FROM accounts WHERE id = ?")
         .get(id);
       if (!target) return bad(reply, 404, "not-found", "user not found");
 
-      if (target.admin === 1) {
-        const admins = db
-          .prepare<[], { c: number }>(
-            "SELECT COUNT(*) AS c FROM accounts WHERE admin = 1 AND deleted_at IS NULL",
-          )
-          .get();
-        if ((admins?.c ?? 0) <= 1) {
-          return bad(reply, 409, "last-admin", "refusing to delete the last admin");
-        }
+      // Same active-admin floor as suspend/demote: deleting a suspended
+      // admin never reduces the number of admins who can log in, so only
+      // an ACTIVE admin target trips the guard.
+      if (target.admin === 1 && target.suspended_at === null && countActiveAdmins(db) <= 1) {
+        return bad(reply, 409, "last-admin", "Der letzte aktive Admin kann nicht gelöscht werden.");
       }
 
-      const deviceCount =
-        (db
-          .prepare<[number], { c: number }>(
-            "SELECT COUNT(*) AS c FROM devices WHERE owner_account_id = ?",
-          )
-          .get(id)?.c) ?? 0;
+      // Device-IDs VOR dem Cascade einsammeln — die WSS-Verbindungen der
+      // gepaarten Sharer überleben das SQL-DELETE sonst bis zum nächsten
+      // Heartbeat-Re-Auth.
+      const deviceIds = db
+        .prepare<[number], { id: string }>(
+          "SELECT id FROM devices WHERE owner_account_id = ?",
+        )
+        .all(id);
+      const deviceCount = deviceIds.length;
 
       const tx = db.transaction(() => {
         // Snapshot what's about to vanish — audit_log row survives the cascade
@@ -369,6 +369,8 @@ export function registerAdminUsersRoutes(app: FastifyInstance, db: Db): void {
         db.prepare("DELETE FROM accounts WHERE id = ?").run(id);
       });
       tx();
+
+      for (const d of deviceIds) registry?.evict(d.id);
 
       return reply.status(204).send();
     },

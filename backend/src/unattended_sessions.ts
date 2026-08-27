@@ -63,18 +63,29 @@ export function recordPwFail(
 ): FailOutcome {
   const key = bucketKey(deviceId);
   // Increment AND latch the lock in one atomic statement (see the matching
-  // comment in auth/account_lockout.ts). `fail_count` inside DO UPDATE is the
-  // pre-increment value, so `+ 1` is the new count.
+  // comment in auth/account_lockout.ts). `fail_count` / `locked_until` inside
+  // DO UPDATE refer to the pre-update row, so `+ 1` is the new count. An
+  // EXPIRED lock decays here: the first failure after it lapsed starts a
+  // fresh streak (fail_count = 1, lock cleared) — otherwise a single wrong
+  // attempt would re-latch a full lockout forever, despite the `locked`
+  // frame having promised the user a retry after `retryAfterSec`.
   const row = db
-    .prepare<[string, number, number], { fail_count: number; locked_until: number | null }>(
+    .prepare<[string, number, number, number, number], { fail_count: number; locked_until: number | null }>(
       `INSERT INTO rate_limit_buckets (key, fail_count, locked_until)
        VALUES (?, 1, NULL)
        ON CONFLICT(key) DO UPDATE SET
-         fail_count = fail_count + 1,
-         locked_until = CASE WHEN fail_count + 1 >= ? THEN ? ELSE locked_until END
+         fail_count = CASE
+           WHEN locked_until IS NOT NULL AND locked_until <= ? THEN 1
+           ELSE fail_count + 1
+         END,
+         locked_until = CASE
+           WHEN locked_until IS NOT NULL AND locked_until <= ? THEN NULL
+           WHEN fail_count + 1 >= ? THEN ?
+           ELSE locked_until
+         END
        RETURNING fail_count, locked_until`,
     )
-    .get(key, PW_FAIL_THRESHOLD, now + PW_LOCKOUT_MS)!;
+    .get(key, now, now, PW_FAIL_THRESHOLD, now + PW_LOCKOUT_MS)!;
 
   if (row.fail_count >= PW_FAIL_THRESHOLD) {
     return {
@@ -128,19 +139,33 @@ export interface UnattendedSession {
   state: "awaiting-pw" | "pw-in-flight" | "confirmed";
   /**
    * The viewer's IP prefix at JOIN time (e.g. "84.xxx"). Stored on
-   * the session so connection_log can record it later — by the time
-   * the sharer reports `connection-started`, the viewer's request
-   * object is no longer easily accessible.
+   * the session because the mirrored `peer-joined` to the sharer is
+   * sent from the SHARER's connection handler, where the viewer's
+   * request object is no longer accessible.
    */
   viewerIpPrefix: string;
   /**
-   * connection_log row id for the active session, set when the
-   * sharer emits `connection-started`. Used by `connection-ended`
-   * and viewer/sharer close handlers to finalise `ended_at` +
-   * `bytes_relayed`.
+   * When the session entered "awaiting-pw" (epoch ms). Bounds the
+   * pre-confirmed lifetime — see [`PW_ENTRY_TIMEOUT_MS`].
    */
-  logId: number | null;
+  createdAt: number;
 }
+
+/**
+ * Server-side bound on how long a viewer may sit in awaiting-pw /
+ * pw-in-flight before the slot is freed. Joining an unattended device
+ * costs zero credentials (device code → needs-password), and while the
+ * session exists every other viewer — the owner included — only sees
+ * "session full". Without a deadline a wedged or hostile client could
+ * occupy the device silently for as long as it keeps its WS open; the
+ * ad-hoc flow is bounded by the 10-minute code TTL, this is the
+ * unattended equivalent. 2 minutes is generous for typing a password
+ * (the 5-fail lockout bounds retries anyway) yet frees the slot fast.
+ * Sessions are in-memory only — this deadline is the retention policy
+ * for not-yet-confirmed pairing state; confirmed sessions live until a
+ * peer disconnects.
+ */
+export const PW_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
 
 export class UnattendedSessions {
   private readonly byDevice = new Map<string, UnattendedSession>();
@@ -163,6 +188,7 @@ export class UnattendedSessions {
     viewer: WebSocket,
     sharer: WebSocket,
     viewerIpPrefix: string,
+    now: number = Date.now(),
   ): "ok" | "busy" {
     if (this.byDevice.has(deviceId)) return "busy";
     this.byDevice.set(deviceId, {
@@ -171,15 +197,29 @@ export class UnattendedSessions {
       sharer,
       state: "awaiting-pw",
       viewerIpPrefix,
-      logId: null,
+      createdAt: now,
     });
     this.viewerToDevice.set(viewer, deviceId);
     return "ok";
   }
 
-  attachLog(deviceId: string, logId: number): void {
-    const sess = this.byDevice.get(deviceId);
-    if (sess) sess.logId = logId;
+  /**
+   * Reap sessions stuck before "confirmed" for longer than
+   * [`PW_ENTRY_TIMEOUT_MS`] and return them so the caller (the 60 s
+   * sweep in server.ts) can close the abandoned viewer sockets.
+   * Confirmed sessions are exempt — they live until a peer
+   * disconnects. A pw-check-result landing after the reap is silently
+   * dropped by `findBySharer` returning null (TC C-2 contract).
+   */
+  sweepStale(now: number = Date.now()): UnattendedSession[] {
+    const stale: UnattendedSession[] = [];
+    for (const sess of this.byDevice.values()) {
+      if (sess.state !== "confirmed" && now - sess.createdAt >= PW_ENTRY_TIMEOUT_MS) {
+        stale.push(sess);
+      }
+    }
+    for (const sess of stale) this.remove(sess.deviceId);
+    return stale;
   }
 
   /** Lookup by either end of the pairing. */

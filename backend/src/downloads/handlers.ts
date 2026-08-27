@@ -4,7 +4,7 @@ import type { Db } from "../db.js";
 /**
  * Public download counters surfaced on /download/.
  *
- * `KNOWN_ASSETS` is the allow-list — the POST endpoint 404s for anything
+ * `KNOWN_ASSETS` is the allow-list — the file proxy 404s for anything
  * else so we can't be flooded with arbitrary asset_name rows. When a new
  * release ships:
  *   1) upload the new artefacts to the GitHub release
@@ -14,9 +14,18 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.6.4 — released 2026-07-02, the ONLY release currently on GitHub
+  // (0.5.0/0.6.0 wurden dort gelöscht). Erste Version mit Windows-
+  // portable-exe. Linux + Windows via release CI (build-sharer.yml).
+  "Auffi_0.6.4_amd64.deb",
+  "Auffi-0.6.4-1.x86_64.rpm",
+  "Auffi_0.6.4_amd64.AppImage",
+  "Auffi_0.6.4_x64-setup.exe",
+  "Auffi_0.6.4_x64_en-US.msi",
+  "Auffi_0.6.4_x64_portable.exe",
   // 0.6.0 — released 2026-06-16. Geo-country in confirm dialog, Calm-Fresh
-  // sharer recast, security guards. Linux + Windows via the release CI
-  // (build-sharer.yml). macOS not built — no macOS capture backend yet.
+  // sharer recast, security guards. Release inzwischen auf GitHub gelöscht —
+  // Eintrag bleibt nur für die Counter-Persistenz (Upstream-Fetch → 502).
   "Auffi_0.6.0_amd64.deb",
   "Auffi-0.6.0-1.x86_64.rpm",
   "Auffi_0.6.0_amd64.AppImage",
@@ -128,41 +137,6 @@ export function registerDownloadRoutes(
   });
 
   /**
-   * POST /api/downloads/:asset — increment the click-counter for `asset`.
-   * Rate-limited per IP (the global rate-limit applies; the cap here is
-   * tighter so a misclicking bot can't run the count into the millions).
-   * 404 on unknown asset names so the table can't be flooded with
-   * arbitrary keys.
-   */
-  app.post(
-    "/api/downloads/:asset",
-    {
-      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
-    },
-    async (req: FastifyRequest, reply: FastifyReply) => {
-      const { asset } = req.params as { asset: string };
-      if (!asset || !KNOWN_ASSETS.has(asset)) {
-        return reply
-          .status(404)
-          .send({ error: "unknown-asset", message: "asset is not on the allow-list" });
-      }
-      const now = Date.now();
-      db.prepare(
-        `INSERT INTO download_counts (asset_name, count, updated_at)
-              VALUES (?, 1, ?)
-         ON CONFLICT (asset_name) DO UPDATE
-              SET count = count + 1, updated_at = excluded.updated_at`,
-      ).run(asset, now);
-      const after = db
-        .prepare<[string], { count: number }>(
-          "SELECT count FROM download_counts WHERE asset_name = ?",
-        )
-        .get(asset)!;
-      return reply.status(200).send({ ok: true, count: after.count });
-    },
-  );
-
-  /**
    * GET /api/downloads/file/:asset — stream-through proxy.
    *
    * Replaces the client-side fire-and-forget POST + GH-redirect pattern
@@ -173,9 +147,8 @@ export function registerDownloadRoutes(
    * Counter is only bumped AFTER upstream returns 2xx so a Github
    * outage / bad asset name doesn't inflate the metric.
    *
-   * Same rate-limit cap as the POST endpoint — argon2-DoS / counter-
-   * flooding both want the per-IP cap, and a determined user wouldn't
-   * download a 200 MB file 30× per minute anyway.
+   * 30/min/IP — counter-flooding wants the per-IP cap, and a determined
+   * user wouldn't download a 200 MB file 30× per minute anyway.
    */
   app.get<{ Params: { asset: string }; Querystring: { tag?: string } }>(
     "/api/downloads/file/:asset",
@@ -209,6 +182,10 @@ export function registerDownloadRoutes(
 
       const upstream = await upstreamFetcher(asset, tag);
       if (!upstream.ok || !upstream.body) {
+        // Release the connection: a non-ok response with a body (GitHub
+        // 404 page, S3 error XML) would otherwise keep the undici stream
+        // reserved until GC under repeated failures.
+        void upstream.body?.cancel().catch(() => {});
         return reply
           .status(502)
           .send({ error: "upstream-unavailable", message: "could not fetch asset" });

@@ -74,12 +74,12 @@ export function computeAdminStats(db: Db, now: number = Date.now()): AdminStats 
   };
 
   const users = {
-    total: num("SELECT COUNT(*) AS c FROM accounts WHERE deleted_at IS NULL"),
+    total: num("SELECT COUNT(*) AS c FROM accounts"),
     verified: num(
-      "SELECT COUNT(*) AS c FROM accounts WHERE deleted_at IS NULL AND email_verified_at IS NOT NULL",
+      "SELECT COUNT(*) AS c FROM accounts WHERE email_verified_at IS NOT NULL",
     ),
     suspended: num(
-      "SELECT COUNT(*) AS c FROM accounts WHERE deleted_at IS NULL AND suspended_at IS NOT NULL",
+      "SELECT COUNT(*) AS c FROM accounts WHERE suspended_at IS NOT NULL",
     ),
     active_24h: num(
       `SELECT COUNT(DISTINCT account_id) AS c FROM sessions
@@ -97,11 +97,11 @@ export function computeAdminStats(db: Db, now: number = Date.now()): AdminStats 
       [month],
     ),
     new_24h: num(
-      "SELECT COUNT(*) AS c FROM accounts WHERE created_at >= ? AND deleted_at IS NULL",
+      "SELECT COUNT(*) AS c FROM accounts WHERE created_at >= ?",
       [yest],
     ),
     new_7d: num(
-      "SELECT COUNT(*) AS c FROM accounts WHERE created_at >= ? AND deleted_at IS NULL",
+      "SELECT COUNT(*) AS c FROM accounts WHERE created_at >= ?",
       [week],
     ),
   };

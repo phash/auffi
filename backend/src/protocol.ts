@@ -16,7 +16,15 @@ export type IceCandidateInit = {
 export type RelaySdp = { kind: "sdp"; sdp: SdpDescription };
 export type RelayIce = { kind: "ice"; candidate: IceCandidateInit };
 export type RelayHello = { kind: "hello"; ts: number };
-export type RelayPayload = RelaySdp | RelayIce | RelayHello;
+/**
+ * Courteous teardown: the sending peer ended the stream on purpose, so
+ * the receiver shows the friendly "beendet" copy instead of waiting for
+ * the ICE timeout. Also synthesized BY THE BACKEND toward the sharer
+ * when a not-yet-confirmed viewer disappears (its own bye is gated by
+ * the pre-confirm relay guard, and a tab-close sends nothing at all).
+ */
+export type RelayBye = { kind: "bye" };
+export type RelayPayload = RelaySdp | RelayIce | RelayHello | RelayBye;
 
 export type RelayMsg = { type: "relay"; payload: RelayPayload };
 
@@ -25,10 +33,8 @@ export type IncomingMessage =
   | SharerConfirm
   | ViewerJoin
   | RelayMsg
-  | { type: "pw-attempt"; password: string }
-  | { type: "pw-check-result"; result: "ok" | "fail" | "rejected" }
-  | { type: "connection-started"; connectionType: "p2p" | "relay" }
-  | { type: "connection-ended"; bytesRelayed: number };
+  | PwAttempt
+  | PwCheckResult;
 
 export type CodeAssigned = {
   type: "code-assigned";

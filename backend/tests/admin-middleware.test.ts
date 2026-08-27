@@ -100,12 +100,9 @@ describe("requireAdmin middleware", () => {
     expect(res.json().error).toBe("no-session");
   });
 
-  it("returns 403 when admin's account was soft-deleted between requests", async () => {
+  it("returns 401 when the admin's account was deleted between requests", async () => {
     const c = await h.adminCookie();
-    h.db.prepare("UPDATE accounts SET deleted_at = ? WHERE email = ?").run(
-      Date.now(),
-      "admin@example.com",
-    );
+    h.db.prepare("DELETE FROM accounts WHERE email = ?").run("admin@example.com");
     const res = await h.app.inject({
       method: "POST",
       url: "/api/admin/ping",
@@ -142,12 +139,12 @@ describe("requireAdmin middleware", () => {
     expect(row?.target_type).toBe("account");
     expect(row?.target_id).toBe("1");
     expect(row?.after_json).toBe('{"ts":1}');
-    expect(row?.viewer_ip_prefix).toBe("84.137.xxx");
+    expect(row?.viewer_ip_prefix).toBe("84.xxx");
   });
 });
 
 describe("writeAudit IP-prefix shaping", () => {
-  it("redacts to first two octets for IPv4", async () => {
+  it("redacts to the first octet for IPv4 — matches connection_log's viewer_ip_prefix format", async () => {
     const h = await build();
     const c = await h.adminCookie();
     // Single-entry XFF: trustProxy:1 sets req.ip = 203.0.113.42.
@@ -161,15 +158,12 @@ describe("writeAudit IP-prefix shaping", () => {
         "SELECT viewer_ip_prefix FROM audit_log ORDER BY id DESC LIMIT 1",
       )
       .get();
-    expect(row?.viewer_ip_prefix).toBe("203.0.xxx");
+    expect(row?.viewer_ip_prefix).toBe("203.xxx");
     await h.app.close();
     h.db.close();
   });
 
-  it("redacts to first 3 hextets for IPv6 + ::xxx tail (= /48, DSGVO-M7 fix)", async () => {
-    // BGH VI ZR 135/13 — ISPs assign /64 per customer, so /64 is still
-    // personenbezogen. /48 (3 hextets) is the coarser ISP-region scope
-    // that the audit log uses post-2026-05-17 review.
+  it("redacts to the first two hextets for IPv6", async () => {
     const h = await build();
     const c = await h.adminCookie();
     // Single-entry XFF: trustProxy:1 sets req.ip = the IPv6 address.
@@ -186,7 +180,30 @@ describe("writeAudit IP-prefix shaping", () => {
         "SELECT viewer_ip_prefix FROM audit_log ORDER BY id DESC LIMIT 1",
       )
       .get();
-    expect(row?.viewer_ip_prefix).toBe("2001:db8:abcd::xxx");
+    expect(row?.viewer_ip_prefix).toBe("2001:db8:xxx");
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("normalises an IPv4-mapped IPv6 address instead of collapsing it to a constant", async () => {
+    // Without stripIpv4Mapped, ::ffff:84.123.45.6 takes the IPv6 branch
+    // and EVERY such client redacts to the same useless '::ffff::xxx'.
+    const h = await build();
+    const c = await h.adminCookie();
+    await h.app.inject({
+      method: "POST",
+      url: "/api/admin/ping",
+      headers: {
+        cookie: `__Host-auffi_session=${c}`,
+        "x-forwarded-for": "::ffff:84.123.45.6",
+      },
+    });
+    const row = h.db
+      .prepare<[], { viewer_ip_prefix: string }>(
+        "SELECT viewer_ip_prefix FROM audit_log ORDER BY id DESC LIMIT 1",
+      )
+      .get();
+    expect(row?.viewer_ip_prefix).toBe("84.xxx");
     await h.app.close();
     h.db.close();
   });
@@ -214,8 +231,8 @@ describe("writeAudit IP-prefix shaping", () => {
       )
       .get();
     // Must NOT be the attacker-controlled leftmost entry.
-    expect(row?.viewer_ip_prefix).not.toBe("1.2.xxx");
-    expect(row?.viewer_ip_prefix).toBe("5.6.xxx");
+    expect(row?.viewer_ip_prefix).not.toBe("1.xxx");
+    expect(row?.viewer_ip_prefix).toBe("5.xxx");
     await h.app.close();
     h.db.close();
   });

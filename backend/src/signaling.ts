@@ -21,7 +21,6 @@ import {
   resetPwFail,
   UnattendedSessions,
 } from "./unattended_sessions.js";
-import { startConnectionLog, endConnectionLog } from "./connection_log.js";
 import {
   checkIpRateLimit as checkRateLimit,
   stripIpv4Mapped,
@@ -124,6 +123,21 @@ export function registerSignaling(
     return ip.split(":").slice(0, 2).join(":") + ":xxx";
   }
 
+  // A code expiring out from under a waiting viewer must not be a
+  // silent dead-end: tell the viewer the code expired (the protocol
+  // reason existed but was never emitted) and hand the sharer the bye
+  // its confirm dialog is waiting on. Registered here — not in
+  // server.ts — so every signaling setup (tests included) gets the
+  // wiring for free. Only unconfirmed sessions ever reach this
+  // callback; confirmed ones are exempt from expiry (see SessionStore).
+  store.setOnExpiredDrop((session) => {
+    if (!session.viewer) return;
+    const viewer = session.viewer as WebSocket;
+    send(viewer, { type: "peer-rejected", reason: "expired" });
+    viewer.close();
+    send(session.sharer as WebSocket, { type: "relay", payload: { kind: "bye" } });
+  });
+
   app.get("/signal", { websocket: true }, (socket, req) => {
     const peer = socket;
     let role: "sharer" | "viewer" | "unattended-sharer" | null = null;
@@ -158,11 +172,12 @@ export function registerSignaling(
       }
       const auth = parsed;
       const { db, registry, sessions } = unattended;
-      // verify is async (argon2). Tell the handler to swallow any
-      // incoming messages until we've answered. We attach the
-      // message listener AFTER the verify resolves so timing
-      // observers can't differentiate "rejected because invalid
-      // token" from "rejected because rate-limited later".
+      // verify is async (argon2). The message listener below attaches
+      // synchronously while the verify is still in flight, but its
+      // role guard answers every premature frame with the same generic
+      // bad-message error until the verify resolves and promotes this
+      // connection to unattended-sharer — so a wrong token never gets
+      // to observe ad-hoc protocol behaviour (Sec H-1).
       verifyBearerAuth(db, auth).then(
         (ok) => {
           if (peer.readyState !== peer.OPEN) return;
@@ -237,15 +252,29 @@ export function registerSignaling(
             // comment).
             return;
           }
+          if (sess.viewer.readyState !== sess.viewer.OPEN) {
+            // Same TC C-2 give-up, caught mid-handshake: the viewer's
+            // close frame has been received (readyState CLOSING/CLOSED)
+            // but its "close" event — which reaps the session — may not
+            // have fired yet, so the session still looks intact here.
+            // Reap it now and drop the result silently; forwarding
+            // would hand the sharer a stray peer-joined for a viewer
+            // that no longer exists.
+            sessions.remove(sess.deviceId);
+            return;
+          }
           if (msg.result === "ok") {
             resetPwFail(db, sess.deviceId);
             sessions.transition(sess.deviceId, "confirmed");
             send(sess.viewer, { type: "peer-confirmed" });
             // Mirror peer-joined to the sharer so its WebRTC code path
-            // matches the ad-hoc one (the sharer initiates the offer).
+            // matches the ad-hoc one (the viewer creates the offer once
+            // confirmed; the sharer waits for it). NB: `req` here is
+            // the SHARER's own upgrade request — the viewer's redacted
+            // IP was captured at join time on the session.
             send(peer, {
               type: "peer-joined",
-              viewerInfo: { ipPrefix: ipPrefix(req), country: null },
+              viewerInfo: { ipPrefix: sess.viewerIpPrefix, country: null },
             });
             return;
           }
@@ -292,61 +321,14 @@ export function registerSignaling(
           return;
         }
 
-        if (msg.type === "connection-started") {
-          // Sharer reports it has finished ICE and now knows whether
-          // the media path is P2P or TURN-relayed. We record a new
-          // connection_log row keyed by the device + the viewer
-          // ipPrefix we captured at JOIN time (gh #18).
-          const sess = sessions.findBySharer(peer);
-          if (!sess || sess.state !== "confirmed") return;
-          if (msg.connectionType !== "p2p" && msg.connectionType !== "relay") return;
-          const id = startConnectionLog(
-            db,
-            sess.deviceId,
-            sess.viewerIpPrefix,
-            msg.connectionType,
-          );
-          sessions.attachLog(sess.deviceId, id);
-          return;
-        }
-
-        if (msg.type === "connection-ended") {
-          const sess = sessions.findBySharer(peer);
-          if (!sess || sess.logId === null) return;
-          // Sec L-3 (review 2026-05-13): cap server-side. A malicious
-          // or buggy sharer reporting Number.MAX_SAFE_INTEGER would
-          // pollute the per-device usage metric on the dashboard. The
-          // ceiling is the gh #18 free-tier soft-cap (100 GB) — well
-          // above any realistic ad-hoc session and a low enough
-          // ceiling that "1.2 TB this hour" sticks out as an outlier
-          // worth alerting on.
-          const MAX_BYTES_PER_SESSION = 100 * 1024 * 1024 * 1024;
-          const rawBytes = msg.bytesRelayed;
-          const bytes =
-            Number.isFinite(rawBytes) && rawBytes >= 0
-              ? Math.min(Math.floor(rawBytes), MAX_BYTES_PER_SESSION)
-              : 0;
-          endConnectionLog(db, sess.logId, bytes);
-          sess.logId = null;
-          return;
-        }
-
         send(peer, { type: "error", code: "bad-message", message: "unexpected message" });
       });
 
       // Tear down any pending session if the sharer drops. The viewer
       // gets the same "sharer-gone" treatment as the ad-hoc flow.
-      // If a connection_log row was open for this session, finalise
-      // it with bytes_relayed=0 — the sharer didn't report a final
-      // count (gh #18). The dashboard treats ended_at != null as
-      // "session over"; an underestimate of bytes_relayed is better
-      // than leaving the row "alive" forever.
       peer.on("close", () => {
         const sess = sessions.detachSharer(peer);
         if (sess) {
-          if (sess.logId !== null) {
-            endConnectionLog(db, sess.logId, 0);
-          }
           send(sess.viewer, { type: "peer-rejected", reason: "sharer-gone" });
           sess.viewer.close();
         }
@@ -389,7 +371,7 @@ export function registerSignaling(
           peer.close();
           return;
         }
-        const session = store.getSession(normalized);
+        const session = store.getJoinableSession(normalized);
         if (!session) {
           // gh #17: ad-hoc lookup miss → try registered unattended
           // device with the same code shape. The normaliser already
@@ -457,14 +439,22 @@ export function registerSignaling(
         const found = store.findByPeer(peer as Peer);
         if (!found) return;
         if (msg.accepted) {
-          store.markConfirmed(found.code);
-          if (found.viewer) send(found.viewer as WebSocket, { type: "peer-confirmed" });
+          // Accept is only meaningful while a viewer is attached. If
+          // the viewer bailed while the dialog was up, leave the
+          // session unconfirmed — otherwise the relay gate would stand
+          // pre-opened for whichever viewer joins next (sharer
+          // confirmation is mandatory).
+          if (found.viewer) {
+            store.markConfirmed(found.code);
+            send(found.viewer as WebSocket, { type: "peer-confirmed" });
+          }
         } else {
-          // Ignore a `confirm:false` against an already-confirmed session:
-          // a sharer-side bug could otherwise tear down a live stream
-          // (and the new helper after viewer-swap) by reaching this branch
-          // unintentionally. The user-driven decline path runs before the
-          // session is ever confirmed, so the guard is invisible to it.
+          // Ignore a `confirm:false` against a live confirmed session:
+          // a sharer-side bug could otherwise tear down a running
+          // stream by reaching this branch unintentionally. This guard
+          // never swallows a user-driven decline: `detachViewer` resets
+          // `confirmed`, so a decline aimed at a swapped-in (not yet
+          // re-accepted) viewer passes it normally.
           if (found.confirmed) return;
           if (found.viewer) {
             const viewerSocket = found.viewer as WebSocket;
@@ -581,13 +571,6 @@ export function registerSignaling(
       if (unattended) {
         const usess = unattended.sessions.detachViewer(peer);
         if (usess) {
-          // If a connection_log row was open, finalise it with
-          // bytes_relayed=0 — the sharer typically reports the final
-          // count via connection-ended, but the viewer can drop
-          // before that arrives (gh #18).
-          if (usess.logId !== null) {
-            endConnectionLog(unattended.db, usess.logId, 0);
-          }
           // No need to close the sharer — it stays online for the
           // next viewer. If the session was in flight, the sharer's
           // pw-check-result (if it ever arrives) will just be ignored
@@ -605,7 +588,19 @@ export function registerSignaling(
         }
         store.removeBySharer(peer as Peer);
       } else if (found.viewer === peer) {
+        const wasConfirmed = found.confirmed;
         store.detachViewer(peer as Peer);
+        if (!wasConfirmed) {
+          // The pre-confirm relay gate swallowed any courteous bye the
+          // viewer sent before bailing (and a tab-close sends nothing
+          // at all), leaving the sharer's confirm dialog pointing at a
+          // gone viewer. Deliver the bye on the viewer's behalf; a
+          // later peer-joined re-opens the dialog for the next viewer.
+          // Confirmed sessions deliberately get NO synthesized bye —
+          // a Wi-Fi blip must keep the ICE grace / reconnect window
+          // alive instead of tearing the stream down.
+          send(found.sharer as WebSocket, { type: "relay", payload: { kind: "bye" } });
+        }
       }
     });
   });

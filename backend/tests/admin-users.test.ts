@@ -8,22 +8,26 @@ import { registerAuthRoutes } from "../src/auth/handlers.js";
 import { registerAdminUsersRoutes } from "../src/admin/users.js";
 import { captureTransport } from "../src/email/transport.js";
 import { buildAuthMailer } from "../src/email/mailer.js";
+import { UnattendedRegistry } from "../src/unattended.js";
+import type { WebSocket } from "ws";
 
 async function build(): Promise<{
   app: FastifyInstance;
   db: Db;
+  registry: UnattendedRegistry;
   adminCookie: () => Promise<string>;
 }> {
   const db = openDb(":memory:");
   applyMigrations(db, defaultMigrationsDir());
   const transport = captureTransport();
   const mailer = buildAuthMailer({ dashboardUrl: "https://t/", transport });
+  const registry = new UnattendedRegistry();
   const app = Fastify();
   await app.register(rateLimit, { global: false });
   decorateRequireSession(app, db);
   decorateRequireAdmin(app, db);
   registerAuthRoutes(app, { db, mailer });
-  registerAdminUsersRoutes(app, db);
+  registerAdminUsersRoutes(app, db, registry);
   await app.ready();
 
   async function adminCookie(): Promise<string> {
@@ -46,7 +50,7 @@ async function build(): Promise<{
     return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
-  return { app, db, adminCookie };
+  return { app, db, registry, adminCookie };
 }
 
 async function seedUsers(db: Db): Promise<void> {
@@ -323,6 +327,56 @@ describe("PATCH /api/admin/users/:id (suspend/promote/demote)", () => {
     expect(res.statusCode).toBe(200);
   });
 
+  it("demote refuses when the only other admin is suspended (counts ACTIVE admins)", async () => {
+    // A suspended admin cannot log in, so demoting the last active one
+    // would leave the admin surface unreachable.
+    h.db.prepare("UPDATE accounts SET admin = 1, suspended_at = ? WHERE id = 2").run(Date.now());
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: "/api/admin/users/1",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { action: "demote" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("last-admin");
+  });
+
+  it("suspend refuses to suspend the last active admin — self-suspend cannot brick the admin surface", async () => {
+    // Sole admin (id=1) suspends themselves: suspended_at would be set AND
+    // all their sessions killed, with login blocked afterwards → no admin
+    // could ever log in again without DB surgery.
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: "/api/admin/users/1",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { action: "suspend", reason: "oops" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("last-admin");
+    const row = h.db
+      .prepare<[], { suspended_at: number | null }>(
+        "SELECT suspended_at FROM accounts WHERE id = 1",
+      )
+      .get();
+    expect(row?.suspended_at).toBeNull();
+    // The admin's session survives the refused action.
+    const sessions = h.db
+      .prepare<[], { c: number }>("SELECT COUNT(*) AS c FROM sessions WHERE account_id = 1")
+      .get();
+    expect(sessions?.c).toBeGreaterThan(0);
+  });
+
+  it("suspend of an admin allowed when another active admin exists", async () => {
+    h.db.prepare("UPDATE accounts SET admin = 1 WHERE id = 2").run();
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: "/api/admin/users/2",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { action: "suspend", reason: "compromised" },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
   it("rejects unknown action with 400", async () => {
     const res = await h.app.inject({
       method: "PATCH",
@@ -382,6 +436,33 @@ describe("DELETE /api/admin/users/:id", () => {
     expect(audit?.before_json).toContain("user0@example.com");
     expect(audit?.before_json).toContain('"device_count":1');
     expect(audit?.after_json).toContain('"reason":"manual abuse-report cleanup"');
+  });
+
+  it("evicts the target's live unattended sharer connections (WSS 4401)", async () => {
+    const targetId = 2;
+    h.db
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, created_at)
+         VALUES ('444-555-666', ?, 'X', 'dummy', ?)`,
+      )
+      .run(targetId, Date.now());
+    let closed: { code: number; reason: string } | null = null;
+    const peer = {
+      close(c: number, r: string) {
+        closed = { code: c, reason: r };
+      },
+    };
+    h.registry.register("444-555-666", peer as unknown as WebSocket);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/admin/users/${targetId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { reason: "cleanup" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(closed).toEqual({ code: 4401, reason: "device revoked" });
+    expect(h.registry.has("444-555-666")).toBe(false);
   });
 
   it("rejects self-delete with 409", async () => {

@@ -98,6 +98,28 @@ describe("POST /api/auth/signup", () => {
     expect(res.statusCode).toBe(409);
   });
 
+  it("concurrent duplicate signups → one 202, one 409 (UNIQUE race maps to email-taken, not 500)", async () => {
+    // Both requests pass the duplicate-email SELECT while the other is
+    // still inside the ~250 ms argon2 hash; the loser's INSERT trips the
+    // UNIQUE constraint and must surface as the same 409 as the pre-check.
+    const [r1, r2] = await Promise.all([
+      h.app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "race@example.com", password: "racer-password-1" },
+      }),
+      h.app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "race@example.com", password: "racer-password-2" },
+      }),
+    ]);
+    const codes = [r1.statusCode, r2.statusCode].sort((a, b) => a - b);
+    expect(codes).toEqual([202, 409]);
+    const rows = h.db.prepare("SELECT COUNT(*) AS c FROM accounts").get() as { c: number };
+    expect(rows.c).toBe(1);
+  });
+
   it("rejects malformed email with 400", async () => {
     const res = await h.app.inject({
       method: "POST",
@@ -407,6 +429,43 @@ describe("POST /api/auth/forgot + /api/auth/reset", () => {
     // The pre-reset sessions were wiped (only the new login's session remains)
     const count = h.db.prepare("SELECT COUNT(*) AS c FROM sessions").get() as { c: number };
     expect(count.c).toBe(1);
+  });
+
+  it("successful reset invalidates every other outstanding reset token of the account", async () => {
+    // Attacker scenario: a stashed unused reset link must not survive the
+    // victim's own successful reset — mirrors the session invalidation.
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/forgot",
+      payload: { email: "grace@example.com" },
+    });
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/forgot",
+      payload: { email: "grace@example.com" },
+    });
+    expect(h.mailer.sent).toHaveLength(2);
+    const stashed = h.mailer.sent[0].token;
+    const used = h.mailer.sent[1].token;
+
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/auth/reset/${used}`,
+      payload: { password: "victims-new-password" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const replay = await h.app.inject({
+      method: "POST",
+      url: `/api/auth/reset/${stashed}`,
+      payload: { password: "attacker-password-x" },
+    });
+    expect(replay.statusCode).toBe(410);
+
+    const unused = h.db
+      .prepare("SELECT COUNT(*) AS c FROM password_resets WHERE used_at IS NULL")
+      .get() as { c: number };
+    expect(unused.c).toBe(0);
   });
 
   it("reset rejects an expired token with 410", async () => {

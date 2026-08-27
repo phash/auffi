@@ -3,13 +3,11 @@ import type { Db } from "./db.js";
 /**
  * Retention windows (milliseconds) for the periodic purge. Spec
  * section 12 + DSGVO V-002: rows in user-visible logs disappear at
- * 30 days; soft-deleted accounts and audit rows hang on longer for
- * support/incident review. Anyone changing these constants should
- * also update `docs/security-review-2026-05.md`.
+ * 30 days; audit rows hang on longer for support/incident review.
+ * Anyone changing these constants should also update
+ * `docs/security-review-2026-05.md`.
  */
 export interface PurgeRetention {
-  /** Soft-deleted accounts: rows past `deleted_at + this` are hard-deleted. */
-  softDeletedAccountsGraceMs: number;
   /** connection_log rows older than this are deleted. */
   connectionLogMs: number;
   /** audit_log rows older than this are deleted. */
@@ -32,7 +30,6 @@ export interface PurgeRetention {
 }
 
 export const DEFAULT_RETENTION: PurgeRetention = {
-  softDeletedAccountsGraceMs: 30 * 24 * 60 * 60 * 1000, // 30 d
   connectionLogMs: 30 * 24 * 60 * 60 * 1000, // 30 d
   auditLogMs: 365 * 24 * 60 * 60 * 1000, // 1 y
   codeEventsMs: 365 * 24 * 60 * 60 * 1000, // 1 y
@@ -59,8 +56,6 @@ export interface PurgeReport {
   codeEvents: number;
   /** audit_log rows pointing at a feedback row being purged this pass. */
   feedbackAuditCascade: number;
-  /** Accounts soft-deleted longer ago than the grace window — hard-deleted. */
-  softDeletedAccounts: number;
   /** rate_limit_buckets rows whose lockout is past and counter is zero. */
   rateLimitBuckets: number;
   /** Feedback rows past retention (resolved-window + open-max). */
@@ -125,21 +120,17 @@ export function runPurge(
     .prepare("DELETE FROM code_events WHERE created_at < ?")
     .run(now - retention.codeEventsMs);
 
-  // Hard-delete accounts past the soft-delete grace window. The FK
-  // cascades to sessions, devices, audit_log refs (admin_id SET NULL),
-  // so device tokens + connection_log rows go too.
-  const softDeleted = db
-    .prepare(
-      "DELETE FROM accounts WHERE deleted_at IS NOT NULL AND deleted_at < ?",
-    )
-    .run(now - retention.softDeletedAccountsGraceMs);
-
-  // rate_limit_buckets: drop rows whose lockout has expired AND whose
-  // counter is back at zero. The counter-reset happens elsewhere; we
-  // only sweep up "fully recovered" rows so the table stays small.
+  // rate_limit_buckets: drop fully-recovered rows (counter back at
+  // zero, no active lock) AND rows whose lockout has expired — the
+  // fail-recorders start a fresh streak after an expired lock anyway
+  // (see recordPwFail / recordAccountPwFail), so a stale counter
+  // carries no state worth keeping, and the keys reference account /
+  // device ids that must not outlive their usefulness (retention).
   const expiredBuckets = db
     .prepare(
-      "DELETE FROM rate_limit_buckets WHERE (locked_until IS NULL OR locked_until < ?) AND fail_count = 0",
+      `DELETE FROM rate_limit_buckets
+        WHERE (locked_until IS NULL AND fail_count = 0)
+           OR (locked_until IS NOT NULL AND locked_until < ?)`,
     )
     .run(now);
 
@@ -193,7 +184,6 @@ export function runPurge(
     connectionLog: oldConnLog.changes,
     auditLog: oldAuditLog.changes,
     codeEvents: oldCodeEvents.changes,
-    softDeletedAccounts: softDeleted.changes,
     rateLimitBuckets: expiredBuckets.changes,
     feedback: oldFeedback.changes,
     feedbackAuditCascade: feedbackAuditPurged,

@@ -47,9 +47,13 @@ export function createMatomoTracker(cfg: MatomoConfig): MatomoTracker {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: body.toString(),
+          // Fail fast: without a timeout a half-open tracker (accepts TCP,
+          // never responds) holds a socket per code mint for undici's
+          // ~5 min default — one call is fired per minted code.
+          signal: AbortSignal.timeout(5000),
         });
       } catch {
-        // Intentional swallow — Matomo outage must never break code creation.
+        // Intentional swallow — Matomo outage/timeout must never break code creation.
       }
     },
   };

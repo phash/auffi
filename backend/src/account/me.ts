@@ -12,6 +12,7 @@ import {
   recordAccountPwSuccess,
 } from "../auth/account_lockout.js";
 import { mailErrorInfo } from "../email/log_safe.js";
+import type { UnattendedRegistry } from "../unattended.js";
 
 const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -27,6 +28,12 @@ export interface AccountMailer {
 export interface MeDeps {
   db: Db;
   mailer: AccountMailer;
+  /**
+   * Live unattended-sharer WSS connections. Account deletion cascades
+   * the devices away in SQL — without eviction the paired sharers would
+   * stay connected until their next heartbeat re-auth.
+   */
+  registry?: UnattendedRegistry;
 }
 
 interface PatchMeBody {
@@ -53,7 +60,7 @@ function isAcceptablePassword(s: string): boolean {
 }
 
 export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
-  const { db, mailer } = deps;
+  const { db, mailer, registry } = deps;
 
   // ── GET /api/me ─────────────────────────────────────────────────────
   app.get(
@@ -72,7 +79,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
           }
         >(
           `SELECT id, email, email_verified_at, created_at, admin
-             FROM accounts WHERE id = ? AND deleted_at IS NULL`,
+             FROM accounts WHERE id = ?`,
         )
         .get(req.account!.id);
       if (!account) return bad(reply, 404, "not-found", "account gone");
@@ -124,7 +131,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
 
       const account = db
         .prepare<[number], { id: number; email: string; password_hash: string }>(
-          "SELECT id, email, password_hash FROM accounts WHERE id = ? AND deleted_at IS NULL",
+          "SELECT id, email, password_hash FROM accounts WHERE id = ?",
         )
         .get(req.account!.id);
       if (!account) return bad(reply, 404, "not-found", "account gone");
@@ -162,7 +169,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         // (where the swap happens transactionally).
         const taken = db
           .prepare<[string, number], { id: number }>(
-            "SELECT id FROM accounts WHERE email = ? AND deleted_at IS NULL AND id != ?",
+            "SELECT id FROM accounts WHERE email = ? AND id != ?",
           )
           .get(newEmail, account.id);
         if (taken) return bad(reply, 409, "email-taken", "email already registered");
@@ -220,7 +227,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
 
       const account = db
         .prepare<[number], { id: number; password_hash: string }>(
-          "SELECT id, password_hash FROM accounts WHERE id = ? AND deleted_at IS NULL",
+          "SELECT id, password_hash FROM accounts WHERE id = ?",
         )
         .get(req.account!.id);
       if (!account) return bad(reply, 404, "not-found", "account gone");
@@ -245,10 +252,20 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
       }
       recordAccountPwSuccess(db, account.id);
 
+      // Device-IDs VOR dem Cascade einsammeln — danach sind die Zeilen weg,
+      // aber die WSS-Verbindungen der gepaarten Sharer leben noch.
+      const deviceIds = db
+        .prepare<[number], { id: string }>(
+          "SELECT id FROM devices WHERE owner_account_id = ?",
+        )
+        .all(account.id);
+
       // Hard-delete. Foreign-key cascades on sessions, email_verifications,
-      // password_resets, pending_email_changes (and devices / log once #14
-      // adds them) take everything related with it.
+      // password_resets, pending_email_changes, devices + logs take
+      // everything related with it.
       db.prepare("DELETE FROM accounts WHERE id = ?").run(account.id);
+
+      for (const d of deviceIds) registry?.evict(d.id);
 
       clearSessionCookie(reply);
       return reply.status(204).send();
@@ -283,13 +300,22 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
       const tx = db.transaction(() => {
         const taken = db
           .prepare<[string, number], { id: number }>(
-            "SELECT id FROM accounts WHERE email = ? AND deleted_at IS NULL AND id != ?",
+            "SELECT id FROM accounts WHERE email = ? AND id != ?",
           )
           .get(row.new_email, row.account_id);
         if (taken) {
           throw new Error("email-taken");
         }
-        db.prepare("UPDATE accounts SET email = ? WHERE id = ?").run(row.new_email, row.account_id);
+        // The click proves ownership of the NEW mailbox, so it also sets
+        // email_verified_at: a typo-signup account (verify mail went to a
+        // wrong address, no resend path exists) becomes verified here, and
+        // a previously-verified account doesn't keep a stale timestamp
+        // that claimed verification of the OLD address.
+        db.prepare("UPDATE accounts SET email = ?, email_verified_at = ? WHERE id = ?").run(
+          row.new_email,
+          Date.now(),
+          row.account_id,
+        );
         db.prepare(
           "UPDATE pending_email_changes SET used_at = ? WHERE token_hash = ?",
         ).run(Date.now(), hashToken(token));

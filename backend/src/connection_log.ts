@@ -10,47 +10,13 @@ export interface ConnectionLogRow {
   bytesRelayed: number;
 }
 
-/**
- * Insert a fresh connection_log row at WebRTC-connect time.
- * `viewerIpPrefix` is the redacted form (e.g. "84.xxx") — see
- * signaling.ts's `ipPrefix()` helper. `bytesRelayed` starts at 0 and
- * gets updated when the sharer reports `connection-ended` at session
- * close (spec section 18).
- *
- * Returns the new row's id so callers can `endConnectionLog` later.
- */
-export function startConnectionLog(
-  db: Db,
-  deviceId: string,
-  viewerIpPrefix: string,
-  connectionType: "p2p" | "relay",
-  now: number = Date.now(),
-): number {
-  const res = db
-    .prepare(
-      `INSERT INTO connection_log
-         (device_id, started_at, ended_at, viewer_ip_prefix, connection_type, bytes_relayed)
-       VALUES (?, ?, NULL, ?, ?, 0)`,
-    )
-    .run(deviceId, now, viewerIpPrefix, connectionType);
-  return Number(res.lastInsertRowid);
-}
-
-/**
- * Finalise a connection_log row. Sets `ended_at` and the final
- * `bytes_relayed` count. Idempotent — calling with a non-existent id
- * is a no-op.
- */
-export function endConnectionLog(
-  db: Db,
-  id: number,
-  bytesRelayed: number,
-  now: number = Date.now(),
-): void {
-  db.prepare(
-    "UPDATE connection_log SET ended_at = ?, bytes_relayed = ? WHERE id = ?",
-  ).run(now, bytesRelayed, id);
-}
+// The WRITE path (startConnectionLog / endConnectionLog, fed by the
+// connection-started / connection-ended wire frames) was removed as
+// dead code: no client ever emitted the frames, so connection_log rows
+// were never produced in production. gh #109 tracks (re)introducing
+// the telemetry end-to-end. The READ surface below stays — the table
+// exists, GET /api/devices/:id/log and the admin stats query it, and
+// purge.ts enforces its 30-day retention.
 
 /**
  * Page of connection_log rows for a device, newest first. The

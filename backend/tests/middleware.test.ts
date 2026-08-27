@@ -110,9 +110,9 @@ describe("requireSession decorator", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("returns 401 when the account is soft-deleted", async () => {
+  it("returns 401 when the account was deleted (FK cascade drops the session)", async () => {
     const c = await h.cookie();
-    h.db.prepare("UPDATE accounts SET deleted_at = ? WHERE id = 1").run(Date.now());
+    h.db.prepare("DELETE FROM accounts WHERE id = 1").run();
     const res = await h.app.inject({
       method: "GET",
       url: "/api/me",

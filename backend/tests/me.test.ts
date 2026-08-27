@@ -7,6 +7,8 @@ import { registerAuthRoutes } from "../src/auth/handlers.js";
 import { registerMeRoutes, type AccountMailer } from "../src/account/me.js";
 import { captureTransport } from "../src/email/transport.js";
 import { buildAuthMailer } from "../src/email/mailer.js";
+import { UnattendedRegistry } from "../src/unattended.js";
+import type { WebSocket } from "ws";
 
 function recordingChangeMailer(): AccountMailer & { sent: { to: string; token: string }[] } {
   const sent: { to: string; token: string }[] = [];
@@ -22,6 +24,7 @@ async function build(): Promise<{
   app: FastifyInstance;
   db: Db;
   changeMailer: AccountMailer & { sent: { to: string; token: string }[] };
+  registry: UnattendedRegistry;
   cookie: () => Promise<string>;
 }> {
   const db = openDb(":memory:");
@@ -29,11 +32,12 @@ async function build(): Promise<{
   const transport = captureTransport();
   const mailer = buildAuthMailer({ dashboardUrl: "https://t/", transport });
   const changeMailer = recordingChangeMailer();
+  const registry = new UnattendedRegistry();
   const app = Fastify();
   await app.register(rateLimit, { global: false });
   decorateRequireSession(app, db);
   registerAuthRoutes(app, { db, mailer });
-  registerMeRoutes(app, { db, mailer: changeMailer });
+  registerMeRoutes(app, { db, mailer: changeMailer, registry });
   await app.ready();
 
   async function cookie(): Promise<string> {
@@ -52,7 +56,7 @@ async function build(): Promise<{
     return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
   }
 
-  return { app, db, changeMailer, cookie };
+  return { app, db, changeMailer, registry, cookie };
 }
 
 describe("GET /api/me", () => {
@@ -233,6 +237,40 @@ describe("PATCH /api/me — email change", () => {
     expect(me.json().pendingEmail).toBeNull();
   });
 
+  it("verify click marks the swapped address as verified — the click proves ownership of the NEW mailbox", async () => {
+    // Typo-signup rescue: the account never clicked its signup-verify
+    // mail (wrong address), fixes the address via email-change — the
+    // change-link click is the ownership proof, so email_verified_at
+    // must be set here or the account stays unverified forever.
+    const before = h.db
+      .prepare<[], { email_verified_at: number | null }>(
+        "SELECT email_verified_at FROM accounts WHERE id = 1",
+      )
+      .get();
+    expect(before?.email_verified_at).toBeNull();
+
+    await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", new_email: "henry-fixed@example.com" },
+    });
+    const token = h.changeMailer.sent[0].token;
+    const verify = await h.app.inject({
+      method: "GET",
+      url: `/api/me/email-change/${token}`,
+    });
+    expect(verify.statusCode).toBe(200);
+
+    const after = h.db
+      .prepare<[], { email: string; email_verified_at: number | null }>(
+        "SELECT email, email_verified_at FROM accounts WHERE id = 1",
+      )
+      .get();
+    expect(after?.email).toBe("henry-fixed@example.com");
+    expect(after?.email_verified_at).not.toBeNull();
+  });
+
   it("refuses to change to an already-taken email at request time (409)", async () => {
     await h.app.inject({
       method: "POST",
@@ -341,6 +379,32 @@ describe("DELETE /api/me", () => {
       headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
     expect(after.statusCode).toBe(401);
+  });
+
+  it("evicts the account's live unattended sharer connections (WSS 4401)", async () => {
+    h.db
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, created_at)
+         VALUES ('111-222-333', 1, 'Wohnzimmer-PC', 'dummy', ?)`,
+      )
+      .run(Date.now());
+    let closed: { code: number; reason: string } | null = null;
+    const peer = {
+      close(c: number, r: string) {
+        closed = { code: c, reason: r };
+      },
+    };
+    h.registry.register("111-222-333", peer as unknown as WebSocket);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(closed).toEqual({ code: 4401, reason: "device revoked" });
+    expect(h.registry.has("111-222-333")).toBe(false);
   });
 });
 

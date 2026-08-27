@@ -225,6 +225,104 @@ describe("signaling handshake", () => {
     viewer2.close();
   });
 
+  it("viewer-swap: sharer's decline for the second viewer sends peer-rejected declined", async () => {
+    const sharer = openWs(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    // First viewer joins and is ACCEPTED.
+    const viewer1 = openWs(url);
+    await new Promise((r) => viewer1.once("open", r));
+    viewer1.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await recv(viewer1); // peer-confirmed
+
+    viewer1.close();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Second viewer joins the still-open session.
+    const viewer2 = openWs(url);
+    await new Promise((r) => viewer2.once("open", r));
+    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined (again)
+
+    // The relay gate must be CLOSED again for the swapped-in viewer.
+    let viewer2GotRelay = false;
+    viewer2.on("message", (data) => {
+      if (JSON.parse(data.toString()).type === "relay") viewer2GotRelay = true;
+    });
+    sharer.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 0 } }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(viewer2GotRelay).toBe(false);
+
+    // And Ablehnen must actually reach viewer2 — not be a silent no-op.
+    sharer.send(JSON.stringify({ type: "confirm", accepted: false }));
+    const rejected = await recv(viewer2);
+    expect(rejected.type).toBe("peer-rejected");
+    expect(rejected.reason).toBe("declined");
+    await new Promise<void>((r) => {
+      if (viewer2.readyState === WebSocket.CLOSED) return r();
+      viewer2.once("close", () => r());
+    });
+  });
+
+  it("pre-confirm viewer loss delivers a synthesized bye to the sharer", async () => {
+    const sharer = openWs(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer = openWs(url);
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined — sharer's confirm dialog is up
+
+    // Viewer bails (Abbrechen / tab close) before the sharer decides.
+    viewer.close();
+    const bye = await recv(sharer);
+    expect(bye).toEqual({ type: "relay", payload: { kind: "bye" } });
+    sharer.close();
+  });
+
+  it("confirm accepted:true with no attached viewer does not pre-confirm the session", async () => {
+    const sharer = openWs(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer1 = openWs(url);
+    await new Promise((r) => viewer1.once("open", r));
+    viewer1.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+    viewer1.close();
+    await recv(sharer); // synthesized bye
+
+    // Stale Akzeptieren races the viewer loss — must be ignored.
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+
+    const viewer2 = openWs(url);
+    await new Promise((r) => viewer2.once("open", r));
+    const v2msgs: Array<Record<string, unknown>> = [];
+    viewer2.on("message", (data) => v2msgs.push(JSON.parse(data.toString())));
+    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+
+    // Relay must still be gated — the stale accept must not have confirmed.
+    sharer.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 7 } }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(v2msgs).toEqual([]);
+
+    // A fresh accept with the viewer attached works normally.
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(v2msgs).toEqual([{ type: "peer-confirmed" }]);
+
+    sharer.close();
+    viewer2.close();
+  });
+
   it("invalid JSON → receives bad-message error and connection stays open", async () => {
     const ws = openWs(url);
     await new Promise((r) => ws.once("open", r));
@@ -586,3 +684,133 @@ describe("country lookup in ad-hoc peer-joined", () => {
     viewer.close();
   });
 });
+
+describe("code-TTL expiry vs live sessions", () => {
+  // Short TTL + a handle on the store so tests can drive the sweep
+  // directly instead of waiting for server.ts's 60 s interval.
+  const TTL_MS = 500;
+  let exApp: ReturnType<typeof Fastify>;
+  let exUrl: string;
+  let exStore: SessionStore;
+
+  beforeAll(async () => {
+    exApp = Fastify({ logger: false });
+    await exApp.register(websocketPlugin, {
+      options: {
+        maxPayload: 65_536,
+        verifyClient(_info: unknown, cb: (result: boolean) => void) {
+          cb(true);
+        },
+      },
+    });
+    exStore = new SessionStore({ ttlMs: TTL_MS });
+    registerSignaling(
+      exApp,
+      exStore,
+      { windowMs: 60_000, max: 100 },
+      new Map(),
+      undefined,
+      { windowMs: 60_000, max: 100 },
+      new Map(),
+    );
+    await exApp.listen({ port: 0, host: "127.0.0.1" });
+    const addr = exApp.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    exUrl = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await exApp.close();
+  });
+
+  function connect(): WebSocket {
+    return new WebSocket(exUrl);
+  }
+
+  async function confirmedPair(): Promise<{ sharer: WebSocket; viewer: WebSocket; code: string }> {
+    const sharer = connect();
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+    const viewer = connect();
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await recv(viewer); // peer-confirmed
+    return { sharer, viewer, code };
+  }
+
+  it("a confirmed pair keeps relaying past the code TTL; the sweep leaves it alone", async () => {
+    const { sharer, viewer } = await confirmedPair();
+    await new Promise((r) => setTimeout(r, TTL_MS + 200));
+    exStore.sweepExpired(Date.now());
+
+    // The viewer's courteous bye still reaches the sharer mid-stream.
+    viewer.send(JSON.stringify({ type: "relay", payload: { kind: "bye" } }));
+    const relayed = await recv(sharer);
+    expect(relayed).toEqual({ type: "relay", payload: { kind: "bye" } });
+    sharer.close();
+    viewer.close();
+  });
+
+  it("an expired code is no longer joinable even while the confirmed session lives", async () => {
+    const { sharer, viewer, code } = await confirmedPair();
+    await new Promise((r) => setTimeout(r, TTL_MS + 200));
+
+    const late = connect();
+    await new Promise((r) => late.once("open", r));
+    late.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    const err = await recv(late);
+    expect(err.type).toBe("error");
+    expect(err.code).toBe("invalid-code");
+    sharer.close();
+    viewer.close();
+  });
+
+  it("viewer waiting on the confirm dialog gets peer-rejected expired from the sweep; sharer gets a bye", async () => {
+    const sharer = connect();
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+    const viewer = connect();
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined — confirm dialog up, never answered
+
+    await new Promise((r) => setTimeout(r, TTL_MS + 200));
+    // Attach both listeners BEFORE the sweep — ws "message" events
+    // don't queue for late subscribers.
+    const rejectedPromise = recv(viewer);
+    const byePromise = recv(sharer);
+    exStore.sweepExpired(Date.now());
+
+    expect(await rejectedPromise).toEqual({ type: "peer-rejected", reason: "expired" });
+    await new Promise<void>((r) => {
+      if (viewer.readyState === WebSocket.CLOSED) return r();
+      viewer.once("close", () => r());
+    });
+    expect(await byePromise).toEqual({ type: "relay", payload: { kind: "bye" } });
+    sharer.close();
+  });
+
+  it("a confirm landing after expiry lazily drops the session and notifies the viewer with expired", async () => {
+    const sharer = connect();
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+    const viewer = connect();
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+
+    await new Promise((r) => setTimeout(r, TTL_MS + 200));
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+
+    const rejected = await recv(viewer);
+    expect(rejected).toEqual({ type: "peer-rejected", reason: "expired" });
+    sharer.close();
+    viewer.close();
+  });
+});
+

@@ -35,13 +35,28 @@ describe("GET /api/downloads", () => {
     }
   });
 
-  it("reflects incremented counts after POSTs", async () => {
+  it("reflects persisted counts for known assets", async () => {
     const asset = "Auffi_0.4.2_amd64.deb";
-    for (let i = 0; i < 3; i++) {
-      await h.app.inject({ method: "POST", url: `/api/downloads/${asset}` });
-    }
+    h.db
+      .prepare("INSERT INTO download_counts (asset_name, count, updated_at) VALUES (?, 3, ?)")
+      .run(asset, Date.now());
     const res = await h.app.inject({ method: "GET", url: "/api/downloads" });
     expect(res.json().counts[asset]).toBe(3);
+  });
+
+  it("allow-lists every asset of the current release (v0.6.4) that the download pages link", () => {
+    // These names must match the GitHub release assets 1:1 — the pages in
+    // viewer/public/download/ and viewer/index.html link them through the
+    // proxy, which 404s anything off-list.
+    const current = [
+      "Auffi_0.6.4_amd64.deb",
+      "Auffi-0.6.4-1.x86_64.rpm",
+      "Auffi_0.6.4_amd64.AppImage",
+      "Auffi_0.6.4_x64-setup.exe",
+      "Auffi_0.6.4_x64_en-US.msi",
+      "Auffi_0.6.4_x64_portable.exe",
+    ];
+    for (const a of current) expect(KNOWN_ASSETS.has(a)).toBe(true);
   });
 
   it("ignores rows that aren't in the allow-list (defensive — table is shared via SQLite)", async () => {
@@ -56,7 +71,7 @@ describe("GET /api/downloads", () => {
   });
 });
 
-describe("POST /api/downloads/:asset", () => {
+describe("POST /api/downloads/:asset (removed legacy counter endpoint)", () => {
   let h: Awaited<ReturnType<typeof build>>;
   beforeEach(async () => {
     h = await build();
@@ -66,66 +81,16 @@ describe("POST /api/downloads/:asset", () => {
     h.db.close();
   });
 
-  it("increments from 0 to 1 on first click and returns the new count", async () => {
-    const asset = "Auffi-0.4.2-1.x86_64.rpm";
-    const res = await h.app.inject({
-      method: "POST",
-      url: `/api/downloads/${asset}`,
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ ok: true, count: 1 });
-    const row = h.db
-      .prepare("SELECT count FROM download_counts WHERE asset_name = ?")
-      .get(asset) as { count: number };
-    expect(row.count).toBe(1);
-  });
-
-  it("increments monotonically on repeated clicks (no UPSERT bug)", async () => {
-    const asset = "Auffi_0.4.2_amd64.AppImage";
-    for (let i = 1; i <= 5; i++) {
-      const res = await h.app.inject({
-        method: "POST",
-        url: `/api/downloads/${asset}`,
-      });
-      expect(res.json().count).toBe(i);
-    }
-  });
-
-  it("404s for assets not on the allow-list (prevents arbitrary-key flooding)", async () => {
-    for (const asset of ["../etc/passwd", "definitely-not-an-asset", "x".repeat(200)]) {
-      const res = await h.app.inject({
-        method: "POST",
-        url: `/api/downloads/${encodeURIComponent(asset)}`,
-      });
-      expect(res.statusCode, `asset="${asset.slice(0, 20)}…"`).toBe(404);
-    }
-    // None of those rogue names made it into the table.
-    const rogueRows = h.db
-      .prepare("SELECT COUNT(*) AS c FROM download_counts")
-      .get() as { c: number };
-    expect(rogueRows.c).toBe(0);
-  });
-
-  it("updates updated_at on every increment", async () => {
-    const asset = "auffi-sharer-windows-x64.exe";
-    await h.app.inject({ method: "POST", url: `/api/downloads/${asset}` });
-    const t1 = (h.db
-      .prepare("SELECT updated_at FROM download_counts WHERE asset_name = ?")
-      .get(asset) as { updated_at: number }).updated_at;
-    await new Promise((r) => setTimeout(r, 5));
-    await h.app.inject({ method: "POST", url: `/api/downloads/${asset}` });
-    const t2 = (h.db
-      .prepare("SELECT updated_at FROM download_counts WHERE asset_name = ?")
-      .get(asset) as { updated_at: number }).updated_at;
-    expect(t2).toBeGreaterThan(t1);
-  });
-
-  it("does not require auth — counters are public-write by design", async () => {
+  it("no longer exists — stale cached pages get a 404 and no counter bump", async () => {
+    // The sendBeacon POST was replaced by the GET file-proxy which bumps
+    // the counter itself; the write-open POST surface stays gone.
     const res = await h.app.inject({
       method: "POST",
       url: "/api/downloads/Auffi_0.4.2_amd64.deb",
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(404);
+    const rows = h.db.prepare("SELECT COUNT(*) AS c FROM download_counts").get() as { c: number };
+    expect(rows.c).toBe(0);
   });
 });
 
@@ -199,6 +164,27 @@ describe("GET /api/downloads/file/:asset (stream-through proxy)", () => {
     // Either the row never got inserted, or its count is still 0. Both
     // are valid "did not increment" outcomes.
     expect(row?.count ?? 0).toBe(0);
+  });
+
+  it("cancels the upstream body on the 502 path so the connection is released", async () => {
+    // A non-ok upstream response with a body (GitHub 404 page) must not
+    // leave the undici connection half-open until GC.
+    let cancelled = false;
+    h = await build(async () =>
+      new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 404 },
+      ),
+    );
+    const res = await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    expect(res.statusCode).toBe(502);
+    // cancel() propagates through a microtask — allow one tick.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cancelled).toBe(true);
   });
 
   it("forwards a valid ?tag=vX.Y.Z to the upstream fetcher", async () => {

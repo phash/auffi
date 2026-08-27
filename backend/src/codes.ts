@@ -38,7 +38,20 @@ export type StoreConfig = {
 export class SessionStore {
   private sessions = new Map<string, Session>();
   private byPeer = new Map<Peer, string>();
+  private onExpiredDrop: ((session: Session) => void) | null = null;
   constructor(private cfg: StoreConfig) {}
+
+  /**
+   * Register the observer notified whenever an EXPIRED session is
+   * dropped (lazily in `getSession`, or by the periodic sweep). The
+   * signaling layer uses this to send `peer-rejected reason:"expired"`
+   * to a viewer still waiting on the sharer's confirm — the store
+   * itself stays wire-agnostic. A single slot, not a list: exactly one
+   * signaling registration owns a store.
+   */
+  setOnExpiredDrop(listener: (session: Session) => void): void {
+    this.onExpiredDrop = listener;
+  }
 
   registerSharer(sharer: Peer): { code: string; session: Session } {
     // Iteration cap so a wedged CSPRNG (or a 10^9-saturated keyspace) raises
@@ -69,20 +82,40 @@ export class SessionStore {
   }
 
   attachViewer(code: string, viewer: Peer): Session | null {
-    const session = this.getSession(code);
+    const session = this.getJoinableSession(code);
     if (!session) return null;
     session.viewer = viewer;
     this.byPeer.set(viewer, code);
     return session;
   }
 
+  /**
+   * Peer-facing lookup: a CONFIRMED session outlives its code TTL —
+   * the 10-minute cap applies to the CODE, not to an established
+   * pairing. Killing it here would silently drop mid-stream relay
+   * frames (the viewer's courteous `bye`, ICE restarts after a Wi-Fi
+   * blip); teardown of confirmed sessions belongs to the peers' close
+   * handlers. An expired UNCONFIRMED session is reaped lazily, with
+   * the `setOnExpiredDrop` observer told about it.
+   */
   getSession(code: string): Session | null {
     const session = this.sessions.get(code);
     if (!session) return null;
-    if (Date.now() > session.expiresAt) {
-      this.dropSession(session);
+    if (Date.now() > session.expiresAt && !session.confirmed) {
+      this.dropExpired(session);
       return null;
     }
+    return session;
+  }
+
+  /**
+   * Join-gate lookup: an expired code is never joinable again, even
+   * while its confirmed session is still streaming.
+   */
+  getJoinableSession(code: string): Session | null {
+    const session = this.getSession(code);
+    if (!session) return null;
+    if (Date.now() > session.expiresAt) return null;
     return session;
   }
 
@@ -109,21 +142,33 @@ export class SessionStore {
     const session = this.findByPeer(viewer);
     if (!session || session.viewer !== viewer) return;
     session.viewer = null;
+    // The accept belonged to THIS viewer. Whoever attaches next must be
+    // confirmed afresh — otherwise the sharer's decline would be a
+    // silent no-op and the pre-confirm relay gate would already stand
+    // open for the newcomer (gh review: sharer confirmation is
+    // mandatory). This also makes the session expirable again.
+    session.confirmed = false;
     this.byPeer.delete(viewer);
   }
 
   /**
-   * Proactively delete all sessions whose `expiresAt` is in the past.
-   * Called from the server's periodic sweep so the Map does not grow
+   * Proactively delete expired sessions so the Map does not grow
    * without bound when sharers disconnect without closing cleanly.
-   * Reuses `dropSession` so `byPeer` stays consistent.
+   * Called from the server's periodic sweep. CONFIRMED sessions are
+   * exempt (see `getSession`) — they are torn down by the peers'
+   * close handlers, never mid-stream by the sweep.
    */
   sweepExpired(now: number = Date.now()): void {
     for (const session of this.sessions.values()) {
-      if (session.expiresAt < now) {
-        this.dropSession(session);
+      if (session.expiresAt < now && !session.confirmed) {
+        this.dropExpired(session);
       }
     }
+  }
+
+  private dropExpired(session: Session): void {
+    this.dropSession(session);
+    this.onExpiredDrop?.(session);
   }
 
   private dropSession(session: Session): void {

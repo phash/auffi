@@ -92,6 +92,11 @@ describe("createMatomoTracker — POST payload", () => {
     expect(body.get("e_a")).toBe("code_created");
   });
 
+  it("passes an abort signal so a hanging tracker cannot hold sockets open per code mint", async () => {
+    await tracker.trackCodeCreated();
+    expect(probe.calls[0].init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("does NOT include any PII fields (cip, uid, url, urlref, ua)", async () => {
     await tracker.trackCodeCreated();
     const body = parseBody(probe.calls[0].init);

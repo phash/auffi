@@ -125,6 +125,18 @@ describe("SessionStore", () => {
     expect(session?.sharer).toBe(sharer);
   });
 
+  it("detachViewer resets confirmed so the next viewer needs a fresh accept", () => {
+    const store = new SessionStore({ ttlMs: 600_000 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    store.markConfirmed(code);
+    expect(store.getSession(code)?.confirmed).toBe(true);
+    store.detachViewer(viewer);
+    expect(store.getSession(code)?.confirmed).toBe(false);
+  });
+
   it("detachViewer is a no-op when called with a peer that is not the attached viewer", () => {
     const store = new SessionStore({ ttlMs: 600_000 });
     const sharer = { id: "s1" } as unknown as object;
@@ -155,6 +167,67 @@ describe("SessionStore", () => {
     expect(() =>
       store.registerSharer({ id: "s1" } as unknown as object)
     ).not.toThrow();
+  });
+
+  it("keeps a CONFIRMED session findable past its TTL, but refuses new joins for it", async () => {
+    const store = new SessionStore({ ttlMs: 20 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    store.markConfirmed(code);
+    await new Promise((r) => setTimeout(r, 40));
+    // The pairing survives — relay lookups keep working mid-stream.
+    expect(store.getSession(code)).not.toBeNull();
+    expect(store.findByPeer(sharer)).not.toBeNull();
+    expect(store.findByPeer(viewer)).not.toBeNull();
+    // …but the expired CODE is no longer joinable.
+    expect(store.getJoinableSession(code)).toBeNull();
+  });
+
+  it("drops an expired UNCONFIRMED session lazily and notifies the onExpiredDrop listener", async () => {
+    const store = new SessionStore({ ttlMs: 20 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    const dropped: string[] = [];
+    store.setOnExpiredDrop((session) => dropped.push(session.code));
+    await new Promise((r) => setTimeout(r, 40));
+    expect(store.getSession(code)).toBeNull();
+    expect(dropped).toEqual([code]);
+    expect(store.findByPeer(viewer)).toBeNull();
+  });
+
+  it("sweepExpired keeps confirmed sessions but drops unconfirmed ones, notifying the listener", () => {
+    const store = new SessionStore({ ttlMs: 600_000 });
+    const s1 = { id: "s1" } as unknown as object;
+    const s2 = { id: "s2" } as unknown as object;
+    const v1 = { id: "v1" } as unknown as object;
+    const { code: confirmedCode } = store.registerSharer(s1);
+    store.attachViewer(confirmedCode, v1);
+    store.markConfirmed(confirmedCode);
+    const { code: pendingCode } = store.registerSharer(s2);
+    const dropped: string[] = [];
+    store.setOnExpiredDrop((session) => dropped.push(session.code));
+
+    store.sweepExpired(Date.now() + 700_000);
+    // Confirmed pairing keeps streaming; the pending one is reaped.
+    expect(store.findByPeer(s1)).not.toBeNull();
+    expect(store.findByPeer(s2)).toBeNull();
+    expect(dropped).toEqual([pendingCode]);
+  });
+
+  it("a confirmed session becomes sweepable again after its viewer detaches", () => {
+    const store = new SessionStore({ ttlMs: 600_000 });
+    const sharer = { id: "s1" } as unknown as object;
+    const viewer = { id: "v1" } as unknown as object;
+    const { code } = store.registerSharer(sharer);
+    store.attachViewer(code, viewer);
+    store.markConfirmed(code);
+    store.detachViewer(viewer); // resets confirmed
+    store.sweepExpired(Date.now() + 700_000);
+    expect(store.getSession(code)).toBeNull();
   });
 
   it("sweepExpired removes sessions past their TTL and keeps live ones", () => {

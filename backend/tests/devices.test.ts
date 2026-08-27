@@ -159,6 +159,30 @@ describe("POST /api/devices/redeem", () => {
     expect(second.statusCode).toBe(410);
   });
 
+  it("two overlapping redeems of the same code → exactly one wins (atomic one-shot claim)", async () => {
+    // Both requests pass the used_at pre-check while the other is still
+    // inside the ~250 ms argon2 token-hash; the claim-UPDATE inside the
+    // transaction must be what enforces one-shot, not the pre-check.
+    const c = await h.cookie();
+    const code = await mintCode(c);
+    const [r1, r2] = await Promise.all([
+      h.app.inject({
+        method: "POST",
+        url: "/api/devices/redeem",
+        payload: { code, alias: "First" },
+      }),
+      h.app.inject({
+        method: "POST",
+        url: "/api/devices/redeem",
+        payload: { code, alias: "Second" },
+      }),
+    ]);
+    const codes = [r1.statusCode, r2.statusCode].sort((a, b) => a - b);
+    expect(codes).toEqual([200, 410]);
+    const devCount = h.db.prepare("SELECT COUNT(*) AS c FROM devices").get() as { c: number };
+    expect(devCount.c).toBe(1);
+  });
+
   it("rejects an expired code with 410", async () => {
     const c = await h.cookie();
     const code = await mintCode(c);
@@ -500,6 +524,34 @@ describe("DELETE /api/devices/:id", () => {
       .prepare("SELECT COUNT(*) AS c FROM connection_log WHERE device_id = ?")
       .get(deviceId) as { c: number };
     expect(log.c).toBe(0);
+  });
+
+  it("clears the device's rate-limit buckets on delete (parity with the admin route)", async () => {
+    // A re-paired device must not inherit a pwfail lockout; the admin
+    // delete already sweeps these — the owner delete has to match.
+    h.db
+      .prepare("INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES (?, 3, NULL)")
+      .run(`device:${deviceId}:pwfail`);
+    h.db
+      .prepare("INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES (?, 1, NULL)")
+      .run("device:000-000-000:pwfail");
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/devices/${deviceId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+    });
+    expect(res.statusCode).toBe(204);
+
+    const own = h.db
+      .prepare("SELECT COUNT(*) AS c FROM rate_limit_buckets WHERE key LIKE ?")
+      .get(`device:${deviceId}:%`) as { c: number };
+    expect(own.c).toBe(0);
+    // Unrelated devices' buckets survive.
+    const other = h.db
+      .prepare("SELECT COUNT(*) AS c FROM rate_limit_buckets WHERE key LIKE ?")
+      .get("device:000-000-000:%") as { c: number };
+    expect(other.c).toBe(1);
   });
 
   it("returns 403 on cross-account access (NOT 404)", async () => {

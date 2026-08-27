@@ -69,6 +69,13 @@ function bad(reply: FastifyReply, status: number, code: string, message: string)
   return reply.status(status).send({ error: code, message });
 }
 
+function isUniqueViolation(e: unknown): boolean {
+  return (
+    e instanceof Error &&
+    (e as Error & { code?: unknown }).code === "SQLITE_CONSTRAINT_UNIQUE"
+  );
+}
+
 /**
  * Self-host kill-switch (gh #39). When `SIGNUP_DISABLED` is set the public
  * registration endpoint is closed; login + password-reset stay open so
@@ -110,24 +117,32 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
     // 409 — we accept the small enumeration risk because the user will see
     // the same answer on the login screen (try-forgot-password) anyway.
     const existing = db
-      .prepare<[string], { id: number }>("SELECT id FROM accounts WHERE email = ? AND deleted_at IS NULL")
+      .prepare<[string], { id: number }>("SELECT id FROM accounts WHERE email = ?")
       .get(email);
     if (existing) return bad(reply, 409, "email-taken", "email already registered");
 
     const passwordHash = await hashPassword(password);
     const now = Date.now();
-    const insert = db
-      .prepare(
-        `INSERT INTO accounts (email, password_hash, email_verified_at, created_at, deleted_at)
-         VALUES (?, ?, NULL, ?, NULL)`,
-      )
-      .run(email, passwordHash, now);
-    const accountId = Number(insert.lastInsertRowid);
-
-    // INITIAL_ADMIN_EMAIL bootstrap (gh #42): promote on the spot if the
-    // env var matches this email. No-op when the env is unset, so the
-    // default deploy stays closed.
-    maybePromoteToAdmin(db, email);
+    let accountId: number;
+    try {
+      const insert = db
+        .prepare(
+          `INSERT INTO accounts (email, password_hash, email_verified_at, created_at)
+           VALUES (?, ?, NULL, ?)`,
+        )
+        .run(email, passwordHash, now);
+      accountId = Number(insert.lastInsertRowid);
+    } catch (e) {
+      // The duplicate-email SELECT above and this INSERT straddle the
+      // ~250 ms argon2 hash, so two concurrent signups for the same
+      // address can both pass the pre-check. The UNIQUE constraint on
+      // accounts.email catches the loser — map it to the same 409 the
+      // pre-check produces instead of surfacing a 500.
+      if (isUniqueViolation(e)) {
+        return bad(reply, 409, "email-taken", "email already registered");
+      }
+      throw e;
+    }
 
     const verifyToken = newToken();
     db.prepare(
@@ -183,6 +198,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
           hashToken(token),
         );
         db.prepare("UPDATE accounts SET email_verified_at = ? WHERE id = ?").run(now, row.account_id);
+        // INITIAL_ADMIN_EMAIL bootstrap (gh #42): the admin flag lands
+        // HERE, not at signup — the verify click is the mailbox-ownership
+        // proof that gates the promotion.
+        const account = db
+          .prepare<[number], { email: string }>("SELECT email FROM accounts WHERE id = ?")
+          .get(row.account_id);
+        if (account) maybePromoteToAdmin(db, account.email);
       });
       tx();
 
@@ -217,7 +239,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
           [string],
           { id: number; password_hash: string; suspended_at: number | null }
         >(
-          "SELECT id, password_hash, suspended_at FROM accounts WHERE email = ? AND deleted_at IS NULL",
+          "SELECT id, password_hash, suspended_at FROM accounts WHERE email = ?",
         )
         .get(email);
 
@@ -269,7 +291,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
 
       const account = db
         .prepare<[string], { id: number }>(
-          "SELECT id FROM accounts WHERE email = ? AND deleted_at IS NULL",
+          "SELECT id FROM accounts WHERE email = ?",
         )
         .get(email);
 
@@ -321,6 +343,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       db.prepare("UPDATE password_resets SET used_at = ? WHERE token_hash = ?").run(
         now,
         hashToken(token),
+      );
+      // A stashed unused reset link (e.g. from an attacker with transient
+      // mailbox access) must not survive the victim's own successful
+      // reset — drop every other outstanding token, mirroring the
+      // session invalidation below.
+      db.prepare("DELETE FROM password_resets WHERE account_id = ? AND used_at IS NULL").run(
+        row.account_id,
       );
       db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(newHash, row.account_id);
       // Spec §4.5 step 3: a successful reset invalidates every other

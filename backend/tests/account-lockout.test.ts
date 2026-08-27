@@ -54,6 +54,30 @@ describe("recordAccountPwFail", () => {
     expect(row?.locked_until).toBe(now + ACCOUNT_PW_LOCKOUT_MS);
   });
 
+  it("starts a fresh count after an expired lockout instead of instantly re-locking", () => {
+    const now = 5_000_000;
+    for (let i = 0; i < ACCOUNT_PW_FAIL_THRESHOLD; i++) recordAccountPwFail(db, 42, now);
+    expect(checkAccountLockout(db, 42, now).locked).toBe(true);
+
+    const after = now + ACCOUNT_PW_LOCKOUT_MS + 1;
+    expect(checkAccountLockout(db, 42, after).locked).toBe(false);
+    // First failure after the lock lapsed: fresh streak, no instant re-lock.
+    const out = recordAccountPwFail(db, 42, after);
+    expect(out).toEqual({
+      failCount: 1,
+      attemptsLeft: ACCOUNT_PW_FAIL_THRESHOLD - 1,
+      locked: false,
+      retryAfterSec: 0,
+    });
+    const row = db
+      .prepare<[string], { fail_count: number; locked_until: number | null }>(
+        "SELECT fail_count, locked_until FROM rate_limit_buckets WHERE key = ?",
+      )
+      .get(KEY);
+    expect(row?.fail_count).toBe(1);
+    expect(row?.locked_until).toBeNull();
+  });
+
   it("checkAccountLockout reflects the latched lock and expiry", () => {
     const now = 1_000_000;
     for (let i = 0; i < ACCOUNT_PW_FAIL_THRESHOLD; i++) recordAccountPwFail(db, 42, now);

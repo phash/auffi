@@ -6,6 +6,7 @@ import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/d
 import { hashPassword } from "../src/auth/argon.js";
 import {
   checkLockout,
+  PW_ENTRY_TIMEOUT_MS,
   PW_FAIL_THRESHOLD,
   PW_LOCKOUT_MS,
   recordPwFail,
@@ -84,6 +85,31 @@ describe("recordPwFail", () => {
       .get();
     expect(row?.locked_until).toBe(now + PW_LOCKOUT_MS);
   });
+
+  it("starts a fresh count after an expired lockout instead of instantly re-locking", () => {
+    const now = 1_000_000;
+    for (let i = 0; i < PW_FAIL_THRESHOLD; i++) recordPwFail(db, "123-456-789", now);
+    expect(checkLockout(db, "123-456-789", now).locked).toBe(true);
+
+    const after = now + PW_LOCKOUT_MS + 1;
+    expect(checkLockout(db, "123-456-789", after).locked).toBe(false);
+    // The first failure AFTER the lock lapsed must not re-latch a full
+    // 15-min lock — the user was promised they could retry.
+    const out = recordPwFail(db, "123-456-789", after);
+    expect(out).toEqual({
+      failCount: 1,
+      attemptsLeft: PW_FAIL_THRESHOLD - 1,
+      locked: false,
+      retryAfterSec: 0,
+    });
+    const row = db
+      .prepare<[], { fail_count: number; locked_until: number | null }>(
+        "SELECT fail_count, locked_until FROM rate_limit_buckets WHERE key = 'device:123-456-789:pwfail'",
+      )
+      .get();
+    expect(row?.fail_count).toBe(1);
+    expect(row?.locked_until).toBeNull();
+  });
 });
 
 describe("resetPwFail", () => {
@@ -139,6 +165,35 @@ describe("UnattendedSessions", () => {
     const ss = new UnattendedSessions();
     ss.begin("123-456-789", v, s);
     expect(ss.findBySharer(s)?.deviceId).toBe("123-456-789");
+  });
+
+  it("sweepStale frees a slot stuck in awaiting-pw past PW_ENTRY_TIMEOUT_MS", () => {
+    const ss = new UnattendedSessions();
+    ss.begin("123-456-789", v, s, "84.xxx", 1_000);
+    // Not yet stale — nothing reaped.
+    expect(ss.sweepStale(1_000 + PW_ENTRY_TIMEOUT_MS - 1)).toEqual([]);
+    expect(ss.size()).toBe(1);
+
+    const stale = ss.sweepStale(1_000 + PW_ENTRY_TIMEOUT_MS);
+    expect(stale.map((x) => x.deviceId)).toEqual(["123-456-789"]);
+    expect(ss.size()).toBe(0);
+    // The device slot is free again for the next viewer.
+    expect(ss.begin("123-456-789", v, s, "84.xxx")).toBe("ok");
+  });
+
+  it("sweepStale reaps pw-in-flight sessions but never confirmed ones", () => {
+    const ss = new UnattendedSessions();
+    const v2 = {} as unknown as WebSocket;
+    const s2 = {} as unknown as WebSocket;
+    ss.begin("111-111-111", v, s, "84.xxx", 0);
+    ss.transition("111-111-111", "pw-in-flight");
+    ss.begin("222-222-222", v2, s2, "84.xxx", 0);
+    ss.transition("222-222-222", "confirmed");
+
+    const stale = ss.sweepStale(PW_ENTRY_TIMEOUT_MS + 1);
+    expect(stale.map((x) => x.deviceId)).toEqual(["111-111-111"]);
+    // Confirmed sessions live until a peer disconnects.
+    expect(ss.findByDeviceId("222-222-222")).not.toBeNull();
   });
 });
 
@@ -471,60 +526,6 @@ describe("/signal unattended connect flow (gh #17)", () => {
     // And the sharer's WSS is still open.
     expect(sharer.readyState).toBe(sharer.OPEN);
     sharer.close();
-  });
-
-  // TC C-1 (review 2026-05-13): the unattended viewer-close path
-  // finalises the open connection_log row. The ad-hoc equivalent has
-  // tests in connection-log.test.ts; the unattended branch lives in
-  // a different `peer.on("close")` block (signaling.ts:588) and
-  // previously had no integration coverage.
-  it("viewer closing mid-session finalises connection_log with bytes_relayed=0 (TC C-1)", async () => {
-    const sharer = await openSharer();
-    const viewer = openViewer();
-    await new Promise<void>((r) => viewer.once("open", () => r()));
-    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
-    await once(viewer, "message"); // needs-password
-
-    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
-    await once(sharer, "message"); // pw-check
-    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
-    await once(viewer, "message"); // peer-confirmed
-    await once(sharer, "message"); // peer-joined
-
-    // Sharer reports ICE finished → server inserts connection_log row.
-    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
-    // No reply expected — give the server a tick to commit.
-    await new Promise((r) => setTimeout(r, 30));
-
-    // Confirm the row exists and is open (ended_at null).
-    const before = db
-      .prepare(
-        "SELECT id, ended_at, bytes_relayed FROM connection_log WHERE device_id = ? ORDER BY id DESC LIMIT 1",
-      )
-      .get(deviceId) as { id: number; ended_at: number | null; bytes_relayed: number };
-    expect(before).toBeTruthy();
-    expect(before.ended_at).toBeNull();
-
-    // Viewer drops without sending connection-ended.
-    viewer.close();
-    await new Promise<void>((r) => {
-      if (viewer.readyState === viewer.CLOSED) r();
-      else viewer.once("close", () => r());
-    });
-    // Server's close handler runs on the next tick.
-    await new Promise((r) => setTimeout(r, 30));
-
-    const after = db
-      .prepare(
-        "SELECT ended_at, bytes_relayed FROM connection_log WHERE id = ?",
-      )
-      .get(before.id) as { ended_at: number | null; bytes_relayed: number };
-    expect(after.ended_at).not.toBeNull();
-    expect(after.bytes_relayed).toBe(0);
-
-    sharer.close();
-    // Clean up so subsequent tests don't see this row.
-    db.prepare("DELETE FROM connection_log WHERE id = ?").run(before.id);
   });
 
   it("ad-hoc flow still works: viewer joins an unknown code → invalid-code (regression)", async () => {

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
+import { redactIp } from "../lib/redact-ip.js";
 
 /**
  * Build a `requireAdmin` preHandler. Must be installed AFTER `requireSession`
@@ -20,7 +21,7 @@ export function makeRequireAdmin(db: Db) {
     }
     const row = db
       .prepare<[number], { admin: number }>(
-        "SELECT admin FROM accounts WHERE id = ? AND deleted_at IS NULL",
+        "SELECT admin FROM accounts WHERE id = ?",
       )
       .get(req.account.id);
     if (!row || row.admin !== 1) {
@@ -37,33 +38,6 @@ declare module "fastify" {
   interface FastifyInstance {
     requireAdmin: ReturnType<typeof makeRequireAdmin>;
   }
-}
-
-/**
- * Extract a coarse IP-prefix from the request for the audit log.
- *
- * IPv4: first two octets (e.g. `84.123.xxx`). Matches `viewer_ip_prefix`
- * format documented in viewer/public/datenschutz §4 + §6.
- *
- * IPv6: first **three** hextets = /48. BGH VI ZR 135/13: ISPs assign a
- * /64 per customer, so /64 is still personenbezogen. /48 narrows it
- * back to an ISP-region level. Drops from `~16 quintillion possible
- * hosts` (/64) to `~1 quintillion possible hosts` (/48) — coarser
- * geo, less personenbezogen. Code-review DSGVO-M7 (2026-05-17).
- */
-function adminIpPrefix(req: FastifyRequest): string {
-  // Use the framework-trusted req.ip (trustProxy:1 resolves to the real
-  // client IP) rather than the raw x-forwarded-for header, which is
-  // attacker-controlled and could be used to spoof the audit log entry.
-  const first = req.ip ?? "";
-  if (!first) return "unknown";
-  if (first.includes(":")) {
-    const parts = first.split(":").slice(0, 3);
-    return `${parts.join(":")}::xxx`;
-  }
-  const parts = first.split(".");
-  if (parts.length === 4) return `${parts[0]}.${parts[1]}.xxx`;
-  return "unknown";
 }
 
 /**
@@ -102,6 +76,10 @@ export function writeAudit(
     before === undefined ? null : JSON.stringify(before),
     after === undefined ? null : JSON.stringify(after),
     Date.now(),
-    adminIpPrefix(req),
+    // Framework-trusted req.ip (trustProxy resolves the real client IP)
+    // rather than the raw x-forwarded-for header, which is attacker-
+    // controlled and could spoof the audit-log entry. Redaction shape is
+    // shared with connection_log's viewer_ip_prefix — see lib/redact-ip.
+    redactIp(req.ip),
   );
 }

@@ -23,17 +23,3 @@ export function newToken(): string {
 export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
-
-/**
- * Constant-time string comparison via timingSafeEqual on the encoded
- * hashes. Only used when comparing two PRE-HASHED values (so length is
- * fixed at 64 chars). Returns false for any length mismatch.
- */
-export function timingSafeEquals(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  let diff = 0;
-  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
-  return diff === 0;
-}

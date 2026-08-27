@@ -14,10 +14,7 @@ import { registerAuthRoutes } from "./auth/handlers.js";
 import { registerMeRoutes } from "./account/me.js";
 import { registerDeviceRoutes } from "./devices/handlers.js";
 import { registerAdminUsersRoutes } from "./admin/users.js";
-import { registerAdminDevicesRoutes } from "./admin/devices.js";
-import { registerAdminAuditRoutes } from "./admin/audit.js";
 import { registerAdminStatsRoutes } from "./admin/stats.js";
-import { registerAdminTimeseriesRoutes } from "./admin/timeseries.js";
 import { registerAdminFeedbackRoutes } from "./admin/feedback.js";
 import { registerFeedbackRoutes } from "./feedback/handlers.js";
 import { registerDownloadRoutes } from "./downloads/handlers.js";
@@ -272,7 +269,16 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
       }
     }
     store.sweepExpired(now);
+    // Free unattended device slots whose viewer never finished the
+    // password step (see PW_ENTRY_TIMEOUT_MS) — closing the socket is
+    // all that's left to do, the store already dropped the session.
+    for (const sess of unattendedSessions.sweepStale(now)) {
+      sess.viewer.close();
+    }
   }, 60_000);
+  // Don't hold the Node.js event loop open just for this timer
+  // (matches the purge scheduler's pattern below).
+  if (typeof sweepHandle.unref === "function") sweepHandle.unref();
 
   app.addHook("onClose", () => {
     clearInterval(sweepHandle);
@@ -323,13 +329,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   decorateRequireAdmin(app, db);
 
   registerAuthRoutes(app, { db, mailer });
-  registerMeRoutes(app, { db, mailer: accountMailer });
+  registerMeRoutes(app, { db, mailer: accountMailer, registry: unattendedRegistry });
   registerDeviceRoutes(app, { db, registry: unattendedRegistry });
-  registerAdminUsersRoutes(app, db);
-  registerAdminDevicesRoutes(app, db);
-  registerAdminAuditRoutes(app, db);
+  registerAdminUsersRoutes(app, db, unattendedRegistry);
   registerAdminStatsRoutes(app, db);
-  registerAdminTimeseriesRoutes(app, db);
   registerAdminFeedbackRoutes(app, db, feedbackMailer);
   registerFeedbackRoutes(app, db, {
     bearerRateLimit: {
@@ -368,7 +371,6 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
           report.pendingEmailChanges +
           report.connectionLog +
           report.auditLog +
-          report.softDeletedAccounts +
           report.rateLimitBuckets +
           report.feedback;
         if (total > 0) app.log.info({ purge: report }, "retention purge complete");
