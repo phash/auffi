@@ -170,6 +170,67 @@
       </section>
 
       <section>
+        <h2>Bildschirm teilen ohne Installation: was technisch dahintersteckt</h2>
+        <p>
+          Dass die helfende Seite nichts installiert, ist keine Bequemlichkeit
+          im Nachhinein, sondern eine Entscheidung in der Architektur. Der
+          Browser bringt mit WebRTC alles mit, was zum Empfangen eines
+          Video-Streams nötig ist — Aushandlung, Verschlüsselung, Wiedergabe.
+          Ein zusätzliches Programm auf dieser Seite würde nichts hinzufügen,
+          das der Browser nicht ohnehin kann.
+        </p>
+        <p>
+          Anders sieht es auf der teilenden Seite aus. Ein Browser darf zwar
+          ein einzelnes Fenster freigeben, aber Maus und Tastatur des
+          Betriebssystems steuern darf er aus guten Sicherheitsgründen nicht.
+          Für Fernsteuerung braucht es deshalb dort ein kleines Programm — den
+          Sharer. Die Asymmetrie ist gewollt: Die Hürde liegt bei der Person,
+          die Hilfe organisiert, nicht bei der, die spontan einspringt.
+        </p>
+        <p>
+          <strong>Was der Server sieht.</strong> Vermittelt wird nur der
+          Verbindungsaufbau: Beide Seiten tauschen über den Signaling-Server
+          aus, wie sie einander erreichen können. Danach fließen Bild, Maus und
+          Dateien direkt zwischen den Geräten, verschlüsselt mit DTLS-SRTP. Nur
+          wenn eine Firewall die direkte Verbindung blockiert, springt ein
+          TURN-Server als Relais ein — auch dann bleibt der Inhalt für den
+          Server unlesbar.
+        </p>
+        <p>
+          <strong>Warum der Code abläuft.</strong> Neun Ziffern sind kurz genug
+          zum Vorlesen und zu wenig für dauerhafte Sicherheit. Deshalb gilt ein
+          Code höchstens zehn Minuten, der Server drosselt Rateversuche pro
+          IP-Adresse, und die teilende Person bestätigt jede eingehende
+          Verbindung ausdrücklich. Drei Schranken statt eines langen Passworts,
+          das sich niemand am Telefon durchgeben lässt.
+        </p>
+      </section>
+
+      <section>
+        <h2>Was du der anderen Person am Telefon sagst</h2>
+        <p>
+          Der ganze Ablauf lässt sich in zwei Sätzen durchgeben — genau das ist
+          der Punkt:
+        </p>
+        <ol>
+          <li>„Öffne bitte <strong>auffi.app</strong> im Browser."</li>
+          <li>„Tippe diese neun Ziffern ein und klick auf <strong>Verbinden</strong>."</li>
+        </ol>
+        <p>
+          Kein Download, kein Konto, keine Sicherheitswarnung, die erklärt
+          werden müsste. Wer schon einmal versucht hat, jemandem am Telefon
+          durch eine Installation zu helfen — „nein, nicht der große grüne
+          Knopf, der andere" —, kennt den Unterschied.
+        </p>
+        <p>
+          Die umgekehrte Richtung braucht dagegen den Sharer: Wer den eigenen
+          Bildschirm teilt und Fernsteuerung erlauben will, installiert ein
+          kleines Programm. Die Hürde liegt damit bei der Person, die Hilfe
+          organisiert — nicht bei der, die spontan einspringt.
+        </p>
+      </section>
+
+      <section>
         <h2>Häufige Fragen</h2>
         <h3>Kann man wirklich ohne Installation den Bildschirm teilen?</h3>
         <p>Für die helfende Person ja: Sie öffnet nur auffi.app im Browser, tippt einen 9-stelligen Code und ist verbunden — ohne Download und ohne Konto. Nur die Person, deren Bildschirm geteilt wird, startet einmalig den kleinen Auffi-Sharer.</p>

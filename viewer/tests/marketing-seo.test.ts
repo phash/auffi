@@ -20,8 +20,8 @@ type Page = { file: string; url: string; twin: string; lang: "de" | "en"; faqSyn
 const BASE = "https://auffi.app";
 const PAGES: Page[] = [
   // existing static marketing pages (baseline — already correct in repo)
-  { file: "viewer/public/vergleich/index.html", url: `${BASE}/vergleich/`, twin: `${BASE}/en/compare/`, lang: "de", faqSync: false },
-  { file: "viewer/public/en/compare/index.html", url: `${BASE}/en/compare/`, twin: `${BASE}/vergleich/`, lang: "en", faqSync: false },
+  { file: "viewer/public/vergleich/index.html", url: `${BASE}/vergleich/`, twin: `${BASE}/en/compare/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/index.html", url: `${BASE}/en/compare/`, twin: `${BASE}/vergleich/`, lang: "en", faqSync: true },
   { file: "viewer/public/vergleich/teamviewer/index.html", url: `${BASE}/vergleich/teamviewer/`, twin: `${BASE}/en/compare/teamviewer/`, lang: "de", faqSync: false },
   { file: "viewer/public/en/compare/teamviewer/index.html", url: `${BASE}/en/compare/teamviewer/`, twin: `${BASE}/vergleich/teamviewer/`, lang: "en", faqSync: false },
   { file: "viewer/public/vergleich/anydesk/index.html", url: `${BASE}/vergleich/anydesk/`, twin: `${BASE}/en/compare/anydesk/`, lang: "de", faqSync: false },
@@ -36,7 +36,10 @@ const PAGES: Page[] = [
   { file: "viewer/public/en/compare/chrome-remote-desktop/index.html", url: `${BASE}/en/compare/chrome-remote-desktop/`, twin: `${BASE}/vergleich/chrome-remote-desktop/`, lang: "en", faqSync: true },
   { file: "viewer/public/bildschirm-teilen-ohne-installation/index.html", url: `${BASE}/bildschirm-teilen-ohne-installation/`, twin: `${BASE}/en/screen-sharing-without-install/`, lang: "de", faqSync: true },
   { file: "viewer/public/en/screen-sharing-without-install/index.html", url: `${BASE}/en/screen-sharing-without-install/`, twin: `${BASE}/bildschirm-teilen-ohne-installation/`, lang: "en", faqSync: true },
-  // NEW pages are appended here by Tasks 2–5.
+  { file: "viewer/public/fernwartung-open-source/index.html", url: `${BASE}/fernwartung-open-source/`, twin: `${BASE}/en/open-source-remote-support/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/open-source-remote-support/index.html", url: `${BASE}/en/open-source-remote-support/`, twin: `${BASE}/fernwartung-open-source/`, lang: "en", faqSync: true },
+  { file: "viewer/public/fernwartung-kostenlos/index.html", url: `${BASE}/fernwartung-kostenlos/`, twin: `${BASE}/en/free-remote-support/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/free-remote-support/index.html", url: `${BASE}/en/free-remote-support/`, twin: `${BASE}/fernwartung-kostenlos/`, lang: "en", faqSync: true },
 ];
 
 function doc(page: Page): Document {
@@ -88,6 +91,8 @@ const TARGETS: Target[] = [
   { path: "/vergleich/chrome-remote-desktop/", lang: "de", role: "spoke", keyword: "chrome remote desktop alternative" },
   { path: "/vergleich/teamviewer-kommerzielle-nutzung/", lang: "de", role: "spoke", keyword: "teamviewer kommerzielle nutzung" },
   { path: "/bildschirm-teilen-ohne-installation/", lang: "de", role: "spoke", keyword: "bildschirm teilen ohne installation" },
+  { path: "/fernwartung-open-source/", lang: "de", role: "spoke", keyword: "fernwartung open source" },
+  { path: "/fernwartung-kostenlos/", lang: "de", role: "spoke", keyword: "fernwartung kostenlos" },
   { path: "/en/compare/", lang: "en", role: "hub", keyword: "remote support software compared" },
   { path: "/en/compare/teamviewer/", lang: "en", role: "spoke", keyword: "teamviewer alternative" },
   { path: "/en/compare/anydesk/", lang: "en", role: "spoke", keyword: "anydesk alternative" },
@@ -95,6 +100,8 @@ const TARGETS: Target[] = [
   { path: "/en/compare/chrome-remote-desktop/", lang: "en", role: "spoke", keyword: "chrome remote desktop alternative" },
   { path: "/en/compare/teamviewer-commercial-use/", lang: "en", role: "spoke", keyword: "teamviewer commercial use" },
   { path: "/en/screen-sharing-without-install/", lang: "en", role: "spoke", keyword: "screen sharing without installation" },
+  { path: "/en/open-source-remote-support/", lang: "en", role: "spoke", keyword: "open source remote support" },
+  { path: "/en/free-remote-support/", lang: "en", role: "spoke", keyword: "free remote support" },
 ];
 
 const targetFile = (t: Target) => `viewer/public${t.path}index.html`;
@@ -164,6 +171,60 @@ describe("comparison cluster — hub/spoke keyword targeting", () => {
         });
       }
     });
+  }
+});
+
+// --- Hub/spoke authority balance -------------------------------------------
+// Search Console (2026-08-25) showed the split from the 2026-07-26 title fix had not
+// landed: the hub /vergleich/ still drew 509 impressions at position 51 with 0 clicks
+// while its spoke /vergleich/teamviewer/ sat at position 7 with 4 impressions. The
+// body text explained why — the hub ran 998 words and said "TeamViewer-Alternative"
+// three times; the spoke ran 486 words and said it once. Google was picking the
+// stronger page, and that was the hub. Contract: for its own head term the spoke must
+// be both the heavier page and the one that says it more often.
+// A spoke below this is a stub that Google will pass over for the hub; the hub is
+// allowed to run longer than its spokes — it legitimately carries an 8-tool table —
+// but not so much longer that it becomes the better answer for a spoke's head term.
+const SPOKE_MIN_WORDS = 700;
+const HUB_MAX_RATIO = 1.3;
+
+const mainOf = (t: Target) => targetDoc(t).querySelector("main");
+const bodyTextOf = (t: Target) => norm(mainOf(t)?.textContent ?? "");
+const wordsOf = (t: Target) => bodyTextOf(t).split(" ").filter(Boolean).length;
+const keywordHitsOf = (t: Target, keyword: string) =>
+  bodyTextOf(t).split(norm(keyword)).length - 1;
+
+describe("comparison cluster — the spoke outweighs its hub", () => {
+  for (const lang of ["de", "en"] as const) {
+    const hub = TARGETS.find((t) => t.lang === lang && t.role === "hub")!;
+    const spokes = TARGETS.filter((t) => t.lang === lang && t.role === "spoke");
+
+    it(`${hub.path} does not dwarf its thinnest spoke`, () => {
+      const thinnest = Math.min(...spokes.map(wordsOf));
+      expect(
+        wordsOf(hub),
+        `hub ${wordsOf(hub)} words vs thinnest spoke ${thinnest}`,
+      ).toBeLessThanOrEqual(Math.round(thinnest * HUB_MAX_RATIO));
+    });
+
+    for (const spoke of spokes) {
+      describe(spoke.path, () => {
+        it(`says "${spoke.keyword}" in its body more often than ${hub.path} does`, () => {
+          const mine = keywordHitsOf(spoke, spoke.keyword);
+          const hubs = keywordHitsOf(hub, spoke.keyword);
+          expect(mine, `${spoke.path} must use its own head term`).toBeGreaterThan(0);
+          expect(
+            mine,
+            `${spoke.path} says it ${mine}x, hub says it ${hubs}x`,
+          ).toBeGreaterThan(hubs);
+        });
+
+        it("carries enough body text to stand on its own", () => {
+          const mine = wordsOf(spoke);
+          expect(mine, `${spoke.path} has ${mine} words`).toBeGreaterThanOrEqual(SPOKE_MIN_WORDS);
+        });
+      });
+    }
   }
 });
 

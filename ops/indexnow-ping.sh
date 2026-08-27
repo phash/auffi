@@ -24,6 +24,10 @@ URLS=(
   "https://auffi.app/en/compare/chrome-remote-desktop/"
   "https://auffi.app/bildschirm-teilen-ohne-installation/"
   "https://auffi.app/en/screen-sharing-without-install/"
+  "https://auffi.app/fernwartung-open-source/"
+  "https://auffi.app/fernwartung-kostenlos/"
+  "https://auffi.app/en/open-source-remote-support/"
+  "https://auffi.app/en/free-remote-support/"
 )
 body=$(printf '{"host":"%s","key":"%s","keyLocation":"https://%s/%s.txt","urlList":[%s]}' \
   "$HOST" "$KEY" "$HOST" "$KEY" \

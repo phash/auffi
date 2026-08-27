@@ -172,6 +172,67 @@
       </section>
 
       <section>
+        <h2>Screen sharing without installation: what happens underneath</h2>
+        <p>
+          The helping side installing nothing is not a convenience bolted on
+          afterwards — it is an architectural decision. Through WebRTC the
+          browser already carries everything needed to receive a video stream:
+          negotiation, encryption, playback. An extra program on that side
+          would add nothing the browser cannot already do.
+        </p>
+        <p>
+          The sharing side is different. A browser may hand over a single
+          window, but for good security reasons it may not drive the operating
+          system's mouse and keyboard. Remote control therefore needs a small
+          program there — the sharer. The asymmetry is deliberate: the hurdle
+          sits with the person organising help, not with the one stepping in
+          spontaneously.
+        </p>
+        <p>
+          <strong>What the server sees.</strong> Only the connection setup is
+          brokered: both sides exchange, via the signalling server, how they can
+          reach each other. After that, video, input and files flow directly
+          between the two machines, encrypted with DTLS-SRTP. Only when a
+          firewall blocks the direct path does a TURN server relay the traffic —
+          and even then the content stays unreadable to the server.
+        </p>
+        <p>
+          <strong>Why the code expires.</strong> Nine digits are short enough to
+          read aloud and too short for lasting security. So a code is valid for
+          at most ten minutes, the server rate-limits guessing per IP address,
+          and the sharing person confirms every incoming connection explicitly.
+          Three barriers instead of one long password nobody can dictate over
+          the phone.
+        </p>
+      </section>
+
+      <section>
+        <h2>What you actually say on the phone</h2>
+        <p>
+          The whole procedure fits into two sentences — which is precisely the
+          point:
+        </p>
+        <ol>
+          <li>"Open <strong>auffi.app</strong> in your browser."</li>
+          <li>"Type in these nine digits and click <strong>Connect</strong>."</li>
+        </ol>
+        <p>
+          No download, no account, no security warning that needs explaining.
+          Anyone who has tried to talk someone through an installation over the
+          phone — "no, not the big green button, the other one" — knows the
+          difference.
+        </p>
+        <p>
+          The other direction does need the sharer: sharing your own screen and
+          allowing remote control means installing a small program. The hurdle
+          therefore sits with the person organising help, not with the one
+          stepping in on the spot — which is the right way round, because the
+          organiser is the one who can prepare and the helper is the one who
+          cannot.
+        </p>
+      </section>
+
+      <section>
         <h2>Frequently asked questions</h2>
         <h3>Can you really share a screen without installing anything?</h3>
         <p>For the helper, yes: they just open auffi.app in a browser, type a 9-digit code and are connected — no download, no account. Only the person whose screen is shared runs the small Auffi sharer once.</p>

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Free remote support: where the free tiers actually end — Auffi</title>
+    <meta name="description" content="Free remote support, but for how long? Which tools are free for private use only, which detect commercial use and cut the session, and which stay free with no limit. Honest table and FAQ." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/free-remote-support/" />
+    <link rel="alternate" hreflang="de" href="https://auffi.app/fernwartung-kostenlos/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/free-remote-support/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/fernwartung-kostenlos/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Free remote support: where the free tiers actually end — Auffi" />
+    <meta property="og:description" content="Which tools are free for private use only, which detect commercial use, and which stay free with no limit." />
+    <meta property="og:url" content="https://auffi.app/en/free-remote-support/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — screen sharing, open source, GDPR-compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Free remote support — where the free tiers end" />
+    <meta name="twitter:description" content="What is actually free per tool — and what only looks like it." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.55rem 0.7rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+    <!-- Matomo Consent + Loader (GDPR opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://auffi.app/en/compare/" },
+          { "@type": "ListItem", "position": 3, "name": "Free remote support", "item": "https://auffi.app/en/free-remote-support/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Which remote support is free for commercial use too?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Auffi and RustDesk are both open source under AGPL-3.0 and draw no line between private and commercial use. With TeamViewer and AnyDesk the free tier ends precisely where money is being made — they detect commercial patterns and then require a licence." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does my free session get cut after a few minutes?",
+            "acceptedAnswer": { "@type": "Answer", "text": "That is usually not a fault but commercial-use detection. Connections to many different machines, access during office hours or corporate domains on the network all count as evidence. The session is then ended after a few minutes and a licence notice appears." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is free remote support secure?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Price says nothing about security. What matters is transport encryption, how long an access code stays valid, whether every connection has to be confirmed actively, and whether the source can be audited. A free open-source tool can be audited; a paid proprietary one cannot." }
+          },
+          {
+            "@type": "Question",
+            "name": "What does free mean for open-source tools?",
+            "acceptedAnswer": { "@type": "Answer", "text": "That no licence fee applies and that you may additionally run the software yourself. It does not mean operating it is free: self-hosting costs a server and your time. Auffi's public service is free to use and is funded by donations." }
+          },
+          {
+            "@type": "Question",
+            "name": "Where is the catch in free tiers, typically?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Usually in one of four places: commercial use is excluded, the number of managed devices is capped, only a single technician can work at a time, or an account requirement ties both sides to one vendor. Checking those four before a tool reaches daily use saves the unpleasant surprise later." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — home">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — open source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code field">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download sharer</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/fernwartung-kostenlos/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create an account">
+          <span class="topbar-btn-label">Sign up</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Free remote support: where the free tiers actually end</h1>
+
+      <p class="vs-lead">
+        Almost every remote-access tool advertises a free version. The
+        difference is not the price but the condition attached:
+        <strong>free for private use, paid for business</strong> is a very
+        different offer from <strong>free with no such distinction</strong>.
+        This page sorts which tool falls into which category — and how to spot a
+        block before it lands in the middle of a session.
+      </p>
+
+      <section>
+        <h2>What "free" means per tool</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr>
+                <th scope="col">Tool</th>
+                <th scope="col">Private</th>
+                <th scope="col">Commercial</th>
+                <th scope="col">The catch</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Auffi</th>
+                <td class="vs-yes">Free</td>
+                <td class="vs-yes">Free</td>
+                <td>None — AGPL-3.0, no distinction drawn</td>
+              </tr>
+              <tr>
+                <th scope="row">RustDesk</th>
+                <td class="vs-yes">Free</td>
+                <td class="vs-yes">Free</td>
+                <td>App required on both ends</td>
+              </tr>
+              <tr>
+                <th scope="row">TeamViewer</th>
+                <td class="vs-yes">Free</td>
+                <td class="vs-no">Licence required</td>
+                <td>Commercial use is detected, session ends</td>
+              </tr>
+              <tr>
+                <th scope="row">AnyDesk</th>
+                <td class="vs-yes">Free</td>
+                <td class="vs-no">Licence required</td>
+                <td>Commercial use is detected</td>
+              </tr>
+              <tr>
+                <th scope="row">Chrome Remote Desktop</th>
+                <td class="vs-yes">Free</td>
+                <td class="vs-yes">Free</td>
+                <td>Google account on both ends, US servers</td>
+              </tr>
+              <tr>
+                <th scope="row">Microsoft Quick Assist</th>
+                <td class="vs-yes">Free</td>
+                <td class="vs-yes">Free</td>
+                <td>Windows-to-Windows only, Microsoft account</td>
+              </tr>
+              <tr>
+                <th scope="row">Zoho Assist</th>
+                <td class="vs-yes">Free entry tier</td>
+                <td>Limited</td>
+                <td>Device count and features capped</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">Last updated: August 2026</p>
+      </section>
+
+      <section>
+        <h2>The trap: when free suddenly reads as commercial</h2>
+        <p>
+          The usual breaking point is not the invoice but the middle of a job:
+          the session drops after a few minutes and a commercial-use notice
+          appears. What triggers it is not a bill but a behaviour pattern — many
+          different target machines, access during office hours, corporate
+          networks in the background.
+        </p>
+        <p>
+          The uncomfortable part is how blurry that line is. Volunteering at a
+          club or looking after the family's machines on the side can land you
+          in the same detection. You can appeal, but it takes time — and the
+          session ended anyway. The detail is under
+          <a href="/en/compare/teamviewer-commercial-use/">TeamViewer commercial use</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2>How to tell that free will stay free</h2>
+        <ul>
+          <li><strong>Read the licence, not the pricing page.</strong> Under AGPL, GPL or Apache the use cannot be narrowed to "private only" after the fact.</li>
+          <li><strong>Look for a device cap.</strong> Free tiers from commercial vendors usually cover only a handful of endpoints.</li>
+          <li><strong>Check whether both sides need an account.</strong> An account requirement is not a fee, but it is a lock-in — and a real hurdle for one-off help.</li>
+          <li><strong>Ask whether self-hosting is allowed.</strong> If you can run the service yourself, you are independent of anyone's pricing decisions.</li>
+        </ul>
+        <p>
+          The honest test is what happens if the vendor changes its pricing
+          tomorrow. With an open-source tool that you may self-host, the answer
+          is: nothing, you keep running your own instance. With a free tier, the
+          answer is that you do not negotiate — you get informed.
+        </p>
+      </section>
+
+      <section>
+        <h2>Auffi: free remote support with no fine print</h2>
+        <p>
+          Auffi is open source under AGPL-3.0 and draws no line between private
+          and commercial use. There is no session time limit, no device cap and
+          no commercial-pattern detection — ending a session for licence reasons
+          simply is not a thing the software does.
+        </p>
+        <ul>
+          <li>The person helping opens the site and types a 9-digit code — <strong>no installation, no account</strong>.</li>
+          <li>Servers in Germany, every transfer encrypted with DTLS-SRTP.</li>
+          <li>Want full independence? Self-host the whole thing, the AGPL says you may.</li>
+        </ul>
+        <p>
+          Running it is funded by donations. If the tool helps you, a
+          <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">coffee</a>
+          helps with the server bill — it is not required.
+        </p>
+      </section>
+
+      <section>
+        <h2>Free for whom? Three typical cases</h2>
+        <p>
+          <strong>Family and neighbours.</strong> Purely private and plainly
+          uncontroversial — practically every tool stays inside its free tier
+          here. The only real difference is the hurdle: if you first have to
+          talk someone through an installation, you lose more time than the
+          actual help costs.
+        </p>
+        <p>
+          <strong>Clubs and volunteering.</strong> The trickiest case.
+          Formally not commercial, yet behaviourally almost indistinguishable
+          from it: many different machines, often during the day. That is
+          exactly the pattern detection keys on. If you help out regularly,
+          a tool that draws no such line saves a lot of nerves.
+        </p>
+        <p>
+          <strong>Freelancers and small businesses.</strong> Unambiguously
+          commercial — with TeamViewer and AnyDesk a licence is due as soon as
+          the usage is detected. If that is not in the budget, you need a tool
+          that includes commercial use from the start rather than policing it.
+        </p>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>Which remote support is free for commercial use too?</h3>
+        <p>Auffi and RustDesk are both open source under AGPL-3.0 and draw no line between private and commercial use. With TeamViewer and AnyDesk the free tier ends precisely where money is being made — they detect commercial patterns and then require a licence.</p>
+        <h3>Why does my free session get cut after a few minutes?</h3>
+        <p>That is usually not a fault but commercial-use detection. Connections to many different machines, access during office hours or corporate domains on the network all count as evidence. The session is then ended after a few minutes and a licence notice appears.</p>
+        <h3>Is free remote support secure?</h3>
+        <p>Price says nothing about security. What matters is transport encryption, how long an access code stays valid, whether every connection has to be confirmed actively, and whether the source can be audited. A free open-source tool can be audited; a paid proprietary one cannot.</p>
+        <h3>What does free mean for open-source tools?</h3>
+        <p>That no licence fee applies and that you may additionally run the software yourself. It does not mean operating it is free: self-hosting costs a server and your time. Auffi's public service is free to use and is funded by donations.</p>
+        <h3>Where is the catch in free tiers, typically?</h3>
+        <p>Usually in one of four places: commercial use is excluded, the number of managed devices is capped, only a single technician can work at a time, or an account requirement ties both sides to one vendor. Checking those four before a tool reaches daily use saves the unpleasant surprise later.</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          <a href="/en/#code">Share a screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/">Remote support software compared</a>
+          · <a href="/en/open-source-remote-support/">Open source remote support</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Imprint</a>
+        ·
+        <a href="/datenschutz/">Privacy</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

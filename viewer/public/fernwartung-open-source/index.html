@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fernwartung Open Source: quelloffene Tools im Überblick — Auffi</title>
+    <meta name="description" content="Fernwartung Open Source: welche quelloffenen Tools es wirklich gibt, was AGPL, GPL und Apache-2.0 praktisch bedeuten, und was Self-Hosting an Aufwand kostet. Ehrlicher Überblick über Auffi, RustDesk, MeshCentral, Guacamole und TigerVNC." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/fernwartung-open-source/" />
+    <link rel="alternate" hreflang="de" href="https://auffi.app/fernwartung-open-source/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/open-source-remote-support/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/fernwartung-open-source/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Fernwartung Open Source: quelloffene Tools im Überblick — Auffi" />
+    <meta property="og:description" content="Quelloffene Tools für Fernwartung im Überblick: Lizenzen, Self-Hosting-Aufwand und wer welche Seite installieren muss." />
+    <meta property="og:url" content="https://auffi.app/fernwartung-open-source/" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Fernwartung Open Source — quelloffene Tools im Überblick" />
+    <meta name="twitter:description" content="Lizenzen, Self-Hosting-Aufwand und wer welche Seite installieren muss." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.55rem 0.7rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/" },
+          { "@type": "ListItem", "position": 2, "name": "Vergleich", "item": "https://auffi.app/vergleich/" },
+          { "@type": "ListItem", "position": 3, "name": "Fernwartung Open Source", "item": "https://auffi.app/fernwartung-open-source/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Was bedeutet Open Source bei Fernwartung praktisch?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Der Quellcode ist einsehbar, überprüfbar und darf selbst betrieben werden. Praktisch heißt das: Du kannst nachlesen, welche Daten das Tool sendet, statt es dem Hersteller zu glauben — und du kannst den Dienst auf deinem eigenen Server betreiben, wenn du der fremden Cloud nicht vertrauen willst." }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist Open Source automatisch DSGVO-konform?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Nein. Die Lizenz sagt nichts über den Serverstandort, die Protokollierung oder den Auftragsverarbeitungsvertrag. Open Source macht die Prüfung aber überhaupt erst möglich, und beim Self-Hosting bist du selbst die verantwortliche Stelle — dann hängt die Konformität an deiner eigenen Konfiguration." }
+          },
+          {
+            "@type": "Question",
+            "name": "Worin unterscheiden sich AGPL, GPL und Apache-2.0?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Apache-2.0 ist permissiv: Änderungen dürfen geschlossen bleiben. GPL verlangt die Offenlegung, wenn du die Software weitergibst. Die AGPL schließt zusätzlich die Netzwerk-Lücke: Wer eine geänderte Fassung als Dienst über das Netz anbietet, muss die Änderungen ebenfalls offenlegen. Für gehostete Dienste ist das der entscheidende Unterschied." }
+          },
+          {
+            "@type": "Question",
+            "name": "Brauche ich für quelloffene Fernwartung einen eigenen Server?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Nein, aber du darfst. Auffi und RustDesk bieten beide einen betriebsbereiten öffentlichen Dienst und lassen sich gleichzeitig komplett selbst hosten. MeshCentral und Guacamole setzen dagegen von Anfang an einen eigenen Server voraus." }
+          },
+          {
+            "@type": "Question",
+            "name": "Welches quelloffene Tool passt für spontane Hilfe?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Für einmalige Hilfe zählt vor allem, wie viel die andere Seite installieren muss. Auffi verlangt auf der helfenden Seite nur einen Browser und einen 9-stelligen Code. RustDesk braucht eine App auf beiden Seiten, MeshCentral einen vorinstallierten Agenten — beides ist für dauerhaft betreute Geräte sinnvoll, für den einmaligen Fall aber umständlich." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/#code" aria-label="Zur Verbindungscode-Eingabe auf der Hauptseite">Verbinden</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/download/" aria-label="Sharer herunterladen">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Sharer herunterladen</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/en/open-source-remote-support/" class="topbar-btn" aria-label="View in English" hreflang="en">EN</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Einloggen (Konto)">
+          <span class="topbar-btn-label">Einloggen</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Konto anlegen">
+          <span class="topbar-btn-label">Konto anlegen</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Fernwartung Open Source: die quelloffenen Tools im Überblick</h1>
+
+      <p class="vs-lead">
+        Quelloffene Werkzeuge für Fernzugriff gibt es reichlich — sie lösen
+        aber sehr unterschiedliche Probleme. Manche sind für dauerhaft
+        betreute Geräteparks gebaut, andere für den einmaligen Fall „meine
+        Mutter kommt nicht ins Online-Banking". Diese Seite ordnet die
+        bekanntesten Projekte ein: nach Lizenz, nach Aufwand fürs
+        Self-Hosting und vor allem danach, <strong>wer auf welcher Seite
+        etwas installieren muss</strong>.
+      </p>
+
+      <section>
+        <h2>Was Fernwartung Open Source konkret bedeutet</h2>
+        <p>
+          Offener Quellcode heißt zunächst nur: Du darfst hineinschauen. Das
+          ist mehr wert, als es klingt — bei einem Werkzeug, das den Bildschirm
+          überträgt und Maus und Tastatur steuert, ist die Frage „was sendet
+          das Programm eigentlich nach Hause?" keine akademische. Bei
+          proprietären Tools bleibt nur, dem Datenschutzhinweis zu glauben.
+        </p>
+        <p>
+          Zwei Dinge folgen daraus <em>nicht</em> automatisch. Erstens: Open
+          Source ist nicht automatisch kostenlos — mehrere Projekte finanzieren
+          sich über bezahlte Cloud-Tarife. Zweitens: Open Source ist nicht
+          automatisch datenschutzkonform. Wo die Server stehen und was
+          protokolliert wird, steht nicht in der Lizenz. Die Lizenz macht die
+          Prüfung nur überhaupt erst möglich.
+        </p>
+        <p>
+          Ein Punkt wird dabei oft übersehen: Auch die Server-Seite gehört zur
+          Prüfung. Ein quelloffener Client, der gegen einen geschlossenen
+          Vermittlungsdienst spricht, ist nur halb geprüft — die interessante
+          Frage, was der Server protokolliert, bleibt dann offen. Auffi
+          veröffentlicht deshalb Client und Signaling-Server unter derselben
+          Lizenz.
+        </p>
+      </section>
+
+      <section>
+        <h2>Die quelloffenen Tools im Überblick</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr>
+                <th scope="col">Tool</th>
+                <th scope="col">Lizenz</th>
+                <th scope="col">Helfende Seite</th>
+                <th scope="col">Zielgruppe</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Auffi</th>
+                <td>AGPL-3.0</td>
+                <td class="vs-yes">Nur Browser</td>
+                <td>Spontane Hilfe, keine Vorbereitung nötig</td>
+              </tr>
+              <tr>
+                <th scope="row">RustDesk</th>
+                <td>AGPL-3.0</td>
+                <td>App nötig</td>
+                <td>Dauerhafter Zugriff auf eigene Geräte</td>
+              </tr>
+              <tr>
+                <th scope="row">MeshCentral</th>
+                <td>Apache-2.0</td>
+                <td>Browser (Agent auf Zielgerät)</td>
+                <td>Verwaltete Geräteflotten</td>
+              </tr>
+              <tr>
+                <th scope="row">Apache Guacamole</th>
+                <td>Apache-2.0</td>
+                <td class="vs-yes">Nur Browser</td>
+                <td>RDP-/VNC-/SSH-Gateway im eigenen Netz</td>
+              </tr>
+              <tr>
+                <th scope="row">TigerVNC</th>
+                <td>GPL-2.0</td>
+                <td>Client nötig</td>
+                <td>Klassisches VNC im LAN</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">Stand: August 2026</p>
+        <p>
+          Die Spalte „helfende Seite" ist in der Praxis die wichtigste. Ein
+          Agent oder Client auf dem Zielgerät ist unproblematisch, solange du
+          das Gerät selbst verwaltest. Sobald aber jemand hilft, der das Gerät
+          nie gesehen hat, wird jede Installation zur Hürde — und genau daran
+          scheitern Hilfeversuche am Telefon.
+        </p>
+      </section>
+
+      <section>
+        <h2>AGPL, GPL und Apache-2.0 — warum die Lizenz zählt</h2>
+        <p>
+          <strong>Apache-2.0</strong> ist permissiv: Wer den Code ändert, darf
+          das Ergebnis geschlossen weitergeben. <strong>GPL</strong> verlangt,
+          dass Änderungen offengelegt werden, sobald die Software weitergegeben
+          wird. Die <strong>AGPL</strong> schließt zusätzlich die
+          Netzwerk-Lücke: Wer eine geänderte Fassung als gehosteten Dienst
+          anbietet, muss seine Änderungen ebenfalls veröffentlichen.
+        </p>
+        <p>
+          Für Fernwartung ist das kein Detail. Fast alle diese Werkzeuge werden
+          als Dienst betrieben, nicht als Datei weitergegeben — unter GPL könnte
+          ein Anbieter eine geschlossene Variante hosten, ohne je etwas
+          zurückzugeben. Auffi steht deshalb unter AGPL-3.0: Wer Auffi forkt und
+          als Service anbietet, muss seine Änderungen unter derselben Lizenz
+          veröffentlichen.
+        </p>
+      </section>
+
+      <section>
+        <h2>Selbst hosten: was das realistisch kostet</h2>
+        <p>
+          Self-Hosting ist der eigentliche Grund, warum Fernwartung Open Source
+          für viele überhaupt in Frage kommt: Die Verbindungsdaten laufen dann
+          über deinen Server, nicht über den eines Anbieters. Der Aufwand ist
+          überschaubar, aber nicht null.
+        </p>
+        <ul>
+          <li><strong>Ein kleiner Server genügt</strong> — vermittelt wird nur der Verbindungsaufbau, das Bild fließt bei WebRTC-Tools direkt zwischen den Geräten.</li>
+          <li><strong>TLS-Zertifikat und Domain</strong> sind Pflicht; Browser verweigern Bildschirmzugriff ohne HTTPS.</li>
+          <li><strong>Ein TURN-Server</strong> wird gebraucht, sobald restriktive Firewalls die direkte Verbindung blockieren — sonst bleibt die Verbindung genau in den Netzen stecken, in denen du sie am dringendsten brauchst.</li>
+          <li><strong>Updates bleiben deine Aufgabe.</strong> Ein Tool mit Fernsteuerung ist ein lohnendes Ziel; ungepatcht gehört es nicht ins Netz.</li>
+        </ul>
+        <p>
+          Auffi liefert dafür eine Docker-Compose-Konfiguration mit
+          Signaling-Server, TURN und Reverse-Proxy mit — der Weg von der
+          leeren VM zur laufenden Instanz ist damit eine Handvoll Befehle
+          statt eines Nachmittags. Der Quellcode und alle
+          Releases liegen auf
+          <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2>Häufige Fragen</h2>
+        <h3>Was bedeutet Open Source bei Fernwartung praktisch?</h3>
+        <p>Der Quellcode ist einsehbar, überprüfbar und darf selbst betrieben werden. Praktisch heißt das: Du kannst nachlesen, welche Daten das Tool sendet, statt es dem Hersteller zu glauben — und du kannst den Dienst auf deinem eigenen Server betreiben, wenn du der fremden Cloud nicht vertrauen willst.</p>
+        <h3>Ist Open Source automatisch DSGVO-konform?</h3>
+        <p>Nein. Die Lizenz sagt nichts über den Serverstandort, die Protokollierung oder den Auftragsverarbeitungsvertrag. Open Source macht die Prüfung aber überhaupt erst möglich, und beim Self-Hosting bist du selbst die verantwortliche Stelle — dann hängt die Konformität an deiner eigenen Konfiguration.</p>
+        <h3>Worin unterscheiden sich AGPL, GPL und Apache-2.0?</h3>
+        <p>Apache-2.0 ist permissiv: Änderungen dürfen geschlossen bleiben. GPL verlangt die Offenlegung, wenn du die Software weitergibst. Die AGPL schließt zusätzlich die Netzwerk-Lücke: Wer eine geänderte Fassung als Dienst über das Netz anbietet, muss die Änderungen ebenfalls offenlegen. Für gehostete Dienste ist das der entscheidende Unterschied.</p>
+        <h3>Brauche ich für quelloffene Fernwartung einen eigenen Server?</h3>
+        <p>Nein, aber du darfst. Auffi und RustDesk bieten beide einen betriebsbereiten öffentlichen Dienst und lassen sich gleichzeitig komplett selbst hosten. MeshCentral und Guacamole setzen dagegen von Anfang an einen eigenen Server voraus.</p>
+        <h3>Welches quelloffene Tool passt für spontane Hilfe?</h3>
+        <p>Für einmalige Hilfe zählt vor allem, wie viel die andere Seite installieren muss. Auffi verlangt auf der helfenden Seite nur einen Browser und einen 9-stelligen Code. RustDesk braucht eine App auf beiden Seiten, MeshCentral einen vorinstallierten Agenten — beides ist für dauerhaft betreute Geräte sinnvoll, für den einmaligen Fall aber umständlich.</p>
+      </section>
+
+      <section>
+        <h2>Jetzt ausprobieren</h2>
+        <p>
+          Auffi ist Fernwartung Open Source ohne Installationshürde auf der
+          helfenden Seite: Website öffnen, 9-stelligen Code eintippen,
+          verbunden. Kostenlos, auch gewerblich.
+        </p>
+        <p>
+          <a href="/#code">Bildschirm teilen — Code eingeben &amp; verbinden</a>
+          · <a href="/download/">Sharer herunterladen</a>
+          · <a href="/vergleich/">Fernwartungssoftware im Vergleich</a>
+          · <a href="/fernwartung-kostenlos/">Fernwartung kostenlos</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        und
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

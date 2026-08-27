@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open source remote support: the tools that actually exist — Auffi</title>
+    <meta name="description" content="Open source remote support compared honestly: which projects exist, what AGPL, GPL and Apache-2.0 mean in practice, and what self-hosting really costs. Auffi, RustDesk, MeshCentral, Apache Guacamole and TigerVNC side by side." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/open-source-remote-support/" />
+    <link rel="alternate" hreflang="de" href="https://auffi.app/fernwartung-open-source/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/open-source-remote-support/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/fernwartung-open-source/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Open source remote support: the tools that actually exist — Auffi" />
+    <meta property="og:description" content="Licences, self-hosting effort and who has to install what — the open-source remote tools compared." />
+    <meta property="og:url" content="https://auffi.app/en/open-source-remote-support/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — screen sharing, open source, GDPR-compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Open source remote support — the tools that actually exist" />
+    <meta name="twitter:description" content="Licences, self-hosting effort and who has to install what." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.55rem 0.7rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+    <!-- Matomo Consent + Loader (GDPR opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://auffi.app/en/compare/" },
+          { "@type": "ListItem", "position": 3, "name": "Open source remote support", "item": "https://auffi.app/en/open-source-remote-support/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What does open source actually change for remote support?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The source is readable, auditable and yours to run. In practice that means you can check what the tool sends home instead of taking the vendor's word for it — and you can run the service on your own server if you do not want to trust someone else's cloud." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is open source automatically GDPR-compliant?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. A licence says nothing about server location, logging or data-processing agreements. What open source does is make the audit possible at all, and once you self-host you become the controller yourself — compliance then rests on your own configuration." }
+          },
+          {
+            "@type": "Question",
+            "name": "How do AGPL, GPL and Apache-2.0 differ?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Apache-2.0 is permissive: changes may stay closed. GPL requires you to publish changes once you distribute the software. AGPL closes the network gap on top of that: anyone offering a modified version as a hosted service must publish their changes too. For hosted services that is the decisive difference." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need my own server for open-source remote support?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No, but you may. Auffi and RustDesk both run a ready-to-use public service and can also be self-hosted end to end. MeshCentral and Guacamole, by contrast, assume a server of your own from the start." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which open-source tool suits one-off help?",
+            "acceptedAnswer": { "@type": "Answer", "text": "For one-off help what matters most is how much the other side has to install. Auffi asks the person helping for a browser and a 9-digit code, nothing else. RustDesk needs an app on both ends and MeshCentral a pre-installed agent — both sensible for devices you manage permanently, both awkward for a single call." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — home">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — open source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code field">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download sharer</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/fernwartung-open-source/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create an account">
+          <span class="topbar-btn-label">Sign up</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Open source remote support: the tools that actually exist</h1>
+
+      <p class="vs-lead">
+        There is no shortage of open-source tools for remote access — but they
+        solve very different problems. Some are built for permanently managed
+        fleets of machines, others for the one-off "my mother can't get into
+        online banking". This page sorts the best-known projects by licence, by
+        how much work self-hosting really is, and above all by
+        <strong>who has to install something on which side</strong>.
+      </p>
+
+      <section>
+        <h2>What open source remote support really buys you</h2>
+        <p>
+          Readable source means, first of all, that you may look. That is worth
+          more than it sounds: for a tool that streams a screen and drives mouse
+          and keyboard, "what does this program actually send home?" is not an
+          academic question. With proprietary tools, all you can do is believe
+          the privacy notice.
+        </p>
+        <p>
+          Two things do <em>not</em> follow automatically. First, open source is
+          not automatically free of charge — several projects fund themselves
+          through paid cloud tiers. Second, open source is not automatically
+          privacy-compliant: where the servers stand and what gets logged is not
+          in the licence. The licence only makes the audit possible.
+        </p>
+        <p>
+          One point is easy to miss: the server side belongs in the audit too.
+          An open-source client talking to a closed brokering service is only
+          half audited — the interesting question, what the server logs, stays
+          open. Auffi therefore publishes client and signalling server under
+          the same licence.
+        </p>
+      </section>
+
+      <section>
+        <h2>The projects side by side</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr>
+                <th scope="col">Tool</th>
+                <th scope="col">Licence</th>
+                <th scope="col">Helper's side</th>
+                <th scope="col">Built for</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Auffi</th>
+                <td>AGPL-3.0</td>
+                <td class="vs-yes">Browser only</td>
+                <td>Ad-hoc help with zero preparation</td>
+              </tr>
+              <tr>
+                <th scope="row">RustDesk</th>
+                <td>AGPL-3.0</td>
+                <td>App required</td>
+                <td>Ongoing access to your own machines</td>
+              </tr>
+              <tr>
+                <th scope="row">MeshCentral</th>
+                <td>Apache-2.0</td>
+                <td>Browser (agent on target)</td>
+                <td>Managed device fleets</td>
+              </tr>
+              <tr>
+                <th scope="row">Apache Guacamole</th>
+                <td>Apache-2.0</td>
+                <td class="vs-yes">Browser only</td>
+                <td>RDP/VNC/SSH gateway inside your network</td>
+              </tr>
+              <tr>
+                <th scope="row">TigerVNC</th>
+                <td>GPL-2.0</td>
+                <td>Client required</td>
+                <td>Classic VNC on the LAN</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">Last updated: August 2026</p>
+        <p>
+          In practice the "helper's side" column decides most of it. An agent or
+          client on the target machine is fine as long as you manage that
+          machine yourself. The moment someone helps who has never touched the
+          device, every install becomes a hurdle — and that is exactly where
+          help-over-the-phone attempts fall apart.
+        </p>
+      </section>
+
+      <section>
+        <h2>AGPL, GPL and Apache-2.0 — why the licence matters</h2>
+        <p>
+          <strong>Apache-2.0</strong> is permissive: modify it and you may ship
+          the result closed. <strong>GPL</strong> requires you to publish changes
+          once you distribute the software. <strong>AGPL</strong> closes the
+          network gap as well: offer a modified version as a hosted service and
+          you must publish your changes too.
+        </p>
+        <p>
+          For remote support that is not a detail. Nearly all of these tools are
+          operated as a service rather than handed over as a file — under GPL a
+          provider could host a closed variant and never give anything back.
+          Auffi is AGPL-3.0 for that reason: fork it, run it as a service, and
+          your changes have to be published under the same licence.
+        </p>
+      </section>
+
+      <section>
+        <h2>Self-hosting: what it realistically costs</h2>
+        <p>
+          Self-hosting is the actual reason open source matters here: connection
+          data then runs across your server, not a vendor's. The effort is
+          manageable, but it is not zero.
+        </p>
+        <ul>
+          <li><strong>A small server is enough</strong> — only the connection setup is brokered; with WebRTC tools the video flows directly between the two machines.</li>
+          <li><strong>A TLS certificate and a domain</strong> are mandatory; browsers refuse screen capture without HTTPS.</li>
+          <li><strong>A TURN server</strong> is needed as soon as restrictive firewalls block the direct path — without it, connections fail in exactly the networks where you need them most.</li>
+          <li><strong>Updates stay your job.</strong> A tool with remote control is a worthwhile target; unpatched, it does not belong on the open internet.</li>
+        </ul>
+        <p>
+          Auffi ships a Docker Compose setup with signalling server, TURN and
+          reverse proxy. Source and releases live on
+          <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>What does open source actually change for remote support?</h3>
+        <p>The source is readable, auditable and yours to run. In practice that means you can check what the tool sends home instead of taking the vendor's word for it — and you can run the service on your own server if you do not want to trust someone else's cloud.</p>
+        <h3>Is open source automatically GDPR-compliant?</h3>
+        <p>No. A licence says nothing about server location, logging or data-processing agreements. What open source does is make the audit possible at all, and once you self-host you become the controller yourself — compliance then rests on your own configuration.</p>
+        <h3>How do AGPL, GPL and Apache-2.0 differ?</h3>
+        <p>Apache-2.0 is permissive: changes may stay closed. GPL requires you to publish changes once you distribute the software. AGPL closes the network gap on top of that: anyone offering a modified version as a hosted service must publish their changes too. For hosted services that is the decisive difference.</p>
+        <h3>Do I need my own server for open-source remote support?</h3>
+        <p>No, but you may. Auffi and RustDesk both run a ready-to-use public service and can also be self-hosted end to end. MeshCentral and Guacamole, by contrast, assume a server of your own from the start.</p>
+        <h3>Which open-source tool suits one-off help?</h3>
+        <p>For one-off help what matters most is how much the other side has to install. Auffi asks the person helping for a browser and a 9-digit code, nothing else. RustDesk needs an app on both ends and MeshCentral a pre-installed agent — both sensible for devices you manage permanently, both awkward for a single call.</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          Auffi is open source remote support without an installation hurdle on
+          the helping side: open the site, type a 9-digit code, connected. Free,
+          including for business use.
+        </p>
+        <p>
+          <a href="/en/#code">Share a screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/">Remote support software compared</a>
+          · <a href="/en/free-remote-support/">Free remote support</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Imprint</a>
+        ·
+        <a href="/datenschutz/">Privacy</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

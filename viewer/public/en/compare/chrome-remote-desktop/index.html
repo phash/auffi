@@ -185,6 +185,50 @@
       </section>
 
       <section>
+        <h2>Chrome Remote Desktop alternative without forced accounts</h2>
+        <p>
+          With Chrome Remote Desktop the account requirement is not a detail at
+          the edge but the architecture: device-to-person mapping runs through
+          the Google account. That is why the person being helped needs one too
+          — and anyone without an account, or without the password any more,
+          never even reaches the connection step.
+        </p>
+        <p>
+          For ad-hoc help that is the wrong order. A connection code valid for
+          ten minutes and then gone does the same job without a permanent
+          identity: for the length of the session it establishes that both
+          sides mean the same machine. One-off help needs nothing more.
+        </p>
+        <p>
+          The second point is where the servers are. Chrome Remote Desktop runs
+          on Google infrastructure; in a professional context that has to be
+          documented and justified. Auffi's servers are in Germany, and if that
+          still is not enough, the AGPL lets you run the service yourself.
+        </p>
+        <p>
+          To be fair: if everyone involved already has a Google account and
+          works inside the Chrome ecosystem, Chrome Remote Desktop is quick to
+          set up and costs nothing. The alternative earns its place wherever one
+          of those two assumptions does not hold.
+        </p>
+      </section>
+
+      <section>
+        <h2>Switching in three steps</h2>
+        <ol>
+          <li><strong>Install the sharer</strong> on the machine to be shared — no account, no browser extension.</li>
+          <li><strong>Generate a code</strong> and pass it on; it is valid for ten minutes.</li>
+          <li><strong>Confirm the request</strong> and pick a monitor.</li>
+        </ol>
+        <p>
+          The Chrome extension does not have to go. Keeping both routes open
+          means using the Google service for your own machines and the
+          code-based route for everyone who has no account, or does not want
+          one.
+        </p>
+      </section>
+
+      <section>
         <h2>Frequently asked questions</h2>
         <h3>Is remote support possible without a Google account?</h3>
         <p>Yes. Chrome Remote Desktop requires a Google account on both sides. Auffi does not: the helper just opens auffi.app and types a 9-digit code, with no account at all.</p>

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fernwartung kostenlos: wo die Gratis-Tarife wirklich enden — Auffi</title>
+    <meta name="description" content="Fernwartung kostenlos — aber wie lange? Welche Tools privat gratis sind, welche gewerbliche Nutzung erkennen und sperren, und welche ohne Limit kostenlos bleiben. Ehrlicher Überblick mit Tabelle und FAQ." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/fernwartung-kostenlos/" />
+    <link rel="alternate" hreflang="de" href="https://auffi.app/fernwartung-kostenlos/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/free-remote-support/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/fernwartung-kostenlos/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Fernwartung kostenlos: wo die Gratis-Tarife wirklich enden — Auffi" />
+    <meta property="og:description" content="Welche Tools privat gratis sind, welche gewerbliche Nutzung sperren, und welche ohne Limit kostenlos bleiben." />
+    <meta property="og:url" content="https://auffi.app/fernwartung-kostenlos/" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Fernwartung kostenlos — wo die Gratis-Tarife enden" />
+    <meta name="twitter:description" content="Was bei welchem Tool wirklich gratis ist — und was nur so aussieht." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.55rem 0.7rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/" },
+          { "@type": "ListItem", "position": 2, "name": "Vergleich", "item": "https://auffi.app/vergleich/" },
+          { "@type": "ListItem", "position": 3, "name": "Fernwartung kostenlos", "item": "https://auffi.app/fernwartung-kostenlos/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Welche Fernwartung ist auch gewerblich kostenlos?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Auffi und RustDesk sind beide unter der AGPL-3.0 quelloffen und machen keinen Unterschied zwischen privater und gewerblicher Nutzung. Bei TeamViewer und AnyDesk endet die kostenlose Nutzung dagegen genau dort, wo Geld verdient wird — sie erkennen gewerbliche Muster und verlangen dann eine Lizenz." }
+          },
+          {
+            "@type": "Question",
+            "name": "Warum wird meine kostenlose Sitzung nach kurzer Zeit getrennt?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Das ist meist keine Störung, sondern die Erkennung gewerblicher Nutzung. Verbindungen zu vielen unterschiedlichen Geräten, Zugriff während der Arbeitszeit oder Firmen-Domains im Netzwerk gelten als Indiz. Die Sitzung wird dann nach wenigen Minuten beendet und ein Lizenzhinweis eingeblendet." }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist kostenlose Fernwartung sicher?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Der Preis sagt nichts über die Sicherheit. Entscheidend sind Transportverschlüsselung, wie lange ein Zugangscode gültig ist, ob jede Verbindung aktiv bestätigt werden muss und ob der Quellcode prüfbar ist. Ein kostenloses, quelloffenes Werkzeug ist prüfbar; ein bezahltes proprietäres nicht." }
+          },
+          {
+            "@type": "Question",
+            "name": "Was bedeutet kostenlos bei Open-Source-Werkzeugen?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Dass keine Lizenzgebühr anfällt und du die Software zusätzlich selbst betreiben darfst. Es bedeutet nicht, dass der Betrieb nichts kostet: Wer selbst hostet, zahlt Server und Zeit. Der öffentliche Dienst von Auffi ist für die Nutzung kostenlos und wird über Spenden getragen." }
+          },
+          {
+            "@type": "Question",
+            "name": "Wo ist bei kostenlosen Tarifen typischerweise der Haken?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Meist an einer von vier Stellen: die gewerbliche Nutzung ist ausgeschlossen, die Zahl der verwaltbaren Geräte ist gedeckelt, es helfen nur einzelne Techniker gleichzeitig, oder eine Kontopflicht bindet beide Seiten an einen Anbieter. Lohnenswert ist der Blick auf diese vier Punkte, bevor ein Werkzeug im Alltag ankommt." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/#code" aria-label="Zur Verbindungscode-Eingabe auf der Hauptseite">Verbinden</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/download/" aria-label="Sharer herunterladen">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Sharer herunterladen</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/en/free-remote-support/" class="topbar-btn" aria-label="View in English" hreflang="en">EN</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Einloggen (Konto)">
+          <span class="topbar-btn-label">Einloggen</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Konto anlegen">
+          <span class="topbar-btn-label">Konto anlegen</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Fernwartung kostenlos: wo die Gratis-Tarife wirklich enden</h1>
+
+      <p class="vs-lead">
+        Fast jedes Werkzeug für Fernzugriff wirbt mit einer kostenlosen
+        Variante. Der Unterschied liegt nicht im Preis, sondern in der
+        Bedingung dahinter: <strong>privat gratis, gewerblich kostenpflichtig</strong>
+        ist etwas völlig anderes als <strong>gratis ohne Unterscheidung</strong>.
+        Diese Seite sortiert, welches Werkzeug in welche Kategorie fällt — und
+        woran du eine Sperre erkennst, bevor sie mitten in einer Sitzung
+        zuschlägt.
+      </p>
+
+      <section>
+        <h2>Was „kostenlos" bei welchem Werkzeug heißt</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr>
+                <th scope="col">Werkzeug</th>
+                <th scope="col">Privat</th>
+                <th scope="col">Gewerblich</th>
+                <th scope="col">Der Haken</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Auffi</th>
+                <td class="vs-yes">Kostenlos</td>
+                <td class="vs-yes">Kostenlos</td>
+                <td>Keiner — AGPL-3.0, keine Unterscheidung</td>
+              </tr>
+              <tr>
+                <th scope="row">RustDesk</th>
+                <td class="vs-yes">Kostenlos</td>
+                <td class="vs-yes">Kostenlos</td>
+                <td>App auf beiden Seiten nötig</td>
+              </tr>
+              <tr>
+                <th scope="row">TeamViewer</th>
+                <td class="vs-yes">Kostenlos</td>
+                <td class="vs-no">Lizenz nötig</td>
+                <td>Gewerbliche Nutzung wird erkannt, Sitzung endet</td>
+              </tr>
+              <tr>
+                <th scope="row">AnyDesk</th>
+                <td class="vs-yes">Kostenlos</td>
+                <td class="vs-no">Lizenz nötig</td>
+                <td>Gewerbliche Nutzung wird erkannt</td>
+              </tr>
+              <tr>
+                <th scope="row">Chrome Remote Desktop</th>
+                <td class="vs-yes">Kostenlos</td>
+                <td class="vs-yes">Kostenlos</td>
+                <td>Google-Konto auf beiden Seiten, US-Server</td>
+              </tr>
+              <tr>
+                <th scope="row">Microsoft Quick Assist</th>
+                <td class="vs-yes">Kostenlos</td>
+                <td class="vs-yes">Kostenlos</td>
+                <td>Nur Windows-zu-Windows, Microsoft-Konto</td>
+              </tr>
+              <tr>
+                <th scope="row">Zoho Assist</th>
+                <td class="vs-yes">Gratis-Einstieg</td>
+                <td>Begrenzt</td>
+                <td>Gerätezahl und Funktionen gedeckelt</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">Stand: August 2026</p>
+      </section>
+
+      <section>
+        <h2>Die Falle: wenn Gratis plötzlich gewerblich heißt</h2>
+        <p>
+          Der häufigste Bruch mit kostenloser Fernwartung passiert nicht beim
+          Bezahlen, sondern mitten in der Arbeit: Die Sitzung wird nach ein
+          paar Minuten getrennt, ein Hinweis auf gewerbliche Nutzung
+          erscheint. Ausgelöst wird das nicht durch eine Rechnung, sondern
+          durch Verhaltensmuster — viele verschiedene Zielgeräte, Zugriffe zu
+          Bürozeiten, Firmen-Netzwerke im Hintergrund.
+        </p>
+        <p>
+          Unangenehm daran ist die Unschärfe. Wer ehrenamtlich im Verein hilft
+          oder nebenbei die Rechner der Familie betreut, kann in dieselbe
+          Erkennung laufen. Ein Widerspruch ist möglich, dauert aber — und die
+          Sitzung ist trotzdem beendet. Was dagegen hilft, steht im Detail
+          unter
+          <a href="/vergleich/teamviewer-kommerzielle-nutzung/">TeamViewer kommerzielle Nutzung</a>.
+        </p>
+      </section>
+
+      <section>
+        <h2>Woran du erkennst, dass kostenlos auch kostenlos bleibt</h2>
+        <ul>
+          <li><strong>Die Lizenz statt der Preisseite lesen.</strong> Steht das Werkzeug unter AGPL, GPL oder Apache, kann die Nutzung nicht nachträglich auf privat begrenzt werden.</li>
+          <li><strong>Nach einer Gerätegrenze suchen.</strong> Gratis-Tarife kommerzieller Anbieter decken oft nur eine Handvoll Endgeräte ab.</li>
+          <li><strong>Prüfen, ob beide Seiten ein Konto brauchen.</strong> Kontopflicht ist keine Gebühr, aber eine Bindung — und für einmalige Hilfe eine echte Hürde.</li>
+          <li><strong>Fragen, ob Self-Hosting erlaubt ist.</strong> Wer den Dienst selbst betreiben darf, ist von der Preispolitik eines Anbieters unabhängig.</li>
+        </ul>
+        <p>
+          Der ehrlichste Test ist die Frage, was passiert, wenn der Anbieter
+          morgen die Preise ändert. Bei einem quelloffenen Werkzeug mit
+          Self-Hosting-Option ist die Antwort: nichts, du betreibst weiter deine
+          eigene Instanz. Bei einem Gratis-Tarif ist die Antwort: du verhandelst
+          nicht mit, du wirst informiert.
+        </p>
+      </section>
+
+      <section>
+        <h2>Auffi: Fernwartung kostenlos ohne Kleingedrucktes</h2>
+        <p>
+          Auffi ist unter der AGPL-3.0 quelloffen und macht keinen Unterschied
+          zwischen privater und gewerblicher Nutzung. Es gibt keine
+          Sitzungsdauer-Begrenzung, keine Geräteobergrenze und keine Erkennung
+          gewerblicher Muster — technisch ist gar nicht vorgesehen, eine
+          Sitzung aus Lizenzgründen zu beenden.
+        </p>
+        <ul>
+          <li>Die helfende Person öffnet nur die Website und tippt einen 9-stelligen Code — <strong>keine Installation, kein Konto</strong>.</li>
+          <li>Server in Deutschland, jede Übertragung mit DTLS-SRTP verschlüsselt.</li>
+          <li>Wer unabhängig sein will, hostet Auffi dank AGPL komplett selbst.</li>
+        </ul>
+        <p>
+          Getragen wird der Betrieb über Spenden. Wenn dir das Werkzeug hilft,
+          hilft ein
+          <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">Kaffee</a>
+          beim Serverbetrieb — Pflicht ist er nicht.
+        </p>
+      </section>
+
+      <section>
+        <h2>Kostenlos für wen? Drei typische Fälle</h2>
+        <p>
+          <strong>Familie und Nachbarschaft.</strong> Rein privat, klar
+          unkritisch — hier bleibt praktisch jedes Werkzeug im Gratis-Rahmen.
+          Der Unterschied liegt nur in der Hürde: Wer der Person am anderen
+          Ende erst eine Installation erklären muss, verliert mehr Zeit als die
+          eigentliche Hilfe kostet.
+        </p>
+        <p>
+          <strong>Verein und Ehrenamt.</strong> Der heikelste Fall. Formal
+          nicht gewerblich, im Verhalten aber kaum davon zu unterscheiden:
+          viele verschiedene Geräte, oft tagsüber. Genau dieses Muster löst die
+          Erkennung aus. Wer regelmäßig für einen Verein hilft, fährt mit einem
+          Werkzeug ohne diese Unterscheidung deutlich ruhiger.
+        </p>
+        <p>
+          <strong>Selbstständige und kleine Betriebe.</strong> Eindeutig
+          gewerblich — bei TeamViewer und AnyDesk ist eine Lizenz fällig,
+          sobald die Nutzung erkannt wird. Wer das nicht zahlen will oder kann,
+          braucht ein Werkzeug, das gewerbliche Nutzung von vornherein
+          einschließt statt sie zu ahnden.
+        </p>
+      </section>
+
+      <section>
+        <h2>Häufige Fragen</h2>
+        <h3>Welche Fernwartung ist auch gewerblich kostenlos?</h3>
+        <p>Auffi und RustDesk sind beide unter der AGPL-3.0 quelloffen und machen keinen Unterschied zwischen privater und gewerblicher Nutzung. Bei TeamViewer und AnyDesk endet die kostenlose Nutzung dagegen genau dort, wo Geld verdient wird — sie erkennen gewerbliche Muster und verlangen dann eine Lizenz.</p>
+        <h3>Warum wird meine kostenlose Sitzung nach kurzer Zeit getrennt?</h3>
+        <p>Das ist meist keine Störung, sondern die Erkennung gewerblicher Nutzung. Verbindungen zu vielen unterschiedlichen Geräten, Zugriff während der Arbeitszeit oder Firmen-Domains im Netzwerk gelten als Indiz. Die Sitzung wird dann nach wenigen Minuten beendet und ein Lizenzhinweis eingeblendet.</p>
+        <h3>Ist kostenlose Fernwartung sicher?</h3>
+        <p>Der Preis sagt nichts über die Sicherheit. Entscheidend sind Transportverschlüsselung, wie lange ein Zugangscode gültig ist, ob jede Verbindung aktiv bestätigt werden muss und ob der Quellcode prüfbar ist. Ein kostenloses, quelloffenes Werkzeug ist prüfbar; ein bezahltes proprietäres nicht.</p>
+        <h3>Was bedeutet kostenlos bei Open-Source-Werkzeugen?</h3>
+        <p>Dass keine Lizenzgebühr anfällt und du die Software zusätzlich selbst betreiben darfst. Es bedeutet nicht, dass der Betrieb nichts kostet: Wer selbst hostet, zahlt Server und Zeit. Der öffentliche Dienst von Auffi ist für die Nutzung kostenlos und wird über Spenden getragen.</p>
+        <h3>Wo ist bei kostenlosen Tarifen typischerweise der Haken?</h3>
+        <p>Meist an einer von vier Stellen: die gewerbliche Nutzung ist ausgeschlossen, die Zahl der verwaltbaren Geräte ist gedeckelt, es helfen nur einzelne Techniker gleichzeitig, oder eine Kontopflicht bindet beide Seiten an einen Anbieter. Lohnenswert ist der Blick auf diese vier Punkte, bevor ein Werkzeug im Alltag ankommt.</p>
+      </section>
+
+      <section>
+        <h2>Jetzt ausprobieren</h2>
+        <p>
+          <a href="/#code">Bildschirm teilen — Code eingeben &amp; verbinden</a>
+          · <a href="/download/">Sharer herunterladen</a>
+          · <a href="/vergleich/">Fernwartungssoftware im Vergleich</a>
+          · <a href="/fernwartung-open-source/">Fernwartung Open Source</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        und
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

@@ -76,7 +76,9 @@
           { "@type": "ListItem", "position": 3, "name": "RustDesk-Alternative", "url": "https://auffi.app/vergleich/rustdesk/" },
           { "@type": "ListItem", "position": 4, "name": "Chrome-Remote-Desktop-Alternative", "url": "https://auffi.app/vergleich/chrome-remote-desktop/" },
           { "@type": "ListItem", "position": 5, "name": "TeamViewer kommerzielle Nutzung erkannt", "url": "https://auffi.app/vergleich/teamviewer-kommerzielle-nutzung/" },
-          { "@type": "ListItem", "position": 6, "name": "Bildschirm teilen ohne Installation", "url": "https://auffi.app/bildschirm-teilen-ohne-installation/" }
+          { "@type": "ListItem", "position": 6, "name": "Bildschirm teilen ohne Installation", "url": "https://auffi.app/bildschirm-teilen-ohne-installation/" },
+          { "@type": "ListItem", "position": 7, "name": "Fernwartung Open Source", "url": "https://auffi.app/fernwartung-open-source/" },
+          { "@type": "ListItem", "position": 8, "name": "Fernwartung kostenlos", "url": "https://auffi.app/fernwartung-kostenlos/" }
         ]
       }
     </script>
@@ -88,22 +90,34 @@
           {
             "@type": "Question",
             "name": "Welche Fernwartungssoftware passt zu welchem Anwendungsfall?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Für spontane, datenschutzfreundliche Hilfe ohne Installationshürde auf der helfenden Seite ist Auffi eine gute Wahl: kostenlos, Open Source (AGPL-3.0), Server in Deutschland. Wer Open Source mit App auf beiden Seiten und Self-Hosting bevorzugt, ist bei RustDesk gut aufgehoben. Für maximale Performance, mobile Apps und Enterprise-Funktionen sind AnyDesk und TeamViewer stark. Für reine Windows-zu-Windows-Hilfe genügt das in Windows integrierte Microsoft Quick Assist, und für bezahlten Helpdesk-Betrieb im Team eignen sich Splashtop und Zoho Assist." }
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Für spontane Hilfe ohne Installationshürde: Auffi. Für Self-Hosting mit App auf beiden Seiten: RustDesk. Für mobile Apps und Enterprise-Funktionen: AnyDesk oder TeamViewer. Für reine Windows-zu-Windows-Hilfe: Microsoft Quick Assist. Für bezahlten Helpdesk-Betrieb im Team: Splashtop oder Zoho Assist."
+            }
           },
           {
             "@type": "Question",
             "name": "Welche Fernwartungs-Software ist Open Source und DSGVO-konform?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Auffi (AGPL-3.0, Server in Deutschland, selbst hostbar) und RustDesk (AGPL-3.0, selbst hostbar) sind quelloffen und lassen sich vollständig selbst betreiben. TeamViewer und AnyDesk sind zwar deutsche Unternehmen, aber proprietär und Cloud-basiert. Chrome Remote Desktop (Google) und Microsoft Quick Assist laufen über US-Clouds." }
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Quelloffen und vollständig selbst betreibbar sind Auffi und RustDesk (beide AGPL-3.0). TeamViewer und AnyDesk sind deutsche Unternehmen, aber proprietär. Details im Überblick: Fernwartung Open Source."
+            }
           },
           {
             "@type": "Question",
             "name": "Gibt es eine Bildschirmfreigabe ganz ohne Installation?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Bei Auffi öffnet die helfende Person nur die Website im Browser — ohne Installation und ohne Konto. Nur die Person, die ihren eigenen Bildschirm teilt, lädt einen kleinen Sharer. Die meisten anderen Tools (TeamViewer, AnyDesk, RustDesk) verlangen auf beiden Seiten eine App." }
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Bei Auffi öffnet die helfende Person nur die Website im Browser — ohne Installation und ohne Konto. Nur die Person, die ihren eigenen Bildschirm teilt, lädt einen kleinen Sharer. Die meisten anderen Tools (TeamViewer, AnyDesk, RustDesk) verlangen auf beiden Seiten eine App."
+            }
           },
           {
             "@type": "Question",
             "name": "Welche Alternative braucht für spontane Hilfe kein Konto?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Für spontane Hilfe braucht Auffi kein Konto — ein 9-stelliger Code genügt. TeamViewer und AnyDesk funktionieren ad hoc ebenfalls ohne Konto. Chrome Remote Desktop verlangt dagegen auf beiden Seiten ein Google-Konto, und Microsoft Quick Assist ein Microsoft-Konto auf der helfenden Seite." }
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Für spontane Hilfe braucht Auffi kein Konto — ein 9-stelliger Code genügt. TeamViewer und AnyDesk funktionieren ad hoc ebenfalls ohne Konto. Chrome Remote Desktop verlangt dagegen auf beiden Seiten ein Google-Konto, und Microsoft Quick Assist ein Microsoft-Konto auf der helfenden Seite."
+            }
           }
         ]
       }
@@ -246,43 +260,43 @@
 
         <div class="vs-portrait">
           <h3>Auffi</h3>
-          <p>Kostenlose, quelloffene (AGPL-3.0) Bildschirmfreigabe mit Fernsteuerung. Die helfende Person öffnet nur die Website — keine Installation, kein Konto. Server in Deutschland, Ende-zu-Ende mit DTLS-SRTP verschlüsselt, komplett selbst hostbar.</p>
-          <p class="vs-best"><strong>Am besten für:</strong> spontane, datenschutzfreundliche Hilfe ohne Installationshürde — z. B. Familie, Bekannte oder Kund:innen. <a href="/bildschirm-teilen-ohne-installation/">Bildschirm teilen ohne Installation →</a></p>
+          <p>Kostenlos und quelloffen (AGPL-3.0). Die helfende Person öffnet nur die Website — keine Installation, kein Konto. Server in Deutschland, Ende-zu-Ende mit DTLS-SRTP verschlüsselt, selbst hostbar.</p>
+          <p class="vs-best"><strong>Am besten für:</strong> spontane, datenschutzfreundliche Hilfe ohne Installationshürde. <a href="/bildschirm-teilen-ohne-installation/">Ohne Installation helfen →</a></p>
         </div>
 
         <div class="vs-portrait">
           <h3>TeamViewer</h3>
-          <p>Der Platzhirsch mit dem größten Funktionsumfang: Meetings, mobile Apps, Geräteverwaltung. Deutsches Unternehmen, aber proprietär und für gewerbliche Nutzung kostenpflichtig.</p>
-          <p class="vs-best"><strong>Am besten für:</strong> breite Plattform- und Mobil-Unterstützung, Enterprise-Funktionen. <a href="/vergleich/teamviewer/">TeamViewer-Alternative im Detail →</a> · <a href="/vergleich/teamviewer-kommerzielle-nutzung/">TeamViewer kommerzielle Nutzung erkannt? →</a></p>
+          <p>Der Platzhirsch mit dem größten Funktionsumfang: Meetings, mobile Apps, Geräteverwaltung. Deutsches Unternehmen, aber proprietär und gewerblich kostenpflichtig.</p>
+          <p class="vs-best"><strong>Am besten für:</strong> breite Plattform-Unterstützung und Enterprise-Funktionen. <a href="/vergleich/teamviewer/">Auffi vs. TeamViewer im Detail →</a></p>
         </div>
 
         <div class="vs-portrait">
           <h3>AnyDesk</h3>
-          <p>Deutsches Unternehmen aus Stuttgart mit einem sehr performanten, latenzarmen Client (DeskRT-Codec) und breiter Plattform-Unterstützung. Proprietär, gewerblich kostenpflichtig.</p>
-          <p class="vs-best"><strong>Am besten für:</strong> flüssige Fernsteuerung bei grafikintensiver Arbeit. <a href="/vergleich/anydesk/">AnyDesk-Alternative im Detail →</a></p>
+          <p>Deutsches Unternehmen aus Stuttgart mit sehr performantem, latenzarmem Client (DeskRT-Codec). Proprietär, gewerblich kostenpflichtig.</p>
+          <p class="vs-best"><strong>Am besten für:</strong> flüssige Fernsteuerung bei grafikintensiver Arbeit. <a href="/vergleich/anydesk/">Auffi vs. AnyDesk im Detail →</a></p>
         </div>
 
         <div class="vs-portrait">
           <h3>RustDesk</h3>
-          <p>Die führende quelloffene (AGPL-3.0) TeamViewer-Alternative: selbst hostbar, Ende-zu-Ende verschlüsselt, kostenlos auch gewerblich. Es läuft allerdings eine App auf beiden Seiten.</p>
-          <p class="vs-best"><strong>Am besten für:</strong> Open-Source-Fans, die ihren eigenen Server betreiben wollen und eine App auf beiden Seiten akzeptieren. <a href="/vergleich/rustdesk/">RustDesk-Alternative im Detail →</a></p>
+          <p>Quelloffen (AGPL-3.0), selbst hostbar und kostenlos auch gewerblich — es läuft allerdings eine App auf beiden Seiten.</p>
+          <p class="vs-best"><strong>Am besten für:</strong> Open-Source-Fans mit eigenem Server. <a href="/vergleich/rustdesk/">Auffi vs. RustDesk im Detail →</a></p>
         </div>
 
         <div class="vs-portrait">
           <h3>Chrome Remote Desktop</h3>
-          <p>Kostenloser Google-Dienst. Die steuernde Seite arbeitet im Browser, der Host installiert eine Komponente — und beide Seiten benötigen ein Google-Konto. Daten laufen über US-Server.</p>
-          <p class="vs-best"><strong>Am besten für:</strong> schnellen Zugriff, wenn alle Beteiligten ohnehin ein Google-Konto haben. <a href="/vergleich/chrome-remote-desktop/">Chrome-Remote-Desktop-Alternative im Detail →</a></p>
+          <p>Kostenloser Google-Dienst. Die steuernde Seite arbeitet im Browser, der Host installiert eine Komponente — beide Seiten brauchen ein Google-Konto, die Daten laufen über US-Server.</p>
+          <p class="vs-best"><strong>Am besten für:</strong> schnellen Zugriff, wenn alle Beteiligten ohnehin ein Google-Konto haben. <a href="/vergleich/chrome-remote-desktop/">Auffi vs. Chrome Remote Desktop im Detail →</a></p>
         </div>
 
         <div class="vs-portrait">
           <h3>Splashtop &amp; Zoho Assist</h3>
-          <p>Bezahlte Cloud-Helpdesk-Lösungen für IT-Teams. Splashtop punktet mit günstigen Pro-Tarifen je Techniker; Zoho Assist bietet einen kleinen kostenlosen Einstiegstarif. Beide sind proprietär und Cloud-basiert (EU-Region teils wählbar).</p>
-          <p class="vs-best"><strong>Am besten für:</strong> professionellen IT-Support im Team mit vielen Endgeräten.</p>
+          <p>Bezahlte Cloud-Helpdesk-Lösungen für IT-Teams: Splashtop mit günstigen Tarifen je Techniker, Zoho Assist mit kleinem Gratis-Einstieg. Beide proprietär und Cloud-basiert.</p>
+          <p class="vs-best"><strong>Am besten für:</strong> professionellen IT-Support im Team.</p>
         </div>
 
         <div class="vs-portrait">
           <h3>Microsoft Quick Assist</h3>
-          <p>In Windows integriert und kostenlos. Funktioniert nur Windows-zu-Windows; die helfende Person braucht ein Microsoft-Konto, die unterstützte Seite gibt nur einen Code ein.</p>
+          <p>In Windows integriert und kostenlos. Funktioniert nur Windows-zu-Windows; die helfende Person braucht ein Microsoft-Konto.</p>
           <p class="vs-best"><strong>Am besten für:</strong> spontane Windows-zu-Windows-Hilfe ganz ohne Zusatz-Tool.</p>
         </div>
       </section>
@@ -290,9 +304,9 @@
       <section>
         <h2>Welche Alternative passt zu dir?</h2>
         <ul>
-          <li>Du willst <strong>jemandem spontan helfen, ohne dass die Person etwas Kompliziertes installiert</strong>, und Datenschutz/EU-Hosting sind dir wichtig → <strong>Auffi</strong>.</li>
+          <li>Du willst <strong>spontan helfen, ohne dass die Person etwas installiert</strong>, und Datenschutz ist dir wichtig → <strong>Auffi</strong>.</li>
           <li>Du brauchst <strong>maximale Performance, mobile Apps oder Enterprise-Funktionen</strong> → <strong>AnyDesk</strong> oder <strong>TeamViewer</strong>.</li>
-          <li>Du willst <strong>Open Source mit eigenem Server</strong> und eine App auf beiden Seiten ist okay → <strong>RustDesk</strong> (oder Auffi, wenn die helfende Person nur einen Browser nutzen soll).</li>
+          <li>Du willst <strong>Open Source mit eigenem Server</strong> und eine App auf beiden Seiten ist okay → <strong>RustDesk</strong>.</li>
           <li>Reine <strong>Windows-zu-Windows-Hilfe</strong> ohne Zusatz-Tool → <strong>Microsoft Quick Assist</strong>.</li>
           <li>Du betreibst einen <strong>bezahlten IT-Helpdesk im Team</strong> → <strong>Zoho Assist</strong> oder <strong>Splashtop</strong>.</li>
         </ul>
@@ -301,15 +315,14 @@
       <section>
         <h2>Was Auffi besonders macht</h2>
         <p>
-          Auffi ist nicht das Tool mit den meisten Funktionen — sondern das
-          mit der niedrigsten Hürde für die helfende Person und einem klaren
-          Datenschutz-Versprechen. Als einzige der hier verglichenen Optionen
+          Auffi hat nicht die meisten Funktionen, sondern die niedrigste Hürde
+          für die helfende Person. Als einzige der hier verglichenen Optionen
           vereint Auffi <strong>alle vier</strong> Punkte zugleich:
         </p>
         <ul>
           <li>Die <strong>helfende Person braucht nur einen Browser</strong> — keine Installation.</li>
           <li>Für spontane Hilfe ist <strong>kein Konto</strong> nötig — ein 9-stelliger Code genügt.</li>
-          <li><strong>Server in Deutschland</strong>, DSGVO-konform, keine Tracker, Ende-zu-Ende verschlüsselt.</li>
+          <li><strong>Server in Deutschland</strong>, keine Tracker, Ende-zu-Ende verschlüsselt.</li>
           <li><strong>Open Source (AGPL-3.0)</strong> und vollständig selbst hostbar.</li>
         </ul>
       </section>
@@ -317,9 +330,9 @@
       <section>
         <h2>Häufige Fragen</h2>
         <h3>Welche Fernwartungssoftware passt zu welchem Anwendungsfall?</h3>
-        <p>Für spontane, datenschutzfreundliche Hilfe ohne Installationshürde auf der helfenden Seite ist Auffi eine gute Wahl: kostenlos, Open Source (AGPL-3.0), Server in Deutschland. Wer Open Source mit App auf beiden Seiten und Self-Hosting bevorzugt, ist bei RustDesk gut aufgehoben. Für maximale Performance, mobile Apps und Enterprise-Funktionen sind AnyDesk und TeamViewer stark. Für reine Windows-zu-Windows-Hilfe genügt das in Windows integrierte Microsoft Quick Assist, und für bezahlten Helpdesk-Betrieb im Team eignen sich Splashtop und Zoho Assist.</p>
+        <p>Für spontane Hilfe ohne Installationshürde: Auffi. Für Self-Hosting mit App auf beiden Seiten: RustDesk. Für mobile Apps und Enterprise-Funktionen: AnyDesk oder TeamViewer. Für reine Windows-zu-Windows-Hilfe: Microsoft Quick Assist. Für bezahlten Helpdesk-Betrieb im Team: Splashtop oder Zoho Assist.</p>
         <h3>Welche Fernwartungs-Software ist Open Source und DSGVO-konform?</h3>
-        <p>Auffi (AGPL-3.0, Server in Deutschland, selbst hostbar) und RustDesk (AGPL-3.0, selbst hostbar) sind quelloffen und lassen sich vollständig selbst betreiben. TeamViewer und AnyDesk sind zwar deutsche Unternehmen, aber proprietär und Cloud-basiert. Chrome Remote Desktop (Google) und Microsoft Quick Assist laufen über US-Clouds.</p>
+        <p>Quelloffen und vollständig selbst betreibbar sind Auffi und RustDesk (beide AGPL-3.0). TeamViewer und AnyDesk sind deutsche Unternehmen, aber proprietär. Details im Überblick: <a href="/fernwartung-open-source/">Fernwartung Open Source</a>.</p>
         <h3>Gibt es eine Bildschirmfreigabe ganz ohne Installation?</h3>
         <p>Bei Auffi öffnet die helfende Person nur die Website im Browser — ohne Installation und ohne Konto. Nur die Person, die ihren eigenen Bildschirm teilt, lädt einen kleinen Sharer. Die meisten anderen Tools (TeamViewer, AnyDesk, RustDesk) verlangen auf beiden Seiten eine App.</p>
         <h3>Welche Alternative braucht für spontane Hilfe kein Konto?</h3>
@@ -340,6 +353,8 @@
           <li><a href="/vergleich/chrome-remote-desktop/">Chrome-Remote-Desktop-Alternative</a> — ohne Google-Konto</li>
           <li><a href="/vergleich/teamviewer-kommerzielle-nutzung/">TeamViewer kommerzielle Nutzung</a> erkannt? — kostenlos auch gewerblich</li>
           <li><a href="/bildschirm-teilen-ohne-installation/">Bildschirm teilen ohne Installation</a> — direkt im Browser</li>
+          <li><a href="/fernwartung-open-source/">Fernwartung Open Source</a> — quelloffene Tools und Self-Hosting</li>
+          <li><a href="/fernwartung-kostenlos/">Fernwartung kostenlos</a> — was bei Gratis-Tarifen wirklich gratis ist</li>
         </ul>
       </section>
     </main>
