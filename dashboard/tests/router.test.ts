@@ -58,6 +58,16 @@ describe("matchRoute", () => {
     expect(m?.params).toEqual({ token: "abc/def" });
   });
 
+  it("falls back to the raw segment on malformed percent-encoding instead of throwing", () => {
+    // Crafted/truncated links can carry invalid escapes ("/devices/50%",
+    // "/verify/%zz") — decodeURIComponent would throw URIError.
+    const m = matchRoute(routes, "/devices/50%");
+    expect(m?.route.pattern).toBe("/devices/:id");
+    expect(m?.params).toEqual({ id: "50%" });
+    const v = matchRoute(routes, "/verify/%zz");
+    expect(v?.params).toEqual({ token: "%zz" });
+  });
+
   it("requires exact segment count", () => {
     // /devices/:id has 2 segments; /devices/123/extra has 3 → no match,
     // falls through to '*'.
@@ -225,6 +235,27 @@ describe("admin-only route gating (gh #53)", () => {
     r.stop();
   });
 
+  it("refresh() re-renders the current route without pushing history", () => {
+    let renders = 0;
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/",
+        render: () => {
+          renders += 1;
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/");
+    const r = createRouter(root, rs);
+    r.start();
+    expect(renders).toBe(1);
+    r.refresh();
+    expect(renders).toBe(2);
+    expect(window.location.pathname).toBe(BASE_PATH + "/");
+    r.stop();
+  });
+
   it("dispatches dashboard:rendered after every render (nav-active-highlighter hook)", () => {
     const events: string[] = [];
     const root = document.createElement("div");
@@ -239,5 +270,101 @@ describe("admin-only route gating (gh #53)", () => {
     navigate("/devices"); // navigation → 2 events
     expect(events.length).toBe(2);
     r.stop();
+  });
+});
+
+// Review 2026-08: start() registers a document-level click interceptor —
+// stop() must detach it again (tests construct multiple routers), and a
+// second start() must not stack duplicate handlers.
+describe("start/stop lifecycle", () => {
+  function clickInternalLink(path: string): void {
+    const a = document.createElement("a");
+    a.href = BASE_PATH + path;
+    document.body.appendChild(a);
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    a.remove();
+  }
+
+  it("stop() removes the document click interceptor", () => {
+    let renders = 0;
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const rs: Route[] = [
+      { pattern: "/", render: () => void (renders += 1) },
+      { pattern: "/devices", render: () => void (renders += 1) },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/");
+    const r = createRouter(root, rs);
+    r.start(); // 1 render
+    r.stop();
+    // The router's interceptor is gone — swallow jsdom's default
+    // anchor navigation so the click stays inert.
+    document.addEventListener("click", (e) => e.preventDefault(), { once: true });
+    clickInternalLink("/devices");
+    expect(renders).toBe(1);
+    expect(window.location.pathname).toBe(BASE_PATH + "/");
+    root.remove();
+  });
+
+  it("start() twice does not stack duplicate click handlers or double-render", () => {
+    let renders = 0;
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const rs: Route[] = [
+      { pattern: "/", render: () => void (renders += 1) },
+      { pattern: "/devices", render: () => void (renders += 1) },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/");
+    const r = createRouter(root, rs);
+    r.start();
+    r.start(); // guarded — no second registration, no extra render
+    expect(renders).toBe(1);
+    clickInternalLink("/devices");
+    // Exactly one render (and one pushState) per link click.
+    expect(renders).toBe(2);
+    expect(window.location.pathname).toBe(BASE_PATH + "/devices");
+    r.stop();
+    root.remove();
+  });
+});
+
+// Review 2026-08: renderers may return a cleanup function (timers,
+// subscriptions). The router invokes it before the next render and on
+// stop() so views can't leak intervals against detached DOM.
+describe("renderer cleanup contract", () => {
+  it("invokes a returned cleanup before the next render and on stop()", () => {
+    const calls: string[] = [];
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/",
+        render: () => {
+          calls.push("render-home");
+          return () => {
+            calls.push("cleanup-home");
+          };
+        },
+      },
+      {
+        pattern: "/devices",
+        render: () => {
+          calls.push("render-devices");
+          return () => {
+            calls.push("cleanup-devices");
+          };
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/");
+    const r = createRouter(root, rs);
+    r.start();
+    navigate("/devices");
+    r.stop();
+    expect(calls).toEqual([
+      "render-home",
+      "cleanup-home",
+      "render-devices",
+      "cleanup-devices",
+    ]);
   });
 });

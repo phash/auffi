@@ -11,7 +11,7 @@ import {
   type AdminCodeStats,
   type AdminStats,
 } from "../api.js";
-import { formatRelative } from "../format.js";
+import { formatBytes, formatUptime } from "../format.js";
 import { navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderAdminStats: RouteRenderer = (
@@ -117,10 +117,7 @@ function renderSections(
 
   appendDlSection(root, "System", [
     ["DB-Größe", formatBytes(stats.system.db_size_bytes)],
-    [
-      "Uptime",
-      formatRelative(Date.now() - stats.system.uptime_seconds * 1000),
-    ],
+    ["Uptime", formatUptime(stats.system.uptime_seconds)],
   ]);
 }
 
@@ -197,11 +194,4 @@ function appendPerDaySection(
   }
   card.appendChild(list);
   root.appendChild(card);
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }

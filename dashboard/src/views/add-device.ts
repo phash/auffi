@@ -29,6 +29,8 @@ export const renderAddDevice: RouteRenderer = (root: HTMLElement, _ctx: RouteCon
 
   root.appendChild(card);
 
+  let stopCountdown: (() => void) | null = null;
+
   void (async (): Promise<void> => {
     const res = await mintPairingCode();
     if (!res.ok) {
@@ -40,11 +42,17 @@ export const renderAddDevice: RouteRenderer = (root: HTMLElement, _ctx: RouteCon
       status.textContent = `Pairing-Code konnte nicht erstellt werden: ${res.message}`;
       return;
     }
-    renderSuccess(root, res.data.code, res.data.expiresAt);
+    stopCountdown = renderSuccess(root, res.data.code, res.data.expiresAt);
   })();
+
+  // Router-invoked cleanup: stop the countdown when the view unmounts,
+  // otherwise the interval keeps ticking against detached DOM.
+  return () => {
+    stopCountdown?.();
+  };
 };
 
-function renderSuccess(root: HTMLElement, code: string, expiresAt: number): void {
+function renderSuccess(root: HTMLElement, code: string, expiresAt: number): () => void {
   while (root.firstChild) root.removeChild(root.firstChild);
 
   const card = document.createElement("section");
@@ -105,8 +113,21 @@ function renderSuccess(root: HTMLElement, code: string, expiresAt: number): void
   root.appendChild(card);
 
   // Countdown — recompute each tick so the timer survives tab-sleep
-  // without drifting (no accumulated `seconds--`).
-  const updateExpiry = (): void => {
+  // without drifting (no accumulated `seconds--`). `handle` is declared
+  // BEFORE the first updateExpiry() call and guarded: with a client
+  // clock >10 min ahead the very first tick already hits the expired
+  // branch (interval not started yet).
+  let handle: number | undefined;
+
+  const stopCountdown = (): void => {
+    if (handle !== undefined) {
+      window.clearInterval(handle);
+      handle = undefined;
+    }
+  };
+
+  /** Returns true once the code is expired (countdown finished). */
+  const updateExpiry = (): boolean => {
     const text = renderExpiryText(expiresAt, Date.now());
     if (text === "expired") {
       expiryText.style.color = "var(--error)";
@@ -122,14 +143,17 @@ function renderSuccess(root: HTMLElement, code: string, expiresAt: number): void
         actions.appendChild(document.createTextNode(" · "));
         actions.appendChild(newLink);
       }
-      window.clearInterval(handle);
-      return;
+      stopCountdown();
+      return true;
     }
     expiryText.textContent = text;
+    return false;
   };
 
-  updateExpiry();
-  const handle = window.setInterval(updateExpiry, COUNTDOWN_TICK_MS);
+  if (!updateExpiry()) {
+    handle = window.setInterval(updateExpiry, COUNTDOWN_TICK_MS);
+  }
+  return stopCountdown;
 }
 
 /**

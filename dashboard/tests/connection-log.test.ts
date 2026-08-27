@@ -166,6 +166,54 @@ describe("renderConnectionLog", () => {
     expect(more.style.display).toBe("none");
   });
 
+  it("shows a visible error and keeps a retry path when 'Mehr laden' fails", async () => {
+    const row = (id: number) => ({
+      id,
+      deviceId: "111-222-333",
+      startedAt: 1,
+      endedAt: 2,
+      viewerIpPrefix: "84.xxx",
+      connectionType: "p2p" as const,
+      bytesRelayed: 0,
+    });
+    let callIdx = 0;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () => {
+        callIdx += 1;
+        if (callIdx === 1) {
+          return jsonResponse({ items: [row(30)], nextCursor: 30, maxLimit: 100 });
+        }
+        if (callIdx === 2) {
+          return jsonResponse({ error: "internal", message: "kaputt" }, 500);
+        }
+        return jsonResponse({ items: [row(20)], nextCursor: null, maxLimit: 100 });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderConnectionLog(root, ctx("111-222-333"));
+    await flush();
+    const more = root.querySelector("button.primary") as HTMLButtonElement;
+    more.click();
+    await flush();
+
+    // Error is actually visible (status was display:none after page 1) …
+    const status = root.querySelector(".error") as HTMLElement;
+    expect(status).not.toBeNull();
+    expect(status.style.display).not.toBe("none");
+    expect(status.textContent).toContain("kaputt");
+    // … and the button stays as the retry path.
+    expect(more.style.display).not.toBe("none");
+    expect(more.disabled).toBe(false);
+    expect(more.textContent).toBe("Mehr laden");
+
+    // Retry succeeds: rows append, error hides again.
+    more.click();
+    await flush();
+    expect(root.querySelectorAll("li").length).toBe(2);
+    expect(status.style.display).toBe("none");
+  });
+
   it("redirects to /login on 401", async () => {
     _setApiClientForTests({
       base: "",

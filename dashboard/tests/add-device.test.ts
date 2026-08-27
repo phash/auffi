@@ -122,6 +122,27 @@ describe("renderAddDevice", () => {
     expect((root.querySelector(".error") as HTMLElement).textContent).toContain("too many");
   });
 
+  it("renders the expired state immediately when the code is already expired on mount", async () => {
+    // Client clock ahead of the server → expiresAt already in the past on
+    // the first countdown tick (gh review: TDZ crash on clearInterval).
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ code: "ABC-DEF-7K", expiresAt: Date.now() - 1_000 }),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAddDevice(root, {
+      path: "/devices/new",
+      segments: ["devices", "new"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    await flush();
+    expect(root.textContent).toContain("Code abgelaufen");
+    expect(root.querySelector('a[href$="/devices/new"]')).not.toBeNull();
+  });
+
   it("provides a back-link to /devices", async () => {
     const root = makeRoot();
     renderAddDevice(root, {
@@ -134,5 +155,56 @@ describe("renderAddDevice", () => {
     const link = root.querySelector('a[href$="/devices"]') as HTMLAnchorElement;
     expect(link).not.toBeNull();
     expect(link.textContent).toContain("Geräte-Liste");
+  });
+});
+
+describe("renderAddDevice — countdown lifecycle", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    _setApiClientForTests(null);
+  });
+
+  it("returns a cleanup that stops the countdown interval on unmount", async () => {
+    vi.useFakeTimers();
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ code: "ABC-DEF-7K", expiresAt: Date.now() + 10 * 60_000 }),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    const cleanup = renderAddDevice(root, {
+      path: "/devices/new",
+      segments: ["devices", "new"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    // The countdown interval is ticking …
+    expect(vi.getTimerCount()).toBe(1);
+    // … and the renderer handed the router a cleanup that stops it.
+    expect(typeof cleanup).toBe("function");
+    (cleanup as () => void)();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("starts no interval at all when the code is already expired on mount", async () => {
+    vi.useFakeTimers();
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ code: "ABC-DEF-7K", expiresAt: Date.now() - 1 }),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAddDevice(root, {
+      path: "/devices/new",
+      segments: ["devices", "new"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.textContent).toContain("Code abgelaufen");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

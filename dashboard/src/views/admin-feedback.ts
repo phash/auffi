@@ -26,6 +26,8 @@ import { type RouteContext, type RouteRenderer } from "../router.js";
 
 type Tab = "open" | "resolved" | "all";
 
+const PAGE_SIZE = 100;
+
 const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
   bug: "Bug",
   feature: "Wunsch",
@@ -60,7 +62,20 @@ export const renderAdminFeedback: RouteRenderer = (
   status.textContent = "Lade …";
   card.appendChild(status);
 
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "feedback-btn";
+  more.style.marginTop = "0.75rem";
+  more.style.display = "none";
+  more.textContent = "Mehr laden";
+  card.appendChild(more);
+
   let activeTab: Tab = "open";
+  let nextCursor: number | null = null;
+  // Request-generation token: every reload/load-more bumps it and each
+  // response is discarded unless it still carries the latest generation
+  // — fast tab switches would otherwise interleave rows of two tabs.
+  let generation = 0;
 
   function buildTab(label: string, key: Tab): HTMLButtonElement {
     const btn = document.createElement("button");
@@ -83,12 +98,26 @@ export const renderAdminFeedback: RouteRenderer = (
   tabs.appendChild(buildTab("Erledigt", "resolved"));
   tabs.appendChild(buildTab("Alle", "all"));
 
+  function appendRows(items: AdminFeedbackRow[]): void {
+    for (const item of items) {
+      list.appendChild(buildCard(item, () => void reload()));
+    }
+  }
+
   async function reload(): Promise<void> {
+    const myGeneration = ++generation;
     status.textContent = "Lade …";
     status.className = "loading";
     while (list.firstChild) list.removeChild(list.firstChild);
+    nextCursor = null;
+    more.style.display = "none";
+    // Reset the button — a superseded in-flight load-more may have
+    // left it disabled with "Lädt …".
+    more.disabled = false;
+    more.textContent = "Mehr laden";
 
-    const res = await listAdminFeedback({ status: activeTab, limit: 100 });
+    const res = await listAdminFeedback({ status: activeTab, limit: PAGE_SIZE });
+    if (myGeneration !== generation) return;
     if (!res.ok) {
       status.textContent =
         res.status === 403
@@ -109,11 +138,39 @@ export const renderAdminFeedback: RouteRenderer = (
     }
     status.textContent = "";
     status.className = "";
-    for (const item of res.data.items) {
-      list.appendChild(buildCard(item, () => void reload()));
-    }
+    appendRows(res.data.items);
+    nextCursor = res.data.nextCursor;
+    if (nextCursor !== null) more.style.display = "block";
   }
 
+  async function loadMore(): Promise<void> {
+    if (nextCursor === null) return;
+    const myGeneration = ++generation;
+    more.disabled = true;
+    more.textContent = "Lädt …";
+
+    const res = await listAdminFeedback({
+      status: activeTab,
+      cursor: nextCursor,
+      limit: PAGE_SIZE,
+    });
+    if (myGeneration !== generation) return;
+    more.disabled = false;
+    more.textContent = "Mehr laden";
+    if (!res.ok) {
+      // Fehler sichtbar machen und den Button als Retry-Pfad stehen lassen.
+      status.textContent = `Fehler: ${res.message}`;
+      status.className = "error";
+      return;
+    }
+    status.textContent = "";
+    status.className = "";
+    appendRows(res.data.items);
+    nextCursor = res.data.nextCursor;
+    more.style.display = nextCursor === null ? "none" : "block";
+  }
+
+  more.addEventListener("click", () => void loadMore());
   void reload();
 };
 

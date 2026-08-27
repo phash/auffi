@@ -134,6 +134,32 @@ describe("renderAdminStats", () => {
     expect(err.textContent).toContain("Admin");
   });
 
+  it("renders uptime as a duration, not an 'ago' phrase", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (url: unknown) => {
+        const u = String(url);
+        if (u.endsWith("/api/admin/stats")) return jsonResponse(okStats);
+        if (u.endsWith("/api/admin/stats/codes")) return jsonResponse(okCodes);
+        return jsonResponse({}, 404);
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAdminStats(root, {
+      path: "/admin/stats",
+      segments: ["admin", "stats"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    await flush();
+    await flush();
+
+    // uptime_seconds: 3600 → "1 Std" as a duration ("vor 1 Std" would be
+    // a relative timestamp, semantically wrong for an uptime).
+    expect(root.textContent).toContain("1 Std");
+    expect(root.textContent).not.toContain("vor 1 Std");
+  });
+
   it("renders an empty perDay block when codes.perDay is empty", async () => {
     _setApiClientForTests({
       base: "",

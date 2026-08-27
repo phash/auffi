@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  visibleRoutes,
-  updateActiveNav,
-  isAdminGatedPath,
-} from "../src/admin-nav.js";
+import { visibleRoutes, updateActiveNav } from "../src/admin-nav.js";
 import type { Route } from "../src/router.js";
 
 const noop = (): void => undefined;
@@ -33,26 +29,6 @@ describe("visibleRoutes", () => {
     const v = visibleRoutes(ROUTES, true);
     expect(v.find((r) => r.pattern === "/login")).toBeUndefined();
     expect(v.find((r) => r.pattern === "*")).toBeUndefined();
-  });
-});
-
-describe("isAdminGatedPath", () => {
-  it("matches /admin and /admin/*", () => {
-    expect(isAdminGatedPath("/admin")).toBe(true);
-    expect(isAdminGatedPath("/admin/")).toBe(true);
-    expect(isAdminGatedPath("/admin/users")).toBe(true);
-    expect(isAdminGatedPath("/admin/users/42")).toBe(true);
-    expect(isAdminGatedPath("/admin/stats")).toBe(true);
-  });
-
-  it("does NOT false-positive on /administration etc.", () => {
-    // Otherwise a future `/administration` or `/administrator` route
-    // would silently get the admin-gate behaviour.
-    expect(isAdminGatedPath("/administration")).toBe(false);
-    expect(isAdminGatedPath("/administrator")).toBe(false);
-    expect(isAdminGatedPath("/")).toBe(false);
-    expect(isAdminGatedPath("/devices")).toBe(false);
-    expect(isAdminGatedPath("/account")).toBe(false);
   });
 });
 

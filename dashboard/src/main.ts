@@ -1,18 +1,18 @@
 // Dashboard entry point. Builds the route table, mounts the router,
-// and renders the top-bar nav. gh #53: admin nav-gate — probe
-// /api/me once at bootstrap to decide whether to render admin nav
-// links, then thread an `isAdmin()` closure into the router so direct-
-// URL access to `/admin/*` substitutes the 403 view for non-admins.
+// and renders the top-bar nav. gh #53: admin nav-gate — the shell and
+// the current route render immediately (no blocking on the network);
+// session.ts probes /api/me once in the background and again on every
+// auth transition (login/logout/…), and the onSessionChange handler
+// below keeps nav, admin route-gate, and feedback FAB in sync.
 
-import { getMe } from "./api.js";
 import {
-  isAdminGatedPath,
   updateActiveNav,
   visibleRoutes,
 } from "./admin-nav.js";
-import { BASE_PATH, createRouter, pathUnderBase, type Route } from "./router.js";
+import { BASE_PATH, createRouter, type Route } from "./router.js";
 import { installFeedbackFab } from "./components/feedback-fab.js";
 import { mountLogoutButton } from "./logout-button.js";
+import { isAdmin, onSessionChange, refreshSession } from "./session.js";
 import { renderAccount } from "./views/account.js";
 import { renderAddDevice } from "./views/add-device.js";
 import { renderAdmin403 } from "./views/admin-403.js";
@@ -107,22 +107,11 @@ if (!root) {
   throw new Error("missing #dashboard-root anchor in index.html");
 }
 
-async function bootstrap(rootEl: HTMLElement): Promise<void> {
-  // Probe /api/me once. Anonymous (401) and network errors both
-  // collapse into isAdmin=false — UX-safe default.
-  const me = await getMe();
-  const isAdminFlag = me.ok && me.data.admin === true;
-
-  // If a not-logged-in user lands directly on an admin URL, the router
-  // would otherwise hit the route's render() which usually starts with
-  // an authenticated fetch — preflight that case here for a friendlier
-  // path (they see the same 403-style nudge a non-admin sees, instead
-  // of a fetch-401-redirect-loop). The renderAdmin403 view is also
-  // the substituted view for logged-in non-admins via the router.
-  const here = pathUnderBase(window.location.pathname);
-  const anonymousOnAdmin = !me.ok && me.status === 401 && isAdminGatedPath(here);
-
-  const nav = buildNav(routes, isAdminFlag);
+function bootstrap(rootEl: HTMLElement): void {
+  // First render happens with the anonymous default (isAdmin=false) so
+  // even a hanging backend never blocks the static /login//signup
+  // pages; the session probe below corrects the state when it lands.
+  const nav = buildNav(routes, isAdmin());
 
   // Mount "Abmelden" in the topbar-meta row (right side, next to the viewer
   // link) — visible on every authed page so shared-computer users can always
@@ -130,10 +119,11 @@ async function bootstrap(rootEl: HTMLElement): Promise<void> {
   const topbarMeta = document.querySelector<HTMLElement>(".topbar-meta");
   if (topbarMeta) mountLogoutButton(topbarMeta);
 
-  createRouter(rootEl, routes, undefined, undefined, {
-    isAdmin: () => isAdminFlag,
+  const router = createRouter(rootEl, routes, undefined, undefined, {
+    isAdmin,
     renderAdminForbidden: renderAdmin403,
-  }).start();
+  });
+  router.start();
 
   // Active-route highlighting — listen for the custom event the
   // router dispatches after every render. Initial call covers the
@@ -143,23 +133,20 @@ async function bootstrap(rootEl: HTMLElement): Promise<void> {
   });
   updateActiveNav(nav, window.location.pathname);
 
-  // Silent fallback for anonymous users hitting an admin URL —
-  // renderAdmin403 is the right end-state. The router would have
-  // routed normally (anonymous isn't adminOnly-blocked in itself);
-  // overwrite with the 403 view so the user doesn't see a 401 toast.
-  if (anonymousOnAdmin) {
-    renderAdmin403(rootEl, {
-      path: here,
-      segments: here === "/" ? [] : here.slice(1).split("/"),
-      params: {},
-      query: new URLSearchParams(window.location.search),
-    });
-  }
+  // Keep nav, admin route-gate, and feedback FAB in sync with the
+  // session. Fires on every auth transition (boot probe landing,
+  // login, logout, …) — the router re-renders only when the admin
+  // flag actually flipped (route gating depends on nothing else), so
+  // a plain logged-in probe doesn't double-fetch the current view.
+  let wasAdmin = isAdmin();
+  onSessionChange((session) => {
+    buildNav(routes, session.admin);
+    updateActiveNav(nav, window.location.pathname);
+    installFeedbackFab(session.loggedIn);
+    if (session.admin !== wasAdmin) router.refresh();
+    wasAdmin = session.admin;
+  });
+  void refreshSession();
 }
 
-void bootstrap(root);
-
-// Feedback FAB is independent of the route; install once. Errors are
-// swallowed (the FAB is a nice-to-have, must not block the dashboard
-// rendering on a backend hiccup).
-void installFeedbackFab().catch(() => {});
+bootstrap(root);

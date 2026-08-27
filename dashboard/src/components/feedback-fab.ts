@@ -1,15 +1,17 @@
 // Feedback Floating Action Button + Modal (gh #39).
 //
-// Mounted once at app boot. Visibility is tied to the session: the
-// FAB only appears when `getMe()` returns 200, i.e. the user is
-// logged in. Click → opens a modal with category dropdown, 1–5
-// rating, free-text body, submit button. On success the modal
-// closes and a small "Danke!" toast shows for 3 s.
+// Visibility is tied to the session: the FAB only appears while the
+// user is logged in. The caller (main.ts) passes the current state and
+// re-invokes on every session transition — this module performs no
+// /api/me probe of its own, so boot issues exactly one probe (in
+// session.ts). Click → opens a modal with category dropdown, 1–5
+// rating, free-text body, submit button. On success the modal closes
+// and a small "Danke!" toast shows for 3 s.
 //
 // The form posts to POST /api/feedback with source="dashboard".
 // Auth flows via the existing __Host-auffi_session cookie.
 
-import { getMe, submitFeedback, type FeedbackCategory } from "../api.js";
+import { submitFeedback, type FeedbackCategory } from "../api.js";
 import { trapFocus } from "../focus-trap.js";
 
 const FAB_ID = "feedback-fab";
@@ -25,15 +27,14 @@ const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
 const CATEGORY_ORDER: FeedbackCategory[] = ["bug", "feature", "praise", "other"];
 
 /**
- * Install the FAB into the DOM if the user is logged in. Idempotent:
- * a second call replaces the existing FAB rather than stacking.
+ * Sync the FAB with the given login state: install it for a logged-in
+ * user, remove it (plus any open modal/toast) for an anonymous one.
+ * Idempotent: a repeated call replaces the existing FAB rather than
+ * stacking.
  */
-export async function installFeedbackFab(): Promise<void> {
-  // Probe login state before injecting anything — anonymous visitors
-  // on /login / /signup never see the FAB.
-  const me = await getMe();
+export function installFeedbackFab(loggedIn: boolean): void {
   removeExistingNodes();
-  if (!me.ok) return;
+  if (!loggedIn) return;
 
   const fab = buildFab();
   document.body.appendChild(fab);
@@ -75,17 +76,16 @@ function buildFab(): HTMLButtonElement {
   return btn;
 }
 
-interface ModalState {
-  category: FeedbackCategory;
-  rating: number;
-  body: string;
-}
+const INITIAL_CATEGORY: FeedbackCategory = "bug";
+const INITIAL_RATING = 4;
 
 function openModal(): void {
   const existing = document.getElementById(MODAL_ID);
   if (existing) existing.remove();
 
-  const state: ModalState = { category: "bug", rating: 4, body: "" };
+  // The only live modal state: the star widget writes it, submit reads
+  // it. Category and body are read from FormData on submit instead.
+  let rating = INITIAL_RATING;
 
   const overlay = document.createElement("div");
   overlay.id = MODAL_ID;
@@ -133,7 +133,7 @@ function openModal(): void {
     const opt = document.createElement("option");
     opt.value = key;
     opt.textContent = CATEGORY_LABELS[key];
-    if (key === state.category) opt.selected = true;
+    if (key === INITIAL_CATEGORY) opt.selected = true;
     catSelect.appendChild(opt);
   }
   catLabel.appendChild(catSelect);
@@ -153,10 +153,10 @@ function openModal(): void {
   for (const n of [1, 2, 3, 4, 5]) {
     const star = document.createElement("button");
     star.type = "button";
-    star.className = "feedback-star" + (n <= state.rating ? " active" : "");
+    star.className = "feedback-star" + (n <= rating ? " active" : "");
     star.dataset.rating = String(n);
     star.setAttribute("role", "radio");
-    star.setAttribute("aria-checked", String(n === state.rating));
+    star.setAttribute("aria-checked", String(n === rating));
     star.setAttribute("aria-label", `${n} Stern${n === 1 ? "" : "e"}`);
     star.textContent = "★";
     ratingGroup.appendChild(star);
@@ -225,7 +225,7 @@ function openModal(): void {
     if (!target) return;
     const n = Number(target.dataset.rating);
     if (!Number.isInteger(n) || n < 1 || n > 5) return;
-    state.rating = n;
+    rating = n;
     for (const star of ratingGroup.querySelectorAll<HTMLButtonElement>(".feedback-star")) {
       const v = Number(star.dataset.rating);
       star.classList.toggle("active", v <= n);
@@ -250,7 +250,7 @@ function openModal(): void {
     const res = await submitFeedback({
       source: "dashboard",
       category,
-      rating: state.rating,
+      rating,
       body,
     });
     if (res.ok) {

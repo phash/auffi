@@ -54,7 +54,15 @@ export interface RouteContext {
   query: URLSearchParams;
 }
 
-export type RouteRenderer = (root: HTMLElement, ctx: RouteContext) => void;
+/**
+ * A view renderer. May return a cleanup function (clear timers, drop
+ * subscriptions); the router invokes it before the next render and on
+ * stop() so views can't leak intervals against detached DOM.
+ */
+export type RouteRenderer = (
+  root: HTMLElement,
+  ctx: RouteContext,
+) => void | (() => void);
 
 export interface Route {
   /**
@@ -104,7 +112,7 @@ export function matchRoute(routes: Route[], path: string): MatchResult | null {
     let ok = true;
     for (let i = 0; i < pSegs.length; i++) {
       if (pSegs[i].startsWith(":")) {
-        params[pSegs[i].slice(1)] = decodeURIComponent(segs[i]);
+        params[pSegs[i].slice(1)] = decodeSegment(segs[i]);
       } else if (pSegs[i] !== segs[i]) {
         ok = false;
         break;
@@ -129,6 +137,18 @@ export function pathUnderBase(pathname: string, base: string = BASE_PATH): strin
   return "/";
 }
 
+/** decodeURIComponent that survives malformed percent-encoding:
+ *  crafted/truncated links (e.g. "/devices/50%") would otherwise throw
+ *  URIError inside render() with no error boundary — falling back to
+ *  the raw segment keeps the router alive. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 /** Replace a node's children with one or more new nodes. Avoids
  *  using innerHTML so the renderer-supplied text content never
  *  reaches the HTML parser (XSS-safe by construction). */
@@ -139,6 +159,9 @@ function replaceChildren(node: HTMLElement, child: Node): void {
 
 export interface Router {
   navigate(path: string): void;
+  /** Re-render the current route without touching history — e.g. after
+   * the admin state changed and the active view may now differ. */
+  refresh(): void;
   start(): void;
   stop(): void;
 }
@@ -188,7 +211,18 @@ export function createRouter(
     }
   };
 
+  // Cleanup returned by the currently mounted renderer (if any) — run
+  // before the next render and on stop() (see RouteRenderer).
+  let activeCleanup: (() => void) | null = null;
+  const runActiveCleanup = (): void => {
+    if (activeCleanup === null) return;
+    const cleanup = activeCleanup;
+    activeCleanup = null;
+    cleanup();
+  };
+
   const render = (): void => {
+    runActiveCleanup();
     const path = pathUnderBase(location.pathname);
     const match = matchRoute(routes, path);
     if (!match) {
@@ -213,11 +247,11 @@ export function createRouter(
       match.route.adminOnly === true &&
       options.isAdmin !== undefined &&
       !options.isAdmin();
-    if (useForbidden && options.renderAdminForbidden) {
-      options.renderAdminForbidden(root, ctx);
-    } else {
-      match.route.render(root, ctx);
-    }
+    const cleanup =
+      useForbidden && options.renderAdminForbidden
+        ? options.renderAdminForbidden(root, ctx)
+        : match.route.render(root, ctx);
+    activeCleanup = typeof cleanup === "function" ? cleanup : null;
     focusNewView();
     // Notify subscribers (e.g. nav active-state highlighter) that the
     // page just (re-)rendered. Custom event keeps the router decoupled
@@ -226,6 +260,25 @@ export function createRouter(
   };
 
   const onPopState = (): void => render();
+
+  // Intercept internal link clicks so the page doesn't full-reload
+  // when navigating between dashboard routes. Named handler so stop()
+  // can detach it again.
+  const onDocumentClick = (e: MouseEvent): void => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    const anchor = target.closest("a");
+    if (!(anchor instanceof HTMLAnchorElement)) return;
+    const href = anchor.getAttribute("href");
+    if (!href || !href.startsWith(BASE_PATH)) return;
+    if (anchor.target === "_blank") return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    history.pushState({}, "", href);
+    render();
+  };
+
+  let started = false;
 
   const router: Router = {
     navigate(path: string): void {
@@ -236,27 +289,21 @@ export function createRouter(
       history.pushState({}, "", full);
       render();
     },
+    refresh(): void {
+      render();
+    },
     start(): void {
+      if (started) return;
+      started = true;
       window.addEventListener("popstate", onPopState);
-      // Intercept internal link clicks so the page doesn't full-reload
-      // when navigating between dashboard routes.
-      document.addEventListener("click", (e: MouseEvent) => {
-        const target = e.target;
-        if (!(target instanceof HTMLElement)) return;
-        const anchor = target.closest("a");
-        if (!(anchor instanceof HTMLAnchorElement)) return;
-        const href = anchor.getAttribute("href");
-        if (!href || !href.startsWith(BASE_PATH)) return;
-        if (anchor.target === "_blank") return;
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        e.preventDefault();
-        history.pushState({}, "", href);
-        render();
-      });
+      document.addEventListener("click", onDocumentClick);
       render();
     },
     stop(): void {
+      started = false;
       window.removeEventListener("popstate", onPopState);
+      document.removeEventListener("click", onDocumentClick);
+      runActiveCleanup();
       if (_activeRouter === router) {
         _activeRouter = null;
       }

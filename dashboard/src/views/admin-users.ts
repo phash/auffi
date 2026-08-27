@@ -16,6 +16,7 @@ import {
   type AdminUserListItem,
   type AdminUserStatus,
 } from "../api.js";
+import { formatDate } from "../format.js";
 import {
   BASE_PATH,
   navigate,
@@ -121,8 +122,17 @@ export const renderAdminUsers: RouteRenderer = (
     }
   }
 
+  // Filter/search change that arrived while a request was in flight —
+  // re-run once the request settles instead of silently dropping it
+  // (otherwise the active chip and the rendered rows contradict each
+  // other until the next interaction).
+  let pendingReset = false;
+
   async function fetchPage(reset: boolean): Promise<void> {
-    if (state.loading) return;
+    if (state.loading) {
+      if (reset) pendingReset = true;
+      return;
+    }
     state.loading = true;
     if (reset) {
       state.items = [];
@@ -139,6 +149,13 @@ export const renderAdminUsers: RouteRenderer = (
       limit: PAGE_SIZE,
     });
     state.loading = false;
+    if (pendingReset) {
+      // The response belongs to the superseded filter/search — discard
+      // it and fetch a fresh first page for the current state.
+      pendingReset = false;
+      void fetchPage(true);
+      return;
+    }
     if (!res.ok) {
       if (res.status === 401) {
         navigate("/login");
@@ -283,15 +300,3 @@ export const renderAdminUsers: RouteRenderer = (
   setActiveChip();
   void fetchPage(true);
 };
-
-function formatDate(ms: number): string {
-  return new Date(ms).toLocaleDateString("de-DE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-// Re-export for compatibility with the BASE_PATH-based deep-link path
-// (used by the row-onClick + the "Mehr laden"-cursor fetch).
-export const __BASE_PATH = BASE_PATH;

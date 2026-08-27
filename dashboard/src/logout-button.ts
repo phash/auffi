@@ -12,6 +12,7 @@
 
 import { logout } from "./api.js";
 import { navigate } from "./router.js";
+import { refreshSession } from "./session.js";
 
 /**
  * Mount an "Abmelden" ghost-pill button inside `container` (expected to be
@@ -30,6 +31,8 @@ export function mountLogoutButton(container: HTMLElement): HTMLButtonElement {
   btn.addEventListener("click", () => {
     void logout().finally(() => {
       navigate("/login");
+      // Re-probe so nav/admin-gate/FAB drop the ended session.
+      void refreshSession();
     });
   });
 

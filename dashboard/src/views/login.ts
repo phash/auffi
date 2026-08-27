@@ -6,6 +6,7 @@
 import { login } from "../api.js";
 import { wrapPasswordField } from "../components/password-field.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { refreshSession } from "../session.js";
 
 export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
   const card = document.createElement("section");
@@ -70,6 +71,9 @@ export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext
     submit.textContent = "Anmelden …";
     const res = await login(emailInput.value.trim(), pwInput.value);
     if (res.ok) {
+      // Re-probe the session in the background so nav/admin-gate/FAB
+      // pick up the new login without a full page reload.
+      void refreshSession();
       // Land on the device list as the post-login default.
       navigate("/");
       return;

@@ -12,6 +12,7 @@ import {
   type AdminCodeStats,
   type AdminStats,
 } from "../api.js";
+import { formatBytes } from "../format.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 
 export const renderAdminOverview: RouteRenderer = (
@@ -180,11 +181,4 @@ function renderKpis(
   }
   quick.appendChild(list);
   root.appendChild(quick);
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }

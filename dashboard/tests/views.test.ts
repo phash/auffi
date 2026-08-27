@@ -26,16 +26,18 @@ function flush(): Promise<void> {
 }
 
 describe("renderLogin", () => {
-  let lastReq: { url: string; init: RequestInit } | null = null;
+  // Collect ALL requests: a successful login fires a follow-up
+  // GET /api/me (session re-probe) after the POST.
+  let reqs: Array<{ url: string; init: RequestInit }> = [];
   beforeEach(() => {
-    lastReq = null;
+    reqs = [];
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async (input, init) => {
-        lastReq = {
+        reqs.push({
           url: typeof input === "string" ? input : input.toString(),
           init: init ?? {},
-        };
+        });
         return jsonResponse({ ok: true });
       }) as unknown as typeof fetch,
     });
@@ -62,8 +64,9 @@ describe("renderLogin", () => {
     pwEl.value = "verysecret1";
     form.dispatchEvent(new Event("submit", { cancelable: true }));
     await flush();
-    expect(lastReq?.url).toBe("/api/auth/login");
-    expect(JSON.parse(lastReq?.init.body as string)).toEqual({
+    const loginReq = reqs.find((r) => r.url === "/api/auth/login");
+    expect(loginReq).toBeDefined();
+    expect(JSON.parse(loginReq?.init.body as string)).toEqual({
       email: "user@example.test",
       password: "verysecret1",
     });

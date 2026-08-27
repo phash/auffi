@@ -14,6 +14,7 @@ import { deleteMe, getMe, patchMe, type Me } from "../api.js";
 import { wrapPasswordField } from "../components/password-field.js";
 import { formatAbsolute } from "../format.js";
 import { navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { refreshSession } from "../session.js";
 
 export const renderAccount: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -233,8 +234,10 @@ function renderEditor(root: HTMLElement, me: Me): void {
       new_password: pwNewInput.value,
     });
     if (res.ok) {
-      // Backend revoked our session — bounce to /login.
+      // Backend revoked our session — bounce to /login and re-probe so
+      // nav/admin-gate/FAB drop the ended session.
       navigate("/login");
+      void refreshSession();
       return;
     }
     pwSubmit.disabled = false;
@@ -330,6 +333,8 @@ function renderEditor(root: HTMLElement, me: Me): void {
     });
     if (res.ok) {
       navigate("/login");
+      // Account weg → Session weg; Nav/FAB entsprechend zurücksetzen.
+      void refreshSession();
       return;
     }
     dSubmit.disabled = false;

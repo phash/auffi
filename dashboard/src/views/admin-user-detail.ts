@@ -17,6 +17,12 @@ import {
 } from "../api.js";
 import { confirmWithReason } from "../components/confirm-with-reason.js";
 import {
+  formatAbsolute,
+  formatBytes,
+  formatDate,
+  formatDuration,
+} from "../format.js";
+import {
   BASE_PATH,
   navigate,
   type RouteContext,
@@ -256,7 +262,7 @@ export const renderAdminUserDetail: RouteRenderer = (
         time.className = "muted";
         time.style.fontSize = "0.75rem";
         time.style.marginRight = "0.5rem";
-        time.textContent = formatDateTime(a.created_at);
+        time.textContent = formatAbsolute(a.created_at);
         const action = document.createElement("strong");
         action.textContent = a.action;
         const admin = document.createElement("span");
@@ -363,8 +369,8 @@ function connectionsTable(rows: AdminUserConnection[]): HTMLTableElement {
   for (const c of rows) {
     const tr = document.createElement("tr");
     addCell(tr, c.device_id);
-    addCell(tr, formatDateTime(c.started_at));
-    addCell(tr, c.ended_at ? formatDuration(c.ended_at - c.started_at) : "läuft");
+    addCell(tr, formatAbsolute(c.started_at));
+    addCell(tr, c.ended_at ? formatDuration(c.started_at, c.ended_at) : "läuft");
     addCell(tr, c.connection_type);
     addCell(tr, formatBytes(c.bytes_relayed));
     tbody.appendChild(tr);
@@ -377,38 +383,4 @@ function addCell(tr: HTMLTableRowElement, text: string): void {
   const td = document.createElement("td");
   td.textContent = text;
   tr.appendChild(td);
-}
-
-function formatDate(ms: number): string {
-  return new Date(ms).toLocaleDateString("de-DE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-function formatDateTime(ms: number): string {
-  return new Date(ms).toLocaleString("de-DE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
-
-function formatBytes(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }

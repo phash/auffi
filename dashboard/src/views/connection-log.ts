@@ -86,8 +86,17 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
         return;
       }
       status.className = "error";
+      // The status line is display:none after the first successful page
+      // — bring it back so the error is actually visible.
+      status.style.display = "block";
       status.textContent = `Protokoll konnte nicht geladen werden: ${res.message}`;
-      more.style.display = "none";
+      if (wasEmpty) {
+        more.style.display = "none";
+      } else {
+        // Mid-Pagination: Button als Retry-Pfad stehen lassen.
+        more.disabled = false;
+        more.textContent = "Mehr laden";
+      }
       return;
     }
     if (wasEmpty && res.data.items.length === 0) {
@@ -100,10 +109,9 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
       more.style.display = "none";
       return;
     }
-    // Hide the initial loading line once we have something to show.
-    if (wasEmpty) {
-      status.style.display = "none";
-    }
+    // Hide the status line once we have something to show — this also
+    // clears a previous load-more error after a successful retry.
+    status.style.display = "none";
     for (const row of res.data.items) {
       list.appendChild(renderRow(row));
     }

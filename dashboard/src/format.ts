@@ -26,6 +26,40 @@ export function formatRelative(ts: number | null, now: number = Date.now()): str
 }
 
 /**
+ * Format an uptime given in seconds as a German duration:
+ * "42 Sek", "5 Min", "3 Std 4 Min", "2 Tage 7 Std" ("1 Tag"). Pure.
+ * Distinct from `formatRelative` — an uptime is a duration, not an
+ * "ago"-timestamp.
+ */
+export function formatUptime(totalSeconds: number): string {
+  const sec = Math.max(0, Math.floor(totalSeconds));
+  if (sec < 60) return `${sec} Sek`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} Min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) {
+    const restMin = min % 60;
+    return restMin === 0 ? `${hr} Std` : `${hr} Std ${restMin} Min`;
+  }
+  const day = Math.floor(hr / 24);
+  const restHr = hr % 24;
+  const days = `${day} ${day === 1 ? "Tag" : "Tage"}`;
+  return restHr === 0 ? days : `${days} ${restHr} Std`;
+}
+
+/**
+ * Format a unix-ms timestamp as a German date-only "DD.MM.YYYY"
+ * string. Pure; used by the admin tables (created-at, last-login).
+ */
+export function formatDate(ts: number): string {
+  return new Date(ts).toLocaleDateString("de-DE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+/**
  * Format an absolute unix-ms timestamp as a German locale
  * "DD.MM.YYYY, HH:MM" string. Pure; used by the connection-log view.
  */

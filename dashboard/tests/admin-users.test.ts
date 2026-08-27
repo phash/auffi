@@ -86,6 +86,39 @@ describe("renderAdminUsers", () => {
     expect(urls.some((u) => u.includes(`status=${specific.dataset.filter}`))).toBe(true);
   });
 
+  it("re-runs a filter change that arrived while a request was in flight", async () => {
+    const urls: string[] = [];
+    const resolvers: Array<(r: Response) => void> = [];
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn((input: unknown) => {
+        urls.push(String(input));
+        return new Promise<Response>((resolve) => resolvers.push(resolve));
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAdminUsers(root, ctx); // request 1 (initial, "alle") in flight
+
+    const chips = Array.from(root.querySelectorAll<HTMLButtonElement>(".admin-users-chip"));
+    const suspended = chips.find((c) => c.dataset.filter === "suspended")!;
+    suspended.click(); // filter change while loading — must not be dropped
+    await flush();
+    expect(urls).toHaveLength(1);
+
+    // The stale "alle" response lands → view must re-fetch with the new
+    // filter instead of rendering the old filter's rows under the new chip.
+    resolvers[0](jsonResponse({ items: [USER], next_cursor: null }));
+    await flush();
+    expect(urls).toHaveLength(2);
+    expect(urls[1]).toContain("status=suspended");
+
+    resolvers[1](jsonResponse({ items: [], next_cursor: null }));
+    await flush();
+    // The table shows the NEW filter's (empty) result, not the stale row.
+    expect(root.querySelector("tbody")).toBeNull();
+    expect(root.textContent).toContain("Keine Nutzer im gewählten Filter.");
+  });
+
   it("renders the email as a keyboard-reachable link to the detail route", async () => {
     _setApiClientForTests({
       base: "",
