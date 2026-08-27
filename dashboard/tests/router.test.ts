@@ -368,3 +368,41 @@ describe("renderer cleanup contract", () => {
     ]);
   });
 });
+
+// Review 2026-07-02 — F1 (navigation race). The F3 listener-leak twin is
+// covered by the start/stop-lifecycle describe above.
+describe("render isolation", () => {
+  it("a slow async view render does not clobber the page after navigation (F1)", () => {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    let containerA: HTMLElement | null = null;
+    const rs: Route[] = [
+      {
+        pattern: "/a",
+        render: (r) => {
+          // Capture the container but write nothing yet — simulates a view
+          // that awaits a fetch and populates `root` later.
+          containerA = r;
+        },
+      },
+      {
+        pattern: "/b",
+        render: (r) => {
+          r.textContent = "B";
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/a");
+    const r = createRouter(root, rs);
+    r.start(); // renders A into container-A
+    navigate("/b"); // renders B into a fresh container; container-A detaches
+
+    // A's late async completion writes into its captured (now-detached)
+    // container — this must NOT overwrite the visible page.
+    containerA!.textContent = "A (late)";
+    expect(root.textContent).toBe("B");
+
+    r.stop();
+    document.body.removeChild(root);
+  });
+});

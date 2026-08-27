@@ -225,11 +225,20 @@ export function createRouter(
     runActiveCleanup();
     const path = pathUnderBase(location.pathname);
     const match = matchRoute(routes, path);
+    // Each render gets its own container which we swap into `root`,
+    // detaching the previous render's container. Views do async work
+    // (fetch → replaceChildren(root, …)) AFTER their synchronous return;
+    // giving every render a fresh container means a slow fetch that
+    // resolves after the user already navigated writes into a now-detached
+    // node instead of clobbering the new page (finding F1). Views receive
+    // this container as their `root` param, so no view needs to change.
+    const container = document.createElement("div");
+    replaceChildren(root, container);
     if (!match) {
       const p = document.createElement("p");
       p.className = "error";
       p.textContent = "Seite nicht gefunden.";
-      replaceChildren(root, p);
+      container.appendChild(p);
       return;
     }
     const segments = path === "/" ? [] : path.slice(1).split("/");
@@ -249,8 +258,8 @@ export function createRouter(
       !options.isAdmin();
     const cleanup =
       useForbidden && options.renderAdminForbidden
-        ? options.renderAdminForbidden(root, ctx)
-        : match.route.render(root, ctx);
+        ? options.renderAdminForbidden(container, ctx)
+        : match.route.render(container, ctx);
     activeCleanup = typeof cleanup === "function" ? cleanup : null;
     focusNewView();
     // Notify subscribers (e.g. nav active-state highlighter) that the
@@ -261,9 +270,10 @@ export function createRouter(
 
   const onPopState = (): void => render();
 
-  // Intercept internal link clicks so the page doesn't full-reload
-  // when navigating between dashboard routes. Named handler so stop()
-  // can detach it again.
+  // Intercept internal link clicks so the page doesn't full-reload when
+  // navigating between dashboard routes. Named (not an inline closure) so
+  // stop() can removeEventListener it — otherwise a stopped router keeps
+  // hijacking clicks and repeated start/stop cycles stack handlers (F3).
   const onDocumentClick = (e: MouseEvent): void => {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;

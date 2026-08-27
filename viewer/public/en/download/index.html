@@ -171,7 +171,7 @@
                 <span class="size">~ 30 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_x64_portable.exe">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_x64_portable.exe?tag=v0.6.4">
               Download
             </a>
           </li>
@@ -277,19 +277,48 @@
         <h3>0.6.4 (2026-07-02)</h3>
         <ul class="release-list">
           <li>
-            <strong>Stability &amp; diagnostics</strong> — a realtime fix for
-            the VP8 encoder for smoother streaming, more detailed diagnostic
-            logs, and a clear notice in the sharer when the connection code
-            has expired (cumulative 0.6.1–0.6.4).
+            <strong>Unattended access: follow-up connections now work</strong> —
+            with paired devices only the first helper could connect; every
+            further one got a black screen. Any subsequent connection now works
+            without a restart.
           </li>
           <li>
-            <strong>Hardening after code &amp; security review</strong> — the
-            sharer was brought in line with the May/June review findings.
+            <strong>More stable reconnects</strong> — after a brief Wi-Fi drop
+            the device reconnects quickly instead of after a long delay.
           </li>
           <li>
-            <strong>Portable build now versioned</strong> — the standalone
-            .exe is now called <code>Auffi_0.6.4_x64_portable.exe</code>
-            (previously <code>auffi-sharer-windows-x64.exe</code>).
+            Smaller touches: the free relay-time notice now also shows on the
+            sharing side, and screen-capture errors are logged instead of lost.
+          </li>
+        </ul>
+        <h3>0.6.3 (2026-06-22)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Much smoother sharing on Windows</strong> — on Windows
+            servers (e.g. over Remote Desktop) and PCs without a dedicated
+            graphics card the picture used to lag badly. The video encoder is
+            now tuned for real-time, so the stream stays smooth even on those
+            machines.
+          </li>
+        </ul>
+        <h3>0.6.2 (2026-06-22)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Windows screen capture fixed</strong> — on some Windows
+            machines and over Remote Desktop, sharing aborted with “Streaming
+            could not be started”. Auffi now initialises capture correctly and
+            automatically falls back to an alternative method on machines
+            without a GPU, so sharing starts reliably.
+          </li>
+          <li>
+            <strong>Visible session-code expiry</strong> — the 9-digit code
+            now shows how long it stays valid and is cleared cleanly once the
+            session ends.
+          </li>
+          <li>
+            <strong>Extra hardening</strong> — diagnostic logs are now readable
+            only by you locally, IP addresses are stripped before logging, plus
+            smaller stability and usability fixes.
           </li>
         </ul>
         <h3>0.6.0 (2026-06-16)</h3>

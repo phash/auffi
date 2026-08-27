@@ -14,7 +14,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "csp:sync": "tsx scripts/sync-csp-hashes.ts",
+    "csp:check": "tsx scripts/sync-csp-hashes.ts --check"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
@@ -22,6 +24,7 @@
     "@types/node": "25.9.3",
     "@vitest/coverage-v8": "4.1.11",
     "jsdom": "30.0.1",
+    "tsx": "4.23.12",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"

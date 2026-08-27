@@ -3,7 +3,10 @@ import type { Db } from "../db.js";
 import { writeAudit } from "./middleware.js";
 import { deleteAllSessionsForAccount } from "../auth/sessions.js";
 import { encodeCursor, decodeNumericCursor, clampLimit, paginate } from "./pagination.js";
-import type { UnattendedRegistry } from "../unattended.js";
+import {
+  evictAccountDevices,
+  type UnattendedRegistry,
+} from "../unattended.js";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -344,15 +347,19 @@ export function registerAdminUsersRoutes(
         return bad(reply, 409, "last-admin", "Der letzte aktive Admin kann nicht gelöscht werden.");
       }
 
-      // Device-IDs VOR dem Cascade einsammeln — die WSS-Verbindungen der
-      // gepaarten Sharer überleben das SQL-DELETE sonst bis zum nächsten
-      // Heartbeat-Re-Auth.
-      const deviceIds = db
-        .prepare<[number], { id: string }>(
-          "SELECT id FROM devices WHERE owner_account_id = ?",
-        )
-        .all(id);
-      const deviceCount = deviceIds.length;
+      // VOR dem Cascade zählen — der Audit-Snapshot hält fest, wie viele
+      // Geräte mit dem Konto verschwinden.
+      const deviceCount =
+        db
+          .prepare<[number], { c: number }>(
+            "SELECT COUNT(*) AS c FROM devices WHERE owner_account_id = ?",
+          )
+          .get(id)?.c ?? 0;
+
+      // Force-close the target's live unattended sharers before the cascade
+      // removes their device rows. An admin deleting an abusive account must
+      // cut its sharers off immediately, not at their next reconnect.
+      if (registry) evictAccountDevices(db, registry, id);
 
       const tx = db.transaction(() => {
         // Snapshot what's about to vanish — audit_log row survives the cascade
@@ -369,8 +376,6 @@ export function registerAdminUsersRoutes(
         db.prepare("DELETE FROM accounts WHERE id = ?").run(id);
       });
       tx();
-
-      for (const d of deviceIds) registry?.evict(d.id);
 
       return reply.status(204).send();
     },

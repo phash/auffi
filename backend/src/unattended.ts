@@ -62,6 +62,28 @@ export class UnattendedRegistry {
   }
 }
 
+/**
+ * Force-close the live unattended WSS of every device owned by
+ * `accountId`. MUST be called BEFORE the account row is deleted — the
+ * FK-cascade removes the device rows, so the ids have to be read while
+ * they still exist. Evicting the sockets makes a revoked account's
+ * sharers stop relaying immediately instead of surviving on their
+ * already-authenticated connection until the next reconnect (the WSS
+ * only re-verifies the bearer token at connect time).
+ */
+export function evictAccountDevices(
+  db: Db,
+  registry: UnattendedRegistry,
+  accountId: number,
+): void {
+  const rows = db
+    .prepare<[number], { id: string }>(
+      "SELECT id FROM devices WHERE owner_account_id = ?",
+    )
+    .all(accountId);
+  for (const { id } of rows) registry.evict(id);
+}
+
 export const WS_CLOSE = {
   AUTH_FAILED: 4401,
   SUPERSEDED: 4408,

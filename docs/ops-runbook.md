@@ -53,6 +53,7 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
   sharer/src-tauri/target/release/bundle/appimage/Auffi_X.Y.Z_amd64.AppImage
 # 4) Bump filenames in viewer/public/download/index.html + the
 #    KNOWN_ASSETS-Set in backend/src/downloads/handlers.ts
+#    (Portable nicht vergessen — die CI baut keins, s. Gotcha unten)
 # 5) ./ops/deploy.sh --yes
 # Windows-Builds laufen jetzt im CI (release.yml / build-sharer.yml auf
 # windows-latest, seit PR #117). Die separate Windows-Box / das gh-Issue-
@@ -64,6 +65,9 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 **CLEANER METHOD (used for v0.5.0) — cut Linux-first as a PRE-RELEASE:** `gh release create vX.Y.Z --prerelease ...` (Linux assets only). A prerelease is NOT returned by GitHub's `/releases/latest`, so BOTH the download-proxy default (`releases/latest/download`) and the sharer update-notifier (`update_check.rs` → `/releases/latest`) stay on the previous full release — no download-page 404s, no update-loop, no temp Windows-pin. When the Windows build lands: `gh release edit vX.Y.Z --latest` to promote, together with the download-page + KNOWN_ASSETS bump + `./ops/deploy.sh`.
 
 **FOOTGUN:** `github.com/.../releases/latest/download/<asset>` (the web redirect) propagates a few minutes BEHIND the `/releases/latest` API after you create or `--prerelease`-toggle a release. The proxy can throw transient 502s for latest-routed assets in that window (the API already shows the right tag). It self-heals — don't redeploy in a panic. `?tag=vX.Y.Z` resolves immediately.
+
+**Portable-.exe (seit v0.6.4 von CI gebaut):** `build-sharer.yml` stagt nach `tauri:build` die unbundled `target/release/auffi-sharer.exe` (heißt nach dem Cargo-Package, NICHT `Auffi.exe`/productName) als `Auffi_X.Y.Z_x64_portable.exe` und lädt sie mit den Windows-Bundles hoch → `release.yml` (globt `windows/**`) hängt sie automatisch ans Tag-Release. Kein Handbuild mehr nötig. **Aber** das Portable ist NICHT latest-getrackt → `KNOWN_ASSETS`-Eintrag + Download-Button-href müssen **auf `?tag=vX.Y.Z` gepinnt** sein, sonst 502t der „Portable (.exe)"-Button (Asset nicht auf `/releases/latest`). Der Rest (KNOWN_ASSETS + Button-Wiring) bleibt manuell im Release-Commit.
+> **Alt (vor v0.6.4 / falls CI mal klemmt):** Portable lokal auf Windows bauen, dann (a) `gh release upload vX.Y.Z …/Auffi_X.Y.Z_x64_portable.exe`, (b) `SHA256SUMS` um die Hash-Zeile ergänzen und `--clobber` neu hochladen — **die lokale Datei MUSS exakt `SHA256SUMS` heißen** (sonst legt `gh` ein Zweit-Asset an statt zu überschreiben). Beispiele: v0.6.3 = f487524 (manueller Upload); der alte generische Name `auffi-sharer-windows-x64.exe` war ein früherer 502-Verursacher.
 
 ## Admin-Promote auf prod
 
@@ -97,6 +101,22 @@ console.log(\"after :\", JSON.stringify(after));"'
 - **Cluster** (current prod) — `docker-compose.prod.yml` + `docker-compose.cluster.yml` overlay. Our Caddy is disabled; the cluster's shared Caddy at `/opt/caddyserver/Caddyfile` reverse-proxies `auffi.app` to `auffi-backend:8080` via the external `caddy-proxy` network. The `viewer` runs as a small nginx-alpine sidecar serving the static dist.
 
 TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy cert volume to `turn-certs-staged`.
+
+### CSP script-src after adding marketing pages
+
+**`deploy.sh` does NOT ship the Caddyfile in cluster mode** (see § Cluster-Ops Footguns in `docs/footguns.md`). Every new batch of marketing pages adds JSON-LD inline scripts whose SHA-256 hashes must be whitelisted in the cluster Caddyfile's `Content-Security-Policy script-src` or the structured-data blocks will be CSP-blocked.
+
+**2026-06-23 SEO push:** added 8 new marketing pages (DE + EN) — RustDesk, Chrome Remote Desktop, TeamViewer commercial-use, no-install screen sharing. After `./ops/deploy.sh`, patch the cluster Caddyfile manually:
+
+1. On the prod host, recompute the full hash set from the deployed viewer HTML:
+   ```bash
+   python3 -c "import re,hashlib,base64,glob; files=['viewer/index.html','viewer/en/index.html']+sorted(glob.glob('viewer/public/**/index.html',recursive=True)); print('\n'.join(sorted({'sha256-'+base64.b64encode(hashlib.sha256(m.encode()).digest()).decode() for f in files for m in re.findall(r'<script(?:\\s[^>]*)?>(.*?)</script>', open(f).read(), re.DOTALL) if m.strip() and 'src=' not in m[:60]})))"
+   ```
+   (same one-liner as in `caddy/Caddyfile` § comment — run from a repo checkout root, where `viewer/` is a direct child directory)
+2. Replace the `sha256-…` tokens in `/opt/caddyserver/Caddyfile`'s `script-src` with the new set.
+3. Validate and restart: `docker exec caddy-proxy caddy validate --config /etc/caddy/Caddyfile && docker restart caddy-proxy`.
+
+The repo-side `caddy/Caddyfile` always carries the current full hash set. `viewer/tests/marketing-seo.test.ts` is the guard that keeps it in sync with the HTML sources — if it passes in CI, the repo Caddyfile is correct; the cluster file needs the same tokens applied by hand.
 
 ## Daily Backup
 

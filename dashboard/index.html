@@ -14,9 +14,30 @@
         <a class="brand" href="/dashboard/">
           <span class="brand-mark">AUFFI</span><span class="brand-sep">/</span><span class="brand-section">DASHBOARD</span>
         </a>
-        <a class="topbar-viewer-link" href="/" aria-label="Zur Hauptseite (Viewer)">
-          Hauptseite&nbsp;↗
-        </a>
+
+        <!-- Hauptfunktion der Seite, gespiegelt vom Viewer-Topbar: verbinden
+             (Code eingeben) + Sharer laden. Zentriert zwischen Marke und
+             Aktionen. -->
+        <div class="topbar-center">
+          <a class="topbar-cta topbar-cta-connect" href="/#code" aria-label="Zum Verbinden (Code eingeben)">
+            Verbinden
+          </a>
+          <a class="topbar-cta topbar-cta-download" href="/download/" aria-label="Sharer herunterladen">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+              <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+            </svg>
+            <span class="topbar-cta-label">Download</span>
+          </a>
+          <a class="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" aria-label="Entwicklung unterstützen — Buy me a coffee">
+            <span class="topbar-coffee-emoji" aria-hidden="true">☕</span>
+            <span class="topbar-coffee-label">Kaffee spendieren</span>
+          </a>
+        </div>
+
+        <!-- Rechte Zone: Session-Aktionen. Abmelden wird hier per JS eingehängt
+             (logout-button.ts). -->
+        <div class="topbar-actions"></div>
       </div>
       <nav id="dashboard-nav" aria-label="Dashboard navigation"></nav>
     </header>

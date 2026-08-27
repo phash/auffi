@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chrome-Remote-Desktop-Alternative ohne Google-Konto — Auffi</title>
+    <meta name="description" content="Chrome-Remote-Desktop-Alternative ohne Google-Konto und ohne US-Cloud: Auffi ist kostenlos, Open Source (AGPL-3.0) und DSGVO-konform, Server in Deutschland — die helfende Person braucht nur einen Browser. Ehrliche Vergleichstabelle + FAQ." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/vergleich/chrome-remote-desktop/" />
+    <link rel="alternate" hreflang="de" href="https://auffi.app/vergleich/chrome-remote-desktop/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/compare/chrome-remote-desktop/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/vergleich/chrome-remote-desktop/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Chrome-Remote-Desktop-Alternative ohne Google-Konto — Auffi" />
+    <meta property="og:description" content="Ehrlicher Vergleich: kostenlos, Open Source, DSGVO-konform, ohne Google-Konto, Server in Deutschland." />
+    <meta property="og:url" content="https://auffi.app/vergleich/chrome-remote-desktop/" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Bildschirm-Sharing, Open Source, DSGVO-konform" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Chrome-Remote-Desktop-Alternative — ohne Google-Konto" />
+    <meta name="twitter:description" content="Kostenlos, Open Source, DSGVO-konform, ohne Google-Konto, Server in Deutschland." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+      .vs-table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+      table.vs-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+      table.vs-table th, table.vs-table td {
+        border: 1.5px solid var(--ink, #14110d);
+        padding: 0.55rem 0.7rem; text-align: left; vertical-align: top;
+      }
+      table.vs-table thead th { background: var(--ink, #14110d); color: var(--paper, #f5f1e6); }
+      table.vs-table tbody th { font-weight: 600; white-space: nowrap; }
+      .vs-yes { color: #1a7f37; font-weight: 600; }
+      .vs-no { color: #a83b3b; font-weight: 600; }
+      .vs-updated { font-family: var(--font-mono, monospace); font-size: 0.8rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; }
+    </style>
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/" },
+          { "@type": "ListItem", "position": 2, "name": "Vergleich", "item": "https://auffi.app/vergleich/" },
+          { "@type": "ListItem", "position": 3, "name": "Auffi vs Chrome Remote Desktop", "item": "https://auffi.app/vergleich/chrome-remote-desktop/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Geht Fernwartung ohne Google-Konto?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Ja. Chrome Remote Desktop verlangt auf beiden Seiten ein Google-Konto. Auffi nicht: die helfende Person öffnet nur auffi.app und tippt einen 9-stelligen Code, ganz ohne Konto." }
+          },
+          {
+            "@type": "Question",
+            "name": "Wo werden bei Chrome Remote Desktop die Daten verarbeitet?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Chrome Remote Desktop läuft über Googles Infrastruktur in den USA. Auffi vermittelt nur den Verbindungsaufbau über Server in Deutschland (Frankfurt); Bild, Maus und Dateien fließen Ende-zu-Ende direkt zwischen den Geräten." }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist Auffi so einfach wie Chrome Remote Desktop?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Für die helfende Person ja — Browser öffnen, Code eingeben, verbinden. Nur wer den eigenen Bildschirm teilt, startet einmalig den kleinen Auffi-Sharer; bei Chrome Remote Desktop installiert die geteilte Seite ebenfalls eine Host-Komponente." }
+          },
+          {
+            "@type": "Question",
+            "name": "Kann ich Auffi selbst hosten? Chrome Remote Desktop nicht?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Richtig. Auffi ist Open Source (AGPL-3.0) und vollständig selbst hostbar. Chrome Remote Desktop ist ein geschlossener Google-Dienst und lässt sich nicht selbst betreiben." }
+          },
+          {
+            "@type": "Question",
+            "name": "Ist Auffi auch gewerblich kostenlos?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Ja, ohne Lizenzgebühr und ohne private/gewerbliche Unterscheidung. Chrome Remote Desktop ist ebenfalls kostenlos, bindet dich aber an ein Google-Konto und Googles US-Cloud." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/" class="topbar-wordmark" aria-label="Auffi — Zur Startseite">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Bildschirm-Freigabe — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/#code" aria-label="Zur Verbindungscode-Eingabe auf der Hauptseite">Verbinden</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/download/" aria-label="Sharer herunterladen">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Sharer herunterladen</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/en/compare/chrome-remote-desktop/" class="topbar-btn" aria-label="View in English" hreflang="en">EN</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Einloggen (Konto)">
+          <span class="topbar-btn-label">Einloggen</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Konto anlegen">
+          <span class="topbar-btn-label">Konto anlegen</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Chrome-Remote-Desktop-Alternative: Auffi im direkten Vergleich</h1>
+
+      <p class="vs-lead">
+        <strong>Auffi ist eine kostenlose, quelloffene (AGPL-3.0) und
+        DSGVO-konforme Alternative zu Chrome Remote Desktop</strong> für
+        spontane Bildschirmfreigabe und Fernwartung. Die helfende Person öffnet
+        nur <code>auffi.app</code> im Browser und tippt einen 9-stelligen Code —
+        <strong>ohne Google-Konto, ohne Installation</strong>. Die Server stehen
+        in Deutschland, und jeder Stream ist Ende-zu-Ende mit DTLS-SRTP
+        verschlüsselt. Chrome Remote Desktop ist kostenlos und einfach, bindet
+        aber beide Seiten an ein Google-Konto und Googles US-Cloud.
+      </p>
+
+      <section>
+        <h2>Vergleichstabelle</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr><th scope="col">Merkmal</th><th scope="col">Auffi</th><th scope="col">Chrome Remote Desktop</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Preis</th><td class="vs-yes">Kostenlos (privat &amp; gewerblich)</td><td>Kostenlos</td></tr>
+              <tr><th scope="row">Konto nötig</th><td class="vs-yes">Nein (Ad-hoc-Code)</td><td class="vs-no">Google-Konto auf beiden Seiten</td></tr>
+              <tr><th scope="row">Lizenz / Open Source</th><td class="vs-yes">AGPL-3.0, quelloffen</td><td class="vs-no">Proprietär (Google)</td></tr>
+              <tr><th scope="row">Selbst hostbar</th><td class="vs-yes">Ja (Docker)</td><td class="vs-no">Nein</td></tr>
+              <tr><th scope="row">Installation (helfende Person)</th><td class="vs-yes">Keine — nur Browser</td><td>Browser, aber Google-Konto nötig</td></tr>
+              <tr><th scope="row">Server-Standort</th><td class="vs-yes">Deutschland (Frankfurt)</td><td class="vs-no">USA (Google-Cloud)</td></tr>
+              <tr><th scope="row">Verschlüsselung</th><td>Ende-zu-Ende, DTLS-SRTP (WebRTC)</td><td>Verschlüsselt (WebRTC/DTLS)</td></tr>
+              <tr><th scope="row">Plattformen</th><td>Windows, Linux (macOS folgt)</td><td class="vs-yes">Windows, macOS, Linux, ChromeOS</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">Stand: Juni 2026</p>
+      </section>
+
+      <section>
+        <h2>Wann Auffi die bessere Wahl ist</h2>
+        <ul>
+          <li>Du willst <strong>jemandem helfen, der kein Google-Konto hat</strong> — oder kein Google-Konto anlegen möchte.</li>
+          <li>Dir sind <strong>EU-/DE-Hosting und Datenschutz</strong> wichtig — kein US-Cloud-Anbieter im Datenfluss.</li>
+          <li>Du willst die Lösung <strong>selbst hosten</strong> und vollständig kontrollieren (AGPL-3.0).</li>
+          <li>Du willst, dass <strong>jede Sitzung aktiv bestätigt</strong> wird — kein automatisches Zulassen.</li>
+          <li>Du nutzt Fernwartung <strong>gewerblich und willst nicht an Googles Ökosystem gebunden</strong> sein.</li>
+        </ul>
+        <h2>Wann Chrome Remote Desktop die bessere Wahl ist</h2>
+        <ul>
+          <li>Alle Beteiligten haben <strong>ohnehin ein Google-Konto</strong> und wollen den einfachsten Dauerzugriff zum eigenen Rechner.</li>
+          <li>Du brauchst Unterstützung für <strong>ChromeOS</strong> oder möchtest nahtlos im Google-Ökosystem bleiben.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Häufige Fragen</h2>
+        <h3>Geht Fernwartung ohne Google-Konto?</h3>
+        <p>Ja. Chrome Remote Desktop verlangt auf beiden Seiten ein Google-Konto. Auffi nicht: die helfende Person öffnet nur auffi.app und tippt einen 9-stelligen Code, ganz ohne Konto.</p>
+        <h3>Wo werden bei Chrome Remote Desktop die Daten verarbeitet?</h3>
+        <p>Chrome Remote Desktop läuft über Googles Infrastruktur in den USA. Auffi vermittelt nur den Verbindungsaufbau über Server in Deutschland (Frankfurt); Bild, Maus und Dateien fließen Ende-zu-Ende direkt zwischen den Geräten.</p>
+        <h3>Ist Auffi so einfach wie Chrome Remote Desktop?</h3>
+        <p>Für die helfende Person ja — Browser öffnen, Code eingeben, verbinden. Nur wer den eigenen Bildschirm teilt, startet einmalig den kleinen Auffi-Sharer; bei Chrome Remote Desktop installiert die geteilte Seite ebenfalls eine Host-Komponente.</p>
+        <h3>Kann ich Auffi selbst hosten? Chrome Remote Desktop nicht?</h3>
+        <p>Richtig. Auffi ist Open Source (AGPL-3.0) und vollständig selbst hostbar. Chrome Remote Desktop ist ein geschlossener Google-Dienst und lässt sich nicht selbst betreiben.</p>
+        <h3>Ist Auffi auch gewerblich kostenlos?</h3>
+        <p>Ja, ohne Lizenzgebühr und ohne private/gewerbliche Unterscheidung. Chrome Remote Desktop ist ebenfalls kostenlos, bindet dich aber an ein Google-Konto und Googles US-Cloud.</p>
+      </section>
+
+      <section>
+        <h2>Jetzt ausprobieren</h2>
+        <p>
+          <a href="/#code">Bildschirm teilen — Code eingeben &amp; verbinden</a>
+          · <a href="/download/">Sharer herunterladen</a>
+          · <a href="/vergleich/">Fernwartungssoftware im Vergleich</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        und
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

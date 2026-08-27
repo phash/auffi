@@ -14,15 +14,36 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
-  // 0.6.4 — released 2026-07-02, the ONLY release currently on GitHub
-  // (0.5.0/0.6.0 wurden dort gelöscht). Erste Version mit Windows-
-  // portable-exe. Linux + Windows via release CI (build-sharer.yml).
+  // 0.6.4 — released 2026-07-02, das derzeit EINZIGE Release auf GitHub
+  // (ältere Releases wurden dort gelöscht). Sharer reliability: unattended
+  // multi-viewer fix, heartbeat reconnect-backoff reset, free-tier warning,
+  // x11 capture logs via dbg_log. Linux + Windows via CI (release.yml).
+  // Portable now also built by CI (build-sharer.yml stages
+  // target/release/auffi-sharer.exe) — served ?tag=v0.6.4-pinned (the
+  // portable is not latest-tracked).
   "Auffi_0.6.4_amd64.deb",
   "Auffi-0.6.4-1.x86_64.rpm",
   "Auffi_0.6.4_amd64.AppImage",
   "Auffi_0.6.4_x64-setup.exe",
   "Auffi_0.6.4_x64_en-US.msi",
   "Auffi_0.6.4_x64_portable.exe",
+  // 0.6.3 — released 2026-06-22. VP8 realtime-encoder tuning fixes laggy
+  // capture on Windows servers / RDP / GPU-less hosts. Linux + Windows via CI.
+  "Auffi_0.6.3_amd64.deb",
+  "Auffi-0.6.3-1.x86_64.rpm",
+  "Auffi_0.6.3_amd64.AppImage",
+  "Auffi_0.6.3_x64-setup.exe",
+  "Auffi_0.6.3_x64_en-US.msi",
+  // Portable single-exe — built locally (the release CI only bundles NSIS +
+  // MSI), uploaded to the v0.6.3 release manually. Served ?tag=v0.6.3-pinned.
+  "Auffi_0.6.3_x64_portable.exe",
+  // 0.6.2 — released 2026-06-22. Windows capture fix (COM apartment + GDI/RDP
+  // fallback for E_NOINTERFACE), visible code-expiry, security hardening.
+  "Auffi_0.6.2_amd64.deb",
+  "Auffi-0.6.2-1.x86_64.rpm",
+  "Auffi_0.6.2_amd64.AppImage",
+  "Auffi_0.6.2_x64-setup.exe",
+  "Auffi_0.6.2_x64_en-US.msi",
   // 0.6.0 — released 2026-06-16. Geo-country in confirm dialog, Calm-Fresh
   // sharer recast, security guards. Release inzwischen auf GitHub gelöscht —
   // Eintrag bleibt nur für die Counter-Persistenz (Upstream-Fetch → 502).

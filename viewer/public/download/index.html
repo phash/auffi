@@ -167,7 +167,7 @@
                 <span class="size">~ 30 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
-            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_x64_portable.exe">
+            <a class="download-btn" href="/api/downloads/file/Auffi_0.6.4_x64_portable.exe?tag=v0.6.4">
               Download
             </a>
           </li>
@@ -273,20 +273,51 @@
         <h3>0.6.4 (2026-07-02)</h3>
         <ul class="release-list">
           <li>
-            <strong>Stabilität &amp; Diagnose</strong> — Realtime-Korrektur am
-            VP8-Encoder für flüssigeres Streaming, ausführlichere
-            Diagnose-Logs und ein klarer Hinweis im Sharer, wenn der
-            Verbindungscode abgelaufen ist (Sammelstand 0.6.1–0.6.4).
+            <strong>Unbeaufsichtigter Zugriff: Folge-Verbindungen funktionieren</strong>
+            — bei gepaarten Geräten konnte sich bisher nur der erste Helfer
+            verbinden; jeder weitere bekam einen schwarzen Bildschirm. Jetzt
+            klappt jede weitere Verbindung ohne Neustart.
           </li>
           <li>
-            <strong>Härtung nach Code- &amp; Security-Review</strong> — der
-            Sharer wurde entlang der Review-Findings vom Mai/Juni
-            nachgezogen.
+            <strong>Stabilere Reconnects</strong> — nach kurzen WLAN-Aussetzern
+            verbindet sich das Gerät wieder schnell statt mit langer
+            Verzögerung.
           </li>
           <li>
-            <strong>Portable-Build versioniert</strong> — die Standalone-.exe
-            heißt jetzt <code>Auffi_0.6.4_x64_portable.exe</code> (vorher
-            <code>auffi-sharer-windows-x64.exe</code>).
+            Kleinere Verbesserungen: Hinweis zur kostenlosen Relay-Zeit auch
+            beim Teilenden, robusteres Fehler-Logging bei der Bildschirmaufnahme.
+          </li>
+        </ul>
+        <h3>0.6.3 (2026-06-22)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Deutlich flüssigeres Teilen auf Windows</strong> — auf
+            Windows-Servern (etwa über Remotedesktop) und PCs ohne dedizierte
+            Grafikkarte kam das Bild bisher stark verzögert an. Der
+            Video-Encoder wurde auf Echtzeit-Betrieb umgestellt, sodass die
+            Übertragung jetzt auch auf solchen Geräten ruckelarm läuft.
+          </li>
+        </ul>
+        <h3>0.6.2 (2026-06-22)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Windows-Bildschirmaufnahme repariert</strong> — auf
+            manchen Windows-Rechnern und über Remotedesktop brach das Teilen
+            mit „Streamen konnte nicht gestartet werden" ab. Auffi
+            initialisiert die Aufnahme jetzt korrekt und schaltet auf Geräten
+            ohne Grafikkarte automatisch auf ein Ersatzverfahren um — das
+            Teilen startet damit zuverlässig.
+          </li>
+          <li>
+            <strong>Sichtbarer Ablauf des Verbindungscodes</strong> — der
+            9-stellige Code zeigt jetzt an, wie lange er noch gültig ist, und
+            wird sauber entfernt, sobald die Sitzung beendet ist.
+          </li>
+          <li>
+            <strong>Zusätzliche Härtung</strong> — Diagnose-Protokolle sind
+            nur noch lokal für dich lesbar, IP-Adressen werden vor dem
+            Protokollieren entfernt, dazu kleinere Stabilitäts- und
+            Bedienungs-Fixes.
           </li>
         </ul>
         <h3>0.6.0 (2026-06-16)</h3>

@@ -149,6 +149,15 @@ export class SessionStore {
     // mandatory). This also makes the session expirable again.
     session.confirmed = false;
     this.byPeer.delete(viewer);
+    // Reset the confirmation so a replacement viewer redeeming the same
+    // still-valid code must be re-confirmed by the sharer. Without this,
+    // `confirmed` stays latched `true` after the first viewer leaves: the
+    // relay gate (`signaling.ts` "if (!found.confirmed) return") would open
+    // for the new viewer before any human clicked Akzeptieren, and the
+    // sharer's decline (`confirm:false`, guarded by "if (found.confirmed)
+    // return") would be silently swallowed. Both break the invariant that
+    // the sharer confirms every incoming peer.
+    session.confirmed = false;
   }
 
   /**

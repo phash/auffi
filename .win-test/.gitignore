@@ -1,0 +1,4 @@
+# Test artifacts (installers, portable, logs, results) + the VM disk — never commit.
+share/*
+!share/.gitkeep
+storage/

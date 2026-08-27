@@ -30,6 +30,17 @@ test.describe("review fixes (2026-05-29)", () => {
   });
 
   test("Abbrechen button appears while connecting and cancels back to the form", async ({ page }) => {
+    // Hold the connect in its "connecting" phase deterministically: stall the
+    // TURN-credentials fetch so doConnect() never advances past it. Without
+    // this the test races — against a reachable backend the invalid code is
+    // rejected in a few ms (and against a refused port the WS closes just as
+    // fast), tearing the Abbrechen control down before the assertion. The
+    // control itself is shown synchronously by showConnectingControls(); we
+    // just need the phase to persist long enough to observe + click it.
+    await page.route("**/turn-credentials", () => {
+      /* never fulfil — the request hangs, connect stays pending */
+    });
+
     await page.goto("/");
     const cancel = page.locator("#cancel-connect");
     await expect(cancel).toBeHidden();

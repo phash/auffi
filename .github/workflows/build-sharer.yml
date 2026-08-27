@@ -119,6 +119,18 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: Stage portable exe
+        # tauri:build also emits the unbundled, self-contained binary under
+        # target/release/. It is named after the Cargo package (auffi-sharer.exe),
+        # NOT the productName. Rename it to the versioned portable name so it is a
+        # first-class release asset (previously it had to be hand-built on a
+        # Windows box each release — see docs/ops-runbook.md § Portable-Gotcha).
+        shell: pwsh
+        run: |
+          $ver = (Get-Content sharer/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          Copy-Item sharer/src-tauri/target/release/auffi-sharer.exe `
+            "sharer/src-tauri/target/release/Auffi_${ver}_x64_portable.exe"
+
       - name: Upload Windows bundles
         uses: actions/upload-artifact@v4
         with:
@@ -126,4 +138,5 @@ jobs:
           path: |
             sharer/src-tauri/target/release/bundle/msi/*.msi
             sharer/src-tauri/target/release/bundle/nsis/*.exe
+            sharer/src-tauri/target/release/Auffi_*_x64_portable.exe
           retention-days: 30

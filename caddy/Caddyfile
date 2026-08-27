@@ -24,11 +24,19 @@ auffi.app {
         >X-Content-Type-Options "nosniff"
         >Referrer-Policy "no-referrer"
         # SHA-256 hashes whitelist EVERY inline <script type="application/
-        # ld+json"> block across all 12 served marketing pages (de + en):
-        # SoftwareApplication / FAQPage / BreadcrumbList structured data on
-        # /, /en/, /impressum/, /datenschutz/, /download/, /en/download/,
-        # /vergleich/, /en/compare/, /vergleich/teamviewer/,
-        # /en/compare/teamviewer/, /vergleich/anydesk/, /en/compare/anydesk/.
+        # ld+json"> block across all 20 served marketing pages (de + en):
+        # SoftwareApplication / FAQPage / BreadcrumbList / HowTo structured
+        # data on /, /en/, /impressum/, /datenschutz/, /download/,
+        # /en/download/, /vergleich/, /en/compare/, /vergleich/teamviewer/,
+        # /en/compare/teamviewer/, /vergleich/anydesk/, /en/compare/anydesk/,
+        # /vergleich/rustdesk/, /en/compare/rustdesk/,
+        # /vergleich/chrome-remote-desktop/,
+        # /en/compare/chrome-remote-desktop/,
+        # /vergleich/teamviewer-kommerzielle-nutzung/,
+        # /en/compare/teamviewer-commercial-use/,
+        # /bildschirm-teilen-ohne-installation/,
+        # /en/screen-sharing-without-install/.
+        # Source of truth for the page registry: viewer/tests/marketing-seo.test.ts
         # Each distinct
         # block needs its own hash — a single page edit changes one hash and
         # blocks that block until re-added (the 2026-05-29 SEO deploy added
@@ -47,7 +55,7 @@ auffi.app {
         # Validator-Heuristik findet die externe Variante per HEAD nicht
         # mehr — Site-ID + Tracker-URL stehen aber unverändert im JS,
         # also klappt die tatsächliche Tracking-POST unbeeinflusst.
-        Content-Security-Policy "default-src 'self'; script-src 'self' https://musikersuche.org 'sha256-hRFdCPUH/OhRaI3KtD+7M5YF6D//y0BppBTrrXlp+zE=' 'sha256-2IlGw8TNEKy88whBnapq1n8sowJ24nlPQYYnhI0kYs8=' 'sha256-Qi5e/zQ2BsU3n+sTu8DZk0ekvnGpZn+W+bBvRPaKTzs=' 'sha256-xRJcUmn0MgTeS9EYZgJ4grzwXNFinkuANS2lxjH0+m4=' 'sha256-59+dMe55VlaHexbR0i8/SgYRcXS31MncNibklgCGmCI=' 'sha256-nKKBFq898dPtWKOzgbsGWywDTeaLK9QYv7rTcuGlNEo=' 'sha256-L1iAxuTNdVInC0/LiXgwQvzPCYgwiF5Z9T/U67HN9QA=' 'sha256-ygvM/dXuLV4+lPaZBeaGmix8SA1+wKKrMxhNB8eRgWs=' 'sha256-CXA5pHFUW31B/HjnUOq6KsdACn2Anz4K37qdhAmliNg=' 'sha256-y2R//aCvWLzK1HSS8C6XvfQ39JT8uHlLHMZ1NyM0JlY=' 'sha256-TNQkxqZLQ2HeJ8kERJIe1FANji9Fc4Iix4qwCPGrOY8=' 'sha256-U2ktHjFdybLwuE/715NWNY1s0m3BDlAHjVWPvf0aCfY=' 'sha256-zTq4jTvgqaqo2ibVOHTn/vPzhyOIBKICXHLMQeCS0I8=' 'sha256-6Mt8uqTbQWznny/Hjs9+I+9ybR6NY8k5pOAm3mweJTo=' 'sha256-A6K7yGm7MCLjfbGutbY+NFHYPFfdNRPUsruLgD/8KTo=' 'sha256-JSaK5TjD30RN/uOmumWAzEd392jZzZ96tJRwV+Y5Wkw=' 'sha256-XJvhPrKPzKXejIB3K537H4Pp1Cd9WEscafOepSMqbY0=' 'sha256-dNh02xLsscVj6ZnYnA0WCxCs3qDnQxODKCOnKkSTp3U=' 'sha256-8tK15n8jEzKEUjqc99HoYvLRlKJrNUgdjRxdWLq5nL8=' 'sha256-FhHWK9nn59SWZcSQ+W3DGLdl7iZA5s8D+BhxyilwHWs=' 'sha256-THE+tpIPKDKMyxdvB5IEWPx0mBa84dD4/GpRhTtDRbQ=' 'sha256-xoBIft6jsrALVuWvM7vtC/4kMIG7LhB17qL6C7wPmcc='; style-src 'self'; connect-src 'self' https://musikersuche.org wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
+        Content-Security-Policy "default-src 'self'; script-src 'self' https://musikersuche.org 'sha256-1Ca7PrQHr64lR2Phk4/tVv2kJDt4ZvAqnSWFuFfWF6s=' 'sha256-259M2otC+vmSX3o8P92aJpfZajprC5ttsmTvjmvvLXI=' 'sha256-2rSZLtn6xf7Rju1xHnDSOmzPKGi2vnf1K4qbm3lz4+Y=' 'sha256-3OQh5AsCLGpND2NmzDv1kr3/hx2JIbSBqXwnX4VmuCE=' 'sha256-4/icptbkFrpdVy8FvQy4k0WGpyt6oZJi71vAv4+1FJs=' 'sha256-53TIsyeuI4VtnyFxS+aO+/DFKx8J3yRCLSMjCv0h6U0=' 'sha256-87UPhysPFQ3TDPNjhcPPFhE2olj+eRpANWHUzZ24Ofc=' 'sha256-BD/u1ofnBMgZgzVzkjrPoh2AtOIScNRs6QGYZIZKJzY=' 'sha256-ByUWEd3OPt5VtJmobvafkWmRBUYP1MDsiAgXESBcbJQ=' 'sha256-EsurmygBstR0IoeajKPxrVdcP44Vddl6SYK2I29vwBQ=' 'sha256-H9nW5hFZmHAYUkz4gxLyk7DTdv7RfXo3b0XnVH2+oAk=' 'sha256-IUsPxjmozifBW7iPJxvHR4hOIp/na30T69hokSNkjts=' 'sha256-JF1Ax1pRALRRMxRDaHQrFnQYwxyE9Uf/jkhlwipI+iA=' 'sha256-MqEkevZyYBJpjXIC0Xdyi8fWj0RxO8YzY7Iz8A7XMOI=' 'sha256-N5UqO5tA512wmndFDc5SxipvX6zrtr4UtIGdXB9jazE=' 'sha256-NER6sdBdCHFjuwd72YbvuXwIVtVlQQ9F82A6AXtkw7c=' 'sha256-NF9W69Mtpp930MPSb0PKzhvBFYYNoIR5skyVgT8hEjI=' 'sha256-OOJ4quBf5et40SGmtnhIY43DaaXmcPwIMa27j/AgzA0=' 'sha256-P1rF3X6WDBd836RaZ5faICnqQ0QeMnW2o0f5QKMf5O4=' 'sha256-PHRD/DvSjjmoS31i6l3LLz5yJJDgkLMsZbwXxQnh8FE=' 'sha256-PRnbfGAirq+alFb1k5eSQGqOhYwn+dowEZnAv1DPjfU=' 'sha256-PnYabrTFzSW2tqslaLuQLVCCAtzuOeFGCL7qLfGvZps=' 'sha256-UBsNylViEJBCSjVUY+s0BIOvePBox12cX8MBIXqd1RA=' 'sha256-UDdN/Ga4c/nFpWhIu4ddUb6ohmzYW3w5iiFjlSchzoo=' 'sha256-W66tZGCjSpJzZ+FKP8jsPwiZRnW7l+nlndwXbjRDEbg=' 'sha256-WJ8xHiU+vYyjrOFKCc1vZKoO4SIuWtuCuNJopDv/Oj8=' 'sha256-WuXn4qg8p85ahBTkIpM6hNEHakZWBevTGFlOyyVtxUw=' 'sha256-dDQdLiwV+2cI57HdpQuxCndBynv+FTOelezux8m+kug=' 'sha256-eKlM3kiCOj0JjaH7Kn9hdFlKj9Ao7cCcCtO+UMhY6fo=' 'sha256-gIUteYT/Gw4qnDW7bfyvPRLEZeMRcHB2qL9wPyKsp/U=' 'sha256-kSscQX18/vt6sObuJxSTDYbQNlHKpc40mA7pwz9mGP0=' 'sha256-kv+5Bm/XhxX30+DyeJgoxp+dpbnAnZapJJ7A79ELhu8=' 'sha256-mO/rzXGExSr1lByXYmdcIsmpn9f28Bu6QaRlWSx/qIs=' 'sha256-n2emUt+16oA3OypX3lnVrwVwh6ATykOwPkglQZN/8f8=' 'sha256-oMMyxGYEoTuRn7bNHlOnQBvy2pEji2UkCJixnsRRCeY=' 'sha256-qCeF+ZFDSqmeatEVXcrUrNC9TIC+kQRKLkT9vm+nhtw=' 'sha256-rxtXIhQhp6Nv7uDW5CG1cg5+mpl0HUNbLwKeWHK04KU=' 'sha256-v/BoDljC077J+Ix4q3t0EKcVcNqHTrPWPUCWGYCpH40=' 'sha256-xLHyd1q9FtMOhKhEfXmPaokM5KErXXtfR0GIzu9EMxE=' 'sha256-xe3p//8GQ0xBvPQWt4m1G4k0c4UO3+jWc0go6ES/Uww=' 'sha256-xgaC4T2SHDawXuucSr6rnaCLrOhJ4gWhPGV5oex1/yQ=' 'sha256-zX03y8qVxXFuucjOU0r7SeIUq+2Oxk0RflKytH/8afw='; style-src 'self'; connect-src 'self' https://musikersuche.org wss://auffi.app wss://turn.auffi.app:5349; img-src 'self' data:; media-src 'self' blob:; frame-ancestors 'none';"
     }
 
     # Bot prevention — Liste enthält NUR eindeutige Angreifer-/

@@ -16,9 +16,10 @@ import { refreshSession } from "./session.js";
 
 /**
  * Mount an "Abmelden" ghost-pill button inside `container` (expected to be
- * `.topbar-meta`).  Groups the existing `.topbar-viewer-link` and the new
- * button in a `.topbar-actions` flex wrapper so both sit flush to the right
- * without the brand drifting to the centre.
+ * `.topbar-meta`). Prefers the dedicated `.topbar-actions` right-zone from
+ * index.html so the button sits flush-right in the topbar's 3-zone grid;
+ * falls back to appending directly when that zone is absent (tests / stripped
+ * markup).
  *
  * Returns the created button so callers can adjust aria attributes if needed.
  */
@@ -36,20 +37,9 @@ export function mountLogoutButton(container: HTMLElement): HTMLButtonElement {
     });
   });
 
-  // Group the viewer-link (already in the topbar-meta from index.html) and
-  // the new logout button in a single flex row so space-between keeps them
-  // flush-right as a unit.
-  const viewerLink = container.querySelector<HTMLElement>(".topbar-viewer-link");
-  if (viewerLink !== null) {
-    const actions = document.createElement("div");
-    actions.className = "topbar-actions";
-    container.insertBefore(actions, viewerLink);
-    actions.appendChild(viewerLink);
-    actions.appendChild(btn);
-  } else {
-    // Viewer link not present (e.g. in tests or stripped HTML) — just append.
-    container.appendChild(btn);
-  }
+  const actions = container.querySelector<HTMLElement>(".topbar-actions");
+  if (actions !== null) actions.appendChild(btn);
+  else container.appendChild(btn);
 
   return btn;
 }

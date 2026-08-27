@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screen sharing without installation — free, in the browser | Auffi</title>
+    <meta name="description" content="Share a screen with no installation: the helper just opens the browser, types a 9-digit code and is connected — no download, no account. Free, open source, servers in Germany." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/screen-sharing-without-install/" />
+
+    <!-- hreflang alternates -->
+    <link rel="alternate" hreflang="de" href="https://auffi.app/bildschirm-teilen-ohne-installation/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/screen-sharing-without-install/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/bildschirm-teilen-ohne-installation/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Screen sharing without installation — free, in the browser | Auffi" />
+    <meta property="og:description" content="Share a screen with no installation: the helper just opens the browser, types a 9-digit code and is connected — no download, no account." />
+    <meta property="og:url" content="https://auffi.app/en/screen-sharing-without-install/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Screen sharing without installation — Auffi" />
+    <meta name="twitter:description" content="No download, no account for the person helping. Free, open source, servers in Germany." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <style>
+      .vs-lead { font-size: 1.05rem; line-height: 1.6; }
+    </style>
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Share your screen without installing anything", "item": "https://auffi.app/en/screen-sharing-without-install/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "Share your screen without installing anything",
+        "description": "In three steps, see and remotely control another person's screen — the person helping only needs a browser.",
+        "totalTime": "PT1M",
+        "step": [
+          { "@type": "HowToStep", "position": 1, "name": "Open auffi.app", "text": "Open auffi.app in your browser — no download, no account." },
+          { "@type": "HowToStep", "position": 2, "name": "Enter the code", "text": "Type the 9-digit code the other person gives you." },
+          { "@type": "HowToStep", "position": 3, "name": "Connect", "text": "Click Connect — the other person confirms and the session starts." }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "inLanguage": "en-US",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Can you really share a screen without installing anything?",
+            "acceptedAnswer": { "@type": "Answer", "text": "For the helper, yes: they just open auffi.app in a browser, type a 9-digit code and are connected — no download, no account. Only the person whose screen is shared runs the small Auffi sharer once." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does the sharing person still have to run something?",
+            "acceptedAnswer": { "@type": "Answer", "text": "For security, browsers may not silently expose a whole screen plus remote control. So the small Auffi sharer (Windows or Linux) runs on the shared side. The helping side stays entirely in the browser." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it free?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes, completely. Auffi is open source under the AGPL-3.0 — free for private and commercial use, with no session limit." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is the connection secure?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits guess attempts per IP, and the sharing person actively confirms every connection." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does it work on any device?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The helper only needs a modern browser (Chrome, Edge, Firefox; Safari with limitations). The sharer for the shared side runs on Windows and Linux (macOS coming)." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download the sharer</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/bildschirm-teilen-ohne-installation/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in (account)">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create account">
+          <span class="topbar-btn-label">Create account</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Screen sharing without installation</h1>
+
+      <p class="vs-lead">
+        You want to help someone — parents, grandparents, customers — and no one
+        should have to deal with downloads and accounts? With <strong>Auffi, the
+        person helping just opens their browser</strong>, types a 9-digit code
+        and is connected: <strong>no installation, no account</strong>.
+        Free, open source, servers in Germany.
+      </p>
+
+      <section>
+        <h2>Connected in three steps</h2>
+        <ol>
+          <li><strong>Open auffi.app</strong> — in the browser, no download, no account.</li>
+          <li><strong>Enter the code</strong> — the 9-digit code the other person gives you.</li>
+          <li><strong>Connect</strong> — the other person confirms, and the session starts.</li>
+        </ol>
+        <p>
+          Note: The person <strong>whose screen is shared</strong> runs the small
+          <a href="/en/download/">Auffi sharer</a> once (Windows or Linux) and
+          reads out their code. The <strong>helping side stays entirely in the
+          browser</strong> — that is the difference from TeamViewer, AnyDesk or
+          RustDesk, which require an app on both sides.
+        </p>
+      </section>
+
+      <section>
+        <h2>Why this makes things easier for the person helping</h2>
+        <ul>
+          <li><strong>No download</strong> on the helping side — nothing that gets blocked on corporate laptops.</li>
+          <li><strong>No account, no sign-in</strong> — one code is enough, valid for 10 minutes.</li>
+          <li><strong>GDPR-compliant</strong>: servers in Germany (Frankfurt), no trackers, end-to-end encrypted.</li>
+          <li><strong>Open source (AGPL-3.0)</strong> and self-hostable.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>Can you really share a screen without installing anything?</h3>
+        <p>For the helper, yes: they just open auffi.app in a browser, type a 9-digit code and are connected — no download, no account. Only the person whose screen is shared runs the small Auffi sharer once.</p>
+        <h3>Why does the sharing person still have to run something?</h3>
+        <p>For security, browsers may not silently expose a whole screen plus remote control. So the small Auffi sharer (Windows or Linux) runs on the shared side. The helping side stays entirely in the browser.</p>
+        <h3>Is it free?</h3>
+        <p>Yes, completely. Auffi is open source under the AGPL-3.0 — free for private and commercial use, with no session limit.</p>
+        <h3>Is the connection secure?</h3>
+        <p>Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits guess attempts per IP, and the sharing person actively confirms every connection.</p>
+        <h3>Does it work on any device?</h3>
+        <p>The helper only needs a modern browser (Chrome, Edge, Firefox; Safari with limitations). The sharer for the shared side runs on Windows and Linux (macOS coming).</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          <a href="/en/#code">Share your screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/">Remote support software compared</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

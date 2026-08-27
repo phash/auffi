@@ -44,14 +44,19 @@ Code eingeben, den der Hilfesuchende mitteilt — fertig.
 
 ### Als Hilfesuchender (Sharer)
 
-Auffi-App herunterladen und starten:
+Auffi-App herunterladen und starten — alle Installer gebündelt auf der
+Download-Seite: **[auffi.app/download](https://auffi.app/download/)**
+
+- **Windows:** `.msi` oder `.exe` (Setup) — oder das Portable ohne Installation.
+- **Linux:** `.deb`, `.rpm`, `.AppImage` — oder die Schnell-Installation:
 
 ```bash
-# Schnell-Installation (Linux):
 curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
 ```
 
-Oder manuell aus den [Releases](https://github.com/phash/auffi/releases) herunterladen —
+- **macOS:** noch kein Build (kein Capture-Backend — nur Linux + Windows).
+
+Oder manuell aus den [Releases](https://github.com/phash/auffi/releases) —
 detaillierte Anleitung inkl. Arch-PKGBUILD: [INSTALL.md](INSTALL.md).
 Was sich pro Version geändert hat, steht im [CHANGELOG](CHANGELOG.md).
 
@@ -218,15 +223,15 @@ Vollständige Spezifikation: [`docs/superpowers/specs/`](docs/superpowers/specs/
 - ✅ Production Deployment auf IONOS VPS
 - ✅ Unattended Access mit Konto + Geräte-Pairing (Dashboard, argon2id, Sessions)
 - ✅ Sicherheits-Audit + Postmortems (`docs/security-review-2026-05.md`)
-- ✅ Smoke-Tests + manuelle Testprotokolle
-- ✅ Backend 298 Tests, Sharer 178 Tests, Dashboard 85 Tests, Viewer 146 Tests
+- ✅ Windows-Port: Capture (WGC + GDI-Fallback) + Installer (`.msi` / `.exe` / Portable)
+- ✅ CI/CD (GitHub Actions): Linux- + Windows-Builds + automatische Releases auf Tag-Push
+- ✅ Playwright-E2E-Suite für den Viewer (Connect / Input / Dateitransfer gegen Mock-Sharer)
+- ✅ Backend 441, Sharer 207 (Rust) + 46 (Webview), Dashboard 142, Viewer 350 Tests
 
 **Geplant / In Arbeit:**
 - ❌ Audio-Streaming
-- ❌ macOS + Windows getestet/zertifiziert (Windows-Port-Plan: `docs/superpowers/plans/2026-05-11-windows-sharer-port.md`)
-- ❌ CI/CD Pipeline (GitHub Actions)
-- ❌ Automatisierte End-to-End Tests (Playwright-Suite für Viewer existiert; Sharer fehlt noch)
-- ❌ Windows-Installer / macOS-DMG
+- ❌ macOS (kein Capture-/Input-Backend — kompiliert nicht)
+- ❌ E2E für den Sharer + den Unattended-Roundtrip (Viewer-Ad-hoc ist abgedeckt)
 
 Dies ist ein junges Open-Source-Projekt. Feedback und Beiträge sind willkommen.
 
