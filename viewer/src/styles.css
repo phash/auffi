@@ -1020,6 +1020,10 @@ body.streaming .hero-alt-cta { display: none; }
 /* Disconnect button overlaid on the video ── */
 #disconnect {
   position: absolute;
+  /* Above #video-loading-overlay (5): while the viewer waits for the first
+     frame the overlay is opaque and Abbrechen is hidden, so this has to stay
+     reachable. Below #video-controls (10), which keeps zoom/fullscreen on top. */
+  z-index: 6;
   top: 0.625rem;
   right: 0.625rem;
   font-family: var(--font-mono);
@@ -1156,6 +1160,10 @@ body.streaming .hero-alt-cta { display: none; }
 /* Input control toolbar (overlaid on the video) ── */
 #video-toolbar {
   position: absolute;
+  /* Above #video-loading-overlay (5): while the viewer waits for the first
+     frame the overlay is opaque and Abbrechen is hidden, so this has to stay
+     reachable. Below #video-controls (10), which keeps zoom/fullscreen on top. */
+  z-index: 6;
   top: 0.625rem;
   right: 6rem;
   display: none;
