@@ -48,6 +48,12 @@ function downloadAssets(doc: Document): string[] {
   });
 }
 
+/** Asset filename with any `?tag=` pin stripped. */
+const assetName = (asset: string) => asset.split("?")[0];
+
+/** The `?tag=vX.Y.Z` pin on an asset link, if it carries one. */
+const assetTag = (asset: string) => /[?&]tag=v?(\d+\.\d+\.\d+)/.exec(asset)?.[1];
+
 describe("marketing pages: JSON-LD claims", () => {
   for (const [name, rel] of Object.entries(PAGES)) {
     it(`${name} claims only shipped operating systems`, () => {
@@ -63,16 +69,33 @@ describe("landing pages: download links stay consistent", () => {
     );
   });
 
-  for (const name of ["landing (de)", "landing (en)"] as const) {
+  // Every page that links installers, not just the landing pages: /download/
+  // was outside this loop, so a half-finished version bump there — some
+  // buttons on the new release, some still on the old — shipped silently and
+  // 404ed for whichever half lagged.
+  for (const name of Object.keys(PAGES)) {
     it(`${name}: every linked asset is versioned and matches the JSON-LD softwareVersion`, () => {
       const doc = pageDoc(PAGES[name]);
       const declared = softwareApp(doc).softwareVersion;
       const assets = downloadAssets(doc);
       expect(assets.length).toBeGreaterThan(0);
       for (const asset of assets) {
-        const version = /_(\d+\.\d+\.\d+)_/.exec(asset)?.[1];
+        const version = /[_-](\d+\.\d+\.\d+)[_-]/.exec(assetName(asset))?.[1];
         expect(version, `${asset} carries no version`).toBeDefined();
-        expect(version).toBe(declared);
+        expect(version, `${asset} lags the declared ${declared}`).toBe(declared);
+      }
+    });
+
+    it(`${name}: any ?tag= pin matches the asset it pins`, () => {
+      // The portable exe is tag-pinned because it is not latest-tracked. A pin
+      // left on the previous release turns the button into a 404 for the new
+      // asset name.
+      const assets = downloadAssets(pageDoc(PAGES[name]));
+      for (const asset of assets) {
+        const tag = assetTag(asset);
+        if (!tag) continue;
+        const version = /[_-](\d+\.\d+\.\d+)[_-]/.exec(assetName(asset))?.[1];
+        expect(tag, `${asset}: tag pin and filename disagree`).toBe(version);
       }
     });
   }
