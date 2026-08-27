@@ -19,9 +19,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use argon2::password_hash::{
-    rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
-};
+use argon2::password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::{Algorithm, Argon2, Params, Version};
 
 /// Minimum plaintext length. Below this argon2 effectively becomes a
@@ -93,9 +91,9 @@ pub fn set(plaintext: &str, path: &Path) -> Result<(), DevicePasswordError> {
         return Err(DevicePasswordError::TooShort);
     }
 
-    let salt = SaltString::generate(&mut OsRng);
+    // password-hash 0.6 generates the random salt itself (getrandom).
     let hash = argon()
-        .hash_password(plaintext.as_bytes(), &salt)
+        .hash_password(plaintext.as_bytes())
         .map_err(|e| DevicePasswordError::Hash(e.to_string()))?
         .to_string();
 
@@ -120,7 +118,7 @@ pub fn verify(plaintext: &str, path: &Path) -> Result<bool, DevicePasswordError>
     }
     match argon().verify_password(plaintext.as_bytes(), &parsed) {
         Ok(()) => Ok(true),
-        Err(argon2::password_hash::Error::Password) => Ok(false),
+        Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
         Err(_) => Err(DevicePasswordError::Corrupt),
     }
 }
