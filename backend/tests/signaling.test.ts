@@ -333,6 +333,42 @@ describe("signaling handshake", () => {
     ws.close();
   });
 
+  // Valid JSON that is not an object: `JSON.parse("null")` returns null, and
+  // the handler reached straight for `msg.type`. That TypeError escapes the ws
+  // "message" listener — nothing catches it, there is no uncaughtException
+  // handler — so one unauthenticated 4-byte frame took the whole signaling
+  // process down with every live session on it. The other non-object literals
+  // are harmless (`.type` is just undefined) but are pinned here so a future
+  // refactor cannot reintroduce the asymmetry.
+  it.each(["null", "123", '"a string"', "true", "[]"])(
+    "non-object JSON %s → bad-message error, process survives",
+    async (payload) => {
+      const ws = openWs(url);
+      await new Promise((r) => ws.once("open", r));
+      ws.send(payload);
+      const err = await recv(ws);
+      expect(err.type).toBe("error");
+      expect(err.code).toBe("bad-message");
+      ws.close();
+    },
+  );
+
+  it("a null frame does not kill the connection for everyone else", async () => {
+    const { sharer, viewer } = await establishConfirmedPair(url);
+    const attacker = openWs(url);
+    await new Promise((r) => attacker.once("open", r));
+    attacker.send("null");
+    await recv(attacker);
+    attacker.close();
+
+    // The established pair must still be able to relay.
+    viewer.send(JSON.stringify({ type: "relay", payload: { kind: "bye" } }));
+    const relayed = await recv(sharer);
+    expect(relayed.type).toBe("relay");
+    sharer.close();
+    viewer.close();
+  });
+
   it("unexpected message type after register → bad-message error", async () => {
     const sharer = openWs(url);
     await new Promise((r) => sharer.once("open", r));

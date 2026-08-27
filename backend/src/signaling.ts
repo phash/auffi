@@ -49,6 +49,17 @@ function checkPerPeerLimit(
   return entry.count <= cfg.max;
 }
 
+/**
+ * `JSON.parse` accepts bare literals, so a frame of `null` parses fine and then
+ * throws on the first property access — out of the ws "message" listener, past
+ * the parse try/catch, into an uncaughtException that took the process down.
+ * Every other non-object literal is harmless (`.type` is undefined), but the
+ * whole class is rejected here so the handlers below can assume an object.
+ */
+function isMessageObject(value: unknown): value is IncomingMessage {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function newPerPeerEntry(cfg: PerPeerRateLimitConfig): RateLimitEntry {
   return { count: 0, resetAt: Date.now() + cfg.windowMs };
 }
@@ -254,6 +265,10 @@ export function registerSignaling(
           send(peer, { type: "error", code: "bad-message", message: "invalid JSON" });
           return;
         }
+        if (!isMessageObject(msg)) {
+          send(peer, { type: "error", code: "bad-message", message: "expected a JSON object" });
+          return;
+        }
 
         if (msg.type === "pw-check-result") {
           const sess = sessions.findBySharer(peer);
@@ -374,6 +389,10 @@ export function registerSignaling(
         msg = JSON.parse(raw.toString());
       } catch {
         send(peer, { type: "error", code: "bad-message", message: "invalid JSON" });
+        return;
+      }
+      if (!isMessageObject(msg)) {
+        send(peer, { type: "error", code: "bad-message", message: "expected a JSON object" });
         return;
       }
 
