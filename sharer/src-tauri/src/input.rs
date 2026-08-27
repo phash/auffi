@@ -106,9 +106,37 @@ impl InputController {
     }
 
     /// Toggles the paused state and returns the new value.
+    ///
+    /// Pausing releases whatever the viewer is currently holding. While
+    /// paused `apply` drops every event, including the Release that would
+    /// have ended a drag — so without this the OS keeps the button down and
+    /// the sharer's own clicks read as drag-continuations (gh #97). `Drop`
+    /// cannot cover it: the controller outlives the pause.
     pub fn toggle_paused(&mut self) -> bool {
         self.paused = !self.paused;
+        if self.paused {
+            self.release_held();
+        }
         self.paused
+    }
+
+    /// Release every mouse-button and key we sent a Press for without a
+    /// matching Release, and forget them. Shared by the pause hotkey and
+    /// `Drop`; enigo errors are swallowed because neither caller can act on
+    /// them and both are giving up control anyway.
+    fn release_held(&mut self) {
+        // Snapshot first — iterating while mutating would not borrow-check,
+        // and the sets should end up empty either way.
+        let buttons: Vec<Button> = self.held_buttons.drain().collect();
+        let keys: Vec<String> = self.held_keys.drain().collect();
+        for button in buttons {
+            let _ = self.enigo.button(map_button(button), Direction::Release);
+        }
+        for code in keys {
+            if let Some(key) = parse_key(&code) {
+                let _ = self.enigo.key(key, Direction::Release);
+            }
+        }
     }
 
     /// Test-only introspection of the paused flag — production callers
@@ -200,18 +228,7 @@ impl Drop for InputController {
     /// ideal here but creating a circular dependency on lib.rs for a
     /// tear-down path is overkill; the eprintln stays best-effort.
     fn drop(&mut self) {
-        // Snapshot the sets — iterating-while-mutating would borrow-check
-        // fail, and we want the buttons/keys gone afterwards anyway.
-        let buttons: Vec<Button> = self.held_buttons.drain().collect();
-        let keys: Vec<String> = self.held_keys.drain().collect();
-        for button in buttons {
-            let _ = self.enigo.button(map_button(button), Direction::Release);
-        }
-        for code in keys {
-            if let Some(key) = parse_key(&code) {
-                let _ = self.enigo.key(key, Direction::Release);
-            }
-        }
+        self.release_held();
     }
 }
 
@@ -470,6 +487,40 @@ mod tests {
         let mut state = PausedState(false);
         assert!(state.toggle(), "first toggle should be true");
         assert!(!state.toggle(), "second toggle should be false");
+    }
+
+    // The pause hotkey swallowed every subsequent event, including the
+    // Release of a button the viewer was already holding — so pausing
+    // mid-drag left the OS believing the button was still down, the exact
+    // gh #97 symptom that Drop exists to prevent. Drop does not run here:
+    // the controller outlives the pause.
+    #[test]
+    #[ignore]
+    fn pausing_releases_held_buttons_with_real_enigo() {
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.apply(InputEvent::MouseButton {
+            button: Button::Left,
+            pressed: true,
+        })
+        .expect("press");
+        assert_eq!(ctrl.held_buttons_count(), 1, "press should be tracked");
+
+        assert!(ctrl.toggle_paused(), "first toggle pauses");
+        assert_eq!(
+            ctrl.held_buttons_count(),
+            0,
+            "pausing must release what the viewer was holding"
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn resuming_does_not_touch_held_state_with_real_enigo() {
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.toggle_paused();
+        ctrl.toggle_paused(); // back to running
+        assert!(!ctrl.is_paused());
+        assert_eq!(ctrl.held_buttons_count(), 0);
     }
 
     #[test]
