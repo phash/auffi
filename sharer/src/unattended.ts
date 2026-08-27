@@ -84,6 +84,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirmDialog, dismissConfirmDialog } from "./confirm-dialog.js";
 import { UNATTENDED_CONFIRM_OPTIONS } from "./unattended-confirm.js";
+import { planUnattendedTerminal } from "./unattended-terminal-policy.js";
 import { SignalingBuffer, type WireIceCandidate } from "./signaling-buffer.js";
 import { wireAutostartToggle } from "./autostart-toggle.js";
 
@@ -194,6 +195,19 @@ async function startUnattendedStream(): Promise<void> {
   }
 }
 
+/**
+ * Deactivating unattended mode must also end a session that is already
+ * running. `unattended_stop` only clears the heartbeat's command slot and
+ * OutboundSink; an established peer-to-peer session survives it, so without
+ * this the helper keeps screen and input after the user pressed Deaktivieren.
+ * keepSignaling for the same reason every other unattended teardown passes it.
+ */
+async function endLiveUnattendedSession(): Promise<void> {
+  if (!signalBuffer.hasActivity()) return;
+  signalBuffer.reset();
+  await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+}
+
 function hide(el: HTMLElement | null): void {
   if (el) el.style.display = "none";
 }
@@ -273,6 +287,7 @@ modeSelect?.addEventListener("change", async () => {
   const choice = modeSelect.value as ModeChoice;
   await invoke("unattended_set_mode", { mode: choice }).catch(() => {});
   if (choice !== "unattended" && active) {
+    await endLiveUnattendedSession();
     await invoke("unattended_stop").catch(() => {});
     active = false;
   }
@@ -335,6 +350,7 @@ startBtn?.addEventListener("click", async () => {
 stopBtn?.addEventListener("click", async () => {
   stopBtn.disabled = true;
   try {
+    await endLiveUnattendedSession();
     await invoke("unattended_stop");
     active = false;
     await refresh();
@@ -422,15 +438,24 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       void startUnattendedStream();
       break;
     case "revoked":
-      setStatusText("Token widerrufen — bitte erneut pairen.");
-      active = false;
+    case "superseded": {
+      // Terminal: the pairing is over. The Rust side clears only the
+      // heartbeat's command slot and OutboundSink, so an established
+      // peer-to-peer session would otherwise keep running — screen AND
+      // input — long after the owner revoked the device. Tear it down here.
+      const kind = e.payload.kind === "revoked" ? "revoked" : "superseded";
+      const plan = planUnattendedTerminal(kind, signalBuffer.hasActivity());
+      if (plan.tearDownStream) {
+        signalBuffer.reset();
+        void invoke("disconnect_streaming", { keepSignaling: plan.keepSignaling }).catch(
+          () => {},
+        );
+      }
+      setStatusText(plan.status);
+      active = plan.stillActive;
       void refresh();
       break;
-    case "superseded":
-      setStatusText("Eine andere Instanz hat übernommen.");
-      active = false;
-      void refresh();
-      break;
+    }
     case "locked-out":
       setStatusText("Lokales Lockout aktiv (10+ Fehlversuche). 1 h Sperre.");
       break;
