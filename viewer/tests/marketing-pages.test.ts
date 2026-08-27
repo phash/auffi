@@ -86,6 +86,18 @@ describe("landing pages: download links stay consistent", () => {
       }
     });
 
+    it(`${name}: every asset link is tag-pinned`, () => {
+      // The proxy default resolves releases/latest/download/<asset>, but the
+      // filename embeds the version — so an unpinned link is only valid while
+      // `latest` still points at that exact release. CI promotes the new
+      // release to latest before the bumped page is deployed, which 502'd
+      // every unpinned button for the whole window in between.
+      const assets = downloadAssets(pageDoc(PAGES[name]));
+      for (const asset of assets) {
+        expect(assetTag(asset), `${asset} is not tag-pinned`).toBeDefined();
+      }
+    });
+
     it(`${name}: any ?tag= pin matches the asset it pins`, () => {
       // The portable exe is tag-pinned because it is not latest-tracked. A pin
       // left on the previous release turns the button into a 404 for the new

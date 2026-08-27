@@ -14,6 +14,18 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.6.5 — released 2026-08-28. Security + reliability: unauthenticated
+  // WS-frame DoS on the signaling server, revoke/deactivate now end a live
+  // remote-control session, suspension cuts unattended access, pause hotkey
+  // releases held input. Linux + Windows via CI (release.yml), portable
+  // included (build-sharer.yml stages it). All download buttons are now
+  // ?tag=-pinned, so none of these depend on being `latest`.
+  "Auffi_0.6.5_amd64.deb",
+  "Auffi-0.6.5-1.x86_64.rpm",
+  "Auffi_0.6.5_amd64.AppImage",
+  "Auffi_0.6.5_x64-setup.exe",
+  "Auffi_0.6.5_x64_en-US.msi",
+  "Auffi_0.6.5_x64_portable.exe",
   // 0.6.4 — released 2026-07-02, das derzeit EINZIGE Release auf GitHub
   // (ältere Releases wurden dort gelöscht). Sharer reliability: unattended
   // multi-viewer fix, heartbeat reconnect-backoff reset, free-tier warning,
