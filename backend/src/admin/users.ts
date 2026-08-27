@@ -294,6 +294,11 @@ export function registerAdminUsersRoutes(
         if (action === "suspend") {
           db.prepare("UPDATE accounts SET suspended_at = ? WHERE id = ?").run(now, id);
           deleteAllSessionsForAccount(db, id);
+          // Dashboard sessions alone are not the capability being abused:
+          // cut the live unattended sharers too, the way DELETE does. Without
+          // this a suspended owner kept full remote control until the sharer
+          // happened to reconnect — and verifyBearerAuth now refuses it then.
+          if (registry) evictAccountDevices(db, registry, id);
         } else if (action === "unsuspend") {
           db.prepare("UPDATE accounts SET suspended_at = NULL WHERE id = ?").run(id);
         } else if (action === "promote") {

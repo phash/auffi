@@ -465,6 +465,38 @@ describe("DELETE /api/admin/users/:id", () => {
     expect(h.registry.has("444-555-666")).toBe(false);
   });
 
+  // gh #47 listed "suspended user gets WS-frame goodbye on any active sharer
+  // connection" as an acceptance criterion, but only DELETE evicted. A
+  // suspended owner therefore kept live unattended remote control — the
+  // moderation lever short of deletion did not actually stop the capability.
+  it("suspend force-closes the account's live unattended sharers", async () => {
+    const targetId = h.db
+      .prepare<[string], { id: number }>("SELECT id FROM accounts WHERE email = ?")
+      .get("user2@example.com")!.id;
+    h.db
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, created_at)
+         VALUES ('777-888-999', ?, 'X', 'dummy', ?)`,
+      )
+      .run(targetId, Date.now());
+    let closed: { code: number; reason: string } | null = null;
+    h.registry.register("777-888-999", {
+      close(c: number, r: string) {
+        closed = { code: c, reason: r };
+      },
+    } as unknown as WebSocket);
+
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/admin/users/${targetId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { action: "suspend", reason: "abuse" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(closed).toEqual({ code: 4401, reason: "device revoked" });
+    expect(h.registry.has("777-888-999")).toBe(false);
+  });
+
   it("rejects self-delete with 409", async () => {
     const res = await h.app.inject({
       method: "DELETE",

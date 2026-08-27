@@ -395,7 +395,18 @@ pub async fn unpair<S: TokenStore>(
         // not yet supporting Bearer-DELETE) is NOT a hard error — the
         // user's intent is "stop being paired", and wiping local state
         // accomplishes that even if the server-side token outlives it.
-        let _ = http.delete(&url).bearer_auth(token).send().await;
+        // X-Auffi-Device-Id is REQUIRED: parseBearerAuth returns "malformed"
+        // when the Authorization header arrives without it, the route then
+        // falls through to requireSession, and the sharer has no session
+        // cookie — so the self-revoke 401'd every time and the server-side
+        // token outlived the local unpair. Same header the heartbeat and
+        // unattended_cmd already send.
+        let _ = http
+            .delete(&url)
+            .bearer_auth(token)
+            .header("X-Auffi-Device-Id", device_id)
+            .send()
+            .await;
     }
 
     store.delete()?;

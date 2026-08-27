@@ -155,12 +155,20 @@ export async function verifyBearerAuth(
   auth: BearerAuth,
   now: number = Date.now(),
 ): Promise<boolean> {
+  // Join to the owner: a suspended account must not keep unattended access.
+  // Without this the device row alone was enough, so a suspended owner's
+  // sharer re-authenticated on every reconnect and remote control stayed
+  // usable — suspension only ever cut the dashboard sessions (gh #47).
   const row = db
-    .prepare<[string], { token_hash: string }>(
-      "SELECT token_hash FROM devices WHERE id = ?",
+    .prepare<[string], { token_hash: string; suspended_at: number | null }>(
+      `SELECT d.token_hash, a.suspended_at
+         FROM devices d
+         JOIN accounts a ON a.id = d.owner_account_id
+        WHERE d.id = ?`,
     )
     .get(auth.deviceId);
   if (!row) return false;
+  if (row.suspended_at !== null) return false;
   const ok = await verifyPassword(row.token_hash, auth.token);
   if (!ok) return false;
   db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(

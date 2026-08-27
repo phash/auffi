@@ -88,6 +88,35 @@ describe("verifyBearerAuth", () => {
     ).run(tokenHash, Date.now());
   });
 
+  // Suspending an account is the moderation lever short of deletion, but the
+  // device lookup never joined to accounts — so a suspended owner's sharer
+  // kept its live WSS AND re-authenticated cleanly on every reconnect, leaving
+  // unattended remote control fully usable. gh #47 listed cutting the sharer
+  // off as an acceptance criterion.
+  it("rejects a device whose owner account is suspended", async () => {
+    db.prepare("UPDATE accounts SET suspended_at = ? WHERE id = 1").run(Date.now());
+    const ok = await verifyBearerAuth(db, { deviceId: "123-456-789", token }, 1_000_000);
+    expect(ok).toBe(false);
+  });
+
+  it("accepts again once the suspension is lifted", async () => {
+    db.prepare("UPDATE accounts SET suspended_at = ? WHERE id = 1").run(Date.now());
+    expect(await verifyBearerAuth(db, { deviceId: "123-456-789", token })).toBe(false);
+    db.prepare("UPDATE accounts SET suspended_at = NULL WHERE id = 1").run();
+    expect(await verifyBearerAuth(db, { deviceId: "123-456-789", token })).toBe(true);
+  });
+
+  it("does not bump last_seen_at for a suspended owner", async () => {
+    db.prepare("UPDATE accounts SET suspended_at = ? WHERE id = 1").run(Date.now());
+    await verifyBearerAuth(db, { deviceId: "123-456-789", token }, 1_000_000);
+    const row = db
+      .prepare<[], { last_seen_at: number | null }>(
+        "SELECT last_seen_at FROM devices WHERE id = '123-456-789'",
+      )
+      .get();
+    expect(row?.last_seen_at).toBeNull();
+  });
+
   it("returns true on valid bearer and bumps last_seen_at", async () => {
     const ok = await verifyBearerAuth(db, { deviceId: "123-456-789", token }, 1_000_000);
     expect(ok).toBe(true);
