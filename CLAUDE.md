@@ -63,7 +63,7 @@ cd viewer && npx playwright test tests/e2e/visual-audit.spec.ts --workers=1
 # Sharer (Tauri desktop app)
 cd sharer && npm run tauri:dev     # native window + DevTools
 cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
-cd sharer/src-tauri && cargo test --lib                          # 202 Rust unit tests — note nested dir
+cd sharer/src-tauri && cargo test --lib                          # 239 Rust unit tests — note nested dir
 cd sharer/src-tauri && cargo clippy --lib --tests -- -D warnings
 
 # Dashboard (unattended-access SPA — only needed if you're working on the account/device flow)
@@ -137,7 +137,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-06-16: backend 427 (purge.test.ts + unattended-connect.test.ts hold timing-sensitive tests that may intermittently fail in a sandbox — not regressions), sharer-lib 205 (+ 7 `#[ignore]` Display-requiring), viewer 253, dashboard 140, sharer-js 46. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-08-27: backend 452 (purge.test.ts hält einen timing-sensitiven Scheduler-Test, der in Full-Suite-Läufen intermittierend failen kann — isoliert grün, keine Regression), sharer-lib 239 (+ 8 `#[ignore]` Display-requiring), viewer 314, dashboard 167, sharer-js 72. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy -- -D warnings`. (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
