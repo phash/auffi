@@ -5,7 +5,7 @@ import corsPlugin from "@fastify/cors";
 import { SessionStore } from "./codes.js";
 import { registerSignaling } from "./signaling.js";
 import type { RateLimitEntry } from "./signaling.js";
-import { registerTurnEndpoint } from "./turn-credentials.js";
+import { makeCredentials, registerTurnEndpoint, type TurnConfig } from "./turn-credentials.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "./db.js";
 import { mailerFromEnv } from "./email/mailer.js";
 import { decorateRequireSession } from "./auth/middleware.js";
@@ -247,6 +247,21 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // the process lifetime.
   const feedbackBearerCounts: Map<string, RateLimitEntry> = new Map();
   const countryLookup = openCountryDb(process.env.GEOIP_DB_PATH);
+  // Built up-front (not at the registerTurnEndpoint call below) so the
+  // signaling handler can mint the SAME ephemeral credentials for
+  // unattended sharers asking over their WSS (turn-credentials-request).
+  const turnCfg: TurnConfig | null = turnSharedSecret
+    ? {
+        sharedSecret: turnSharedSecret,
+        realm: turnRealm,
+        urls: turnHosts,
+        ttlSec: turnTtlSec,
+        allowedOrigins: env.allowedOrigins,
+        sessionStore: store,
+        unattendedSessions,
+        unattendedRegistry,
+      }
+    : null;
   const attemptCounts = registerSignaling(
     app,
     store,
@@ -255,7 +270,12 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     undefined,
     { windowMs: env.registerRateLimitWindowMs, max: env.registerRateLimitMax },
     registerCounts,
-    { db, registry: unattendedRegistry, sessions: unattendedSessions },
+    {
+      db,
+      registry: unattendedRegistry,
+      sessions: unattendedSessions,
+      turnCredentials: turnCfg ? () => makeCredentials(turnCfg) : undefined,
+    },
     { windowMs: env.bearerAuthRateLimitWindowMs, max: env.bearerAuthRateLimitMax },
     bearerCounts,
     countryLookup,
@@ -270,11 +290,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     }
     store.sweepExpired(now);
     // Free unattended device slots whose viewer never finished the
-    // password step (see PW_ENTRY_TIMEOUT_MS) — closing the socket is
-    // all that's left to do, the store already dropped the session.
-    for (const sess of unattendedSessions.sweepStale(now)) {
-      sess.viewer.close();
-    }
+    // password step (see PW_ENTRY_TIMEOUT_MS). Closing the abandoned
+    // viewer socket + notifying the sharer happens in the onStaleReap
+    // callback registered by registerSignaling.
+    unattendedSessions.sweepStale(now);
   }, 60_000);
   // Don't hold the Node.js event loop open just for this timer
   // (matches the purge scheduler's pattern below).
@@ -293,18 +312,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   app.get("/healthz", async () => healthPayload());
   app.get("/readyz", async () => healthPayload());
 
-  if (!turnSharedSecret) {
+  if (!turnCfg) {
     app.log.warn("TURN_SHARED_SECRET not set — /turn-credentials endpoint disabled");
   } else {
-    registerTurnEndpoint(app, {
-      sharedSecret: turnSharedSecret,
-      realm: turnRealm,
-      urls: turnHosts,
-      ttlSec: turnTtlSec,
-      allowedOrigins: env.allowedOrigins,
-      sessionStore: store,
-      unattendedSessions,
-    });
+    registerTurnEndpoint(app, turnCfg);
   }
 
   // ── SQLite-backed surfaces: accounts, devices, /me, admin ──────────

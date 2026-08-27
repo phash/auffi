@@ -1,11 +1,13 @@
 //! Combines `device_password::verify` and `local_lockout::LocalLockout`
-//! into the single decision an unattended-mode sharer makes when a
-//! `pw-check` frame arrives from the backend.
+//! into the decision an unattended-mode sharer makes when a `pw-check`
+//! frame arrives from the backend. Split into two phases —
+//! [`check_locked`] (cheap gate) and [`outcome_from_verify`]
+//! (bookkeeping) — so the caller can run the expensive argon2 verify
+//! on a blocking worker between them without holding the lockout lock.
 //!
 //! Pure-Rust integration layer wired into `heartbeat::HeartbeatEvent`
 //! handling at the Tauri-app layer (gh #24 acceptance).
 
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use crate::device_password;
@@ -39,22 +41,26 @@ pub enum PwCheckOutcome {
     NotConfigured,
 }
 
-/// Single-call decision: lockout-check → argon2-verify → state update.
-/// Returns what the caller should send back. Pure on (attempt,
-/// password_path, lockout-state, now, auto_accept) so the heartbeat
-/// tests can pin the protocol without touching the actual filesystem
-/// more than once.
-pub fn handle_pw_check(
-    attempt: &str,
+/// Phase 1: lockout gate. `Some(DropSilently)` when locked — the
+/// caller must NOT proceed to the verify (spec section 6: a locked
+/// sharer sends nothing, and skipping the verify also skips burning
+/// 64 MiB of argon2 work per attempt while locked).
+pub fn check_locked(lockout: &mut LocalLockout, now: Instant) -> Option<PwCheckOutcome> {
+    if let LockoutState::Locked { remaining } = lockout.check(now) {
+        return Some(PwCheckOutcome::DropSilently { remaining });
+    }
+    None
+}
+
+/// Phase 2: map the (possibly off-thread) verify result onto the wire
+/// decision and update the lockout bookkeeping.
+pub fn outcome_from_verify(
+    verify_result: Result<bool, device_password::DevicePasswordError>,
     auto_accept: bool,
-    password_path: &Path,
     lockout: &mut LocalLockout,
     now: Instant,
 ) -> PwCheckOutcome {
-    if let LockoutState::Locked { remaining } = lockout.check(now) {
-        return PwCheckOutcome::DropSilently { remaining };
-    }
-    match device_password::verify(attempt, password_path) {
+    match verify_result {
         Ok(true) => {
             lockout.record_success();
             if auto_accept {
@@ -97,6 +103,28 @@ mod tests {
 
     fn pw_path(dir: &tempfile::TempDir) -> std::path::PathBuf {
         dir.path().join("device_password.phc")
+    }
+
+    /// The forwarder's two-phase flow (lockout gate → verify →
+    /// bookkeeping) composed into one call so these tests pin the
+    /// protocol end-to-end. Production runs the same two phases with a
+    /// `spawn_blocking` between them (see `unattended_cmd.rs`).
+    fn handle_pw_check(
+        attempt: &str,
+        auto_accept: bool,
+        password_path: &std::path::Path,
+        lockout: &mut LocalLockout,
+        now: Instant,
+    ) -> PwCheckOutcome {
+        if let Some(out) = check_locked(lockout, now) {
+            return out;
+        }
+        outcome_from_verify(
+            device_password::verify(attempt, password_path),
+            auto_accept,
+            lockout,
+            now,
+        )
     }
 
     #[test]
@@ -210,6 +238,55 @@ mod tests {
             PwCheckOutcome::DropSilently { .. } => {}
             other => panic!("expected DropSilently, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn check_locked_gates_before_any_verify() {
+        // The split phases must preserve handle_pw_check's semantics:
+        // while locked, phase 1 short-circuits (the forwarder never
+        // reaches the spawn_blocking verify); once the lock lapses,
+        // phase 1 passes and phase 2 maps the verify result.
+        let mut l = LocalLockout::new();
+        let now = Instant::now();
+        for i in 0..10 {
+            l.record_fail(now + Duration::from_secs(i));
+        }
+        match check_locked(&mut l, now + Duration::from_secs(11)) {
+            Some(PwCheckOutcome::DropSilently { .. }) => {}
+            other => panic!("expected Some(DropSilently), got {other:?}"),
+        }
+
+        let mut fresh = LocalLockout::new();
+        assert_eq!(check_locked(&mut fresh, Instant::now()), None);
+    }
+
+    #[test]
+    fn outcome_from_verify_maps_results_like_the_composed_call() {
+        let mut l = LocalLockout::new();
+        let now = Instant::now();
+        assert_eq!(
+            outcome_from_verify(Ok(true), true, &mut l, now),
+            PwCheckOutcome::AutoAccepted
+        );
+        assert_eq!(
+            outcome_from_verify(Ok(true), false, &mut l, now),
+            PwCheckOutcome::NeedsConfirm
+        );
+        assert_eq!(
+            outcome_from_verify(Ok(false), true, &mut l, now),
+            PwCheckOutcome::Wrong
+        );
+        assert_eq!(l.fails_in_window(), 1, "a wrong verify must count");
+        assert_eq!(
+            outcome_from_verify(
+                Err(device_password::DevicePasswordError::Corrupt),
+                true,
+                &mut l,
+                now
+            ),
+            PwCheckOutcome::NotConfigured
+        );
+        assert_eq!(l.fails_in_window(), 2, "corrupt file counts as a fail too");
     }
 
     #[test]

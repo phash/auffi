@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct TurnCredentials {
     pub urls: Vec<String>,
     pub username: String,
@@ -35,17 +35,16 @@ pub fn to_ice_servers(creds: Option<TurnCredentials>) -> Vec<RTCIceServer> {
 /// On any failure (network error, non-200 response, parse failure, timeout)
 /// returns an empty list — the caller proceeds with no STUN/TURN servers.
 /// Third-party STUN fallbacks are intentionally omitted (DSGVO compliance).
-pub async fn fetch_ice_servers(backend_http_url: &str, session_code: &str) -> Vec<RTCIceServer> {
+pub async fn fetch_ice_servers(
+    backend_http_url: &str,
+    origin: &str,
+    session_code: &str,
+) -> Vec<RTCIceServer> {
     let url = format!("{backend_http_url}/turn-credentials");
 
     // Backend enforces an Origin allow-list on /turn-credentials. reqwest
     // does not send Origin by default (it's a browser concept), so the
-    // sharer must supply one explicitly. Fall back to backend_http_url
-    // itself (already in https://host form) unless AUFFI_SHARER_ORIGIN
-    // overrides — same override logic as signaling.rs::derive_origin.
-    let origin =
-        std::env::var("AUFFI_SHARER_ORIGIN").unwrap_or_else(|_| backend_http_url.to_string());
-
+    // caller supplies one via `backend_urls::origin_from_ws`.
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
@@ -62,7 +61,7 @@ pub async fn fetch_ice_servers(backend_http_url: &str, session_code: &str) -> Ve
     let body = serde_json::json!({ "code": session_code });
     let resp = match client
         .post(&url)
-        .header("Origin", &origin)
+        .header("Origin", origin)
         .json(&body)
         .send()
         .await
@@ -102,24 +101,6 @@ pub async fn fetch_ice_servers(backend_http_url: &str, session_code: &str) -> Ve
         creds.ttl
     ));
     to_ice_servers(Some(creds))
-}
-
-/// Derive an HTTP/HTTPS base URL from the WebSocket signaling URL by:
-/// - replacing the `ws://` or `wss://` scheme with `http://` or `https://`
-/// - stripping any trailing `/signal` path suffix
-pub fn ws_url_to_http(ws_url: &str) -> String {
-    let without_scheme = if let Some(rest) = ws_url.strip_prefix("wss://") {
-        format!("https://{rest}")
-    } else if let Some(rest) = ws_url.strip_prefix("ws://") {
-        format!("http://{rest}")
-    } else {
-        ws_url.to_string()
-    };
-
-    without_scheme
-        .strip_suffix("/signal")
-        .unwrap_or(&without_scheme)
-        .to_string()
 }
 
 #[cfg(test)]
@@ -170,29 +151,5 @@ mod tests {
     fn empty_when_no_credentials() {
         let servers = to_ice_servers(None);
         assert!(servers.is_empty());
-    }
-
-    #[test]
-    fn ws_url_to_http_converts_ws_scheme() {
-        assert_eq!(
-            ws_url_to_http("ws://localhost:8080/signal"),
-            "http://localhost:8080"
-        );
-    }
-
-    #[test]
-    fn ws_url_to_http_converts_wss_scheme() {
-        assert_eq!(
-            ws_url_to_http("wss://auffi.example.com/signal"),
-            "https://auffi.example.com"
-        );
-    }
-
-    #[test]
-    fn ws_url_to_http_no_signal_suffix() {
-        assert_eq!(
-            ws_url_to_http("ws://localhost:8080"),
-            "http://localhost:8080"
-        );
     }
 }

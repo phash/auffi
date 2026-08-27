@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { FastifyInstance } from "fastify";
+import Fastify, { FastifyInstance } from "fastify";
+import websocketPlugin from "@fastify/websocket";
 import WebSocket from "ws";
 import { createServer } from "../src/server.js";
+import { registerSignaling } from "../src/signaling.js";
+import { SessionStore } from "../src/codes.js";
+import { UnattendedRegistry } from "../src/unattended.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { hashPassword } from "../src/auth/argon.js";
 import {
@@ -537,6 +541,66 @@ describe("/signal unattended connect flow (gh #17)", () => {
     expect(msg.code).toBe("invalid-code");
     viewer.close();
   });
+
+  // Mirrors the ad-hoc pre-confirm synthesized bye: a viewer that
+  // vanishes before the session is confirmed sends nothing itself
+  // (tab-close), so the backend must deliver the bye on its behalf —
+  // otherwise the sharer's pending confirm dialog / pw wait points at
+  // a gone viewer until the 60 s auto-decline.
+  it("viewer close before confirm → backend synthesizes relay bye to the sharer", async () => {
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message"); // needs-password
+
+    viewer.close();
+    const msg = await once(sharer, "message");
+    expect(msg).toEqual({ type: "relay", payload: { kind: "bye" } });
+    sharer.close();
+  });
+
+  it("viewer close mid pw-check (pw-in-flight) → synthesized bye to the sharer", async () => {
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message"); // needs-password
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    await once(sharer, "message"); // pw-check
+
+    viewer.close();
+    const msg = await once(sharer, "message");
+    expect(msg).toEqual({ type: "relay", payload: { kind: "bye" } });
+    sharer.close();
+  });
+
+  it("viewer close on a CONFIRMED session sends the sharer nothing (Wi-Fi-blip grace)", async () => {
+    // Mirror of the ad-hoc semantics: once confirmed, a viewer WS drop
+    // must NOT tear the stream down — the ICE grace / reconnect window
+    // owns that decision.
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message"); // needs-password
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    await once(sharer, "message"); // pw-check
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    await once(viewer, "message"); // peer-confirmed
+    await once(sharer, "message"); // peer-joined
+
+    const stray: unknown[] = [];
+    const onMessage = (data: Buffer): void => {
+      stray.push(JSON.parse(data.toString()));
+    };
+    sharer.on("message", onMessage);
+    viewer.close();
+    await new Promise((r) => setTimeout(r, 80));
+    sharer.off("message", onMessage);
+    expect(stray).toEqual([]);
+    sharer.close();
+  });
 });
 
 // ── TC C-5 (review 2026-05-13): DELETE /api/devices/:id while a
@@ -637,5 +701,180 @@ describe("device DELETE force-closes a live unattended WSS (TC C-5)", () => {
     const closed = await closePromise;
     expect(closed.code).toBe(4401);
     expect(closed.reason).toMatch(/revoked/i);
+  });
+});
+
+// ── Stale-session reap notifies the sharer ────────────────────────────
+//
+// The 60 s sweep frees device slots whose viewer never finished the
+// password step (PW_ENTRY_TIMEOUT_MS). Closing the abandoned viewer
+// socket alone left the sharer waiting on a pw-check nobody would ever
+// answer — the reap must also deliver the synthesized bye. Uses the
+// registerSignaling harness directly so the test can drive sweepStale
+// without waiting for the server's 60 s interval.
+
+describe("sweepStale reap → synthesized bye to the unattended sharer", () => {
+  let app: FastifyInstance;
+  let url: string;
+  let db: Db;
+  const sessions = new UnattendedSessions();
+  const token = "12abcdef".repeat(8);
+  const deviceId = "555-555-555";
+
+  beforeAll(async () => {
+    db = openDb(":memory:");
+    applyMigrations(db, defaultMigrationsDir());
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, email_verified_at, created_at) VALUES (1, 'owner@a', 'x', ?, ?)",
+    ).run(Date.now(), Date.now());
+    const tokenHash = await hashPassword(token);
+    db.prepare(
+      `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
+       VALUES (?, 1, 'D', ?, 1, ?)`,
+    ).run(deviceId, tokenHash, Date.now());
+
+    app = Fastify();
+    await app.register(websocketPlugin);
+    const store = new SessionStore({ ttlMs: 600_000 });
+    registerSignaling(
+      app,
+      store,
+      undefined,
+      undefined,
+      undefined,
+      { windowMs: 60_000, max: 1000 },
+      undefined,
+      { db, registry: new UnattendedRegistry(), sessions },
+      { windowMs: 60_000, max: 1000 },
+    );
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const addr = app.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    url = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await app.close();
+    db.close();
+  });
+
+  it("reaping an awaiting-pw session sends the sharer a bye and closes the viewer", async () => {
+    const sharer = new WebSocket(url, {
+      headers: {
+        origin: ORIGIN,
+        authorization: `Bearer ${token}`,
+        "x-auffi-device-id": deviceId,
+      },
+    });
+    await new Promise<void>((resolve, reject) => {
+      sharer.once("message", () => resolve()); // unattended-hello
+      sharer.once("error", reject);
+    });
+
+    const viewer = new WebSocket(url, { headers: { origin: ORIGIN } });
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await new Promise<void>((r) => viewer.once("message", () => r())); // needs-password
+
+    const byePromise = new Promise<unknown>((r) =>
+      sharer.once("message", (data: Buffer) => r(JSON.parse(data.toString()))),
+    );
+    const viewerClosed = new Promise<void>((r) => viewer.once("close", () => r()));
+
+    const reaped = sessions.sweepStale(Date.now() + PW_ENTRY_TIMEOUT_MS + 1);
+    expect(reaped.map((s) => s.deviceId)).toEqual([deviceId]);
+
+    expect(await byePromise).toEqual({ type: "relay", payload: { kind: "bye" } });
+    await viewerClosed;
+    sharer.close();
+  });
+});
+
+// ── TURN credentials over the heartbeat WSS ───────────────────────────
+//
+// The unattended sharer has no session code for POST /turn-credentials;
+// it asks over its bearer-authenticated WSS instead
+// (turn-credentials-request → turn-credentials). With TURN configured
+// the reply carries the same ephemeral HMAC credentials as the REST
+// endpoint; without, `credentials` is null and the sharer proceeds
+// STUN-less.
+
+describe("/signal turn-credentials-request (unattended sharer)", () => {
+  const token = "34abcdef".repeat(8);
+  const deviceId = "666-666-666";
+
+  async function startApp(withTurn: boolean): Promise<{ app: FastifyInstance; url: string; db: Db }> {
+    const db = openDb(":memory:");
+    applyMigrations(db, defaultMigrationsDir());
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, email_verified_at, created_at) VALUES (1, 'owner@a', 'x', ?, ?)",
+    ).run(Date.now(), Date.now());
+    const tokenHash = await hashPassword(token);
+    db.prepare(
+      `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
+       VALUES (?, 1, 'D', ?, 1, ?)`,
+    ).run(deviceId, tokenHash, Date.now());
+
+    if (withTurn) {
+      process.env.TURN_SHARED_SECRET = "test-secret-32-chars-minimum";
+      process.env.TURN_HOSTS = "turn:turn.auffi.local:3478";
+    } else {
+      delete process.env.TURN_SHARED_SECRET;
+      delete process.env.TURN_HOSTS;
+    }
+    process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
+    const app = await createServer({ port: 0, host: "127.0.0.1", db });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const addr = app.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    return { app, url: `ws://127.0.0.1:${addr.port}/signal`, db };
+  }
+
+  async function openSharerAt(url: string): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(url, {
+        headers: {
+          origin: ORIGIN,
+          authorization: `Bearer ${token}`,
+          "x-auffi-device-id": deviceId,
+        },
+      });
+      ws.once("message", () => resolve(ws)); // unattended-hello
+      ws.once("error", reject);
+    });
+  }
+
+  afterAll(() => {
+    delete process.env.TURN_SHARED_SECRET;
+    delete process.env.TURN_HOSTS;
+  });
+
+  it("replies with ephemeral credentials when TURN is configured", async () => {
+    const { app, url, db } = await startApp(true);
+    const sharer = await openSharerAt(url);
+    sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
+    const msg = await new Promise<any>((r) =>
+      sharer.once("message", (data: Buffer) => r(JSON.parse(data.toString()))),
+    );
+    expect(msg.type).toBe("turn-credentials");
+    expect(msg.credentials.urls).toContain("turn:turn.auffi.local:3478");
+    expect(msg.credentials.username).toMatch(/^\d+:[a-z0-9-]+$/);
+    expect(msg.credentials.ttl).toBeGreaterThan(60);
+    sharer.close();
+    await app.close();
+    db.close();
+  });
+
+  it("replies with credentials: null when the backend has no TURN configured", async () => {
+    const { app, url, db } = await startApp(false);
+    const sharer = await openSharerAt(url);
+    sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
+    const msg = await new Promise<any>((r) =>
+      sharer.once("message", (data: Buffer) => r(JSON.parse(data.toString()))),
+    );
+    expect(msg).toEqual({ type: "turn-credentials", credentials: null });
+    sharer.close();
+    await app.close();
+    db.close();
   });
 });

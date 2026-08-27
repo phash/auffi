@@ -10,7 +10,8 @@ import { load } from "@tauri-apps/plugin-store";
 import type { TrustedPeer } from "./trusted-peers.js";
 import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted-peers.js";
 import { friendlyMonitorLabel, monitorPickerView } from "./monitor-display.js";
-import { planStreamingStopped } from "./streaming-stopped-policy.js";
+import { planStreamingStopped, streamingFailedMessage } from "./streaming-stopped-policy.js";
+import { SignalingBuffer } from "./signaling-buffer.js";
 import { setupTabs } from "./tabs.js";
 import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-banner.js";
 import { formatConnectionRequest } from "./connect-format.js";
@@ -156,35 +157,21 @@ let freeTierCutoffSeen = false;
 
 // SDP+ICE arrive immediately after `peer-confirmed` but the WebRTC peer is
 // only constructed when start_streaming runs (after the user picks a monitor).
-// Buffer them until the peer exists, then replay in order.
-let streamingReady = false;
-let pendingOffer: string | null = null;
-type IcePayload = {
-  candidate: string;
-  sdpMid: string | null;
-  sdpMlineIndex: number | null;
-  usernameFragment: string | null;
-};
-let pendingIce: IcePayload[] = [];
-
-// SDP/ICE replay is shared by both start_streaming success paths (the
-// portal accept path and the monitor-pick click). New paths must use this
-// helper or stale offer/ice candidates leak between sessions.
-async function replayPendingSignaling(): Promise<void> {
-  if (pendingOffer) {
-    const sdp = pendingOffer;
-    pendingOffer = null;
+// The shared SignalingBuffer holds them until the peer exists, then replays
+// in order (same module the unattended path uses — both must normalize the
+// ICE key casing identically).
+const signalBuffer = new SignalingBuffer({
+  sendOffer: async (sdp) => {
     await invoke("receive_offer", { sdp }).catch((err: unknown) => {
       showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
     });
-  }
-  const ice = pendingIce.splice(0);
-  for (const c of ice) {
-    await invoke("receive_ice_candidate", c).catch(() => {
+  },
+  sendIce: async (ice) => {
+    await invoke("receive_ice_candidate", ice).catch(() => {
       // Benign: candidate may be stale (e.g. remote description not yet set).
     });
-  }
-}
+  },
+});
 
 // ── Persistent store ────────────────────────────────────────────────────────
 
@@ -419,9 +406,7 @@ function hideStreamingActions(): void {
   streamingActionsEl.classList.remove("visible");
   howtoCardEl.classList.remove("hidden");
   // Clear buffered SDP/ICE — the next session starts fresh
-  streamingReady = false;
-  pendingOffer = null;
-  pendingIce = [];
+  signalBuffer.reset();
 }
 
 // ── Tab navigation ───────────────────────────────────────────────────────────
@@ -474,7 +459,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
   const ip = currentIpPrefix ?? "";
   const rememberIt = rememberPeerCheckbox.checked;
 
-  invoke("confirm_peer", { accepted: true, ipPrefix: ip })
+  invoke("confirm_peer", { accepted: true })
     .then(async () => {
       confirmEl.classList.remove("visible");
 
@@ -491,8 +476,7 @@ document.getElementById("accept")!.addEventListener("click", () => {
         streamBtn.disabled = true;
         invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" })
           .then(async () => {
-            streamingReady = true;
-            await replayPendingSignaling();
+            await signalBuffer.ready();
             setStatus("Streaming läuft.", "success");
             showStreamingActions();
           })
@@ -630,8 +614,7 @@ streamBtn.addEventListener("click", () => {
 
   invoke("start_streaming", { monitorId, sessionCode: currentCode ?? "" })
     .then(async () => {
-      streamingReady = true;
-      await replayPendingSignaling();
+      await signalBuffer.ready();
       setStatus("Streaming läuft.", "success");
       showStreamingActions();
     })
@@ -797,20 +780,17 @@ listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) =>
   // live one, which on Plasma manifests as a hung "wähle Bildschirm…"
   // status because the compositor refuses to surface a second portal
   // dialog while the first source is active.
-  if (streamingReady || pendingOffer || pendingIce.length > 0) {
+  if (signalBuffer.hasActivity()) {
     // Tear down ONLY the streaming state. The signaling channel that
     // delivered this peer-joined must stay alive — without it the
     // confirm_peer / receive_offer calls below would fail with
     // "signaling not started" and the new helper would get stranded.
     //
-    // Clear the flags BEFORE awaiting disconnect_streaming. The kept-alive
-    // WS may already start delivering relay frames from the new viewer
-    // while we await — and the relay handler at line below dispatches
-    // based on `streamingReady`. With the flag still true it would call
-    // receive_offer against the just-cleared rtc_state and lose the offer.
-    streamingReady = false;
-    pendingOffer = null;
-    pendingIce = [];
+    // Reset the buffer BEFORE awaiting disconnect_streaming. The
+    // kept-alive WS may already start delivering relay frames from the
+    // new viewer while we await — with ready still set, the relay
+    // handler would call receive_offer against the just-cleared
+    // rtc_state and lose the offer.
     hideStreamingActions();
     // The streaming-stopped listener deliberately ignores keepSignaling
     // events (they may arrive after the new-peer state below is set and
@@ -852,27 +832,9 @@ listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) =>
 listen<{ payload: RelayPayload }>("relay", (e) => {
   const p = e.payload.payload;
   if (p.kind === "sdp" && p.sdp) {
-    if (!streamingReady) {
-      pendingOffer = p.sdp.sdp;
-      return;
-    }
-    invoke("receive_offer", { sdp: p.sdp.sdp }).catch((err: unknown) => {
-      showFriendlyError("Verbindung konnte nicht aufgebaut werden. Bitte erneut versuchen.", err);
-    });
+    signalBuffer.offer(p.sdp.sdp);
   } else if (p.kind === "ice" && p.candidate) {
-    const ice: IcePayload = {
-      candidate: p.candidate.candidate ?? "",
-      sdpMid: p.candidate.sdpMid ?? null,
-      sdpMlineIndex: p.candidate.sdpMLineIndex ?? null,
-      usernameFragment: p.candidate.usernameFragment ?? null,
-    };
-    if (!streamingReady) {
-      pendingIce.push(ice);
-      return;
-    }
-    invoke("receive_ice_candidate", ice).catch(() => {
-      // Benign: candidate may be stale (e.g. remote description not yet set).
-    });
+    signalBuffer.ice(p.candidate);
   } else if (p.kind === "bye") {
     // Viewer pressed Beenden — without this branch the sharer would only
     // notice when ICE eventually times out, which surfaces as the
@@ -941,11 +903,27 @@ listen<{ keepSignaling: boolean }>("streaming-stopped", (e) => {
   }
   // Reset the WebRTC handshake buffers so the next session can register
   // its own offer + ICE candidates. Without this reset, a stale
-  // streamingReady=true from the previous session causes the relay
-  // handler to invoke receive_offer on a peer that hasn't been built yet.
-  streamingReady = false;
-  pendingOffer = null;
-  pendingIce.length = 0;
+  // ready-state from the previous session causes the relay handler to
+  // invoke receive_offer on a peer that hasn't been built yet.
+  signalBuffer.reset();
+});
+
+// Abnormal streaming-loop exit (capture died, track writes failing,
+// internal invariant): run the same disconnect/UI-reset flow as the
+// other stop paths, with a reason-specific German status.
+listen<{ reason: string }>("streaming-failed", (e) => {
+  specificStopStatusPending = true;
+  invoke("disconnect_streaming").catch(() => {
+    specificStopStatusPending = false;
+  });
+  hideStreamingActions();
+  setStatus(streamingFailedMessage(e.payload.reason), "error");
+});
+
+// A received file that failed integrity/size checks at completion —
+// without this the sharer sees nothing (only file-received was wired).
+listen<{ name: string; reason: string }>("file-failed", (e) => {
+  setStatus(`Datei „${e.payload.name}“ konnte nicht empfangen werden.`, "error");
 });
 
 listen<string>("connection-type", (e) => {
@@ -1049,9 +1027,7 @@ async function restartSignaling(): Promise<void> {
   await invoke("disconnect_streaming").catch(() => {
     specificStopStatusPending = false;
   });
-  streamingReady = false;
-  pendingOffer = null;
-  pendingIce = [];
+  signalBuffer.reset();
   await invoke("start_signaling");
 }
 

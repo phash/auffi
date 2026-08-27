@@ -37,13 +37,41 @@ The `payload` field is a discriminated union on `kind`:
 
 **ICE candidate:**
 ```json
-{ "type": "relay", "payload": { "kind": "ice", "candidate": { "candidate": "candidate:...", "sdpMid": "0", "sdpMLineIndex": 0 } } }
+{ "type": "relay", "payload": { "kind": "ice", "candidate": { "candidate": "candidate:...", "sdpMid": "0", "sdpMLineIndex": 0, "usernameFragment": "abcd" } } }
 ```
+`sdpMid` / `sdpMLineIndex` / `usernameFragment` are optional-nullable, matching
+the browser's `RTCIceCandidateInit`. Note the wire key is `sdpMLineIndex`
+(capital L); the sharer webview re-maps it to the Tauri invoke key
+`sdpMlineIndex` (see `sharer/src/signaling-buffer.ts`).
 
 **Hello (smoke-test / keepalive):**
 ```json
 { "type": "relay", "payload": { "kind": "hello", "ts": 1715000000000 } }
 ```
+
+**Bye (courteous teardown):**
+```json
+{ "type": "relay", "payload": { "kind": "bye" } }
+```
+The sending peer ended the stream on purpose; the receiver shows the friendly
+"beendet" copy instead of waiting for the ICE timeout. The backend also
+**synthesizes** this frame toward the sharer (a viewer's own bye is gated by
+the pre-confirm relay guard, and a tab-close sends nothing at all) in these
+cases:
+
+- **Ad-hoc, pre-confirm viewer loss** — the viewer's WS drops before the
+  sharer confirmed; the sharer's confirm dialog would otherwise point at a
+  gone viewer.
+- **Ad-hoc, code expiry** — a code expires while an unconfirmed viewer is
+  attached (the viewer additionally gets `peer-rejected` reason `"expired"`).
+- **Unattended, pre-confirm viewer loss** — the viewer's WS drops while the
+  session is in `awaiting-pw` / `pw-in-flight`.
+- **Unattended, pw-entry timeout** — the server-side sweep reaps a session
+  stuck before `confirmed` for longer than 2 minutes (see below).
+
+Confirmed sessions never get a synthesized bye on viewer WS loss — a Wi-Fi
+blip must keep the ICE grace / reconnect window alive instead of tearing the
+stream down.
 
 ## Viewer-Initiated Messages
 
@@ -67,8 +95,10 @@ Viewer has connected. Sharer must show confirmation dialog and reply with `confi
 ```
 `viewerInfo.country` is the viewer's ISO-3166-1-alpha-2 country code (e.g. `"DE"`) or `null` when the
 lookup returns no result. Resolved server-side via a local MMDB lookup (no third-party call; the full
-viewer IP never leaves the VPS). Set **only** on the ad-hoc path; the unattended mirror always carries
-`null` because the device-password flow bypasses the confirm dialog.
+viewer IP never leaves the VPS). Set **only** on the ad-hoc path; the unattended mirror (sent to the
+sharer after `pw-check-result: ok`) carries the redacted `ipPrefix` captured at join time and always
+`country: null` — no GeoIP lookup runs on that path, access is gated by the device password (plus the
+manual confirm when `autoAccept` is off) instead of the ad-hoc IP-hint dialog.
 
 ### `peer-confirmed` (→ viewer)
 After sharer accepted.
@@ -81,6 +111,11 @@ After sharer declined or session ended.
 ```json
 { "type": "peer-rejected", "reason": "declined" | "expired" | "sharer-gone" }
 ```
+- `declined` — the sharer clicked Ablehnen.
+- `expired` — the code's 10-minute TTL lapsed while this (unconfirmed) viewer
+  was attached; the backend closes the viewer WS after sending it.
+- `sharer-gone` — the sharer's WS dropped while a viewer was attached (sent on
+  both the ad-hoc and unattended paths).
 
 ### `relay` (→ peer)
 Forwarded `relay` message from the other peer.
@@ -144,6 +179,9 @@ immediately, the backend prompts the viewer for the device password.
 ```json
 { "type": "pw-attempt", "password": "the-device-password" }
 ```
+The backend rejects passwords longer than 256 characters with a
+`bad-message` error before forwarding (Sec H-4 — matches the account-password
+upper bound; anything longer is pure relay abuse).
 
 ### `pw-check` (→ sharer)
 Backend forwards the attempt to the sharer, which argon2-verifies it **locally**
@@ -186,23 +224,49 @@ a viewer joins a device that is already in its lockout window.
 { "type": "rejected-by-user" }
 ```
 
+### Pre-confirm session timeout (server-side)
+
+A viewer may sit in `awaiting-pw` / `pw-in-flight` for at most **2 minutes**
+(`PW_ENTRY_TIMEOUT_MS`). While the session exists every other viewer sees
+"session full", so a wedged or hostile client could otherwise occupy the
+device silently for as long as it keeps its WS open — this deadline is the
+unattended counterpart of the ad-hoc 10-minute code TTL. On reap the backend
+closes the viewer WS and sends the sharer the synthesized
+`{"kind":"bye"}` relay. Confirmed sessions are exempt (they live until a peer
+disconnects).
+
+### `turn-credentials-request` (sharer → server)
+
+The unattended sharer has no session code for `POST /turn-credentials`; its
+WSS is already bearer-authenticated, so it asks for the ephemeral TURN
+credentials in-band — sent before building the WebRTC peer for a session.
+```json
+{ "type": "turn-credentials-request" }
+```
+
+### `turn-credentials` (→ sharer)
+
+Reply to `turn-credentials-request`. Carries the same HMAC-ephemeral
+credentials the REST endpoint mints, or `null` when the deployment has no
+TURN configured — the sharer then builds its peer STUN-less (identical
+degradation to a failed REST fetch).
+```json
+{ "type": "turn-credentials", "credentials": { "urls": ["turn:host:3478"], "username": "1715000000:uuid", "credential": "base64==", "ttl": 3600 } }
+{ "type": "turn-credentials", "credentials": null }
+```
+
+> Viewer side: unattended viewers use the normal `POST /turn-credentials`
+> REST endpoint with the device-id as `code` — the gate accepts any code
+> whose device currently holds a live bearer-authenticated WSS
+> (`UnattendedRegistry`), which is already true during the viewer's
+> pre-join fetch.
+
 > **Manual-confirm routing (sharer-internal).** When `autoAccept` is false the
 > sharer Rust core raises a `needs-confirm` Tauri event to its own webview
 > carrying a monotonic `confirmId`; the webview must echo that id back through
 > the `unattended_confirm` command. This `confirmId` is a sharer-process
 > detail (`pending_confirms: HashMap<u64, Sender>`), **not** a backend wire
 > field — it never crosses the WSS. See `sharer/src-tauri/src/unattended_cmd.rs`.
-
-### Connection telemetry (sharer → server)
-The sharer reports connection lifecycle for the `connection_log` and relay-byte
-accounting (feeds the free-tier relay cap).
-```json
-{ "type": "connection-started", "connectionType": "p2p" | "relay" }
-{ "type": "connection-ended", "bytesRelayed": 1048576 }
-```
-> Currently emitted only by the **ad-hoc** signaling path. The unattended
-> heartbeat path defines these wire shapes but does not yet emit them
-> (gh #109).
 
 ---
 
@@ -213,8 +277,14 @@ by the viewer (caller role):
 
 | Channel | Direction | Ordered | Reliability |
 |---------|-----------|---------|-------------|
-| `input` | Viewer → Sharer | No | Unreliable for mouse-move; reliable for buttons/keys |
+| `input` | Viewer → Sharer | Yes | Reliable |
 | `files` | Bidirectional | Yes | Reliable ordered |
+
+The `input` channel is deliberately ordered + reliable: a lost key-up or
+button-up mid-session leaves a stuck key on the sharer. Input stays
+low-bandwidth because the viewer coalesces pointer moves to one message per
+animation frame (~60 Hz); buttons, keys and wheel events are sent
+immediately.
 
 All messages are UTF-8 JSON unless stated otherwise.
 
@@ -236,10 +306,17 @@ Each message is a JSON object with a `kind` discriminator.
 { "kind": "mouse-button", "button": "middle", "pressed": true }
 ```
 
-**Scroll** — delta in pixels (matches the browser `WheelEvent` convention):
+**Scroll** — delta in pixels, where one wheel notch is 120 px:
 ```json
 { "kind": "scroll", "dx": 0, "dy": 120 }
 ```
+The viewer accumulates raw `WheelEvent` deltas (normalizing
+`DOM_DELTA_LINE`/`DOM_DELTA_PAGE`) and emits only **whole multiples of
+120 px** per axis, keeping the sub-notch remainder locally. The sharer
+converts with `trunc(delta / 120)` scroll lines and clamps each event to
+**±100 lines** (DoS guard against `Infinity`/`NaN`/huge deltas — the
+DataChannel bypasses the backend's rate limits); the viewer discards the
+excess of a clamped burst instead of replaying it later.
 
 **Key** — W3C `KeyboardEvent.code` values:
 ```json

@@ -281,3 +281,61 @@ describe("POST /turn-credentials — unattended session gate", () => {
     expect(body.error).toContain("session");
   });
 });
+
+describe("POST /turn-credentials — unattended registry gate (pre-join fetch)", () => {
+  // The viewer fetches ICE servers BEFORE joining, when no
+  // UnattendedSession exists yet. The gate must therefore also accept
+  // a code whose device is currently CONNECTED (UnattendedRegistry) —
+  // without this, unattended viewers never received TURN credentials
+  // and cross-NAT unattended connects failed.
+  let app: FastifyInstance;
+  let baseUrl: string;
+  const CONNECTED_DEVICE_ID = "321-654-987";
+
+  beforeAll(async () => {
+    const store = new SessionStore({ ttlMs: 600_000 });
+    app = Fastify();
+    await app.register(rateLimitPlugin, { global: true, max: 100, timeWindow: "1 minute" });
+    registerTurnEndpoint(app, {
+      sharedSecret: "test-secret-32-chars-minimum",
+      realm: "turn.auffi.local",
+      urls: ["turn:turn.auffi.local:3478"],
+      ttlSec: 3600,
+      allowedOrigins: ["http://localhost:5173"],
+      sessionStore: store,
+      unattendedRegistry: {
+        has(id: string): boolean {
+          return id === CONNECTED_DEVICE_ID;
+        },
+      },
+    });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const addr = app.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  async function post(code: string): Promise<Response> {
+    return fetch(`${baseUrl}/turn-credentials`, {
+      method: "POST",
+      headers: { Origin: "http://localhost:5173", "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  it("issues credentials for a code whose device is connected but has no session yet", async () => {
+    const res = await post(CONNECTED_DEVICE_ID);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { urls: string[] };
+    expect(body.urls).toContain("turn:turn.auffi.local:3478");
+  });
+
+  it("still refuses a code with no session and no connected device", async () => {
+    const res = await post("999-888-777");
+    expect(res.status).toBe(403);
+  });
+});

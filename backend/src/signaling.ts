@@ -6,6 +6,7 @@ import { lookupCountry, type CountryLookup } from "./geoip.js";
 import type {
   IncomingMessage,
   OutgoingMessage,
+  TurnCredentialsPayload,
 } from "./protocol.js";
 import type { Db } from "./db.js";
 import {
@@ -82,6 +83,13 @@ export interface UnattendedDeps {
   db: Db;
   registry: UnattendedRegistry;
   sessions: UnattendedSessions;
+  /**
+   * Mint ephemeral TURN credentials for an authenticated unattended
+   * sharer (`turn-credentials-request` frame). Omitted / returning
+   * null when the deployment has no TURN configured — the sharer then
+   * proceeds STUN-less. Same HMAC credentials as POST /turn-credentials.
+   */
+  turnCredentials?: () => TurnCredentialsPayload | null;
 }
 
 export function registerSignaling(
@@ -138,6 +146,16 @@ export function registerSignaling(
     send(session.sharer as WebSocket, { type: "relay", payload: { kind: "bye" } });
   });
 
+  // Same idea for the unattended pre-confirm timeout: when the 60 s
+  // sweep reaps a session stuck before "confirmed" (PW_ENTRY_TIMEOUT_MS),
+  // close the abandoned viewer socket AND hand the sharer the bye its
+  // pending pw wait / confirm dialog needs — without it the sharer only
+  // learns via its own 60 s auto-decline, if at all.
+  unattended?.sessions.setOnStaleReap((sess) => {
+    send(sess.sharer, { type: "relay", payload: { kind: "bye" } });
+    sess.viewer.close();
+  });
+
   app.get("/signal", { websocket: true }, (socket, req) => {
     const peer = socket;
     let role: "sharer" | "viewer" | "unattended-sharer" | null = null;
@@ -171,7 +189,7 @@ export function registerSignaling(
         return;
       }
       const auth = parsed;
-      const { db, registry, sessions } = unattended;
+      const { db, registry, sessions, turnCredentials } = unattended;
       // verify is async (argon2). The message listener below attaches
       // synchronously while the verify is still in flight, but its
       // role guard answers every premature frame with the same generic
@@ -318,6 +336,14 @@ export function registerSignaling(
             return;
           }
           send(sess.viewer, { type: "relay", payload: msg.payload });
+          return;
+        }
+
+        if (msg.type === "turn-credentials-request") {
+          send(peer, {
+            type: "turn-credentials",
+            credentials: turnCredentials?.() ?? null,
+          });
           return;
         }
 
@@ -571,10 +597,18 @@ export function registerSignaling(
       if (unattended) {
         const usess = unattended.sessions.detachViewer(peer);
         if (usess) {
-          // No need to close the sharer — it stays online for the
-          // next viewer. If the session was in flight, the sharer's
-          // pw-check-result (if it ever arrives) will just be ignored
-          // by findBySharer returning null.
+          // The sharer's WSS stays open for the next viewer. If the
+          // session was in flight, the sharer's pw-check-result (if it
+          // ever arrives) will just be ignored by findBySharer
+          // returning null. Pre-confirm, mirror the ad-hoc synthesized
+          // bye: a tab-close sends nothing itself, and without the bye
+          // the sharer's pending pw wait / confirm dialog points at a
+          // gone viewer. Confirmed sessions deliberately get NO
+          // synthesized bye — a Wi-Fi blip must keep the ICE grace /
+          // reconnect window alive instead of tearing the stream down.
+          if (usess.state !== "confirmed") {
+            send(usess.sharer, { type: "relay", payload: { kind: "bye" } });
+          }
           return;
         }
       }

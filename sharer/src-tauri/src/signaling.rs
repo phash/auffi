@@ -26,26 +26,6 @@ pub struct Signaling {
     pub tx: mpsc::Sender<Outgoing>,
 }
 
-/// Derive the WebSocket Origin header value from the backend URL. The
-/// production backend's `verifyClient` rejects connections whose Origin is
-/// not in `ALLOWED_ORIGINS`; native clients have no Origin by default, so we
-/// supply the matching origin explicitly. `wss://host/path` → `https://host`,
-/// `ws://host/path` → `http://host`. Override with `AUFFI_SHARER_ORIGIN`.
-fn derive_origin(ws_url: &str) -> String {
-    if let Ok(custom) = std::env::var("AUFFI_SHARER_ORIGIN") {
-        return custom;
-    }
-    if let Some(rest) = ws_url.strip_prefix("wss://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return format!("https://{host}");
-    }
-    if let Some(rest) = ws_url.strip_prefix("ws://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return format!("http://{host}");
-    }
-    "http://localhost".to_string()
-}
-
 pub async fn run(app: AppHandle, url: String) -> Signaling {
     let (tx, rx) = mpsc::channel::<Outgoing>(16);
 
@@ -82,7 +62,10 @@ async fn connect_and_run<E>(
 ) where
     E: Fn(&str, serde_json::Value),
 {
-    let origin = derive_origin(&url);
+    // The backend's `verifyClient` rejects connections whose Origin is not in
+    // `ALLOWED_ORIGINS`; native clients have no Origin by default, so we
+    // supply the backend's own origin explicitly.
+    let origin = crate::backend_urls::origin_from_ws(&url);
     let request = match url.as_str().into_client_request() {
         Ok(mut r) => {
             match origin.parse() {
@@ -295,27 +278,9 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::tungstenite::Message;
 
-    // The Origin header is security-relevant (the backend's WS verifyClient +
-    // TURN gate match against the allow-list). Guard the scheme mapping. The
-    // env-override branch is intentionally not exercised here to avoid the
-    // documented parallel-test env-var race (CQ M-20).
-    #[test]
-    fn wss_maps_to_https_origin_dropping_the_path() {
-        assert_eq!(derive_origin("wss://auffi.app/signal"), "https://auffi.app");
-    }
-
-    #[test]
-    fn ws_maps_to_http_origin() {
-        assert_eq!(
-            derive_origin("ws://localhost:8080/signal"),
-            "http://localhost:8080"
-        );
-    }
-
-    #[test]
-    fn unknown_scheme_falls_back_to_localhost() {
-        assert_eq!(derive_origin("https://auffi.app"), "http://localhost");
-    }
+    // The Origin scheme mapping is security-relevant (the backend's WS
+    // verifyClient + TURN gate match against the allow-list); its tests
+    // live with the shared helper in `backend_urls.rs`.
 
     // ── Loop lifecycle (2026-08 review) ─────────────────────────────────
     // The old select! used refutable patterns (`Some(Ok(msg)) = read.next()`,

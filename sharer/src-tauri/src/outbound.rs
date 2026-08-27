@@ -31,6 +31,25 @@ pub enum OutboundSink {
 }
 
 impl OutboundSink {
+    /// True for the ad-hoc (browser-viewer WS) variant. Teardown paths
+    /// use this for compare-and-clear: the ad-hoc stream lifecycle owns
+    /// an AdHoc sink, but an Unattended sink belongs to the heartbeat
+    /// lifecycle and must survive stream teardowns.
+    pub fn is_adhoc(&self) -> bool {
+        matches!(self, Self::AdHoc(_))
+    }
+
+    /// True iff this is the Unattended variant AND it feeds the same
+    /// heartbeat command channel as `tx`. Lets a (possibly stale)
+    /// forwarder/stop path clear only its OWN registration instead of
+    /// blindly nulling whatever a newer session installed.
+    pub fn is_unattended_channel(&self, tx: &mpsc::Sender<HeartbeatCommand>) -> bool {
+        match self {
+            Self::Unattended(own) => own.same_channel(tx),
+            Self::AdHoc(_) => false,
+        }
+    }
+
     /// Send a relay payload through whichever channel is active.
     /// Returns `Err` with a short tag on send failure — the caller
     /// is expected to log + carry on (relay drops should not crash
@@ -78,6 +97,29 @@ mod tests {
             }
             other => panic!("expected Send(Relay), got {other:?}"),
         }
+    }
+
+    #[test]
+    fn is_adhoc_distinguishes_the_variants() {
+        let (adhoc_tx, _rx1) = mpsc::channel::<Outgoing>(1);
+        let (hb_tx, _rx2) = mpsc::channel::<HeartbeatCommand>(1);
+        assert!(OutboundSink::AdHoc(adhoc_tx).is_adhoc());
+        assert!(!OutboundSink::Unattended(hb_tx).is_adhoc());
+    }
+
+    #[test]
+    fn is_unattended_channel_matches_only_the_same_heartbeat() {
+        let (hb_a, _rx_a) = mpsc::channel::<HeartbeatCommand>(1);
+        let (hb_b, _rx_b) = mpsc::channel::<HeartbeatCommand>(1);
+        let sink = OutboundSink::Unattended(hb_a.clone());
+        assert!(sink.is_unattended_channel(&hb_a));
+        assert!(
+            !sink.is_unattended_channel(&hb_b),
+            "a different heartbeat's sender must not match — that is the \
+             stale-forwarder-clears-new-session bug"
+        );
+        let (adhoc_tx, _rx3) = mpsc::channel::<Outgoing>(1);
+        assert!(!OutboundSink::AdHoc(adhoc_tx).is_unattended_channel(&hb_a));
     }
 
     #[tokio::test]

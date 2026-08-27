@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { planStreamingStopped } from "../src/streaming-stopped-policy.js";
+import {
+  planStreamingStopped,
+  streamingFailedMessage,
+} from "../src/streaming-stopped-policy.js";
 
 describe("planStreamingStopped", () => {
   it("viewer-swap (keepSignaling): leaves the join state and status alone", () => {
@@ -25,5 +28,17 @@ describe("planStreamingStopped", () => {
       resetSessionUi: true,
       showGenericStatus: false,
     });
+  });
+});
+
+describe("streamingFailedMessage", () => {
+  it("maps the Rust-side reasons to German copy", () => {
+    expect(streamingFailedMessage("capture")).toContain("Bildschirmaufnahme");
+    expect(streamingFailedMessage("track-write")).toContain("Verbindung zum Helfer");
+    expect(streamingFailedMessage("internal")).toContain("Interner Fehler");
+  });
+
+  it("unknown reasons fall back to the internal-error copy instead of raw text", () => {
+    expect(streamingFailedMessage("some-new-reason")).toContain("Interner Fehler");
   });
 });

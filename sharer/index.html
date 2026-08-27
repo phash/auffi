@@ -1343,24 +1343,24 @@
           <p style="font-size: 0.875rem; margin: 0.5rem 0;">
             Status: <span id="unattended-status">Inaktiv</span>
           </p>
+          <div class="settings-toggle-row" style="margin: 0.75rem 0;">
+            <div>
+              <div class="settings-toggle-label">Beim Anmelden automatisch starten</div>
+              <div class="settings-toggle-desc">Auffi startet mit Windows/Linux im Hintergrund</div>
+            </div>
+            <label class="settings-toggle" aria-label="Beim Anmelden automatisch starten umschalten">
+              <input type="checkbox" id="unattended-autostart-toggle" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <p id="unattended-autostart-status" role="status" aria-live="polite"
+            style="font-size: 0.8125rem; color: var(--danger, #b91c1c);"></p>
           <button id="unattended-start-btn" type="button" class="btn btn-primary"
             style="margin-top: 0.5rem; width: 100%;">Aktivieren</button>
           <button id="unattended-stop-btn" type="button" class="btn btn-secondary"
             style="margin-top: 0.5rem; width: 100%; display: none;">Deaktivieren</button>
           <button id="unattended-unpair-btn" type="button" class="btn btn-danger"
             style="margin-top: 0.5rem; width: 100%;">Gerät entkoppeln</button>
-        </div>
-
-        <div id="unattended-confirm-toast" role="dialog" aria-modal="true"
-          style="display: none; margin-top: 0.75rem; padding: 0.75rem; background: var(--surface);
-                 border: 1px solid var(--border); border-radius: var(--radius);">
-          <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
-            Ein Helfer möchte sich verbinden. Akzeptieren?
-          </p>
-          <div class="btn-row">
-            <button id="unattended-confirm-yes" type="button" class="btn btn-primary">Akzeptieren</button>
-            <button id="unattended-confirm-no" type="button" class="btn btn-secondary">Ablehnen</button>
-          </div>
         </div>
       </div>
 

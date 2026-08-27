@@ -23,7 +23,8 @@ use crate::device_password;
 use crate::heartbeat::{self, HeartbeatCommand, HeartbeatCommands, HeartbeatEvent, SharerFrame};
 use crate::local_lockout::LocalLockout;
 use crate::outbound::OutboundSink;
-use crate::pw_check::{handle_pw_check, PwCheckOutcome};
+use crate::pw_check::{self, PwCheckOutcome};
+use crate::turn_config::{self, TurnCredentials};
 
 /// Filename used inside the app-config directory for the persisted
 /// mode (ad-hoc / unattended). Stored as plain UTF-8 — non-sensitive.
@@ -62,6 +63,13 @@ pub struct UnattendedState {
     /// map + the per-attempt spawned waiter task, both bugs go away.
     pub pending_confirms: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<bool>>>>,
     pub next_confirm_id: Arc<AtomicU64>,
+    /// Single-slot waiter for the TURN-credentials round-trip over the
+    /// heartbeat WSS (`SharerFrame::TurnCredentialsRequest` →
+    /// `BackendFrame::TurnCredentials`). `start_streaming` installs a
+    /// oneshot here before sending the request; the forwarder fulfils
+    /// it when the reply arrives. One slot suffices: at most one
+    /// `start_streaming` is in flight (rtc_state guard).
+    pub pending_turn: Arc<Mutex<Option<tokio::sync::oneshot::Sender<Option<TurnCredentials>>>>>,
 }
 
 impl Default for UnattendedState {
@@ -71,6 +79,7 @@ impl Default for UnattendedState {
             lockout: Arc::new(Mutex::new(LocalLockout::new())),
             pending_confirms: Arc::new(Mutex::new(HashMap::new())),
             next_confirm_id: Arc::new(AtomicU64::new(1)),
+            pending_turn: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -131,21 +140,9 @@ pub(crate) fn backend_ws_url_secure() -> Result<String, String> {
 }
 
 fn backend_http_base() -> Result<String, String> {
-    Ok(backend_http_base_from(&backend_ws_url_secure()?))
-}
-
-/// Pure mapping `ws[s]://host[:port]/…` → `http[s]://host[:port]`.
-/// Split out so the unit tests can pin the mapping without touching
-/// process-wide env vars (CQ M-20: parallel tests racing on
-/// `AUFFI_BACKEND_WS` flaked CI).
-fn backend_http_base_from(ws: &str) -> String {
-    if let Some(rest) = ws.strip_prefix("wss://") {
-        return format!("https://{}", rest.split('/').next().unwrap_or(rest));
-    }
-    if let Some(rest) = ws.strip_prefix("ws://") {
-        return format!("http://{}", rest.split('/').next().unwrap_or(rest));
-    }
-    "http://localhost:8080".to_string()
+    Ok(crate::backend_urls::http_base_from_ws(
+        &backend_ws_url_secure()?,
+    ))
 }
 
 // ── Pair / unpair / status ───────────────────────────────────────────
@@ -191,10 +188,17 @@ pub fn unattended_is_paired(app: AppHandle) -> CmdResult<Option<String>> {
 
 // ── Device password ──────────────────────────────────────────────────
 
+/// Async so the argon2id hash (m=64 MiB, t=3 — several hundred ms)
+/// runs on a blocking worker instead of freezing the main thread /
+/// webview while the user saves the device password.
 #[tauri::command]
-pub fn unattended_set_password(app: AppHandle, password: String) -> CmdResult<()> {
+pub async fn unattended_set_password(app: AppHandle, password: String) -> CmdResult<()> {
     let path = device_password_path(&app)?;
-    device_password::set(&password, &path).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        device_password::set(&password, &path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("hash task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -271,7 +275,14 @@ pub async fn unattended_start(
     state: State<'_, UnattendedState>,
     outbound_state: State<'_, crate::OutboundSinkState>,
 ) -> CmdResult<()> {
-    if state.commands.lock().await.is_some() {
+    // Hold the commands lock across the WHOLE start body (tokio Mutex,
+    // so holding it over the awaits below is legal). Releasing it after
+    // the guard check used to let two concurrent invokes (double-click
+    // on Aktivieren) both pass and spawn two heartbeats — the backend
+    // then 4408s the older one, whose forwarder wiped the newer
+    // session's slots.
+    let mut cmd_guard = state.commands.lock().await;
+    if cmd_guard.is_some() {
         return Err("unattended bereits aktiv".to_string());
     }
     let dir = app_data_dir(&app)?;
@@ -307,26 +318,20 @@ pub async fn unattended_start(
     // before returning. Without this, a revoked device would leave
     // `state.commands` stuck at "occupied" and every subsequent
     // `unattended_start` would error with "bereits aktiv".
-    let app_emit = app.clone();
-    let lockout = state.lockout.clone();
-    let pending_confirms = state.pending_confirms.clone();
-    let next_confirm_id = state.next_confirm_id.clone();
-    let cmd_slot = state.commands.clone();
-    let outbound_slot = outbound_state.0.clone();
-    let cmds_for_loop = commands.clone();
-    tauri::async_runtime::spawn(forwarder_loop(
-        app_emit,
+    tauri::async_runtime::spawn(forwarder_loop(ForwarderCtx {
+        app: app.clone(),
         events,
-        cmds_for_loop,
-        lockout,
-        pending_confirms,
-        next_confirm_id,
+        cmds: commands.clone(),
+        lockout: state.lockout.clone(),
+        pending_confirms: state.pending_confirms.clone(),
+        next_confirm_id: state.next_confirm_id.clone(),
+        pending_turn: state.pending_turn.clone(),
         pw_path,
-        cmd_slot,
-        outbound_slot,
-    ));
+        cmd_slot: state.commands.clone(),
+        outbound_slot: outbound_state.0.clone(),
+    }));
 
-    *state.commands.lock().await = Some(commands);
+    *cmd_guard = Some(commands);
     Ok(())
 }
 
@@ -338,13 +343,58 @@ pub async fn unattended_stop(
     let cmds = state.commands.lock().await.take();
     if let Some(cmds) = cmds {
         let _ = cmds.send(HeartbeatCommand::Shutdown).await;
+        // Compare-and-clear the OutboundSink: only drop the entry THIS
+        // heartbeat installed. A blind `= None` here used to clobber a
+        // live ad-hoc session's sink when the modes overlapped.
+        let mut sink_guard = outbound_state.0.lock().await;
+        if sink_guard
+            .as_ref()
+            .is_some_and(|s| s.is_unattended_channel(&cmds))
+        {
+            *sink_guard = None;
+        }
     }
-    // Clear the OutboundSink so subsequent receive_offer / on_ice
-    // calls fail cleanly instead of silently piling up on a dead
-    // channel.
-    let mut sink_guard = outbound_state.0.lock().await;
-    *sink_guard = None;
     Ok(())
+}
+
+/// Rust-side truth for "is the heartbeat running". The webview's local
+/// `active` flag resets on a reload (F5 / hot-reload) while the
+/// heartbeat keeps running — `refresh()` resyncs from this instead.
+#[tauri::command]
+pub async fn unattended_is_active(state: State<'_, UnattendedState>) -> CmdResult<bool> {
+    Ok(state.commands.lock().await.is_some())
+}
+
+/// TURN-credential fetch for the unattended path: request/reply over
+/// the heartbeat WSS instead of `POST /turn-credentials` (the
+/// unattended sharer has no session code, but its WSS is already
+/// bearer-authenticated). Degrades to an empty server list on
+/// timeout / channel failure / backend-without-TURN — the same
+/// graceful STUN-less fallback as the ad-hoc HTTP fetch.
+pub(crate) async fn request_turn_via_heartbeat(
+    cmds: &HeartbeatCommands,
+    pending_turn: &Mutex<Option<tokio::sync::oneshot::Sender<Option<TurnCredentials>>>>,
+) -> Vec<webrtc::ice_transport::ice_server::RTCIceServer> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    *pending_turn.lock().await = Some(tx);
+    if cmds
+        .send(HeartbeatCommand::Send(SharerFrame::TurnCredentialsRequest))
+        .await
+        .is_err()
+    {
+        *pending_turn.lock().await = None;
+        return Vec::new();
+    }
+    let creds = match tokio::time::timeout(std::time::Duration::from_secs(3), rx).await {
+        Ok(Ok(c)) => c,
+        // Timeout, or the forwarder replaced/dropped the waiter. Clear
+        // the slot so a late reply cannot leak into the next request.
+        _ => {
+            *pending_turn.lock().await = None;
+            None
+        }
+    };
+    turn_config::to_ice_servers(creds)
 }
 
 /// Reply to a pending manual-confirm prompt (from a pw-check where
@@ -476,30 +526,65 @@ pub(crate) fn pw_outcome_to_action(outcome: &PwCheckOutcome) -> PwAction {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn forwarder_loop(
+/// Everything one forwarder run needs. Bundled so the spawn site stays
+/// readable and clippy's argument-count lint has nothing to say.
+struct ForwarderCtx {
     app: AppHandle,
-    mut events: mpsc::Receiver<HeartbeatEvent>,
+    events: mpsc::Receiver<HeartbeatEvent>,
+    /// THIS session's heartbeat sender — doubles as the generation
+    /// token for the compare-and-clear teardown below.
     cmds: mpsc::Sender<HeartbeatCommand>,
     lockout: Arc<Mutex<LocalLockout>>,
     pending_confirms: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<bool>>>>,
     next_confirm_id: Arc<AtomicU64>,
+    pending_turn: Arc<Mutex<Option<tokio::sync::oneshot::Sender<Option<TurnCredentials>>>>>,
     pw_path: PathBuf,
     cmd_slot: Arc<Mutex<Option<HeartbeatCommands>>>,
     outbound_slot: Arc<Mutex<Option<OutboundSink>>>,
+}
+
+/// Compare-and-clear the shared session slots on forwarder exit
+/// (CQ C-1: Revoked / Superseded / unexpected channel close must free
+/// them so the next `unattended_start` doesn't trip "bereits aktiv").
+///
+/// `mine` is the exiting session's heartbeat sender: a STALE forwarder
+/// outliving a quick stop→start toggle must not erase the slots the
+/// NEWER session just populated (`same_channel` is the generation
+/// check), and an `AdHoc` sink installed by the ad-hoc flow is never
+/// touched from here.
+pub(crate) async fn clear_session_state(
+    cmd_slot: &Mutex<Option<HeartbeatCommands>>,
+    outbound_slot: &Mutex<Option<OutboundSink>>,
+    mine: &HeartbeatCommands,
 ) {
-    // Clear the state slots so the next `unattended_start` doesn't
-    // trip the "bereits aktiv" guard against a dead handle (CQ C-1).
-    // Called from the Revoked / Superseded terminal branches AND
-    // from a normal channel-close exit (which can happen if the
-    // heartbeat task aborted unexpectedly).
-    async fn clear_state(
-        cmd_slot: &Arc<Mutex<Option<HeartbeatCommands>>>,
-        outbound_slot: &Arc<Mutex<Option<OutboundSink>>>,
-    ) {
-        *cmd_slot.lock().await = None;
-        *outbound_slot.lock().await = None;
+    {
+        let mut guard = cmd_slot.lock().await;
+        if guard.as_ref().is_some_and(|c| c.same_channel(mine)) {
+            *guard = None;
+        }
     }
+    let mut guard = outbound_slot.lock().await;
+    if guard
+        .as_ref()
+        .is_some_and(|s| s.is_unattended_channel(mine))
+    {
+        *guard = None;
+    }
+}
+
+async fn forwarder_loop(ctx: ForwarderCtx) {
+    let ForwarderCtx {
+        app,
+        mut events,
+        cmds,
+        lockout,
+        pending_confirms,
+        next_confirm_id,
+        pending_turn,
+        pw_path,
+        cmd_slot,
+        outbound_slot,
+    } = ctx;
     while let Some(event) = events.recv().await {
         match event {
             HeartbeatEvent::Connected { device_id } => {
@@ -515,9 +600,37 @@ async fn forwarder_loop(
                 attempt,
                 auto_accept,
             } => {
-                let outcome = {
+                // Lockout gate under the mutex (cheap); the argon2id
+                // verify (m=64 MiB, t=3 — hundreds of ms) then runs on
+                // a blocking worker WITHOUT the lockout mutex held so
+                // it neither stalls this loop's tokio worker nor
+                // serialises unrelated pw-checks; the mutex is
+                // re-acquired only for the fail/success bookkeeping.
+                let locked = {
                     let mut lk = lockout.lock().await;
-                    handle_pw_check(&attempt, auto_accept, &pw_path, &mut lk, Instant::now())
+                    pw_check::check_locked(&mut lk, Instant::now())
+                };
+                let outcome = match locked {
+                    Some(out) => out,
+                    None => {
+                        let path = pw_path.clone();
+                        let verify_res = tauri::async_runtime::spawn_blocking(move || {
+                            device_password::verify(&attempt, &path)
+                        })
+                        .await
+                        .unwrap_or_else(|e| {
+                            Err(device_password::DevicePasswordError::Hash(format!(
+                                "verify task join failed: {e}"
+                            )))
+                        });
+                        let mut lk = lockout.lock().await;
+                        pw_check::outcome_from_verify(
+                            verify_res,
+                            auto_accept,
+                            &mut lk,
+                            Instant::now(),
+                        )
+                    }
                 };
                 match pw_outcome_to_action(&outcome) {
                     PwAction::ReplyOk => {
@@ -540,6 +653,15 @@ async fn forwarder_loop(
                         let confirm_id = next_confirm_id.fetch_add(1, Ordering::Relaxed);
                         let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
                         pending_confirms.lock().await.insert(confirm_id, tx);
+                        // In unattended mode the resting state is
+                        // hidden-to-tray — a confirm prompt nobody can
+                        // see auto-declines after 60 s. Surface the
+                        // window so the dialog gates access for real.
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
                         let _ = app.emit(
                             "unattended-event",
                             UnattendedEvent {
@@ -600,15 +722,6 @@ async fn forwarder_loop(
                     },
                 );
             }
-            HeartbeatEvent::PeerRejected { reason } => {
-                let _ = app.emit(
-                    "unattended-event",
-                    UnattendedEvent {
-                        reason: Some(reason),
-                        ..UnattendedEvent::kind("peer-rejected")
-                    },
-                );
-            }
             HeartbeatEvent::Relay { payload } => {
                 let _ = app.emit(
                     "unattended-event",
@@ -634,18 +747,26 @@ async fn forwarder_loop(
                     }),
                 );
             }
+            HeartbeatEvent::TurnCredentials { credentials } => {
+                // Route to the start_streaming call awaiting the
+                // round-trip. An unsolicited reply (waiter timed out
+                // and took its sender back) is dropped silently.
+                if let Some(waiter) = pending_turn.lock().await.take() {
+                    let _ = waiter.send(credentials);
+                }
+            }
             HeartbeatEvent::Revoked => {
                 let _ = app.emit("unattended-event", UnattendedEvent::kind("revoked"));
                 // Terminal — the heartbeat loop has already returned.
                 // Drop the handle + outbound sink so the next
                 // `unattended_start` doesn't trip the "bereits aktiv"
                 // guard against a dead channel (CQ C-1).
-                clear_state(&cmd_slot, &outbound_slot).await;
+                clear_session_state(&cmd_slot, &outbound_slot, &cmds).await;
                 return;
             }
             HeartbeatEvent::Superseded => {
                 let _ = app.emit("unattended-event", UnattendedEvent::kind("superseded"));
-                clear_state(&cmd_slot, &outbound_slot).await;
+                clear_session_state(&cmd_slot, &outbound_slot, &cmds).await;
                 return;
             }
         }
@@ -654,7 +775,7 @@ async fn forwarder_loop(
     // heartbeat task exited unexpectedly (e.g. caller dropped the
     // handle without sending Shutdown, or task panicked). Clear
     // state so the user can retry.
-    clear_state(&cmd_slot, &outbound_slot).await;
+    clear_session_state(&cmd_slot, &outbound_slot, &cmds).await;
 }
 
 #[cfg(test)]
@@ -666,29 +787,7 @@ mod tests {
     // inside a running Tauri context; those get exercised by manual
     // smoke-tests once the UI lands.
 
-    #[test]
-    fn backend_http_base_converts_wss_to_https() {
-        assert_eq!(
-            backend_http_base_from("wss://auffi.app/signal"),
-            "https://auffi.app"
-        );
-    }
-
-    #[test]
-    fn backend_http_base_converts_ws_to_http_keeping_port() {
-        assert_eq!(
-            backend_http_base_from("ws://localhost:8080/signal"),
-            "http://localhost:8080"
-        );
-    }
-
-    #[test]
-    fn backend_http_base_falls_back_to_localhost_on_unknown_scheme() {
-        assert_eq!(
-            backend_http_base_from("garbage://nope"),
-            "http://localhost:8080"
-        );
-    }
+    // The ws→http scheme mapping and its tests live in `backend_urls.rs`.
 
     // ── pw_outcome_to_action (TC C-3 — pinned forwarder semantics) ────
     //
@@ -818,31 +917,122 @@ mod tests {
         assert!(outcome.is_err(), "dropped sender must surface as Err");
     }
 
-    // ── forwarder state-clear regression (CQ C-1) ─────────────────────
+    // ── forwarder state-clear regression (CQ C-1 + ownership) ─────────
 
     #[tokio::test]
-    async fn clear_state_drops_both_commands_and_outbound() {
-        use tokio::sync::mpsc;
-
+    async fn clear_session_state_drops_own_slots() {
         let cmd_slot: Arc<Mutex<Option<HeartbeatCommands>>> = Arc::new(Mutex::new(None));
         let outbound_slot: Arc<Mutex<Option<OutboundSink>>> = Arc::new(Mutex::new(None));
 
-        // Seed both slots as a freshly-started forwarder would see
-        // them.
         let (cmd_tx, _cmd_rx) = mpsc::channel(8);
         *cmd_slot.lock().await = Some(cmd_tx.clone());
-        *outbound_slot.lock().await = Some(OutboundSink::Unattended(cmd_tx));
-        assert!(cmd_slot.lock().await.is_some());
-        assert!(outbound_slot.lock().await.is_some());
+        *outbound_slot.lock().await = Some(OutboundSink::Unattended(cmd_tx.clone()));
 
-        // Mirror what `clear_state` does — the helper is private to
-        // forwarder_loop, but the contract is "both slots clear on
-        // any terminal exit path" (Revoked / Superseded / channel
-        // close without terminal).
-        *cmd_slot.lock().await = None;
-        *outbound_slot.lock().await = None;
+        clear_session_state(&cmd_slot, &outbound_slot, &cmd_tx).await;
         assert!(cmd_slot.lock().await.is_none());
         assert!(outbound_slot.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn clear_session_state_is_a_noop_for_a_stale_forwarder() {
+        // Quick stop→start toggle: the OLD forwarder exits after the
+        // NEW session already repopulated the slots. Its clear must
+        // not erase the new session's HeartbeatCommands/OutboundSink.
+        let cmd_slot: Arc<Mutex<Option<HeartbeatCommands>>> = Arc::new(Mutex::new(None));
+        let outbound_slot: Arc<Mutex<Option<OutboundSink>>> = Arc::new(Mutex::new(None));
+
+        let (old_tx, _old_rx) = mpsc::channel(8);
+        let (new_tx, _new_rx) = mpsc::channel(8);
+        *cmd_slot.lock().await = Some(new_tx.clone());
+        *outbound_slot.lock().await = Some(OutboundSink::Unattended(new_tx.clone()));
+
+        clear_session_state(&cmd_slot, &outbound_slot, &old_tx).await;
+        assert!(
+            cmd_slot.lock().await.is_some(),
+            "stale forwarder must not clear the new session's commands"
+        );
+        assert!(
+            outbound_slot.lock().await.is_some(),
+            "stale forwarder must not clear the new session's sink"
+        );
+    }
+
+    #[tokio::test]
+    async fn clear_session_state_never_touches_an_adhoc_sink() {
+        let cmd_slot: Arc<Mutex<Option<HeartbeatCommands>>> = Arc::new(Mutex::new(None));
+        let outbound_slot: Arc<Mutex<Option<OutboundSink>>> = Arc::new(Mutex::new(None));
+
+        let (hb_tx, _hb_rx) = mpsc::channel(8);
+        let (adhoc_tx, _adhoc_rx) = mpsc::channel(8);
+        *outbound_slot.lock().await = Some(OutboundSink::AdHoc(adhoc_tx));
+
+        clear_session_state(&cmd_slot, &outbound_slot, &hb_tx).await;
+        assert!(
+            outbound_slot.lock().await.is_some(),
+            "an ad-hoc sink belongs to the ad-hoc lifecycle"
+        );
+    }
+
+    // ── TURN-over-heartbeat round-trip ────────────────────────────────
+
+    #[tokio::test]
+    async fn request_turn_via_heartbeat_returns_servers_on_reply() {
+        let (cmd_tx, mut cmd_rx) = mpsc::channel::<HeartbeatCommand>(8);
+        let pending: Arc<Mutex<Option<tokio::sync::oneshot::Sender<Option<TurnCredentials>>>>> =
+            Arc::new(Mutex::new(None));
+
+        // Fake forwarder: observe the request command, then fulfil the
+        // pending waiter like the real loop does on BackendFrame::TurnCredentials.
+        let pending_for_reply = pending.clone();
+        tokio::spawn(async move {
+            match cmd_rx.recv().await {
+                Some(HeartbeatCommand::Send(SharerFrame::TurnCredentialsRequest)) => {}
+                other => panic!("expected TurnCredentialsRequest, got {other:?}"),
+            }
+            let waiter = pending_for_reply
+                .lock()
+                .await
+                .take()
+                .expect("waiter installed before the request was sent");
+            let _ = waiter.send(Some(TurnCredentials {
+                urls: vec!["turn:t.auffi.app:3478".to_string()],
+                username: "u".to_string(),
+                credential: "c".to_string(),
+                ttl: 3600,
+            }));
+        });
+
+        let servers = request_turn_via_heartbeat(&cmd_tx, &pending).await;
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].urls, vec!["turn:t.auffi.app:3478"]);
+    }
+
+    #[tokio::test]
+    async fn request_turn_via_heartbeat_degrades_to_empty_on_closed_channel() {
+        let (cmd_tx, cmd_rx) = mpsc::channel::<HeartbeatCommand>(1);
+        drop(cmd_rx);
+        let pending = Arc::new(Mutex::new(None));
+        let servers = request_turn_via_heartbeat(&cmd_tx, &pending).await;
+        assert!(servers.is_empty());
+        assert!(
+            pending.lock().await.is_none(),
+            "failed request must not leave a stale waiter behind"
+        );
+    }
+
+    #[tokio::test]
+    async fn request_turn_via_heartbeat_null_reply_means_stun_less() {
+        let (cmd_tx, mut cmd_rx) = mpsc::channel::<HeartbeatCommand>(8);
+        let pending: Arc<Mutex<Option<tokio::sync::oneshot::Sender<Option<TurnCredentials>>>>> =
+            Arc::new(Mutex::new(None));
+        let pending_for_reply = pending.clone();
+        tokio::spawn(async move {
+            let _ = cmd_rx.recv().await;
+            let waiter = pending_for_reply.lock().await.take().expect("waiter");
+            let _ = waiter.send(None);
+        });
+        let servers = request_turn_via_heartbeat(&cmd_tx, &pending).await;
+        assert!(servers.is_empty());
     }
 
     // ── validate_backend_url (security hardening) ─────────────────────

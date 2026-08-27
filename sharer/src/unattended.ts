@@ -83,6 +83,9 @@ function makePasswordToggleIcon(slashed: boolean): SVGElement {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { confirmDialog } from "./confirm-dialog.js";
+import { UNATTENDED_CONFIRM_OPTIONS } from "./unattended-confirm.js";
+import { SignalingBuffer, type WireIceCandidate } from "./signaling-buffer.js";
+import { wireAutostartToggle } from "./autostart-toggle.js";
 
 type ModeChoice = "adhoc" | "unattended";
 
@@ -91,7 +94,6 @@ interface UnattendedEvent {
     | "connected"
     | "needs-confirm"
     | "peer-joined"
-    | "peer-rejected"
     | "relay"
     | "disconnected"
     | "reconnecting"
@@ -103,10 +105,10 @@ interface UnattendedEvent {
   attempt?: number;
   after_ms?: number;
   /**
-   * Present only on `needs-confirm` events (Sec M-1). The accept /
-   * decline buttons must echo this back through `unattended_confirm`
-   * so the user's click routes to the right pending waiter even
-   * when overlapping pw-check attempts have queued multiple toasts.
+   * Present only on `needs-confirm` events (Sec M-1). The confirm
+   * dialog must echo this back through `unattended_confirm` so the
+   * user's click routes to the right pending waiter even when
+   * overlapping pw-check attempts have queued multiple dialogs.
    */
   confirmId?: number;
 }
@@ -128,11 +130,65 @@ const statusEl = document.getElementById("unattended-status") as HTMLElement | n
 const startBtn = document.getElementById("unattended-start-btn") as HTMLButtonElement | null;
 const stopBtn = document.getElementById("unattended-stop-btn") as HTMLButtonElement | null;
 const unpairBtn = document.getElementById("unattended-unpair-btn") as HTMLButtonElement | null;
-const confirmToast = document.getElementById("unattended-confirm-toast") as HTMLDivElement | null;
-const confirmYes = document.getElementById("unattended-confirm-yes") as HTMLButtonElement | null;
-const confirmNo = document.getElementById("unattended-confirm-no") as HTMLButtonElement | null;
+const autostartCheckbox = document.getElementById(
+  "unattended-autostart-toggle",
+) as HTMLInputElement | null;
+const autostartStatus = document.getElementById(
+  "unattended-autostart-status",
+) as HTMLElement | null;
 
+const autostart = autostartCheckbox
+  ? wireAutostartToggle({
+      checkbox: autostartCheckbox,
+      statusEl: autostartStatus,
+      invoke: (cmd) => invoke(cmd),
+    })
+  : null;
+
+// Cache of the Rust-side heartbeat state; refresh() resyncs it via
+// unattended_is_active because a webview reload (F5 / hot-reload)
+// resets this flag while the heartbeat keeps running.
 let active = false;
+
+// SDP/ICE buffering for the unattended relay path — same race as the
+// ad-hoc flow: the viewer sends its offer while start_streaming is
+// still initializing (TURN fetch + capturer startup), and an offer
+// invoked against the not-yet-built peer is lost. Shared module so
+// both paths normalize the ICE key casing identically.
+const signalBuffer = new SignalingBuffer({
+  sendOffer: async (sdp) => {
+    await invoke("receive_offer", { sdp }).catch((e: unknown) => {
+      setStatusText(`Fehler beim Verbindungsaufbau: ${detail(e)}`);
+    });
+  },
+  sendIce: async (ice) => {
+    await invoke("receive_ice_candidate", ice).catch(() => {
+      // Benign: candidate may be stale (remote description not yet set).
+    });
+  },
+});
+
+/**
+ * Serialised session start for a freshly confirmed helper. A previous
+ * viewer that vanished without a bye leaves the Rust peer populated
+ * (there is no ICE-failure teardown, mirroring ad-hoc semantics), so
+ * tear stale streaming state down first — keepSignaling, because the
+ * heartbeat WSS and its OutboundSink must survive the swap. Failures
+ * surface in the status line and reset state so the next attempt works.
+ */
+async function startUnattendedStream(): Promise<void> {
+  if (signalBuffer.hasActivity()) {
+    signalBuffer.reset();
+    await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+  }
+  try {
+    await invoke("start_streaming", { monitorId: 0, sessionCode: "" });
+    await signalBuffer.ready();
+  } catch (e) {
+    signalBuffer.reset();
+    setStatusText(`Fehler beim Streamen: ${detail(e)}`);
+  }
+}
 
 function hide(el: HTMLElement | null): void {
   if (el) el.style.display = "none";
@@ -195,6 +251,9 @@ async function refresh(): Promise<void> {
   hide(setupBlock);
   hide(passwordBlock);
   show(activeBlock);
+  // Resync from the Rust-side truth — the local flag lies after a
+  // webview reload while the heartbeat keeps running.
+  active = await invoke<boolean>("unattended_is_active").catch(() => active);
   setStatusText(active ? "Verbunden" : "Inaktiv");
   if (active) {
     hide(startBtn);
@@ -203,6 +262,7 @@ async function refresh(): Promise<void> {
     show(startBtn);
     hide(stopBtn);
   }
+  await autostart?.sync();
 }
 
 modeSelect?.addEventListener("change", async () => {
@@ -304,28 +364,6 @@ unpairBtn?.addEventListener("click", async () => {
   }
 });
 
-// Latest confirm_id we showed the toast for. Each new
-// `needs-confirm` event overwrites it; clicks read from here so a
-// stale click on a stale toast routes to the wrong waiter is
-// impossible (Sec M-1).
-let activeConfirmId: number | null = null;
-
-confirmYes?.addEventListener("click", async () => {
-  hide(confirmToast);
-  const id = activeConfirmId;
-  activeConfirmId = null;
-  if (id === null) return;
-  await invoke("unattended_confirm", { confirmId: id, accepted: true }).catch(() => {});
-});
-
-confirmNo?.addEventListener("click", async () => {
-  hide(confirmToast);
-  const id = activeConfirmId;
-  activeConfirmId = null;
-  if (id === null) return;
-  await invoke("unattended_confirm", { confirmId: id, accepted: false }).catch(() => {});
-});
-
 void listen<UnattendedEvent>("unattended-event", (e) => {
   const ev = e.payload;
   switch (ev.kind) {
@@ -342,20 +380,27 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
         `Reconnect in ${Math.round((ev.after_ms ?? 0) / 1000)}s (Versuch ${ev.attempt ?? "?"})`,
       );
       break;
-    case "needs-confirm":
-      activeConfirmId = ev.confirmId ?? null;
-      show(confirmToast);
+    case "needs-confirm": {
+      // App-global confirm dialog (the Rust side has already shown +
+      // focused the window). The old toast lived inside the hidden
+      // Settings panel and silently auto-declined. Each event opens a
+      // fresh dialog; confirmDialog's single-slot displaces an older
+      // one by resolving it false — matching the Sec M-1 eviction
+      // semantics. An answer after the 60 s Rust-side timeout routes
+      // to a no-longer-pending confirmId and is a silent no-op.
+      const id = ev.confirmId;
+      if (id === undefined) break;
+      void confirmDialog(UNATTENDED_CONFIRM_OPTIONS)
+        .then((accepted) => invoke("unattended_confirm", { confirmId: id, accepted }))
+        .catch(() => {});
       break;
+    }
     case "peer-joined":
       setStatusText("Helfer verbunden");
-      hide(confirmToast);
       // gh #20 + heartbeat→webrtc_peer integration: kick off the
-      // WebRTC pipeline. The viewer will follow up with an SDP offer
-      // forwarded via "relay".
-      void invoke("start_streaming", { monitorId: 0, sessionCode: "" }).catch(() => {});
-      break;
-    case "peer-rejected":
-      setStatusText(`Helfer getrennt: ${ev.reason ?? ""}`);
+      // WebRTC pipeline (tearing stale streaming state down first).
+      // The viewer follows up with an SDP offer via "relay".
+      void startUnattendedStream();
       break;
     case "revoked":
       setStatusText("Token widerrufen — bitte erneut pairen.");
@@ -371,25 +416,37 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       setStatusText("Lokales Lockout aktiv (10+ Fehlversuche). 1 h Sperre.");
       break;
     case "relay": {
-      // SDP/ICE forwarding — calls the same receive_offer /
-      // receive_ice_candidate Tauri commands the ad-hoc path uses;
-      // outbound goes back via the OutboundSink in Unattended mode.
+      // SDP/ICE forwarding through the shared buffer — same
+      // receive_offer / receive_ice_candidate Tauri commands (and the
+      // same ICE key normalization) as the ad-hoc path; outbound goes
+      // back via the OutboundSink in Unattended mode.
       const payload = (e.payload as unknown as { payload?: unknown }).payload;
       if (payload && typeof payload === "object" && "kind" in payload) {
         const p = payload as { kind: string; sdp?: { sdp: string }; candidate?: unknown };
         if (p.kind === "sdp" && p.sdp && typeof p.sdp.sdp === "string") {
-          void invoke("receive_offer", { sdp: p.sdp.sdp }).catch(() => {});
+          signalBuffer.offer(p.sdp.sdp);
         } else if (p.kind === "ice" && p.candidate) {
-          void invoke("receive_ice_candidate", p.candidate as Record<string, unknown>).catch(
-            () => {},
-          );
+          signalBuffer.ice(p.candidate as WireIceCandidate);
         } else if (p.kind === "bye") {
-          void invoke("disconnect_streaming").catch(() => {});
+          // keepSignaling keeps the heartbeat's OutboundSink installed.
+          // The full teardown nulled it, making the device one-shot:
+          // every later helper hit "kein aktiver Signaling-Kanal".
+          signalBuffer.reset();
+          void invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+          setStatusText("Helfer hat die Verbindung getrennt.");
         }
       }
       break;
     }
   }
+}).catch(() => {});
+
+// Abnormal streaming-loop exit while in unattended mode: main.ts owns
+// the disconnect flow; here only the handshake state + status line need
+// resetting so the next helper connect starts cleanly.
+void listen<{ reason: string }>("streaming-failed", () => {
+  signalBuffer.reset();
+  setStatusText("Übertragung unterbrochen — bereit für neue Verbindung.");
 }).catch(() => {});
 
 void refresh().catch(() => {});

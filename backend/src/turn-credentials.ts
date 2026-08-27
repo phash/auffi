@@ -26,6 +26,14 @@ export type TurnConfig = {
    * even though a valid pairing existed in UnattendedSessions.
    */
   unattendedSessions?: { findByDeviceId(id: string): unknown | null };
+  /**
+   * Optional: also accept a code matching a CONNECTED unattended
+   * device (its sharer holds a live bearer-authenticated WSS). The
+   * viewer fetches ICE servers BEFORE joining, when no
+   * UnattendedSession exists yet — the registry is the only gate that
+   * is already populated at that point.
+   */
+  unattendedRegistry?: { has(id: string): boolean };
 };
 
 export function makeCredentials(cfg: TurnConfig): {
@@ -68,7 +76,8 @@ export function registerTurnEndpoint(
         const hasAdHoc = normalized !== null && cfg.sessionStore.getSession(normalized) !== null;
         const hasUnattended =
           normalized !== null &&
-          (cfg.unattendedSessions?.findByDeviceId(normalized) ?? null) !== null;
+          ((cfg.unattendedSessions?.findByDeviceId(normalized) ?? null) !== null ||
+            (cfg.unattendedRegistry?.has(normalized) ?? false));
         if (!hasAdHoc && !hasUnattended) {
           return reply.status(403).send({ error: "no active session" });
         }

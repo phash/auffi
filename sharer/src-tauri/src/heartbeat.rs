@@ -16,8 +16,8 @@
 //! The module exposes a command/event channel pair so the Tauri app
 //! can: (a) receive incoming `pw-check` frames and route them to
 //! `device_password::verify` + the manual-confirm UI, (b) send the
-//! `pw-check-result`, SDP/ICE relay frames, and connection-log
-//! reports back through the same socket.
+//! `pw-check-result`, SDP/ICE relay frames, and TURN-credential
+//! requests back through the same socket.
 
 use std::time::Duration;
 
@@ -115,7 +115,7 @@ impl HeartbeatConfig {
     /// Tuned for the production spec: 30 s ping, 90 s pong-timeout,
     /// 1 s..60 s backoff window.
     pub fn production(backend_ws_url: String, device_id: String, token: String) -> Self {
-        let origin = derive_origin(&backend_ws_url);
+        let origin = crate::backend_urls::origin_from_ws(&backend_ws_url);
         Self {
             backend_ws_url,
             device_id,
@@ -149,10 +149,16 @@ pub enum BackendFrame {
     /// `{"type":"peer-joined","viewerInfo":{...}}`
     #[serde(rename = "peer-joined", rename_all = "camelCase")]
     PeerJoined { viewer_info: serde_json::Value },
-    #[serde(rename = "peer-rejected")]
-    PeerRejected { reason: String },
     #[serde(rename = "relay")]
     Relay { payload: serde_json::Value },
+    /// Reply to `SharerFrame::TurnCredentialsRequest`. `credentials`
+    /// is `null` when the backend has no TURN configured — the sharer
+    /// then builds its peer STUN-less, exactly like a failed HTTP
+    /// fetch on the ad-hoc path.
+    #[serde(rename = "turn-credentials")]
+    TurnCredentials {
+        credentials: Option<crate::turn_config::TurnCredentials>,
+    },
     /// Backend may emit `error` for protocol violations — we surface
     /// them as Disconnected so the UI gets a clear message.
     #[serde(rename = "error")]
@@ -165,24 +171,16 @@ pub enum BackendFrame {
 pub enum SharerFrame {
     #[serde(rename = "pw-check-result")]
     PwCheckResult { result: PwResult },
-    // The unattended heartbeat path does not yet emit connection telemetry —
-    // the ad-hoc signaling path does (feeding connection_log + the free-tier
-    // relay cap). These wire shapes are defined and serialization-tested so
-    // the wiring is a small diff; constructing them is tracked in gh #109.
-    #[allow(dead_code)]
-    #[serde(rename = "connection-started")]
-    ConnectionStarted {
-        #[serde(rename = "connectionType")]
-        connection_type: ConnectionType,
-    },
-    #[allow(dead_code)]
-    #[serde(rename = "connection-ended")]
-    ConnectionEnded {
-        #[serde(rename = "bytesRelayed")]
-        bytes_relayed: u64,
-    },
     #[serde(rename = "relay")]
     Relay { payload: serde_json::Value },
+    /// Ask the backend for ephemeral TURN credentials before building
+    /// the WebRTC peer for an unattended session (the ad-hoc path
+    /// fetches the same credentials via POST /turn-credentials; the
+    /// unattended sharer has no session code, but its WSS is already
+    /// bearer-authenticated). Answered with
+    /// `BackendFrame::TurnCredentials`.
+    #[serde(rename = "turn-credentials-request")]
+    TurnCredentialsRequest,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -191,13 +189,6 @@ pub enum PwResult {
     Ok,
     Fail,
     Rejected,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ConnectionType {
-    P2p,
-    Relay,
 }
 
 /// What the heartbeat loop emits to the Tauri-side app. Consumed via
@@ -214,12 +205,17 @@ pub enum HeartbeatEvent {
     PwCheck { attempt: String, auto_accept: bool },
     /// After `PwCheckResult::Ok`, the backend pairs viewer+sharer
     /// and forwards this. The sharer should now start the WebRTC
-    /// offer (same as the ad-hoc `peer-joined`).
+    /// offer (same as the ad-hoc `peer-joined`). Viewer loss is
+    /// signalled via a (possibly backend-synthesized) relay `bye`,
+    /// never via a sharer-directed peer-rejected.
     PeerJoined { viewer_info: serde_json::Value },
-    /// Viewer-side hangup / rejection.
-    PeerRejected { reason: String },
     /// SDP / ICE / hello / bye relay from the viewer.
     Relay { payload: serde_json::Value },
+    /// Backend's answer to `SharerFrame::TurnCredentialsRequest`.
+    /// `None` = backend has no TURN configured; proceed STUN-less.
+    TurnCredentials {
+        credentials: Option<crate::turn_config::TurnCredentials>,
+    },
     /// Lost the connection — heartbeat will retry. `reason` is for
     /// `dbg_log`, NOT user-facing.
     Disconnected { reason: String },
@@ -277,31 +273,6 @@ pub fn start(config: HeartbeatConfig) -> (HeartbeatCommands, HeartbeatEvents) {
     // function. No mutex, no Arc, no `lock().await` on the hot path.
     tauri::async_runtime::spawn(run_loop(config, cmd_rx, evt_tx));
     (cmd_tx, evt_rx)
-}
-
-fn derive_origin(ws_url: &str) -> String {
-    if let Ok(custom) = std::env::var("AUFFI_SHARER_ORIGIN") {
-        return custom;
-    }
-    derive_origin_from(ws_url)
-}
-
-/// Pure mapping `ws[s]://host[:port]/…` → `http[s]://host[:port]`.
-/// Split out so the unit test can pin the mapping without touching
-/// the `AUFFI_SHARER_ORIGIN` env var (CQ M-20: parallel tests racing
-/// on env vars flaked CI). The override branch is exercised by the
-/// integration suite, where serial process isolation is already
-/// guaranteed.
-fn derive_origin_from(ws_url: &str) -> String {
-    if let Some(rest) = ws_url.strip_prefix("wss://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return format!("https://{host}");
-    }
-    if let Some(rest) = ws_url.strip_prefix("ws://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return format!("http://{host}");
-    }
-    "http://localhost".to_string()
 }
 
 async fn run_loop(
@@ -512,14 +483,14 @@ async fn connect_and_run(
                                         .send(HeartbeatEvent::PeerJoined { viewer_info })
                                         .await;
                                 }
-                                BackendFrame::PeerRejected { reason } => {
-                                    let _ = evt_tx
-                                        .send(HeartbeatEvent::PeerRejected { reason })
-                                        .await;
-                                }
                                 BackendFrame::Relay { payload } => {
                                     let _ = evt_tx
                                         .send(HeartbeatEvent::Relay { payload })
+                                        .await;
+                                }
+                                BackendFrame::TurnCredentials { credentials } => {
+                                    let _ = evt_tx
+                                        .send(HeartbeatEvent::TurnCredentials { credentials })
                                         .await;
                                 }
                                 BackendFrame::BackendError { code, message } => {
@@ -881,24 +852,36 @@ mod tests {
     }
 
     #[test]
-    fn outgoing_connection_started_uses_camelcase_field() {
-        let frame = SharerFrame::ConnectionStarted {
-            connection_type: ConnectionType::P2p,
-        };
-        let json = serde_json::to_string(&frame).unwrap();
-        assert_eq!(
-            json,
-            r#"{"type":"connection-started","connectionType":"p2p"}"#
-        );
+    fn outgoing_turn_credentials_request_matches_backend_wire_shape() {
+        let json = serde_json::to_string(&SharerFrame::TurnCredentialsRequest).unwrap();
+        assert_eq!(json, r#"{"type":"turn-credentials-request"}"#);
     }
 
     #[test]
-    fn outgoing_connection_ended_carries_bytes_relayed() {
-        let frame = SharerFrame::ConnectionEnded {
-            bytes_relayed: 4096,
-        };
-        let json = serde_json::to_string(&frame).unwrap();
-        assert_eq!(json, r#"{"type":"connection-ended","bytesRelayed":4096}"#);
+    fn incoming_turn_credentials_parses_full_payload() {
+        let raw = r#"{"type":"turn-credentials","credentials":{"urls":["turn:t.auffi.app:3478"],"username":"1715000000:uuid","credential":"base64==","ttl":3600}}"#;
+        let parsed: BackendFrame = serde_json::from_str(raw).unwrap();
+        match parsed {
+            BackendFrame::TurnCredentials {
+                credentials: Some(c),
+            } => {
+                assert_eq!(c.urls, vec!["turn:t.auffi.app:3478"]);
+                assert_eq!(c.username, "1715000000:uuid");
+                assert_eq!(c.credential, "base64==");
+                assert_eq!(c.ttl, 3600);
+            }
+            other => panic!("expected TurnCredentials(Some), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn incoming_turn_credentials_null_means_no_turn_configured() {
+        let raw = r#"{"type":"turn-credentials","credentials":null}"#;
+        let parsed: BackendFrame = serde_json::from_str(raw).unwrap();
+        match parsed {
+            BackendFrame::TurnCredentials { credentials: None } => {}
+            other => panic!("expected TurnCredentials(None), got {other:?}"),
+        }
     }
 
     #[test]
@@ -969,20 +952,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn derive_origin_strips_path_keeps_host() {
-        assert_eq!(
-            derive_origin_from("wss://auffi.app/signal"),
-            "https://auffi.app"
-        );
-        assert_eq!(
-            derive_origin_from("ws://localhost:8080/signal"),
-            "http://localhost:8080"
-        );
-    }
-
-    #[test]
-    fn derive_origin_falls_back_to_localhost_on_unknown_scheme() {
-        assert_eq!(derive_origin_from("nope://x"), "http://localhost");
-    }
 }

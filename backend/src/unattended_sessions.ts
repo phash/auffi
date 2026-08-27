@@ -170,6 +170,18 @@ export const PW_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
 export class UnattendedSessions {
   private readonly byDevice = new Map<string, UnattendedSession>();
   private readonly viewerToDevice = new Map<WebSocket, string>();
+  private onStaleReap: ((sess: UnattendedSession) => void) | null = null;
+
+  /**
+   * Callback invoked for every session [`sweepStale`] reaps, AFTER it
+   * has been removed from the store. Registered by the signaling
+   * module (mirrors `SessionStore.setOnExpiredDrop`) so the sharer
+   * learns its pending pw wait is dead and the abandoned viewer socket
+   * gets closed — the store itself stays transport-agnostic.
+   */
+  setOnStaleReap(cb: (sess: UnattendedSession) => void): void {
+    this.onStaleReap = cb;
+  }
 
   /**
    * Begin tracking a viewer's pending unattended connect attempt
@@ -218,7 +230,10 @@ export class UnattendedSessions {
         stale.push(sess);
       }
     }
-    for (const sess of stale) this.remove(sess.deviceId);
+    for (const sess of stale) {
+      this.remove(sess.deviceId);
+      this.onStaleReap?.(sess);
+    }
     return stale;
   }
 

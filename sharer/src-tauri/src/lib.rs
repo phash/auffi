@@ -1,4 +1,5 @@
 mod account;
+mod backend_urls;
 mod capture;
 mod device_password;
 mod encoder;
@@ -312,13 +313,16 @@ async fn confirm_peer(
         // holds the other sender clone into the WS task's command channel —
         // clear it too so every sender drops and the task closes the socket
         // and exits (instead of lingering on a session the backend already
-        // removed).
+        // removed). Compare-and-clear: only the AdHoc variant belongs to
+        // this flow — an Unattended sink is the heartbeat's.
         {
             let mut guard = state.0.lock().unwrap_or_else(|p| p.into_inner());
             *guard = None;
         }
         let mut sink_guard = outbound_state.0.lock().await;
-        *sink_guard = None;
+        if sink_guard.as_ref().is_some_and(|s| s.is_adhoc()) {
+            *sink_guard = None;
+        }
     }
 
     Ok(())
@@ -362,6 +366,7 @@ async fn start_streaming(
     timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
     outbound_state: State<'_, OutboundSinkState>,
+    unattended_state: State<'_, unattended_cmd::UnattendedState>,
 ) -> Result<(), String> {
     dbg_log(&format!(
         "[start_streaming] enter monitor_id={} session_code=*** os={} arch={} v{}",
@@ -379,13 +384,34 @@ async fn start_streaming(
     if rtc_state.0.lock().await.is_some() {
         return Err("ein Stream läuft bereits — disconnect_streaming zuerst aufrufen".to_string());
     }
-    let ws_url = crate::unattended_cmd::backend_ws_url_secure()?;
-    let backend_http_url = turn_config::ws_url_to_http(&ws_url);
-    dbg_log(&format!(
-        "[start_streaming] backend_http_url={}",
-        backend_http_url
-    ));
-    let ice_servers = turn_config::fetch_ice_servers(&backend_http_url, &session_code).await;
+    // TURN credentials, mode-dependent: the unattended path has no
+    // session code and asks over its bearer-authenticated heartbeat
+    // WSS; the ad-hoc path POSTs the session code to the backend.
+    // Both degrade to an empty (STUN-less) list on failure.
+    let unattended_cmds = {
+        let guard = outbound_state.0.lock().await;
+        match guard.as_ref() {
+            Some(outbound::OutboundSink::Unattended(cmds)) => Some(cmds.clone()),
+            _ => None,
+        }
+    };
+    let ice_servers = match unattended_cmds {
+        Some(cmds) => {
+            dbg_log("[start_streaming] fetching TURN via heartbeat WSS");
+            unattended_cmd::request_turn_via_heartbeat(&cmds, &unattended_state.pending_turn)
+                .await
+        }
+        None => {
+            let ws_url = crate::unattended_cmd::backend_ws_url_secure()?;
+            let backend_http_url = backend_urls::http_base_from_ws(&ws_url);
+            let origin = backend_urls::origin_from_ws(&ws_url);
+            dbg_log(&format!(
+                "[start_streaming] backend_http_url={}",
+                backend_http_url
+            ));
+            turn_config::fetch_ice_servers(&backend_http_url, &origin, &session_code).await
+        }
+    };
     dbg_log(&format!(
         "[start_streaming] ice_servers count={}",
         ice_servers.len()
@@ -794,10 +820,8 @@ fn check_streaming_preconditions(
     Ok(())
 }
 
-/// Tear down the active WebRTC session and hide the border overlay.
-///
-/// Invocable both from the main window (future use) and from the border
-/// overlay's "Trennen" button.
+/// Tear down the active WebRTC session (peer, input controller, file
+/// transfer, free-tier timers, streaming loop).
 ///
 /// `keep_signaling` controls whether the underlying WS task to the
 /// backend is preserved. Defaults to `false` (full teardown — used on
@@ -854,14 +878,20 @@ async fn disconnect_streaming(
             let mut guard = sig_state.0.lock().unwrap_or_else(|p| p.into_inner());
             *guard = None;
         }
-        // Clear the OutboundSink only on the full-teardown path. The
-        // viewer-swap path (keep_signaling=true) keeps the same WSS
-        // and the same sink — the new viewer's offer must answer
-        // through the channel still in flight. Scoped block above
-        // drops the std::sync::MutexGuard before the await on the
-        // tokio::sync::Mutex (the guard isn't `Send`).
+        // Clear the OutboundSink only on the full-teardown path AND
+        // only when it is the AdHoc variant. The viewer-swap path
+        // (keep_signaling=true) keeps the same WSS and the same sink —
+        // the new viewer's offer must answer through the channel still
+        // in flight. An Unattended sink is never cleared from here:
+        // it belongs to the heartbeat lifecycle, and blindly nulling
+        // it on a viewer bye made every later unattended session fail
+        // with "kein aktiver Signaling-Kanal" until a manual restart.
+        // Scoped block above drops the std::sync::MutexGuard before
+        // the await on the tokio::sync::Mutex (the guard isn't `Send`).
         let mut sink_guard = outbound_state.0.lock().await;
-        *sink_guard = None;
+        if sink_guard.as_ref().is_some_and(|s| s.is_adhoc()) {
+            *sink_guard = None;
+        }
     }
 
     // Close the peer explicitly, then drop it. webrtc-rs has NO Drop-based
@@ -1395,6 +1425,7 @@ pub fn run() {
             unattended_cmd::unattended_set_mode,
             unattended_cmd::unattended_start,
             unattended_cmd::unattended_stop,
+            unattended_cmd::unattended_is_active,
             unattended_cmd::unattended_confirm,
             unattended_cmd::unattended_submit_feedback,
             update_check::check_for_update,

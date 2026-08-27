@@ -31,3 +31,21 @@ export function planStreamingStopped(
   }
   return { resetSessionUi: true, showGenericStatus: !specificStatusSet };
 }
+
+/**
+ * German status line for the "streaming-failed" Tauri event — the
+ * streaming loop's abnormal self-exit (`emit_streaming_failed` in
+ * lib.rs). Reasons are the Rust-side literals; anything unknown gets
+ * the generic internal-error copy so a new reason never surfaces as
+ * raw protocol text.
+ */
+export function streamingFailedMessage(reason: string): string {
+  switch (reason) {
+    case "capture":
+      return "Bildschirmaufnahme unterbrochen — die Übertragung wurde beendet.";
+    case "track-write":
+      return "Verbindung zum Helfer verloren — die Übertragung wurde beendet.";
+    default:
+      return "Interner Fehler — die Übertragung wurde beendet.";
+  }
+}

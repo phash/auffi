@@ -28,13 +28,41 @@ export type RelayPayload = RelaySdp | RelayIce | RelayHello | RelayBye;
 
 export type RelayMsg = { type: "relay"; payload: RelayPayload };
 
+/**
+ * Unattended sharer → backend: request ephemeral TURN credentials over
+ * the bearer-authenticated WSS. The ad-hoc path POSTs its session code
+ * to /turn-credentials instead; the unattended sharer has no code, but
+ * its WSS identity already proves the device. Answered with
+ * `turn-credentials`.
+ */
+export type TurnCredentialsRequest = { type: "turn-credentials-request" };
+
+export type TurnCredentialsPayload = {
+  urls: string[];
+  username: string;
+  credential: string;
+  ttl: number;
+};
+
+/**
+ * Backend → unattended sharer: reply to `turn-credentials-request`.
+ * `credentials` is null when the backend has no TURN configured — the
+ * sharer then builds its peer STUN-less (same degradation as a failed
+ * REST fetch).
+ */
+export type TurnCredentialsMsg = {
+  type: "turn-credentials";
+  credentials: TurnCredentialsPayload | null;
+};
+
 export type IncomingMessage =
   | SharerRegister
   | SharerConfirm
   | ViewerJoin
   | RelayMsg
   | PwAttempt
-  | PwCheckResult;
+  | PwCheckResult
+  | TurnCredentialsRequest;
 
 export type CodeAssigned = {
   type: "code-assigned";
@@ -156,4 +184,5 @@ export type OutgoingMessage =
   | WrongPassword
   | LockedOut
   | RejectedByUser
-  | PwCheck;
+  | PwCheck
+  | TurnCredentialsMsg;
