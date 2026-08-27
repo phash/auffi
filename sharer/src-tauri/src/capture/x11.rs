@@ -166,7 +166,11 @@ pub(super) fn convert_to_bgra(data: Vec<u8>, depth: u8) -> Vec<u8> {
         24 => {
             // BGRX → BGRA: set alpha=255
             let mut out = data;
-            for pixel in out.chunks_exact_mut(4) {
+            // as_chunks_mut over chunks_exact_mut: the const chunk size gives
+            // fixed-size arrays, so the alpha write needs no bounds check.
+            // A trailing partial pixel (len not a multiple of 4) is malformed
+            // input and stays untouched, same as before.
+            for pixel in out.as_chunks_mut::<4>().0 {
                 pixel[3] = 0xff;
             }
             out
