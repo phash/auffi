@@ -354,6 +354,26 @@ fn capture_backend_uses_portal() -> bool {
     }
 }
 
+/// Close `peer` when `result` is an error, then hand the result back.
+///
+/// webrtc-rs has no Drop-based teardown (see `disconnect_streaming`), so an
+/// early return between `SharerPeer::new` and the hand-off to `WebRtcState`
+/// leaks the ICE agent, its bound UDP sockets and the SCTP tasks — for the
+/// whole process lifetime, on every failed start. Nothing else owns the peer
+/// at that point, so the close has to happen here.
+async fn close_peer_on_err<T, E>(
+    peer: &webrtc_peer::SharerPeer,
+    result: Result<T, E>,
+) -> Result<T, E> {
+    if result.is_err() {
+        dbg_log("[start_streaming] failed after peer construction — closing peer");
+        if let Err(e) = peer.close().await {
+            dbg_log(&format!("[start_streaming] peer close during unwind: {e}"));
+        }
+    }
+    result
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn start_streaming(
@@ -515,14 +535,18 @@ async fn start_streaming(
     });
 
     dbg_log("[start_streaming] before ScreenCapturer::start");
-    let capturer = capture::ScreenCapturer::start(monitor_id)
-        .await
-        .map_err(|e| {
-            dbg_log(&format!(
-                "[start_streaming] ScreenCapturer::start FAILED: {e}"
-            ));
-            e.to_string()
-        })?;
+    let capturer = close_peer_on_err(
+        &peer,
+        capture::ScreenCapturer::start(monitor_id)
+            .await
+            .map_err(|e| {
+                dbg_log(&format!(
+                    "[start_streaming] ScreenCapturer::start FAILED: {e}"
+                ));
+                e.to_string()
+            }),
+    )
+    .await?;
     dbg_log(&format!(
         "[start_streaming] capturer ready {}x{}",
         capturer.width(),
@@ -535,12 +559,16 @@ async fn start_streaming(
     // fallible step, and a failure after the input/file/rtc slots were
     // populated used to leave them stuck (the gh#64 guards then blocked
     // every retry until a webview reload).
-    let enc = encoder::Vp8Encoder::new(width, height, 2000).map_err(|e| {
-        dbg_log(&format!(
-            "[start_streaming] Vp8Encoder::new FAILED ({width}x{height}): {e}"
-        ));
-        e
-    })?;
+    let enc = close_peer_on_err(
+        &peer,
+        encoder::Vp8Encoder::new(width, height, 2000).map_err(|e| {
+            dbg_log(&format!(
+                "[start_streaming] Vp8Encoder::new FAILED ({width}x{height}): {e}"
+            ));
+            e
+        }),
+    )
+    .await?;
     dbg_log("[start_streaming] encoder ready");
 
     // Resolve the chosen monitor's top-left in virtual-desktop coordinates so
@@ -558,8 +586,12 @@ async fn start_streaming(
     let (files_msg_tx, mut files_msg_rx) = mpsc::channel::<FileMessage>(256);
     peer.on_data_channels(input_tx, files_msg_tx);
 
-    let controller = InputController::new(monitor_origin.0, monitor_origin.1, width, height)
-        .map_err(|e| e.to_string())?;
+    let controller = close_peer_on_err(
+        &peer,
+        InputController::new(monitor_origin.0, monitor_origin.1, width, height)
+            .map_err(|e| e.to_string()),
+    )
+    .await?;
     {
         let mut guard = input_state.0.lock().await;
         *guard = Some(controller);
