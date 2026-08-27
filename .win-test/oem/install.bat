@@ -49,7 +49,35 @@ set "PORT=\\host.lan\Data\Auffi_0.6.5_x64_portable.exe"
 if not exist "%PORT%" (
     >> "%RES%" echo.
     >> "%RES%" echo [portable] uebersprungen — %PORT% nicht vorhanden ^(CI noch nicht fertig^)
+    goto REM ---- NSIS-Setup-Test (nur wenn die setup.exe in der share liegt) ----
+set "NSIS=\\host.lan\Data\Auffi_0.6.5_x64-setup.exe"
+if not exist "%NSIS%" (
+    >> "%RES%" echo.
+    >> "%RES%" echo [nsis] uebersprungen — %NSIS% nicht vorhanden
     goto :done
+)
+>> "%RES%" echo.
+>> "%RES%" echo [nsis 1/4] MSI-Installation entfernen, damit sich die Installer nicht ueberlagern ...
+msiexec /x "%MSI%" /qn /norestart >nul 2>&1
+>> "%RES%" echo [nsis 2/4] setup.exe still installieren ^(/S^) ...
+"%NSIS%" /S
+timeout /t 20 /nobreak >nul
+set "NEXE="
+for %%P in ("%ProgramFiles%\Auffi\auffi-sharer.exe" "%ProgramFiles(x86)%\Auffi\auffi-sharer.exe" "%LOCALAPPDATA%\Auffi\auffi-sharer.exe") do (
+    if exist "%%~P" set "NEXE=%%~P"
+)
+if "!NEXE!"=="" ( >> "%RES%" echo FEHLER: auffi-sharer.exe nach NSIS-Install nicht gefunden & set FAILED=1 & goto :done )
+>> "%RES%" echo   gefunden: !NEXE!
+>> "%RES%" echo [nsis 3/4] starten ...
+del "%TEMP%\auffi-debug.log" >nul 2>&1
+start "" /b "!NEXE!"
+timeout /t 25 /nobreak >nul
+>> "%RES%" echo [nsis 4/4] Prozess laeuft? ...
+tasklist /FI "IMAGENAME eq auffi-sharer.exe" 2>nul | find /I "auffi-sharer.exe" >nul
+if "!errorlevel!"=="0" ( >> "%RES%" echo   NSIS-Installation LAEUFT ) else ( >> "%RES%" echo FEHLER: NSIS-Installation laeuft nicht & set FAILED=1 )
+taskkill /F /IM auffi-sharer.exe >nul 2>&1
+
+:done
 )
 >> "%RES%" echo.
 >> "%RES%" echo [portable 1/3] Portable lokal kopieren + starten ^(kein Install^) ...
