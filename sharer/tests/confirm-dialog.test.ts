@@ -48,4 +48,12 @@ describe("confirmDialog (sharer)", () => {
     expect(document.querySelectorAll("#sharer-confirm-backdrop").length).toBe(1);
     expect(document.getElementById("sharer-confirm-title")!.textContent).toBe("Second");
   });
+
+  it("resolves the displaced dialog's promise with false", async () => {
+    const p1 = confirmDialog({ title: "First", message: "m", confirmLabel: "Ja" });
+    const p2 = confirmDialog({ title: "Second", message: "m", confirmLabel: "Ja" });
+    expect(await p1).toBe(false);
+    btn("Ja").click();
+    expect(await p2).toBe(true);
+  });
 });

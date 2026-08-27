@@ -9,7 +9,8 @@ import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { load } from "@tauri-apps/plugin-store";
 import type { TrustedPeer } from "./trusted-peers.js";
 import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted-peers.js";
-import { friendlyMonitorLabel } from "./monitor-display.js";
+import { friendlyMonitorLabel, monitorPickerView } from "./monitor-display.js";
+import { planStreamingStopped } from "./streaming-stopped-policy.js";
 import { setupTabs } from "./tabs.js";
 import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-banner.js";
 import { formatConnectionRequest } from "./connect-format.js";
@@ -61,9 +62,11 @@ const rememberPeerCheckbox = document.getElementById("remember-peer") as HTMLInp
 const monitorSelectEl = document.getElementById("monitor-select")!;
 const monitorListEl = document.getElementById("monitor-list")!;
 const streamBtn = document.getElementById("stream-btn")! as HTMLButtonElement;
+const monitorCancelBtn = document.getElementById("monitor-cancel-btn")! as HTMLButtonElement;
 const copyBtn = document.getElementById("copy-btn")! as HTMLButtonElement;
 const newCodeBtn = document.getElementById("new-code-btn")! as HTMLButtonElement;
 const pauseBannerEl = document.getElementById("pause-banner")!;
+const freeTierBannerEl = document.getElementById("free-tier-banner")!;
 const streamingActionsEl = document.getElementById("streaming-actions")!;
 const stopStreamingBtn = document.getElementById("stop-streaming-btn")! as HTMLButtonElement;
 const sendFileBtn = document.getElementById("send-file-btn")! as HTMLButtonElement;
@@ -97,9 +100,11 @@ const linkMrd = document.getElementById("link-mrd")! as HTMLButtonElement;
 const aboutVersionEl = document.getElementById("about-version")!;
 
 // ── Modal focus trap ──────────────────────────────────────────────────────────
-// The sharer's overlays (peer-confirm, peer-remove, stop-confirm, monitor
-// picker, file-offer) all carry role="dialog" aria-modal but toggle via a
-// class / inline display. One global handler confines Tab to whichever dialog
+// The sharer's dialogs (peer-confirm, peer-remove, stop-confirm, file-offer,
+// plus the dynamically mounted confirm-dialog and feedback modal) all carry
+// role="dialog" aria-modal but toggle via a class / inline display. (The
+// monitor picker is an inline card section, not a modal — it is deliberately
+// not role="dialog".) One global handler confines Tab to whichever dialog
 // is actually rendered (getClientRects() is true only for an on-screen element,
 // and unlike offsetParent it also works for position:fixed overlays). This
 // avoids per-dialog wiring and stale listeners.
@@ -133,6 +138,22 @@ document.addEventListener("keydown", (e) => {
 let currentIpPrefix: string | null = null;
 let currentCode: string | null = null;
 
+// One-shot: set by paths that show their own stop/restart status (bye,
+// stop-confirm, decline via restartSignaling, mode switch) right before they
+// trigger disconnect_streaming. The streaming-stopped listener consumes it
+// and skips the generic "Stream beendet." so the specific message survives.
+let specificStopStatusPending = false;
+
+// True while the ad-hoc surface (9-digit code + signaling WS) is meant to be
+// running. Rust keeps ONE OutboundSink, so running the ad-hoc signaling
+// while Unattended mode is active would steal the heartbeat's sink — relay
+// answers would route into the wrong channel and break the session.
+let adhocSurfaceActive = false;
+
+// Relay free-tier cutoff arrived — the viewer ends the session next; lets
+// the bye branch show the real reason instead of "Helfer hat…".
+let freeTierCutoffSeen = false;
+
 // SDP+ICE arrive immediately after `peer-confirmed` but the WebRTC peer is
 // only constructed when start_streaming runs (after the user picks a monitor).
 // Buffer them until the peer exists, then replay in order.
@@ -146,10 +167,9 @@ type IcePayload = {
 };
 let pendingIce: IcePayload[] = [];
 
-// SDP/ICE replay was duplicated across three start_streaming success
-// paths (manual accept, monitor-pick click, trusted-peer auto-accept).
-// New paths must use this helper or stale offer/ice candidates leak
-// between sessions.
+// SDP/ICE replay is shared by both start_streaming success paths (the
+// portal accept path and the monitor-pick click). New paths must use this
+// helper or stale offer/ice candidates leak between sessions.
 async function replayPendingSignaling(): Promise<void> {
   if (pendingOffer) {
     const sdp = pendingOffer;
@@ -486,6 +506,10 @@ document.getElementById("accept")!.addEventListener("click", () => {
       setStatus("Verbindung akzeptiert — Bildschirm auswählen…", "waiting");
       const monitors = await invoke<DisplayInfo[]>("list_monitors");
       renderMonitorChoices(monitors);
+      // After a viewer-swap the button may still be disabled from the
+      // previous session's start — the streaming-stopped listener
+      // deliberately leaves keepSignaling teardowns alone.
+      streamBtn.disabled = false;
       openMonitorPicker("start");
     })
     .catch((err: unknown) => {
@@ -526,14 +550,29 @@ function renderMonitorChoices(monitors: DisplayInfo[]): void {
   monitorListEl.replaceChildren(...nodes);
 }
 
-document.getElementById("decline")!.addEventListener("click", () => {
-  invoke("confirm_peer", { accepted: false });
+declineBtn.addEventListener("click", async () => {
   confirmEl.classList.remove("visible");
   rememberPeerCheckbox.checked = false;
   currentIpPrefix = null;
-  setStatus("Abgelehnt. Warte auf neue Verbindung…", "waiting");
-  newCodeBtn.classList.add("visible");
-  startSignaling().catch(() => {});
+  setStatus("Abgelehnt. Neuer Code wird angefragt…", "waiting");
+  // Await before restarting: confirm_peer clears SignalingState only AFTER
+  // the decline frame is sent Rust-side. Racing start_signaling against it
+  // trips the gh #64 still-populated guard, the failure gets swallowed and
+  // the app is stranded showing a dead code. The backend also closes the
+  // sharer WS on a decline, so a full restart (fresh code) is the only
+  // correct continuation.
+  try {
+    await invoke("confirm_peer", { accepted: false });
+  } catch {
+    // Benign: the backend may already have dropped the socket — the
+    // restart below recovers the session either way.
+  }
+  try {
+    await restartSignaling();
+  } catch (e) {
+    showFriendlyError("Neuer Code konnte nicht angefragt werden. Bitte erneut versuchen.", e);
+    showReconnect();
+  }
 });
 
 // ── Start streaming ──────────────────────────────────────────────────────────
@@ -544,12 +583,21 @@ document.getElementById("decline")!.addEventListener("click", () => {
 // "start" flow in "switch" semantics — closing the modal clears it.
 function openMonitorPicker(mode: "start" | "switch"): void {
   monitorSelectEl.dataset.mode = mode;
+  const view = monitorPickerView(mode);
+  streamBtn.textContent = view.cta;
+  monitorCancelBtn.style.display = view.showCancel ? "" : "none";
   monitorSelectEl.classList.add("visible");
 }
 function closeMonitorPicker(): void {
   monitorSelectEl.classList.remove("visible");
   delete monitorSelectEl.dataset.mode;
 }
+
+// Cancel is only offered in "switch" mode (see monitorPickerView): the
+// stream keeps running, so backing out needs no further action.
+monitorCancelBtn.addEventListener("click", () => {
+  closeMonitorPicker();
+});
 
 streamBtn.addEventListener("click", () => {
   const checked = monitorListEl.querySelector<HTMLInputElement>(
@@ -633,7 +681,11 @@ stopStreamingBtn.addEventListener("click", () => {
 
 stopConfirmYesBtn.addEventListener("click", () => {
   stopConfirmDialog.classList.remove("visible");
-  invoke("disconnect_streaming").catch(() => {});
+  specificStopStatusPending = true;
+  invoke("disconnect_streaming").catch(() => {
+    // No streaming-stopped event will arrive to consume the flag.
+    specificStopStatusPending = false;
+  });
   hideStreamingActions();
   // Full teardown closes the signaling WS, so the backend drops the
   // session — the old code is no longer valid. Tell the user the truth.
@@ -651,13 +703,23 @@ stopConfirmNoBtn.addEventListener("click", () => {
 
 // Global Escape-key handler for in-app dialogs. Each dialog escapes to its
 // safer choice: connection-confirm → Ablehnen, file-offer → Ablehnen,
-// stop-confirm → Abbrechen. This is the standard keyboard expectation and
-// prevents users from getting stuck in a modal they don't know how to close.
+// stop-confirm → Abbrechen, monitor picker (switch mode only — a "start"
+// picker has no cancel path, see monitorPickerView) → Abbrechen. This is
+// the standard keyboard expectation and prevents users from getting stuck
+// in a modal they don't know how to close.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (confirmEl.classList.contains("visible")) {
     e.preventDefault();
     declineBtn.click();
+    return;
+  }
+  if (
+    monitorSelectEl.classList.contains("visible") &&
+    monitorSelectEl.dataset.mode === "switch"
+  ) {
+    e.preventDefault();
+    monitorCancelBtn.click();
     return;
   }
   if (fileOfferDialog.classList.contains("visible")) {
@@ -750,6 +812,13 @@ listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) =>
     pendingOffer = null;
     pendingIce = [];
     hideStreamingActions();
+    // The streaming-stopped listener deliberately ignores keepSignaling
+    // events (they may arrive after the new-peer state below is set and
+    // would clobber it) — so clear the per-session indicators here.
+    pauseBannerEl.classList.remove("visible");
+    freeTierBannerEl.classList.remove("visible");
+    connTypeInfoEl.textContent = "";
+    connTypeInfoEl.className = "";
     await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
   }
   currentIpPrefix = e.payload.ipPrefix;
@@ -775,6 +844,9 @@ listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) =>
   });
   rememberPeerCheckbox.checked = trusted;
   confirmEl.classList.add("visible");
+  // This dialog gates screen access — give it initial keyboard focus like
+  // every other dialog, on the safer choice (matching stop/remove-confirm).
+  declineBtn.focus();
 });
 
 listen<{ payload: RelayPayload }>("relay", (e) => {
@@ -806,9 +878,17 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
     // notice when ICE eventually times out, which surfaces as the
     // generic "Verbindung verloren" message instead of the friendly
     // "Helfer hat die Verbindung beendet" the user actually wants.
-    invoke("disconnect_streaming").catch(() => {});
+    specificStopStatusPending = true;
+    invoke("disconnect_streaming").catch(() => {
+      specificStopStatusPending = false;
+    });
     hideStreamingActions();
-    setStatus("Helfer hat die Verbindung beendet.", "idle");
+    setStatus(
+      freeTierCutoffSeen
+        ? "Übertragung beendet — Zeitlimit für kostenlose Relay-Verbindungen erreicht."
+        : "Helfer hat die Verbindung beendet.",
+      "idle",
+    );
     newCodeBtn.classList.add("visible");
   }
 });
@@ -830,20 +910,35 @@ listen<{ paused: boolean }>("input-paused-changed", (e) => {
 });
 
 listen<{ keepSignaling: boolean }>("streaming-stopped", (e) => {
-  setStatus("Stream beendet.", "idle");
+  const plan = planStreamingStopped(e.payload.keepSignaling, specificStopStatusPending);
+  if (!plan.resetSessionUi) {
+    // Viewer-swap: the peer-joined handler tore down the stream itself and
+    // already owns the state for the NEW helper (currentIpPrefix, hidden
+    // Neuer-Code button, open confirm dialog). Tauri gives no ordering
+    // guarantee between event delivery and invoke resolution, so this
+    // event may arrive after that setup — touching it here would null the
+    // new helper's IP and break "Diesen Helfer merken".
+    return;
+  }
+  specificStopStatusPending = false;
+  freeTierCutoffSeen = false;
+  if (plan.showGenericStatus) {
+    setStatus("Stream beendet.", "idle");
+  }
   streamBtn.disabled = false;
   pauseBannerEl.classList.remove("visible");
+  freeTierBannerEl.classList.remove("visible");
   currentIpPrefix = null;
   connTypeInfoEl.textContent = "";
   connTypeInfoEl.className = "";
   hideStreamingActions();
   // Full teardown drops the signaling WS, so the ad-hoc code is released
-  // server-side — clear it instead of leaving a dead code on screen. A
-  // viewer-swap (keepSignaling) keeps the same code, so leave it shown.
-  if (!e.payload.keepSignaling) {
-    resetCode();
+  // server-side — clear it instead of leaving a dead code on screen.
+  resetCode();
+  // In Unattended mode there is no ad-hoc surface to mint codes for.
+  if (adhocSurfaceActive) {
+    newCodeBtn.classList.add("visible");
   }
-  newCodeBtn.classList.add("visible");
   // Reset the WebRTC handshake buffers so the next session can register
   // its own offer + ICE candidates. Without this reset, a stale
   // streamingReady=true from the previous session causes the relay
@@ -864,6 +959,23 @@ listen<string>("connection-type", (e) => {
     connTypeInfoEl.classList.remove("relay");
     connTypeInfoEl.classList.add("direct");
   }
+});
+
+// Relay sessions are free-tier-capped: Rust starts an 8-minute warning +
+// 10-minute cutoff timer on relay connect (lib.rs). Enforcement lives in
+// the viewer (it ends the session at cutoff) — these listeners make sure
+// the sharer-user is warned before the drop instead of being surprised.
+listen("free-tier-warning", () => {
+  freeTierBannerEl.classList.add("visible");
+});
+
+listen("free-tier-cutoff", () => {
+  freeTierBannerEl.classList.remove("visible");
+  freeTierCutoffSeen = true;
+  setStatus(
+    "Zeitlimit für kostenlose Relay-Verbindungen erreicht — die Übertragung wird beendet.",
+    "error",
+  );
 });
 
 let pendingFileOfferId: string | null = null;
@@ -922,32 +1034,87 @@ aboutVersionEl.textContent = `Version ${appVersion}`;
 
 // ── Start ────────────────────────────────────────────────────────────────────
 
-async function startSignaling(): Promise<void> {
-  await invoke("start_signaling");
-}
-
 /**
  * Tear down any in-flight session before requesting a fresh signaling
  * channel. The backend guard (gh #64) rejects start_signaling while
  * SignalingState / WebRtcState / InputControllerState / FileTransferState
- * are still populated — call this from Neuer-Code and Reconnect, where
- * the user explicitly wants a clean restart.
+ * are still populated — call this wherever the user explicitly wants a
+ * clean ad-hoc restart (Neuer-Code, Reconnect, decline, bootstrap).
+ * Every caller has just set its own status line, so the streaming-stopped
+ * emitted by the disconnect must not overwrite it with "Stream beendet.".
  */
 async function restartSignaling(): Promise<void> {
-  await invoke("disconnect_streaming").catch(() => {});
+  adhocSurfaceActive = true;
+  specificStopStatusPending = true;
+  await invoke("disconnect_streaming").catch(() => {
+    specificStopStatusPending = false;
+  });
   streamingReady = false;
   pendingOffer = null;
   pendingIce = [];
   await invoke("start_signaling");
 }
 
+const UNATTENDED_MODE_STATUS =
+  "Unattended-Modus aktiv — Helfer verbinden sich über das Dashboard.";
+
+/**
+ * Keep the ad-hoc surface consistent with the persisted mode. Rust keeps a
+ * single OutboundSink: with Unattended mode active, a stray start_signaling
+ * would overwrite the heartbeat's sink and relay answers would route into
+ * the dead ad-hoc channel (and the still-displayed 9-digit code would let
+ * an ad-hoc join hijack the sink right back). Runs at bootstrap and on
+ * every "auffi-unattended-state-changed" the settings UI dispatches, and is
+ * idempotent via adhocSurfaceActive.
+ */
+async function reconcileAdhocSurface(): Promise<void> {
+  const mode = await invoke<string>("unattended_get_mode").catch(() => "adhoc");
+  if (mode === "unattended") {
+    if (adhocSurfaceActive) {
+      adhocSurfaceActive = false;
+      specificStopStatusPending = true;
+      await invoke("disconnect_streaming").catch(() => {
+        specificStopStatusPending = false;
+      });
+    }
+    resetCode();
+    hideReconnect();
+    setStatus(UNATTENDED_MODE_STATUS, "idle");
+    return;
+  }
+  if (adhocSurfaceActive) return;
+  setStatus("Neuer Code wird angefragt…", "waiting");
+  try {
+    await restartSignaling();
+  } catch (e) {
+    showFriendlyError("Neuer Code konnte nicht angefragt werden. Bitte erneut versuchen.", e);
+    showReconnect();
+  }
+}
+
+window.addEventListener("auffi-unattended-state-changed", () => {
+  void reconcileAdhocSurface().catch(() => {});
+});
+
 loadSettings().catch(() => {});
 renderTrustedPeers().catch(() => {});
-// Use restartSignaling on bootstrap too: a webview reload (e.g. dev
-// hot-reload, or user F5) does not restart the Rust process, so any
-// prior session's SignalingState still sits in Rust-side state and
-// would trip the #64 guard. disconnect_streaming is idempotent.
-restartSignaling().catch((e: unknown) => {
+
+// Bootstrap: only start the ad-hoc signaling when the persisted mode is
+// ad-hoc. A webview reload (F5, dev hot-reload) does not restart the Rust
+// process — restarting signaling here during an active Unattended session
+// would steal its OutboundSink and kill the session. In ad-hoc mode the
+// restart (not a bare start) is deliberate: the prior session's
+// SignalingState still sits in Rust-side state and would trip the #64
+// guard. disconnect_streaming is idempotent.
+(async () => {
+  const mode = await invoke<string>("unattended_get_mode").catch(() => "adhoc");
+  if (mode === "unattended") {
+    resetCode();
+    setStatus(UNATTENDED_MODE_STATUS, "idle");
+    return;
+  }
+  await restartSignaling();
+})().catch((e: unknown) => {
   setStatus(`Backend nicht erreichbar: ${String(e)}`, "error");
   showReconnect();
 });

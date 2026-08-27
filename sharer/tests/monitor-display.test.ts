@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatResolution, friendlyMonitorLabel } from "../src/monitor-display.js";
+import { formatResolution, friendlyMonitorLabel, monitorPickerView } from "../src/monitor-display.js";
 
 describe("friendlyMonitorLabel", () => {
   it("single monitor is just 'Bildschirm'", () => {
@@ -27,6 +27,16 @@ describe("friendlyMonitorLabel", () => {
     // accept the OS name as a parameter, but assert the contract here.
     const result = friendlyMonitorLabel(0, 2, 1920, 1080);
     expect(result.primary).not.toMatch(/\\|DISPLAY|eDP|HDMI/);
+  });
+});
+
+describe("monitorPickerView", () => {
+  it("start mode: CTA 'Stream starten', no cancel (aborting a start would strand the waiting helper)", () => {
+    expect(monitorPickerView("start")).toEqual({ cta: "Stream starten", showCancel: false });
+  });
+
+  it("switch mode: CTA 'Bildschirm wechseln' with a cancel path", () => {
+    expect(monitorPickerView("switch")).toEqual({ cta: "Bildschirm wechseln", showCancel: true });
   });
 });
 

@@ -75,6 +75,10 @@ function openModal(): void {
   const existing = document.getElementById(MODAL_ID);
   if (existing) existing.remove();
 
+  // Restore focus to the opener (the FAB) on close, mirroring
+  // confirm-dialog.ts — bodyArea.focus() below moves focus into the modal.
+  const opener = document.activeElement as HTMLElement | null;
+
   const state = { category: "bug" as Category, rating: 4 };
 
   const overlay = document.createElement("div");
@@ -194,9 +198,20 @@ function openModal(): void {
   document.body.appendChild(overlay);
 
   // Wiring.
-  const close = (): void => overlay.remove();
+  const close = (): void => {
+    overlay.remove();
+    opener?.focus?.();
+  };
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
+  });
+  // Escape closes, like every other dialog in the sharer (the global
+  // handler in main.ts only knows the static dialogs, not this one).
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    }
   });
   closeBtn.addEventListener("click", close);
   cancelBtn.addEventListener("click", close);

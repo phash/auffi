@@ -13,8 +13,14 @@ export interface ConfirmDialogOptions {
 
 const FOCUSABLE = "button:not([disabled])";
 
+// Single-slot: at most one confirm dialog exists. Closing the previous one
+// through its own close() (instead of just removing its DOM) resolves the
+// displaced promise with false — otherwise a caller awaiting it would hang
+// forever.
+let closeActive: ((value: boolean) => void) | null = null;
+
 export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
-  document.getElementById("sharer-confirm-backdrop")?.remove();
+  closeActive?.(false);
 
   return new Promise((resolve) => {
     const opener = document.activeElement as HTMLElement | null;
@@ -89,12 +95,14 @@ export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
     };
 
     function close(value: boolean): void {
+      if (closeActive === close) closeActive = null;
       backdrop.removeEventListener("keydown", onKey);
       backdrop.remove();
       opener?.focus?.();
       resolve(value);
     }
 
+    closeActive = close;
     backdrop.addEventListener("keydown", onKey);
     confirm.addEventListener("click", () => close(true));
     cancel.addEventListener("click", () => close(false));

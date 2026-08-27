@@ -1,21 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the Auffi sharer — minimum set required for screen-share + dialog + pause-hotkey + settings store. The webview can only open https:// links to the project's About-page targets via the shell plugin.",
-  "windows": ["main", "border"],
+  "description": "Default capabilities for the Auffi sharer webview — minimum set actually invoked from JS: core IPC/events, the settings store, and https:// links to the project's About-page targets via the shell plugin. The file dialog and the pause hotkey are driven purely from Rust (DialogExt / GlobalShortcutExt), which does not go through this ACL, so no dialog/global-shortcut grants are needed here.",
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "core:event:default",
     "core:webview:default",
     "core:window:default",
     "core:app:default",
-    "dialog:default",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister",
     "store:default",
-    "autostart:allow-enable",
-    "autostart:allow-disable",
-    "autostart:allow-is-enabled",
     {
       "identifier": "shell:allow-open",
       "allow": [

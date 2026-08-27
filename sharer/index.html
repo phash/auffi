@@ -753,8 +753,9 @@
       }
       .update-banner-dismiss:hover { color: var(--text); background: rgba(0,0,0,0.05); }
 
-      /* ── Input-pause banner ── */
-      #pause-banner {
+      /* ── Input-pause + free-tier warning banners (same warning visual) ── */
+      #pause-banner,
+      #free-tier-banner {
         display: none;
         align-items: center;
         gap: 0.625rem;
@@ -767,7 +768,8 @@
         color: var(--warning);
         width: 100%;
       }
-      #pause-banner.visible { display: flex; }
+      #pause-banner.visible,
+      #free-tier-banner.visible { display: flex; }
 
       .pause-icon { flex-shrink: 0; width: 16px; height: 16px; }
 
@@ -1190,12 +1192,15 @@
           </div>
         </div>
 
-        <!-- Monitor select -->
+        <!-- Monitor select. The CTA label and the Abbrechen visibility are
+             set per mode (start vs. runtime switch) in main.ts via
+             monitorPickerView(). -->
         <div id="monitor-select">
           <div class="divider" style="margin: 0 -1.5rem;"></div>
           <p class="monitor-label-heading">Welchen Bildschirm teilen?</p>
           <div id="monitor-list"></div>
           <button id="stream-btn" type="button" class="btn btn-primary btn-large">Stream starten</button>
+          <button id="monitor-cancel-btn" type="button" class="btn btn-secondary" style="display: none;">Abbrechen</button>
         </div>
 
         <!-- Streaming actions (while streaming) -->
@@ -1259,6 +1264,21 @@
           <path d="M2 8a6 6 0 1 1 12 0A6 6 0 0 1 2 8Zm6-1.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 1 0V7a.5.5 0 0 0-.5-.5Zm0-2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
         </svg>
         Steuerung pausiert — Ctrl+Alt+Pause zum Fortsetzen
+      </div>
+
+      <!-- Free-tier relay warning: shown by main.ts when the Rust-side
+           relay timer fires its 8-minute warning (cutoff at 10 min). -->
+      <div
+        id="free-tier-banner"
+        role="status"
+        aria-live="polite"
+        aria-label="Zeitlimit-Hinweis"
+      >
+        <svg class="pause-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/>
+          <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/>
+        </svg>
+        Kostenlose Relay-Verbindung: Die Übertragung endet in ca. 2 Minuten.
       </div>
     </div>
 

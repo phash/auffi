@@ -36,6 +36,26 @@ export function friendlyMonitorLabel(
 }
 
 /**
+ * The monitor picker serves two flows with different semantics: initial
+ * start (the helper is already waiting — aborting here would strand them,
+ * so there is no cancel) and runtime switch (the stream keeps running, so
+ * backing out must be possible and the CTA must not claim to "start"
+ * anything).
+ */
+export interface MonitorPickerView {
+  /** German label for the picker's primary button. */
+  cta: string;
+  /** Whether the Abbrechen button is offered. */
+  showCancel: boolean;
+}
+
+export function monitorPickerView(mode: "start" | "switch"): MonitorPickerView {
+  return mode === "switch"
+    ? { cta: "Bildschirm wechseln", showCancel: true }
+    : { cta: "Stream starten", showCancel: false };
+}
+
+/**
  * Format raw pixel dimensions for display. Uses the multiplication sign (×)
  * rather than the ASCII letter x so it lines up visually.
  */
