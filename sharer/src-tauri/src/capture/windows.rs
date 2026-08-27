@@ -219,7 +219,7 @@ fn wgc_worker(
         Ok(frame) => frame,
         Err(_) => {
             let _ = init_tx.send(Err(
-                "screen-capture: WGC produced no frames within timeout".to_string(),
+                "screen-capture: WGC produced no frames within timeout".to_string()
             ));
             return;
         }
@@ -510,7 +510,8 @@ mod tests {
     #[test]
     #[ignore = "requires a real desktop session (GPU for WGC, or GDI fallback)"]
     fn windows_capturer_starts_and_yields_a_frame() {
-        let cap = WindowsCapturer::start(0).expect("capture must initialise on the primary monitor");
+        let cap =
+            WindowsCapturer::start(0).expect("capture must initialise on the primary monitor");
         assert!(
             cap.frame_width > 0 && cap.frame_height > 0,
             "capturer must report non-zero dimensions"

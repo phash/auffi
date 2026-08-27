@@ -302,9 +302,7 @@ mod tests {
         })
     }
 
-    async fn recv_event(
-        rx: &mut tokio::sync::mpsc::UnboundedReceiver<Emitted>,
-    ) -> Emitted {
+    async fn recv_event(rx: &mut tokio::sync::mpsc::UnboundedReceiver<Emitted>) -> Emitted {
         tokio::time::timeout(Duration::from_secs(5), rx.recv())
             .await
             .expect("event within 5 s")
@@ -312,10 +310,7 @@ mod tests {
     }
 
     /// Accept one WS connection and hand it to `server_behaviour`.
-    async fn bind_test_server() -> (
-        std::net::SocketAddr,
-        tokio::net::TcpListener,
-    ) {
+    async fn bind_test_server() -> (std::net::SocketAddr, tokio::net::TcpListener) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");

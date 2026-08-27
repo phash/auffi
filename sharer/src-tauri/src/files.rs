@@ -1067,7 +1067,8 @@ mod tests {
         let tmp = NamedTempFile::new().expect("tempfile");
         let readonly = std::fs::File::open(tmp.path()).expect("open read-only");
         let mut file = BufWriter::new(readonly);
-        file.write_all(b"parked").expect("small write parks in buffer");
+        file.write_all(b"parked")
+            .expect("small write parks in buffer");
         let mut state = ReceiveState {
             name: "vc-flush.bin".to_string(),
             total_size: 6,

@@ -344,9 +344,7 @@ impl ScreenCapturer {
         match self.rx.recv_timeout(NEXT_FRAME_POLL) {
             Ok(f) => Ok(NextFrame::Frame(f)),
             Err(mpsc::RecvTimeoutError::Timeout) => Ok(NextFrame::Timeout),
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                Err("capture channel closed".to_string())
-            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err("capture channel closed".to_string()),
         }
     }
 

@@ -951,5 +951,4 @@ mod tests {
             other => panic!("expected Relay, got {other:?}"),
         }
     }
-
 }

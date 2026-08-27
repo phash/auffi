@@ -256,11 +256,7 @@ async fn start_signaling(
     // Poison-recovery (`into_inner`) matches the rest of this file — an
     // Err-on-poison here previously diverged from the recovery below and
     // could fail AFTER the WS task was spawned, leaking it unregistered.
-    let signaling_active = state
-        .0
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .is_some();
+    let signaling_active = state.0.lock().unwrap_or_else(|p| p.into_inner()).is_some();
     let rtc_alive = rtc_state.0.lock().await.is_some();
     let input_alive = input_state.0.lock().await.is_some();
     let file_alive = file_state.0.lock().await.is_some();
@@ -418,8 +414,7 @@ async fn start_streaming(
     let ice_servers = match unattended_cmds {
         Some(cmds) => {
             dbg_log("[start_streaming] fetching TURN via heartbeat WSS");
-            unattended_cmd::request_turn_via_heartbeat(&cmds, &unattended_state.pending_turn)
-                .await
+            unattended_cmd::request_turn_via_heartbeat(&cmds, &unattended_state.pending_turn).await
         }
         None => {
             let ws_url = crate::unattended_cmd::backend_ws_url_secure()?;

@@ -50,7 +50,10 @@ mod tests {
 
     #[test]
     fn wss_maps_to_https_dropping_the_path() {
-        assert_eq!(http_base_from_ws("wss://auffi.app/signal"), "https://auffi.app");
+        assert_eq!(
+            http_base_from_ws("wss://auffi.app/signal"),
+            "https://auffi.app"
+        );
     }
 
     #[test]
@@ -63,7 +66,10 @@ mod tests {
 
     #[test]
     fn no_path_is_fine() {
-        assert_eq!(http_base_from_ws("ws://localhost:8080"), "http://localhost:8080");
+        assert_eq!(
+            http_base_from_ws("ws://localhost:8080"),
+            "http://localhost:8080"
+        );
     }
 
     #[test]
@@ -71,12 +77,18 @@ mod tests {
         // One deliberate fallback for the whole crate — previously the four
         // copies disagreed ("http://localhost" vs ":8080" vs input-unchanged).
         assert_eq!(http_base_from_ws("garbage://nope"), "http://localhost:8080");
-        assert_eq!(http_base_from_ws("https://auffi.app"), "http://localhost:8080");
+        assert_eq!(
+            http_base_from_ws("https://auffi.app"),
+            "http://localhost:8080"
+        );
     }
 
     #[test]
     fn origin_equals_http_base_without_override() {
         // AUFFI_SHARER_ORIGIN is unset in the test environment.
-        assert_eq!(origin_from_ws("wss://auffi.app/signal"), "https://auffi.app");
+        assert_eq!(
+            origin_from_ws("wss://auffi.app/signal"),
+            "https://auffi.app"
+        );
     }
 }
