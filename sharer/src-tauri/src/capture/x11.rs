@@ -116,11 +116,15 @@ impl X11Capturer {
                     {
                         Ok(img) => img,
                         Err(e) => {
-                            eprintln!(
+                            // dbg_log, not eprintln!: tauri-cli pipe buffering
+                            // eats stderr and release builds have no console —
+                            // this is the only diagnostic for a mid-session
+                            // capture death (display change, XWayland).
+                            crate::dbg_log(&format!(
                                 "[screen-capture] X11 get_image failed at ({frame_x},{frame_y}) {frame_w}x{frame_h}: {e} — \
                                  this is expected on Wayland sessions (XWayland does not expose desktop content). \
                                  Log out and log back into an Xorg / X11 session, or wait for the Wayland-portal capture backend."
-                            );
+                            ));
                             break;
                         }
                     };

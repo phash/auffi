@@ -97,6 +97,10 @@ impl InputController {
         self.held_keys.len()
     }
 
+    /// Test-only direct setter — production pause-toggling goes through
+    /// [`Self::toggle_paused`] (hotkey path). Gated like `held_buttons_count`
+    /// so it cannot ship as dead code in release builds.
+    #[cfg(test)]
     pub fn set_paused(&mut self, paused: bool) {
         self.paused = paused;
     }
@@ -107,6 +111,9 @@ impl InputController {
         self.paused
     }
 
+    /// Test-only introspection of the paused flag — production callers
+    /// use the return value of [`Self::toggle_paused`] instead.
+    #[cfg(test)]
     pub fn is_paused(&self) -> bool {
         self.paused
     }
@@ -141,11 +148,19 @@ impl InputController {
                     self.held_buttons.remove(&button);
                 }
             }
-            InputEvent::Scroll { dy, .. } => {
-                let lines = clamp_scroll_lines(dy);
-                if lines != 0 {
+            InputEvent::Scroll { dx, dy } => {
+                let v_lines = clamp_scroll_lines(dy);
+                if v_lines != 0 {
                     self.enigo
-                        .scroll(lines, Axis::Vertical)
+                        .scroll(v_lines, Axis::Vertical)
+                        .map_err(|e| e.to_string())?;
+                }
+                // Trackpads and tilt wheels send real dx — same
+                // DoS-clamp rationale as vertical (see clamp_scroll_lines).
+                let h_lines = clamp_scroll_lines(dx);
+                if h_lines != 0 {
+                    self.enigo
+                        .scroll(h_lines, Axis::Horizontal)
                         .map_err(|e| e.to_string())?;
                 }
             }
@@ -225,9 +240,12 @@ pub(crate) fn clamp_scroll_lines(dy: f64) -> i32 {
 /// or buggy viewer cannot drive the cursor outside the shared monitor's
 /// rectangle — important on multi-monitor systems where the OS would
 /// otherwise let us hit another display's chrome — and then offsets by the
-/// captured monitor's top-left in the virtual-desktop. The offset is
-/// signed: Windows places non-primary monitors at negative coordinates
-/// when they sit above or left of the primary.
+/// captured monitor's top-left in the virtual-desktop. The scaled result is
+/// additionally capped at `width-1`/`height-1`: the monitor's pixels span
+/// `offset..offset+width-1`, so mapping 1.0 to `width` would land one pixel
+/// onto the adjacent display. The offset is signed: Windows places
+/// non-primary monitors at negative coordinates when they sit above or left
+/// of the primary.
 pub(crate) fn compute_abs_coords(
     x_norm: f64,
     y_norm: f64,
@@ -246,8 +264,8 @@ pub(crate) fn compute_abs_coords(
     } else {
         y_norm.clamp(0.0, 1.0)
     };
-    let px = (x * f64::from(width)) as i32 + x_offset;
-    let py = (y * f64::from(height)) as i32 + y_offset;
+    let px = (x * f64::from(width)).min(f64::from(width.saturating_sub(1))) as i32 + x_offset;
+    let py = (y * f64::from(height)).min(f64::from(height.saturating_sub(1))) as i32 + y_offset;
     (px, py)
 }
 
@@ -544,6 +562,17 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn horizontal_scroll_forwarded_with_real_enigo() {
+        // dx must reach enigo's Axis::Horizontal path — a helper
+        // scrolling sideways in a spreadsheet previously produced no
+        // effect on the sharer because dx was silently dropped.
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.apply(InputEvent::Scroll { dx: 240.0, dy: 0.0 })
+            .expect("horizontal scroll must be forwarded, not dropped");
+    }
+
+    #[test]
+    #[ignore]
     fn held_key_tracked_until_released_with_real_enigo() {
         let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
         assert_eq!(ctrl.held_keys_count(), 0);
@@ -566,7 +595,10 @@ mod tests {
     #[test]
     fn compute_abs_coords_zero_offset_matches_pre_offset_behaviour() {
         assert_eq!(compute_abs_coords(0.0, 0.0, 0, 0, 1920, 1080), (0, 0));
-        assert_eq!(compute_abs_coords(1.0, 1.0, 0, 0, 1920, 1080), (1920, 1080));
+        // (1.0, 1.0) is the far corner — the monitor's pixels span
+        // 0..=width-1, so the cursor must land ON the last pixel, not
+        // one past it (which is the neighbouring display's territory).
+        assert_eq!(compute_abs_coords(1.0, 1.0, 0, 0, 1920, 1080), (1919, 1079));
         assert_eq!(compute_abs_coords(0.5, 0.5, 0, 0, 1920, 1080), (960, 540));
     }
 
@@ -597,8 +629,8 @@ mod tests {
         let (px, _) = compute_abs_coords(2.0, 0.5, 2560, 0, 2560, 1440);
         assert_eq!(
             px,
-            2560 + 2560,
-            "clamped x must hit the captured monitor's right edge, not bleed past"
+            2560 + 2559,
+            "clamped x must hit the captured monitor's last pixel column, not bleed onto the adjacent display"
         );
     }
 

@@ -25,7 +25,7 @@
 //! pub struct ScreenCapturer { … }
 //! impl ScreenCapturer {
 //!     pub fn start(display_id: u32) -> Result<Self, String>;
-//!     pub fn next_frame(&mut self) -> Result<BgraFrame, String>;
+//!     pub fn next_frame(&mut self) -> Result<NextFrame, String>;
 //!     pub fn width(&self) -> u32;
 //!     pub fn height(&self) -> u32;
 //! }
@@ -66,6 +66,22 @@ pub struct BgraFrame {
     /// Monotonic presentation timestamp in microseconds.
     pub pts_us: u64,
 }
+
+/// Result of one successful `ScreenCapturer::next_frame` poll.
+pub enum NextFrame {
+    Frame(BgraFrame),
+    /// No frame arrived within the poll window. The source may be stalled
+    /// with its channel still open (Wayland: compositor revoked the
+    /// screencast, appsink stops firing; Windows: WGC stops delivering while
+    /// the worker loops on its own timeout) — the caller MUST re-check its
+    /// shutdown signal and poll again instead of blocking forever.
+    Timeout,
+}
+
+/// How long `next_frame` blocks before reporting [`NextFrame::Timeout`].
+/// Bounded so the streaming loop always gets back to its switch-channel
+/// shutdown check even when the capture source stalls silently.
+const NEXT_FRAME_POLL: std::time::Duration = std::time::Duration::from_millis(500);
 
 // ── Stop-signal helper ──────────────────────────────────────────────────────
 
@@ -318,9 +334,20 @@ impl ScreenCapturer {
         })
     }
 
-    /// Block until the next BGRA video frame is available.
-    pub fn next_frame(&mut self) -> Result<BgraFrame, String> {
-        self.rx.recv().map_err(|e| e.to_string())
+    /// Wait up to [`NEXT_FRAME_POLL`] for the next BGRA video frame.
+    ///
+    /// Returns `Ok(NextFrame::Timeout)` when no frame arrived in the window
+    /// and `Err` only when the capture worker is gone (channel closed). An
+    /// unbounded `recv()` here previously let a stalled-but-open source park
+    /// the streaming loop forever, past `disconnect_streaming`.
+    pub fn next_frame(&mut self) -> Result<NextFrame, String> {
+        match self.rx.recv_timeout(NEXT_FRAME_POLL) {
+            Ok(f) => Ok(NextFrame::Frame(f)),
+            Err(mpsc::RecvTimeoutError::Timeout) => Ok(NextFrame::Timeout),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err("capture channel closed".to_string())
+            }
+        }
     }
 
     pub fn width(&self) -> u32 {
@@ -447,6 +474,66 @@ mod tests {
         assert!(
             stop_signaled(&rx),
             "dropped sender must be observed as stop — otherwise capture leaks past disconnect_streaming"
+        );
+    }
+
+    // ── next_frame poll behaviour (2026-08 review) ──────────────────────
+    // A stalled-but-open capture source (Wayland screencast revoked, WGC
+    // silent stop) must NOT park next_frame forever — the streaming loop
+    // needs to get back to its switch-channel shutdown check.
+
+    fn capturer_with_channel() -> (mpsc::SyncSender<BgraFrame>, ScreenCapturer) {
+        let (tx, rx) = mpsc::sync_channel::<BgraFrame>(2);
+        let cap = ScreenCapturer {
+            rx,
+            _stop: StopHandle(Box::new(())),
+            frame_width: 4,
+            frame_height: 4,
+        };
+        (tx, cap)
+    }
+
+    #[test]
+    fn next_frame_returns_frame_when_available() {
+        let (tx, mut cap) = capturer_with_channel();
+        tx.send(BgraFrame {
+            data: vec![0u8; 4],
+            pts_us: 42,
+        })
+        .expect("send");
+        match cap.next_frame() {
+            Ok(NextFrame::Frame(f)) => assert_eq!(f.pts_us, 42),
+            Ok(NextFrame::Timeout) => panic!("expected frame, got timeout"),
+            Err(e) => panic!("expected frame, got Err: {e}"),
+        }
+    }
+
+    #[test]
+    fn next_frame_times_out_when_source_stalls_with_channel_open() {
+        let (_tx, mut cap) = capturer_with_channel();
+        let start = std::time::Instant::now();
+        match cap.next_frame() {
+            Ok(NextFrame::Timeout) => {}
+            Ok(NextFrame::Frame(_)) => panic!("no frame was sent"),
+            Err(e) => panic!("open-but-stalled channel must be Timeout, got Err: {e}"),
+        }
+        assert!(
+            start.elapsed() >= NEXT_FRAME_POLL,
+            "timeout must wait the full poll window"
+        );
+        assert!(
+            start.elapsed() < NEXT_FRAME_POLL * 4,
+            "timeout must be bounded, not a blocking recv"
+        );
+    }
+
+    #[test]
+    fn next_frame_errors_when_capture_worker_gone() {
+        let (tx, mut cap) = capturer_with_channel();
+        drop(tx);
+        assert!(
+            cap.next_frame().is_err(),
+            "closed channel means the worker died — must surface as Err"
         );
     }
 }

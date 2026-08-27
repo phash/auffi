@@ -34,8 +34,15 @@ mod ffi {
 /// A VP8 encoder wrapping libvpx via a thin C shim.
 pub struct Vp8Encoder {
     ctx: *mut c_void,
-    width: u32,
-    height: u32,
+    /// Source frame dimensions as delivered by the capture backend (may be odd
+    /// — VM auto-resize guests and custom modes produce odd monitor sizes).
+    src_width: u32,
+    src_height: u32,
+    /// Even-cropped dimensions actually encoded. I420 chroma is subsampled
+    /// 2x2, so libvpx needs even axes; the bottom/right edge row/column of an
+    /// odd source is cropped away.
+    enc_width: u32,
+    enc_height: u32,
 }
 
 /// Safety: The libvpx context is not shared; we move `Vp8Encoder` between threads only
@@ -49,13 +56,28 @@ pub struct EncodedPacket {
 impl Vp8Encoder {
     /// Create a new VP8 encoder.
     ///
+    /// `width`/`height` are the source frame dimensions; odd axes are cropped
+    /// down to even for the encode (see `bgra_to_i420`).
     /// `bitrate_kbps` is the target bitrate in kilobits per second.
     pub fn new(width: u32, height: u32, bitrate_kbps: u32) -> Result<Self, String> {
-        let ctx = unsafe { ffi::vpx_shim_create(width, height, bitrate_kbps) };
+        let enc_width = width & !1;
+        let enc_height = height & !1;
+        if enc_width == 0 || enc_height == 0 {
+            return Err(format!(
+                "frame dimensions {width}x{height} too small — no even encode size left"
+            ));
+        }
+        let ctx = unsafe { ffi::vpx_shim_create(enc_width, enc_height, bitrate_kbps) };
         if ctx.is_null() {
             return Err("vpx_shim_create failed".to_string());
         }
-        Ok(Self { ctx, width, height })
+        Ok(Self {
+            ctx,
+            src_width: width,
+            src_height: height,
+            enc_width,
+            enc_height,
+        })
     }
 
     /// Encode one BGRA frame.
@@ -67,15 +89,15 @@ impl Vp8Encoder {
         frame_bgra: &[u8],
         timestamp_us: u64,
     ) -> Result<Vec<EncodedPacket>, String> {
-        let i420 = bgra_to_i420(frame_bgra, self.width, self.height)?;
+        let i420 = bgra_to_i420(frame_bgra, self.src_width, self.src_height)?;
         let mut packets: Vec<EncodedPacket> = Vec::new();
 
         let result = unsafe {
             ffi::vpx_shim_encode(
                 self.ctx,
                 i420.as_ptr(),
-                self.width,
-                self.height,
+                self.enc_width,
+                self.enc_height,
                 timestamp_us as i64,
                 collect_packet,
                 &mut packets as *mut Vec<EncodedPacket> as *mut c_void,
@@ -116,6 +138,12 @@ unsafe extern "C" fn collect_packet(
 const MAX_FRAME_DIM: u32 = 16384;
 
 /// Convert packed BGRA to planar I420 (YUV 4:2:0, BT.601 limited-range).
+///
+/// Odd source axes are cropped down to even: 4:2:0 chroma is subsampled 2x2,
+/// so an odd axis would make the last even column/row index one past the
+/// chroma plane and panic (the pre-fix behaviour — the panic killed the
+/// spawned streaming task silently). The source buffer is still read with the
+/// full `width` stride; only the output loses the last row/column.
 fn bgra_to_i420(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
     if width == 0 || height == 0 || width > MAX_FRAME_DIM || height > MAX_FRAME_DIM {
         return Err(format!(
@@ -135,27 +163,35 @@ fn bgra_to_i420(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String>
         ));
     }
 
-    let y_size = w * h;
-    let uv_size = (w / 2) * (h / 2);
+    let cw = w & !1;
+    let ch = h & !1;
+    if cw == 0 || ch == 0 {
+        return Err(format!(
+            "frame dimensions {width}x{height} too small — no even encode size left"
+        ));
+    }
+
+    let y_size = cw * ch;
+    let uv_size = (cw / 2) * (ch / 2);
     let mut i420 = vec![0u8; y_size + 2 * uv_size];
 
     let (y_plane, uv_planes) = i420.split_at_mut(y_size);
     let (u_plane, v_plane) = uv_planes.split_at_mut(uv_size);
 
-    for row in 0..h {
-        for col in 0..w {
+    for row in 0..ch {
+        for col in 0..cw {
             let idx = (row * w + col) * 4;
             let b = bgra[idx] as i32;
             let g = bgra[idx + 1] as i32;
             let r = bgra[idx + 2] as i32;
 
             let y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-            y_plane[row * w + col] = y.clamp(0, 255) as u8;
+            y_plane[row * cw + col] = y.clamp(0, 255) as u8;
 
             if row % 2 == 0 && col % 2 == 0 {
                 let uv_row = row / 2;
                 let uv_col = col / 2;
-                let uv_idx = uv_row * (w / 2) + uv_col;
+                let uv_idx = uv_row * (cw / 2) + uv_col;
                 let u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                 let v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
                 u_plane[uv_idx] = u.clamp(0, 255) as u8;
@@ -224,5 +260,67 @@ mod tests {
     fn bgra_to_i420_rejects_short_buffer() {
         let result = bgra_to_i420(&[0u8; 3], 4, 4);
         assert!(result.is_err());
+    }
+
+    // ── Odd-dimension regression pins (2026-08 review) ──────────────────
+    // The chroma planes are (w/2)*(h/2); before the even-crop fix an odd
+    // axis made the subsampling loop index one past the plane end and
+    // panic inside the spawned streaming task (silently dead stream).
+
+    #[test]
+    fn bgra_to_i420_handles_odd_width_without_panicking() {
+        // The reported concrete case: w=3,h=2 → 1-byte uv planes, the old
+        // code wrote uv_idx=1.
+        let bgra = vec![0x80u8; 3 * 2 * 4];
+        let i420 = bgra_to_i420(&bgra, 3, 2).expect("odd width must convert");
+        // Crops to 2x2: Y=4 + U=1 + V=1.
+        assert_eq!(i420.len(), 6);
+    }
+
+    #[test]
+    fn bgra_to_i420_handles_odd_height_without_panicking() {
+        let bgra = vec![0x80u8; 4 * 5 * 4];
+        let i420 = bgra_to_i420(&bgra, 4, 5).expect("odd height must convert");
+        assert_eq!(i420.len(), 4 * 4 + 2 * (2 * 2));
+    }
+
+    #[test]
+    fn bgra_to_i420_handles_both_axes_odd() {
+        let bgra = vec![0x80u8; 5 * 5 * 4];
+        let i420 = bgra_to_i420(&bgra, 5, 5).expect("odd dims must convert");
+        assert_eq!(i420.len(), 4 * 4 + 2 * (2 * 2));
+    }
+
+    #[test]
+    fn bgra_to_i420_odd_width_crop_reads_with_source_stride() {
+        // 3x2 frame with per-pixel gray value v = (row*3+col)*10. If the
+        // crop wrongly used the cropped width as the source stride, the
+        // second output row would sample the wrong source pixels.
+        let mut bgra = Vec::new();
+        for i in 0..6u8 {
+            let v = i * 10;
+            bgra.extend_from_slice(&[v, v, v, 0xff]);
+        }
+        let i420 = bgra_to_i420(&bgra, 3, 2).expect("convert");
+        let y = |v: i32| ((((66 + 129 + 25) * v + 128) >> 8) + 16) as u8;
+        let expected = [y(0), y(10), y(30), y(40)];
+        assert_eq!(&i420[0..4], expected.as_slice());
+    }
+
+    #[test]
+    fn encoder_handles_odd_monitor_resolution_end_to_end() {
+        // Odd monitors exist (VM auto-resize, custom modes). The encoder
+        // must crop to even and produce packets instead of panicking.
+        let mut enc = Vp8Encoder::new(65, 65, 500).expect("encoder for odd dims");
+        let frame = vec![0x80u8; 65 * 65 * 4];
+        let packets = enc.encode(&frame, 0).expect("encode odd frame");
+        assert!(!packets.is_empty(), "expected packets for odd-dim frame");
+    }
+
+    #[test]
+    fn encoder_rejects_one_pixel_axis() {
+        // 1 crops to 0 — there is no valid even encode size left.
+        assert!(Vp8Encoder::new(1, 64, 500).is_err());
+        assert!(Vp8Encoder::new(64, 1, 500).is_err());
     }
 }

@@ -331,6 +331,23 @@ impl SharerPeer {
             .map_err(|e| e.to_string())
     }
 
+    /// Close the underlying `RTCPeerConnection`, tearing down its ICE agent,
+    /// DTLS/SCTP transports and bound UDP sockets.
+    ///
+    /// webrtc-rs has NO `Drop`-based teardown — merely dropping the peer
+    /// leaks all of that for the process lifetime. Worse, the
+    /// `on_connection_type` closure holds an `Arc` back to the pc (stored on
+    /// the pc itself), so the strong count never reaches zero; the handler is
+    /// cleared first to break that cycle so the pc's memory can free after
+    /// close. Closing also drops the DataChannel `on_message` closures, whose
+    /// held senders let the input-applier and file tasks observe channel
+    /// close and exit.
+    pub async fn close(&self) -> Result<(), Error> {
+        self.pc
+            .on_ice_connection_state_change(Box::new(|_| Box::pin(async {})));
+        self.pc.close().await
+    }
+
     /// Send a raw binary chunk frame on the `"files"` DataChannel.
     pub async fn send_file_chunk(&self, frame: Vec<u8>) -> Result<(), String> {
         let guard = self.files_dc.lock().await;
@@ -487,6 +504,23 @@ mod tests {
         SharerPeer::new(servers)
             .await
             .expect("SharerPeer::new failed");
+    }
+
+    /// Pinned regression for the 2026-08 review: teardown MUST go through an
+    /// explicit `close()` — webrtc-rs has no Drop impl, so "drop the peer"
+    /// leaves the connection (and its ICE/DTLS/SCTP tasks + UDP sockets)
+    /// alive forever. Anyone removing `SharerPeer::close` or its call site in
+    /// `disconnect_streaming` is recreating that leak.
+    #[tokio::test]
+    async fn peer_close_transitions_connection_to_closed() {
+        use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
+
+        let peer = SharerPeer::new(vec![]).await.expect("SharerPeer::new");
+        // Install the connection-type handler so close() also exercises the
+        // Arc-cycle-breaking path (the closure holds an Arc back to the pc).
+        peer.on_connection_type(|_| {});
+        peer.close().await.expect("close");
+        assert_eq!(peer.pc.connection_state(), RTCPeerConnectionState::Closed);
     }
 
     #[test]

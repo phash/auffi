@@ -65,7 +65,7 @@ pub fn next_backoff(attempt: u32, initial: Duration, max: Duration) -> Duration 
 }
 
 /// Wrap a base backoff in ±50 % jitter using thread-local RNG. The
-/// returned duration is in `[base/2, base + base/2]` (i.e. 0.5x .. 1.5x).
+/// returned duration is in `[base/2, base + base/2)` (i.e. 0.5x .. 1.5x).
 /// Splitting jitter into its own function so the deterministic backoff
 /// sequence stays unit-testable.
 pub fn with_jitter(base: Duration) -> Duration {
@@ -73,11 +73,12 @@ pub fn with_jitter(base: Duration) -> Duration {
         return base;
     }
     let half = base / 2;
-    // u128→u64 via try_from so a pathological `half` (years long) can't
-    // silently truncate. half = base/2 for any Duration we'd realistically
-    // pass is ≪ u64::MAX nanos (~584 years), but the explicit fallback
-    // matches the convention used at line 64 in `next_backoff`.
-    let extra_nanos = u64::try_from(half.as_nanos()).unwrap_or(u64::MAX);
+    // The jitter draw spans the FULL base width so `base - half + r`
+    // covers the documented ±50 % window. u128→u64 via try_from so a
+    // pathological `base` (years long) can't silently truncate; any
+    // realistic Duration is ≪ u64::MAX nanos (~584 years), but the
+    // explicit fallback matches the convention in `next_backoff`.
+    let extra_nanos = u64::try_from(base.as_nanos()).unwrap_or(u64::MAX);
     // Cheap "pretty random" source — getrandom for one u64.
     let mut buf = [0u8; 8];
     if let Err(e) = getrandom::fill(&mut buf) {
@@ -322,7 +323,15 @@ async fn run_loop(
             ConnectOutcome::Shutdown => {
                 return;
             }
-            ConnectOutcome::Disconnected { reason } => {
+            ConnectOutcome::Disconnected { reason, hello_seen } => {
+                // A session that reached unattended-hello was a real
+                // connection — restart the backoff ladder from the
+                // bottom instead of ratcheting toward the 60 s ceiling
+                // over the process lifetime (product goal 2: reconnect
+                // latency after a blip must not depend on blip history).
+                if hello_seen {
+                    attempt = 0;
+                }
                 let _ = evt_tx.send(HeartbeatEvent::Disconnected { reason }).await;
             }
         }
@@ -337,10 +346,24 @@ async fn run_loop(
             .await;
 
         // Wait either for the backoff to elapse OR for an explicit
-        // shutdown command. We don't want a Shutdown to wait 60 s.
-        let stopped = tokio::select! {
-            _ = tokio::time::sleep(sleep) => false,
-            cmd = cmd_rx.recv() => matches!(cmd, Some(HeartbeatCommand::Shutdown) | None),
+        // shutdown command. We don't want a Shutdown to wait 60 s —
+        // but a queued Send must NOT shortcut the sleep: the frame is
+        // undeliverable while disconnected (dropped, with a log note),
+        // and cancelling the remaining backoff would turn queued frames
+        // into a reconnect burst exactly when the server is unreachable.
+        let deadline = tokio::time::Instant::now() + sleep;
+        let stopped = loop {
+            tokio::select! {
+                _ = tokio::time::sleep_until(deadline) => break false,
+                cmd = cmd_rx.recv() => match cmd {
+                    Some(HeartbeatCommand::Send(_)) => {
+                        log::debug!(
+                            "[heartbeat] dropping outbound frame — disconnected, backoff in progress"
+                        );
+                    }
+                    Some(HeartbeatCommand::Shutdown) | None => break true,
+                },
+            }
         };
         if stopped {
             return;
@@ -356,8 +379,10 @@ enum ConnectOutcome {
     Superseded,
     /// Caller asked us to stop.
     Shutdown,
-    /// Transient — reconnect after backoff.
-    Disconnected { reason: String },
+    /// Transient — reconnect after backoff. `hello_seen` is true when
+    /// the session reached `unattended-hello` before dropping, so the
+    /// caller can reset the backoff ladder after a real connection.
+    Disconnected { reason: String, hello_seen: bool },
 }
 
 async fn connect_and_run(
@@ -370,6 +395,7 @@ async fn connect_and_run(
         Err(e) => {
             return ConnectOutcome::Disconnected {
                 reason: format!("invalid ws url: {e}"),
+                hello_seen: false,
             };
         }
     };
@@ -389,9 +415,11 @@ async fn connect_and_run(
         Err(e) => {
             return ConnectOutcome::Disconnected {
                 reason: format!("connect: {e}"),
+                hello_seen: false,
             };
         }
     };
+    let mut hello_seen = false;
     let (mut write, mut read) = ws.split();
     let mut ping_timer = tokio::time::interval(config.ping_interval);
     ping_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -411,12 +439,14 @@ async fn connect_and_run(
                             Err(e) => {
                                 return ConnectOutcome::Disconnected {
                                     reason: format!("serialise outgoing: {e}"),
+                                    hello_seen,
                                 };
                             }
                         };
                         if write.send(Message::Text(json.into())).await.is_err() {
                             return ConnectOutcome::Disconnected {
                                 reason: "write half closed".to_string(),
+                                hello_seen,
                             };
                         }
                     }
@@ -432,11 +462,13 @@ async fn connect_and_run(
                     Some(Err(e)) => {
                         return ConnectOutcome::Disconnected {
                             reason: format!("read: {e}"),
+                            hello_seen,
                         };
                     }
                     None => {
                         return ConnectOutcome::Disconnected {
                             reason: "socket EOF".to_string(),
+                            hello_seen,
                         };
                     }
                 };
@@ -453,16 +485,13 @@ async fn connect_and_run(
                         let frame = match serde_json::from_str::<BackendFrame>(&txt) {
                             Ok(f) => f,
                             Err(e) => {
-                                let preview = txt.chars().take(120).collect::<String>();
-                                log::warn!(
-                                    "[heartbeat] unknown/malformed backend frame ({}): {preview}",
-                                    e
-                                );
+                                log::warn!("[heartbeat] {}", describe_parse_failure(&txt, &e));
                                 continue;
                             }
                         };
                         match frame {
                             BackendFrame::UnattendedHello { device_id } => {
+                                    hello_seen = true;
                                     let _ = evt_tx
                                         .send(HeartbeatEvent::Connected { device_id })
                                         .await;
@@ -496,6 +525,7 @@ async fn connect_and_run(
                                 BackendFrame::BackendError { code, message } => {
                                     return ConnectOutcome::Disconnected {
                                         reason: format!("backend error {code}: {message}"),
+                                        hello_seen,
                                     };
                                 }
                             }
@@ -518,11 +548,13 @@ async fn connect_and_run(
                                 Some(WS_CLOSE_SUPERSEDED) => ConnectOutcome::Superseded,
                                 _ => ConnectOutcome::Disconnected {
                                     reason: "terminal close".to_string(),
+                                    hello_seen,
                                 },
                             };
                         }
                         return ConnectOutcome::Disconnected {
                             reason: close_reason(frame.as_ref()),
+                            hello_seen,
                         };
                     }
                     Message::Binary(_) | Message::Frame(_) => {
@@ -538,11 +570,13 @@ async fn connect_and_run(
                             "no pong for {:.0}s",
                             last_pong.elapsed().as_secs_f64()
                         ),
+                        hello_seen,
                     };
                 }
                 if write.send(Message::Ping(Vec::new().into())).await.is_err() {
                     return ConnectOutcome::Disconnected {
                         reason: "write half closed during ping".to_string(),
+                        hello_seen,
                     };
                 }
             }
@@ -555,6 +589,18 @@ fn close_reason(frame: Option<&CloseFrame>) -> String {
         Some(f) => format!("close code={} reason={:?}", u16::from(f.code), f.reason),
         None => "close without frame".to_string(),
     }
+}
+
+/// Describe an unparseable backend frame for the warn-log WITHOUT echoing
+/// the body: `pw-check` frames carry the viewer-typed device password in
+/// plaintext, so a raw preview would leak real password attempts into the
+/// log the moment the wire shape drifts. Only the serde error and the
+/// frame length are safe to include.
+fn describe_parse_failure(txt: &str, err: &serde_json::Error) -> String {
+    format!(
+        "unknown/malformed backend frame ({} bytes): {err}",
+        txt.len()
+    )
 }
 
 #[cfg(test)]
@@ -626,6 +672,201 @@ mod tests {
     #[test]
     fn with_jitter_zero_base_returns_zero() {
         assert_eq!(with_jitter(Duration::from_secs(0)), Duration::from_secs(0));
+    }
+
+    #[test]
+    fn with_jitter_spreads_above_and_below_base() {
+        // The documented window is ±50 % — both halves must actually
+        // occur. With a uniform draw over the full window, 200 samples
+        // all landing on one side has probability 2^-200, so a failure
+        // here means the window is lopsided, not bad luck.
+        let base = Duration::from_millis(1000);
+        let mut above = false;
+        let mut below = false;
+        for _ in 0..200 {
+            let j = with_jitter(base);
+            if j > base {
+                above = true;
+            }
+            if j < base {
+                below = true;
+            }
+        }
+        assert!(
+            above,
+            "with_jitter never exceeded base — jitter window is not ±50 %"
+        );
+        assert!(
+            below,
+            "with_jitter never went below base — jitter window is not ±50 %"
+        );
+    }
+
+    // ── Parse-failure logging ───────────────────────────────────────
+
+    #[test]
+    fn parse_failure_log_never_contains_the_frame_body() {
+        // A pw-check frame carries the viewer-typed device password in
+        // plaintext. If the wire shape drifts (field rename, added
+        // required field) the parse fails — the warn-log for that must
+        // not echo the body (no-secrets-in-logs rule).
+        let raw = r#"{"type":"pw-check","attempt":"hunter2-secret","accept":true}"#;
+        let err = serde_json::from_str::<BackendFrame>(raw).expect_err("drifted frame must fail");
+        let line = describe_parse_failure(raw, &err);
+        assert!(
+            !line.contains("hunter2-secret"),
+            "log line must not leak the password attempt: {line}"
+        );
+        assert!(
+            line.contains(&format!("{} bytes", raw.len())),
+            "frame length is the only body-derived datum allowed: {line}"
+        );
+    }
+
+    // ── run_loop backoff behaviour ──────────────────────────────────
+
+    /// Regression: a queued `Send` arriving during the reconnect backoff
+    /// must not cancel the remaining sleep — otherwise queued frames
+    /// (pw-check-result from a confirm waiter, ICE relays) turn the
+    /// backoff into a burst of immediate reconnects exactly when the
+    /// server is unreachable.
+    #[tokio::test]
+    async fn send_during_backoff_does_not_cancel_the_sleep() {
+        // Bind-then-drop yields a loopback port that refuses connections
+        // instantly, so every reconnect attempt fails fast.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        drop(listener);
+
+        let config = HeartbeatConfig {
+            backend_ws_url: format!("ws://{addr}/signal"),
+            device_id: "111-111-111".to_string(),
+            token: "test-token".to_string(),
+            origin: format!("http://{addr}"),
+            ping_interval: Duration::from_secs(30),
+            pong_timeout: Duration::from_secs(90),
+            // Large enough that the whole test fits inside ONE backoff
+            // window (jittered minimum is backoff_initial / 2 = 15 s).
+            backoff_initial: Duration::from_secs(30),
+            backoff_max: Duration::from_secs(30),
+        };
+        let (cmd_tx, cmd_rx) = mpsc::channel::<HeartbeatCommand>(16);
+        let (evt_tx, mut evt_rx) = mpsc::channel::<HeartbeatEvent>(64);
+        tokio::spawn(run_loop(config, cmd_rx, evt_tx));
+
+        // Drain until the first Reconnecting — the loop is now inside
+        // its backoff sleep.
+        loop {
+            let ev = tokio::time::timeout(Duration::from_secs(10), evt_rx.recv())
+                .await
+                .expect("heartbeat event within 10 s")
+                .expect("event channel open");
+            if matches!(ev, HeartbeatEvent::Reconnecting { .. }) {
+                break;
+            }
+        }
+
+        for _ in 0..3 {
+            cmd_tx
+                .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                    result: PwResult::Fail,
+                }))
+                .await
+                .expect("send during backoff");
+        }
+        // If a Send shortcut the sleep, the loop would reconnect (and
+        // fail) immediately — producing Disconnected/Reconnecting events
+        // well within this window.
+        let burst = tokio::time::timeout(Duration::from_millis(300), evt_rx.recv()).await;
+        assert!(
+            burst.is_err(),
+            "no reconnect events may fire mid-backoff after a Send, got {:?}",
+            burst.expect("timeout already checked")
+        );
+
+        // Shutdown must still exit the backoff wait promptly.
+        cmd_tx
+            .send(HeartbeatCommand::Shutdown)
+            .await
+            .expect("shutdown");
+        let closed = tokio::time::timeout(Duration::from_secs(5), evt_rx.recv())
+            .await
+            .expect("loop must exit promptly on Shutdown");
+        assert!(
+            closed.is_none(),
+            "run_loop returning closes the event channel"
+        );
+    }
+
+    /// Regression: the reconnect attempt counter must reset once a
+    /// session reaches unattended-hello — otherwise every disconnect
+    /// over the process lifetime permanently ratchets the backoff
+    /// toward the 60 s ceiling (product goal 2: reconnect latency).
+    #[tokio::test]
+    async fn backoff_attempt_resets_after_connected_session() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        tokio::spawn(async move {
+            // Session 1: accept, then close before hello — a failed attempt.
+            let (sock, _) = listener.accept().await.expect("accept 1");
+            let mut ws = tokio_tungstenite::accept_async(sock).await.expect("ws 1");
+            let _ = ws.close(None).await;
+            // Session 2: successful — send unattended-hello, then close.
+            let (sock, _) = listener.accept().await.expect("accept 2");
+            let mut ws = tokio_tungstenite::accept_async(sock).await.expect("ws 2");
+            ws.send(Message::Text(
+                r#"{"type":"unattended-hello","deviceId":"111-111-111"}"#
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .expect("send hello");
+            let _ = ws.close(None).await;
+            // Keep accepting so the reconnect loop has somewhere to go
+            // while the assertion below runs; runtime teardown kills us.
+            loop {
+                let Ok((sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let _ws = tokio_tungstenite::accept_async(sock).await;
+            }
+        });
+
+        let config = HeartbeatConfig {
+            backend_ws_url: format!("ws://{addr}/signal"),
+            device_id: "111-111-111".to_string(),
+            token: "test-token".to_string(),
+            origin: format!("http://{addr}"),
+            ping_interval: Duration::from_secs(30),
+            pong_timeout: Duration::from_secs(90),
+            backoff_initial: Duration::from_millis(20),
+            backoff_max: Duration::from_millis(80),
+        };
+        let (_cmd_tx, cmd_rx) = mpsc::channel::<HeartbeatCommand>(16);
+        let (evt_tx, mut evt_rx) = mpsc::channel::<HeartbeatEvent>(64);
+        tokio::spawn(run_loop(config, cmd_rx, evt_tx));
+
+        let mut connected_seen = false;
+        let attempt_after_connected = loop {
+            let ev = tokio::time::timeout(Duration::from_secs(10), evt_rx.recv())
+                .await
+                .expect("heartbeat event within 10 s")
+                .expect("event channel open");
+            match ev {
+                HeartbeatEvent::Connected { .. } => connected_seen = true,
+                HeartbeatEvent::Reconnecting { attempt, .. } if connected_seen => break attempt,
+                _ => {}
+            }
+        };
+        assert_eq!(
+            attempt_after_connected, 1,
+            "attempt counter must reset after a session that reached hello"
+        );
     }
 
     // ── Wire-shape round-trips ───────────────────────────────────────

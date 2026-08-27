@@ -89,6 +89,38 @@ pub(crate) fn dbg_log(msg: &str) {
     }
 }
 
+/// `log`-facade backend forwarding every enabled record into the same
+/// `dbg_log()` sink.
+///
+/// Without an installed logger the facade drops ALL records — heartbeat
+/// wire-parse warnings, TURN-fetch failures, input-apply errors and hotkey
+/// failures were silent no-ops, defeating the diagnosability those call
+/// sites were added for. Filtering runs through the same runtime gate as
+/// `dbg_log`, so the cost while logging is disabled is one atomic load.
+struct DbgLogForwarder;
+
+impl log::Log for DbgLogForwarder {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        debug_logging_enabled() && metadata.level() <= log::Level::Debug
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        dbg_log(&format!(
+            "[{}] {}: {}",
+            record.level(),
+            record.target(),
+            record.args()
+        ));
+    }
+
+    fn flush(&self) {}
+}
+
+static LOG_FORWARDER: DbgLogForwarder = DbgLogForwarder;
+
 /// Flip diagnostic logging at runtime. Persistence lives on the JS side (the
 /// settings store) — this command only mutates the in-process gate, so the
 /// store has a single writer and there is no cross-process race on the file.
@@ -152,10 +184,6 @@ struct WebRtcState(Arc<tokio::sync::Mutex<Option<webrtc_peer::SharerPeer>>>);
 /// both hold a reference without borrowing Tauri state across await points.
 struct InputControllerState(Arc<tokio::sync::Mutex<Option<InputController>>>);
 
-/// IP prefix of the currently connected viewer, set when a peer-joined event
-/// arrives so it can be forwarded to the border overlay window.
-struct PeerIpState(Mutex<Option<String>>);
-
 /// Shared access to the active `FileTransferManager`.
 struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManager>>>);
 
@@ -208,11 +236,9 @@ enum SwitchMsg {
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 async fn start_signaling(
     app: tauri::AppHandle,
     state: State<'_, SignalingState>,
-    ip_state: State<'_, PeerIpState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
     file_state: State<'_, FileTransferState>,
@@ -226,17 +252,19 @@ async fn start_signaling(
     // it has been replaced. The UI must call `disconnect_streaming` first.
     // (gh #64) Policy lives in `check_streaming_preconditions` so each
     // guard is independently unit-pinnable.
-    let signaling_active = state.0.lock().map(|g| g.is_some()).unwrap_or(false);
+    // Poison-recovery (`into_inner`) matches the rest of this file — an
+    // Err-on-poison here previously diverged from the recovery below and
+    // could fail AFTER the WS task was spawned, leaking it unregistered.
+    let signaling_active = state
+        .0
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .is_some();
     let rtc_alive = rtc_state.0.lock().await.is_some();
     let input_alive = input_state.0.lock().await.is_some();
     let file_alive = file_state.0.lock().await.is_some();
     check_streaming_preconditions(signaling_active, rtc_alive, input_alive, file_alive)
         .map_err(|e| e.to_string())?;
-
-    // Clear any stale peer IP from a previous session.
-    if let Ok(mut guard) = ip_state.0.lock() {
-        *guard = None;
-    }
 
     // Reject cleartext ws:///http:// backend URLs (unless AUFFI_ALLOW_INSECURE=1)
     // just like the unattended path — the 9-digit session code must not travel
@@ -251,33 +279,24 @@ async fn start_signaling(
         let mut guard = outbound_state.0.lock().await;
         *guard = Some(outbound::OutboundSink::AdHoc(sig.tx.clone()));
     }
-    match state.0.lock() {
-        Ok(mut guard) => {
-            *guard = Some(sig);
-            Ok(())
-        }
-        Err(e) => Err(format!("state lock poisoned: {e}")),
+    // Poison-recover: the WS task is already spawned and the OutboundSink
+    // set — failing here would leave that task running with no handle
+    // stored anywhere.
+    {
+        let mut guard = state.0.lock().unwrap_or_else(|p| p.into_inner());
+        *guard = Some(sig);
     }
+    Ok(())
 }
 
 #[tauri::command]
 async fn confirm_peer(
     accepted: bool,
-    ip_prefix: Option<String>,
     state: State<'_, SignalingState>,
-    ip_state: State<'_, PeerIpState>,
+    outbound_state: State<'_, OutboundSinkState>,
 ) -> Result<(), String> {
-    if let Some(ip) = ip_prefix {
-        if let Ok(mut guard) = ip_state.0.lock() {
-            *guard = Some(ip);
-        }
-    }
-
     let tx = {
-        let guard = state
-            .0
-            .lock()
-            .map_err(|e| format!("state lock poisoned: {e}"))?;
+        let guard = state.0.lock().unwrap_or_else(|p| p.into_inner());
         guard.as_ref().map(|s| s.tx.clone())
     };
     let Some(tx) = tx else {
@@ -289,10 +308,17 @@ async fn confirm_peer(
 
     if !accepted {
         // Clear the signaling state so start_signaling can be called again
-        // cleanly from a fresh state after a rejection.
-        if let Ok(mut guard) = state.0.lock() {
+        // cleanly from a fresh state after a rejection. The OutboundSink
+        // holds the other sender clone into the WS task's command channel —
+        // clear it too so every sender drops and the task closes the socket
+        // and exits (instead of lingering on a session the backend already
+        // removed).
+        {
+            let mut guard = state.0.lock().unwrap_or_else(|p| p.into_inner());
             *guard = None;
         }
+        let mut sink_guard = outbound_state.0.lock().await;
+        *sink_guard = None;
     }
 
     Ok(())
@@ -330,7 +356,6 @@ async fn start_streaming(
     app: tauri::AppHandle,
     monitor_id: u32,
     session_code: String,
-    sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
     file_state: State<'_, FileTransferState>,
@@ -338,8 +363,6 @@ async fn start_streaming(
     switch_state: State<'_, SwitchState>,
     outbound_state: State<'_, OutboundSinkState>,
 ) -> Result<(), String> {
-    // unused but kept to preserve the existing command signature shape.
-    let _ = &sig_state;
     dbg_log(&format!(
         "[start_streaming] enter monitor_id={} session_code=*** os={} arch={} v{}",
         monitor_id,
@@ -425,30 +448,42 @@ async fn start_streaming(
             log::warn!("connection-type emit failed: {e}");
         }
 
-        if conn_type == ConnectionType::Relay {
-            let app_warn = app_for_conn_type.clone();
-            let app_cut = app_for_conn_type.clone();
-            let handles = free_tier_timer::start(
-                free_tier_timer::TimerConfig::default(),
-                move || {
-                    if let Err(e) = app_warn.emit("free-tier-warning", serde_json::json!({})) {
-                        log::warn!("free-tier-warning emit failed: {e}");
-                    }
-                },
-                move || {
-                    if let Err(e) = app_cut.emit("free-tier-cutoff", serde_json::json!({})) {
-                        log::warn!("free-tier-cutoff emit failed: {e}");
-                    }
-                },
-            );
-            // Park the abort handles in shared state so disconnect_streaming
-            // can cancel them. Drops any pre-existing handles first (defensive
-            // — should never happen since disconnect always clears).
-            if let Ok(mut guard) = timer_state_for_cb.lock() {
+        match conn_type {
+            ConnectionType::Relay => {
+                let app_warn = app_for_conn_type.clone();
+                let app_cut = app_for_conn_type.clone();
+                let handles = free_tier_timer::start(
+                    free_tier_timer::TimerConfig::default(),
+                    move || {
+                        if let Err(e) = app_warn.emit("free-tier-warning", serde_json::json!({})) {
+                            log::warn!("free-tier-warning emit failed: {e}");
+                        }
+                    },
+                    move || {
+                        if let Err(e) = app_cut.emit("free-tier-cutoff", serde_json::json!({})) {
+                            log::warn!("free-tier-cutoff emit failed: {e}");
+                        }
+                    },
+                );
+                // Park the abort handles in shared state so disconnect_streaming
+                // can cancel them. Drops any pre-existing handles first (defensive
+                // — should never happen since disconnect always clears).
+                let mut guard = timer_state_for_cb.lock().unwrap_or_else(|p| p.into_inner());
                 if let Some(prev) = guard.take() {
                     prev.cancel();
                 }
                 *guard = Some(handles);
+            }
+            ConnectionType::P2p => {
+                // A Relay→P2p flip (ICE restart, late direct pair after an
+                // initial relay nomination) must cancel the parked warning/
+                // cutoff timers — otherwise they fire against a session that
+                // no longer uses the relay and cut a legitimate P2P stream.
+                let mut guard = timer_state_for_cb.lock().unwrap_or_else(|p| p.into_inner());
+                if let Some(handles) = guard.take() {
+                    dbg_log("[ice-connected] relay->p2p flip — cancelling free-tier timers");
+                    handles.cancel();
+                }
             }
         }
     });
@@ -469,6 +504,18 @@ async fn start_streaming(
     ));
     let width = capturer.width();
     let height = capturer.height();
+
+    // Create the encoder BEFORE any session state is mutated: it is the last
+    // fallible step, and a failure after the input/file/rtc slots were
+    // populated used to leave them stuck (the gh#64 guards then blocked
+    // every retry until a webview reload).
+    let enc = encoder::Vp8Encoder::new(width, height, 2000).map_err(|e| {
+        dbg_log(&format!(
+            "[start_streaming] Vp8Encoder::new FAILED ({width}x{height}): {e}"
+        ));
+        e
+    })?;
+    dbg_log("[start_streaming] encoder ready");
 
     // Resolve the chosen monitor's top-left in virtual-desktop coordinates so
     // the InputController can offset absolute pointer events onto the right
@@ -570,14 +617,6 @@ async fn start_streaming(
         *guard = Some(peer);
     }
 
-    let enc = encoder::Vp8Encoder::new(width, height, 2000).map_err(|e| {
-        dbg_log(&format!(
-            "[start_streaming] Vp8Encoder::new FAILED ({width}x{height}): {e}"
-        ));
-        e
-    })?;
-    dbg_log("[start_streaming] encoder ready");
-
     // Install the switch-monitor command channel. The runtime command
     // builds a fresh capturer + encoder and pushes them through this
     // channel; streaming_loop swaps them in between frames.
@@ -590,9 +629,11 @@ async fn start_streaming(
         *g = Some(switch_tx);
     }
     let controller_arc_for_loop = Arc::clone(&input_state.0);
+    let app_for_loop = app.clone();
 
     tauri::async_runtime::spawn(async move {
         streaming_loop(
+            app_for_loop,
             Some(capturer),
             Some(enc),
             track,
@@ -772,7 +813,6 @@ async fn disconnect_streaming(
     sig_state: State<'_, SignalingState>,
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
-    ip_state: State<'_, PeerIpState>,
     file_state: State<'_, FileTransferState>,
     timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
@@ -803,9 +843,10 @@ async fn disconnect_streaming(
     // Drop the signaling handle so start_signaling can run again. Without
     // this the #64 guard ("signaling already running") trips on every
     // subsequent restart because the slot is still populated even after
-    // we sent `bye`. Dropping the handle ends the WS task, which in turn
-    // emits the "code-assigned" listener teardown — the next start_signaling
-    // gets a fresh code-channel. Skip this when `keep_signaling` is true:
+    // we sent `bye`. Dropping the handle AND the OutboundSink below drops
+    // every sender into the WS task's command channel — the task observes
+    // the close, sends a WS Close (releasing the ad-hoc code server-side)
+    // and exits. Skip this when `keep_signaling` is true:
     // a new viewer just joined the same code and we want to preserve the
     // WS task that delivered the join — replacing the streaming state only.
     if !keep_signaling {
@@ -823,10 +864,17 @@ async fn disconnect_streaming(
         *sink_guard = None;
     }
 
-    // Drop the peer — this closes all ICE/DTLS transports.
+    // Close the peer explicitly, then drop it. webrtc-rs has NO Drop-based
+    // teardown: without close() the ICE/DTLS/SCTP tasks, their bound UDP
+    // sockets, and the DataChannel callbacks (whose held senders keep the
+    // input-applier and file tasks alive) leak on every session teardown.
     {
         let mut guard = rtc_state.0.lock().await;
-        *guard = None;
+        if let Some(peer) = guard.take() {
+            if let Err(e) = peer.close().await {
+                dbg_log(&format!("[disconnect_streaming] peer close: {e}"));
+            }
+        }
     }
 
     // Drop the input controller.
@@ -851,12 +899,6 @@ async fn disconnect_streaming(
         }
     }
 
-    // Clear the cached peer IP so the next session starts clean.
-    {
-        let mut guard = ip_state.0.lock().unwrap_or_else(|p| p.into_inner());
-        *guard = None;
-    }
-
     // Drop the switch-monitor channel sender so the streaming_loop sees
     // the channel close (which is its canonical shutdown signal). A
     // stale sender from a prior session would make the next switch_monitor
@@ -877,7 +919,17 @@ async fn disconnect_streaming(
     Ok(())
 }
 
+/// Emitted on every abnormal (self-initiated) exit of `streaming_loop` so the
+/// webview can run its disconnect + UI-reset flow instead of showing
+/// "Streaming läuft." over a dead loop. Deliberate teardown via the switch
+/// channel close does NOT emit — `disconnect_streaming` already emits
+/// `streaming-stopped` on that path.
+fn emit_streaming_failed(app: &tauri::AppHandle, reason: &str) {
+    let _ = app.emit("streaming-failed", serde_json::json!({ "reason": reason }));
+}
+
 async fn streaming_loop(
+    app: tauri::AppHandle,
     mut capturer: Option<capture::ScreenCapturer>,
     mut enc: Option<encoder::Vp8Encoder>,
     track: std::sync::Arc<TrackLocalStaticSample>,
@@ -980,16 +1032,26 @@ async fn streaming_loop(
             (Some(c), Some(e)) => (c, e),
             _ => {
                 dbg_log("[streaming_loop] capturer/encoder unexpectedly absent in active branch; exiting");
+                emit_streaming_failed(&app, "internal");
                 return;
             }
         };
 
         let frame = match cap.next_frame() {
-            Ok(f) => f,
+            Ok(capture::NextFrame::Frame(f)) => f,
+            Ok(capture::NextFrame::Timeout) => {
+                // No frame in the poll window — the source may be stalled
+                // with its channel still open (portal revoked, WGC silent
+                // stop). Loop around so the switch_rx shutdown check above
+                // runs; a `recv()` here used to park the loop forever, past
+                // disconnect_streaming.
+                continue;
+            }
             Err(e) => {
                 dbg_log(&format!(
                     "[streaming_loop] next_frame Err after {frame_count} frames / {sample_count} samples: {e}"
                 ));
+                emit_streaming_failed(&app, "capture");
                 return;
             }
         };
@@ -1024,7 +1086,13 @@ async fn streaming_loop(
                 ..Default::default()
             };
             match track.write_sample(&sample).await {
-                Ok(_) => sample_count += 1,
+                Ok(_) => {
+                    sample_count += 1;
+                    // Only CONSECUTIVE failures should kill the loop — a
+                    // cumulative counter meant 30 transient blips spread over
+                    // a long session ended it too.
+                    write_failures = 0;
+                }
                 Err(e) => {
                     write_failures += 1;
                     if write_failures <= 3 || write_failures.is_multiple_of(10) {
@@ -1034,6 +1102,7 @@ async fn streaming_loop(
                     }
                     if write_failures > 30 {
                         dbg_log("[streaming_loop] write_sample failing repeatedly; exiting");
+                        emit_streaming_failed(&app, "track-write");
                         return;
                     }
                 }
@@ -1191,14 +1260,19 @@ async fn pick_and_send_file(
 ) -> Result<(), String> {
     use tauri_plugin_dialog::DialogExt;
 
-    let path: Option<PathBuf> = app
-        .dialog()
-        .file()
-        .blocking_pick_file()
-        .map(|p| p.into_path().map_err(|e| e.to_string()))
-        .transpose()?;
-
-    let path = path.ok_or_else(|| "no file selected".to_string())?;
+    // Callback API bridged through a oneshot instead of blocking_pick_file:
+    // the blocking variant parks a tokio worker thread for the entire
+    // (user-paced, unbounded) dialog lifetime.
+    let (picked_tx, picked_rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_file(move |p| {
+        let _ = picked_tx.send(p);
+    });
+    let path: PathBuf = match picked_rx.await {
+        Ok(Some(p)) => p.into_path().map_err(|e| e.to_string())?,
+        // Dialog cancelled, or the dialog plugin dropped the callback
+        // without firing (app teardown) — either way nothing to send.
+        Ok(None) | Err(_) => return Err("no file selected".to_string()),
+    };
 
     let guard = rtc_state.0.lock().await;
     let peer = guard
@@ -1206,6 +1280,39 @@ async fn pick_and_send_file(
         .ok_or_else(|| "WebRTC peer not initialized; start streaming first".to_string())?;
 
     files::send_file(path, peer).await
+}
+
+// ── Autostart (gh #27) ──────────────────────────────────────────────────────
+// The `@tauri-apps/plugin-autostart` JS bindings are not bundled in the
+// sharer webview, so the settings UI toggles autostart through these
+// commands instead. Error strings are user-facing (German); details go to
+// dbg_log.
+
+#[tauri::command]
+fn enable_autostart(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().enable().map_err(|e| {
+        dbg_log(&format!("[autostart] enable failed: {e}"));
+        "Autostart konnte nicht aktiviert werden.".to_string()
+    })
+}
+
+#[tauri::command]
+fn disable_autostart(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().disable().map_err(|e| {
+        dbg_log(&format!("[autostart] disable failed: {e}"));
+        "Autostart konnte nicht deaktiviert werden.".to_string()
+    })
+}
+
+#[tauri::command]
+fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| {
+        dbg_log(&format!("[autostart] is_enabled failed: {e}"));
+        "Autostart-Status konnte nicht gelesen werden.".to_string()
+    })
 }
 
 pub fn run() {
@@ -1227,6 +1334,12 @@ pub fn run() {
         dbg_log("[startup] --debug flag present — diagnostic logging enabled");
     }
 
+    // Route the `log` facade into dbg_log. Err means a logger was already
+    // installed (only possible in embedded/test contexts) — keep it.
+    if log::set_logger(&LOG_FORWARDER).is_ok() {
+        log::set_max_level(log::LevelFilter::Debug);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
@@ -1234,11 +1347,12 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         // Unattended-mode autostart: registered but defaults to off — the
-        // settings UI (gh #20) flips it via the plugin's JS bindings
-        // (`enable()` / `disable()` / `isEnabled()` from
-        // `@tauri-apps/plugin-autostart`). On macOS we use LaunchAgent
-        // (per-user, no privileged install required); Linux ships a
-        // .desktop file under `~/.config/autostart`; Windows uses
+        // settings UI flips it via the `enable_autostart` /
+        // `disable_autostart` / `is_autostart_enabled` commands above
+        // (gh #27; the plugin's JS bindings are not bundled in the
+        // webview). On macOS we use LaunchAgent (per-user, no privileged
+        // install required); Linux ships a .desktop file under
+        // `~/.config/autostart`; Windows uses
         // `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. No
         // extra args — the sharer's normal entry point handles
         // unattended-mode bootstrap on its own.
@@ -1251,7 +1365,6 @@ pub fn run() {
         .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
             None,
         ))))
-        .manage(PeerIpState(Mutex::new(None)))
         .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .manage(SwitchState(Mutex::new(None)))
@@ -1270,6 +1383,9 @@ pub fn run() {
             accept_file,
             reject_file,
             pick_and_send_file,
+            enable_autostart,
+            disable_autostart,
+            is_autostart_enabled,
             unattended_cmd::unattended_pair,
             unattended_cmd::unattended_unpair,
             unattended_cmd::unattended_is_paired,
@@ -1449,6 +1565,80 @@ mod tests {
             !contents.contains(&marker),
             "dbg_log must not write {marker:?} while logging is disabled"
         );
+    }
+
+    // ── log-facade forwarder (2026-08 review) ───────────────────────────
+    // Without an installed backend every log::warn!/info!/debug! in the
+    // crate was a silent no-op. The forwarder must (a) write enabled
+    // records into the dbg_log sink, (b) respect the runtime gate, and
+    // (c) filter out trace-level noise.
+
+    #[test]
+    fn log_forwarder_writes_warn_records_when_gate_enabled() {
+        let _guard = LOG_GATE_LOCK.lock().unwrap();
+        let prev = super::debug_logging_enabled();
+        super::set_debug_logging_enabled(true);
+        let marker = unique_marker("logfwd-on");
+        log::Log::log(
+            &super::LOG_FORWARDER,
+            &log::Record::builder()
+                .level(log::Level::Warn)
+                .target("auffi_test")
+                .args(format_args!("{marker}"))
+                .build(),
+        );
+        super::set_debug_logging_enabled(prev);
+
+        let contents = std::fs::read_to_string(super::dbg_log_path()).unwrap_or_default();
+        assert!(
+            contents.contains(&marker),
+            "forwarder must append warn records to the dbg_log file"
+        );
+        assert!(
+            contents.contains(&format!("[WARN] auffi_test: {marker}")),
+            "forwarder line must carry level and target"
+        );
+    }
+
+    #[test]
+    fn log_forwarder_silent_when_gate_disabled() {
+        let _guard = LOG_GATE_LOCK.lock().unwrap();
+        let prev = super::debug_logging_enabled();
+        super::set_debug_logging_enabled(false);
+        let marker = unique_marker("logfwd-off");
+        log::Log::log(
+            &super::LOG_FORWARDER,
+            &log::Record::builder()
+                .level(log::Level::Warn)
+                .target("auffi_test")
+                .args(format_args!("{marker}"))
+                .build(),
+        );
+        super::set_debug_logging_enabled(prev);
+
+        let contents = std::fs::read_to_string(super::dbg_log_path()).unwrap_or_default();
+        assert!(
+            !contents.contains(&marker),
+            "forwarder must not write while the runtime gate is off"
+        );
+    }
+
+    #[test]
+    fn log_forwarder_filters_trace_but_accepts_debug() {
+        let _guard = LOG_GATE_LOCK.lock().unwrap();
+        let prev = super::debug_logging_enabled();
+        super::set_debug_logging_enabled(true);
+        let trace_enabled = log::Log::enabled(
+            &super::LOG_FORWARDER,
+            &log::Metadata::builder().level(log::Level::Trace).build(),
+        );
+        let debug_enabled = log::Log::enabled(
+            &super::LOG_FORWARDER,
+            &log::Metadata::builder().level(log::Level::Debug).build(),
+        );
+        super::set_debug_logging_enabled(prev);
+        assert!(!trace_enabled, "trace must stay filtered");
+        assert!(debug_enabled, "debug and above must pass the filter");
     }
 
     #[test]

@@ -126,7 +126,9 @@ async fn open_portal() -> Result<PortalStreams, String> {
             &session,
             CursorMode::Embedded,
             SourceType::Monitor.into(),
-            true,                           // multiple monitors allowed
+            // single monitor only: open_portal uses just the first stream, so
+            // letting the dialog multi-select would silently discard the rest
+            false,
             saved_token.as_deref(),         // re-attach previously-granted source
             PersistMode::ExplicitlyRevoked, // keep until user revokes in settings
         )

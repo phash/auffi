@@ -170,17 +170,30 @@ impl FileTransferManager {
                 vec![]
             }
             FileEvent::FileDone { id } => {
-                if let Some(mut state) = self.active.remove(&id) {
-                    if let Err(e) = state.file.flush() {
-                        log::warn!("flush failed for '{}': {e}", state.name);
+                let Some(mut state) = self.active.remove(&id) else {
+                    return vec![];
+                };
+                match verify_complete(&mut state) {
+                    Ok(()) => {
+                        let path = output_dir().join(&state.name);
+                        let payload = serde_json::json!({ "path": path.to_string_lossy() });
+                        if let Err(e) = app.emit("file-received", payload) {
+                            log::warn!("file-received emit failed: {e}");
+                        }
+                        vec![]
                     }
-                    let path = output_dir().join(&state.name);
-                    let payload = serde_json::json!({ "path": path.to_string_lossy() });
-                    if let Err(e) = app.emit("file-received", payload) {
-                        log::warn!("file-received emit failed: {e}");
+                    Err(reason) => {
+                        log::warn!("transfer '{}' failed on done: {reason}", state.name);
+                        let payload = serde_json::json!({ "name": state.name, "reason": reason });
+                        if let Err(e) = app.emit("file-failed", payload) {
+                            log::warn!("file-failed emit failed: {e}");
+                        }
+                        vec![FileEvent::FileError {
+                            id,
+                            message: "incomplete-transfer".to_string(),
+                        }]
                     }
                 }
-                vec![]
             }
             FileEvent::FileError { id, message } => {
                 self.pending.remove(&id);
@@ -207,9 +220,9 @@ impl FileTransferManager {
         };
 
         match Self::open_output_file(&offer.sanitized_name) {
-            Ok(file) => {
+            Ok((file, final_name)) => {
                 let state = ReceiveState {
-                    name: offer.sanitized_name,
+                    name: final_name,
                     total_size: offer.total_size,
                     received_bytes: 0,
                     file: BufWriter::new(file),
@@ -286,23 +299,26 @@ impl FileTransferManager {
                     state.pending_chunks.insert(seq, payload.to_vec());
                     None
                 }
+            } else if let Err(e) = state.file.write_all(payload) {
+                // Disk failures route through `abort_reason` like the
+                // cap violations — an early `?` would leave the broken
+                // transfer occupying one of the MAX_CONCURRENT_TRANSFERS
+                // slots until the viewer volunteers a file-error.
+                Some(format!("write failed: {e}"))
             } else {
-                state
-                    .file
-                    .write_all(payload)
-                    .map_err(|e| format!("write failed: {e}"))?;
                 state.received_bytes += chunk_len;
                 state.next_seq += 1;
 
+                let mut buffered_write_error = None;
                 while let Some(data) = state.pending_chunks.remove(&state.next_seq) {
-                    state
-                        .file
-                        .write_all(&data)
-                        .map_err(|e| format!("write (buffered) failed: {e}"))?;
+                    if let Err(e) = state.file.write_all(&data) {
+                        buffered_write_error = Some(format!("write (buffered) failed: {e}"));
+                        break;
+                    }
                     state.received_bytes += data.len() as u64;
                     state.next_seq += 1;
                 }
-                None
+                buffered_write_error
             }
         };
 
@@ -314,7 +330,11 @@ impl FileTransferManager {
         Ok(())
     }
 
-    fn open_output_file(filename: &str) -> std::io::Result<std::fs::File> {
+    /// Returns the opened file plus the filename actually created — which
+    /// differs from `filename` when a collision forced deduplication. The
+    /// caller must track the returned name so success events point at the
+    /// file that was written, not at a pre-existing one.
+    fn open_output_file(filename: &str) -> std::io::Result<(std::fs::File, String)> {
         let dir = output_dir();
         std::fs::create_dir_all(&dir)?;
         // De-duplicate instead of truncating: a viewer-chosen name must never
@@ -323,16 +343,16 @@ impl FileTransferManager {
         let mut attempt = 0u32;
         loop {
             let candidate = if attempt == 0 {
-                dir.join(filename)
+                filename.to_string()
             } else {
-                dir.join(dedupe_filename(filename, attempt))
+                dedupe_filename(filename, attempt)
             };
             match std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(&candidate)
+                .open(dir.join(&candidate))
             {
-                Ok(file) => return Ok(file),
+                Ok(file) => return Ok((file, candidate)),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 9999 => {
                     attempt += 1;
                 }
@@ -340,6 +360,30 @@ impl FileTransferManager {
             }
         }
     }
+}
+
+/// Verify a finished transfer actually holds every declared byte before the
+/// user is told "received": flushed to disk, no gap chunks still parked, and
+/// at least `total_size` bytes written (the final chunk may overshoot within
+/// `SIZE_OVERRUN_TOLERANCE_BYTES`; anything beyond that already aborted in
+/// `handle_chunk`). Returns the failure reason for the error events.
+fn verify_complete(state: &mut ReceiveState) -> Result<(), String> {
+    if let Err(e) = state.file.flush() {
+        return Err(format!("flush failed: {e}"));
+    }
+    if !state.pending_chunks.is_empty() {
+        return Err(format!(
+            "{} chunk(s) never written (gap in sequence)",
+            state.pending_chunks.len()
+        ));
+    }
+    if state.received_bytes < state.total_size {
+        return Err(format!(
+            "truncated: received {} of {} bytes",
+            state.received_bytes, state.total_size
+        ));
+    }
+    Ok(())
 }
 
 /// Insert ` (n)` before the last extension so a colliding download lands as
@@ -880,6 +924,71 @@ mod tests {
     }
 
     #[test]
+    fn write_failure_aborts_and_removes_transfer() {
+        use tempfile::NamedTempFile;
+        // A read-only handle makes the first unbuffered write fail the
+        // way a full disk would. Payload > BufWriter's 8 KiB default
+        // buffer so write_all bypasses the buffer and hits the OS
+        // immediately instead of parking bytes in memory.
+        let tmp = NamedTempFile::new().expect("tempfile");
+        let readonly = std::fs::File::open(tmp.path()).expect("open read-only");
+        let state = ReceiveState {
+            name: "wf.bin".to_string(),
+            total_size: 64 * 1024,
+            received_bytes: 0,
+            file: BufWriter::new(readonly),
+            pending_chunks: BTreeMap::new(),
+            next_seq: 0,
+        };
+        let mut mgr = FileTransferManager::new();
+        mgr.active.insert("wf-id".to_string(), state);
+
+        let payload = vec![0u8; 16 * 1024];
+        let frame = build_chunk_frame("wf-id", 0, &payload);
+        let result = mgr.handle_chunk(&frame);
+        assert!(result.is_err(), "write to read-only handle must error");
+        assert!(
+            !mgr.active.contains_key("wf-id"),
+            "failed transfer must be removed from the active map like the other abort paths"
+        );
+    }
+
+    #[test]
+    fn accept_stores_the_deduplicated_filename() {
+        let mut mgr = FileTransferManager::new();
+        let id = "dedupe-name-id";
+        let sanitized = "dedupe_name_test.txt".to_string();
+        let dir = output_dir();
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let original = dir.join(&sanitized);
+        std::fs::write(&original, b"old").expect("pre-create collision");
+        let deduped = dir.join("dedupe_name_test (1).txt");
+
+        mgr.pending.insert(
+            id.to_string(),
+            PendingOffer {
+                id: id.to_string(),
+                sanitized_name: sanitized,
+                total_size: 5,
+            },
+        );
+
+        let ev = mgr.accept(id);
+        let state_name = mgr.active.get(id).map(|s| s.name.clone());
+        // Clean up BEFORE asserting so a failure doesn't leave litter
+        // in ~/Downloads/Auffi/ across repeated runs.
+        let _ = std::fs::remove_file(&original);
+        let _ = std::fs::remove_file(&deduped);
+
+        assert!(matches!(ev, FileEvent::FileAccept { .. }));
+        assert_eq!(
+            state_name.as_deref(),
+            Some("dedupe_name_test (1).txt"),
+            "state must track the file actually created, not the colliding original"
+        );
+    }
+
+    #[test]
     fn too_many_out_of_order_chunks_aborts_transfer() {
         let mut mgr = FileTransferManager::new();
         let total = (MAX_PENDING_OUT_OF_ORDER_CHUNKS as u64 + 5) * 16;
@@ -907,5 +1016,67 @@ mod tests {
             !mgr.active.contains_key("ooo-id"),
             "aborted transfer must be removed from active map"
         );
+    }
+
+    // ─── FileDone completeness tests ─────────────────────────────────────────
+
+    #[test]
+    fn verify_complete_accepts_exact_byte_count() {
+        let mut state = make_active_state_with_size("vc-ok", 4);
+        state.file.write_all(b"abcd").expect("write");
+        state.received_bytes = 4;
+        assert!(verify_complete(&mut state).is_ok());
+    }
+
+    #[test]
+    fn verify_complete_accepts_overrun_within_tolerance() {
+        // The wire protocol does not guarantee chunk-aligned sizes — the
+        // final chunk may overshoot total_size slightly (see
+        // SIZE_OVERRUN_TOLERANCE_BYTES). That is a complete transfer.
+        let mut state = make_active_state_with_size("vc-tol", 4);
+        state.received_bytes = 6;
+        assert!(verify_complete(&mut state).is_ok());
+    }
+
+    #[test]
+    fn verify_complete_rejects_truncated_transfer() {
+        // A malicious/buggy viewer sending file-done early must not
+        // produce a success event for a silently truncated file.
+        let mut state = make_active_state_with_size("vc-trunc", 100);
+        state.received_bytes = 40;
+        let err = verify_complete(&mut state).expect_err("truncated transfer must fail");
+        assert!(err.contains("40") && err.contains("100"), "reason: {err}");
+    }
+
+    #[test]
+    fn verify_complete_rejects_parked_out_of_order_chunks() {
+        let mut state = make_active_state_with_size("vc-gap", 8);
+        state.received_bytes = 8;
+        state.pending_chunks.insert(3, vec![0u8; 4]);
+        assert!(
+            verify_complete(&mut state).is_err(),
+            "gap chunks parked in pending_chunks mean bytes never reached disk"
+        );
+    }
+
+    #[test]
+    fn verify_complete_rejects_flush_failure() {
+        use tempfile::NamedTempFile;
+        // Read-only handle + bytes parked in the BufWriter → flush fails
+        // the way a full disk would. Success must not be reported then.
+        let tmp = NamedTempFile::new().expect("tempfile");
+        let readonly = std::fs::File::open(tmp.path()).expect("open read-only");
+        let mut file = BufWriter::new(readonly);
+        file.write_all(b"parked").expect("small write parks in buffer");
+        let mut state = ReceiveState {
+            name: "vc-flush.bin".to_string(),
+            total_size: 6,
+            received_bytes: 6,
+            file,
+            pending_chunks: BTreeMap::new(),
+            next_seq: 1,
+        };
+        let err = verify_complete(&mut state).expect_err("flush failure must fail");
+        assert!(err.contains("flush"), "reason: {err}");
     }
 }

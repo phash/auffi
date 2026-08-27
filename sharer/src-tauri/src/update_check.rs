@@ -6,9 +6,10 @@
 //! the banner stays hidden — we never want to bother the user with a
 //! "couldn't check for updates" notice; the next launch will retry.
 //!
-//! Network call is gated on debug-vs-release: in `cargo test --lib`
-//! the actual fetch is never exercised; only the pure helpers
-//! (`parse_version`, `is_newer_version`) are.
+//! The tests exercise only the pure helpers (`parse_version`,
+//! `is_newer_version`); the GitHub fetch runs only when the webview
+//! invokes the `check_for_update` command — there is no
+//! debug-vs-release gate on the network call.
 
 use serde::{Deserialize, Serialize};
 
