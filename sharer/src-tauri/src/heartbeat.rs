@@ -381,7 +381,17 @@ async fn connect_and_run(
         headers.insert("X-Auffi-Device-Id", v);
     }
 
-    let (ws, _) = match tokio_tungstenite::connect_async(request).await {
+    // Merged trust anchors (OS store + bundled) rather than the crate's
+    // native-roots default — see src/tls_roots.rs for the Windows failure
+    // that made the app unusable on machines with a lazily-populated store.
+    let (ws, _) = match tokio_tungstenite::connect_async_tls_with_config(
+        request,
+        None,
+        false,
+        Some(crate::tls_roots::connector()),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(e) => {
             return ConnectOutcome::Disconnected {

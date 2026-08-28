@@ -5,7 +5,7 @@ use futures_util::{SinkExt, StreamExt};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{connect_async_tls_with_config, tungstenite::Message};
 
 /// Keepalive tuning, mirroring the unattended heartbeat (heartbeat.rs):
 /// ping every 30 s, declare the link dead when no pong arrived for 90 s.
@@ -90,7 +90,15 @@ async fn connect_and_run<E>(
             return;
         }
     };
-    let (ws, _) = match connect_async(request).await {
+    // Merged trust anchors — see src/tls_roots.rs.
+    let (ws, _) = match connect_async_tls_with_config(
+        request,
+        None,
+        false,
+        Some(crate::tls_roots::connector()),
+    )
+    .await
+    {
         Ok(v) => v,
         Err(e) => {
             emit(

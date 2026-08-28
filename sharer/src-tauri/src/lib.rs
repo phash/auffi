@@ -15,6 +15,7 @@ mod outbound;
 mod protocol;
 mod pw_check;
 mod signaling;
+mod tls_roots;
 mod turn_config;
 mod unattended_cmd;
 mod update_check;

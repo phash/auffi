@@ -16,7 +16,14 @@ cc = "=1.4.4"
 [dependencies]
 tauri = { version = "=2.11.5", features = ["tray-icon"] }
 tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync"] }
+# The `rustls-tls-native-roots` feature is kept for the Connector type and the
+# rustls-native-certs dependency, but we do NOT use its default connector: it
+# trusts the OS store alone, which on Windows is populated lazily and left the
+# sharer unable to connect on machines whose store had not cached ISRG Root X2.
+# See src/tls_roots.rs — the anchors are merged with the bundled set instead.
 tokio-tungstenite = { version = "=0.30.0", features = ["rustls-tls-native-roots"] }
+rustls-native-certs = "=0.8.4"
+webpki-roots = "=1.0.9"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 url = "=2.5.8"
