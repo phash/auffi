@@ -14,6 +14,15 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.6.7 — released 2026-08-29. Unattended connection telemetry (gh #109)
+  // and the device-id now showing in the sharer's status line. Carries the
+  // 0.6.6 TLS trust-anchor fix and the 0.6.5 security fixes.
+  "Auffi_0.6.7_amd64.deb",
+  "Auffi-0.6.7-1.x86_64.rpm",
+  "Auffi_0.6.7_amd64.AppImage",
+  "Auffi_0.6.7_x64-setup.exe",
+  "Auffi_0.6.7_x64_en-US.msi",
+  "Auffi_0.6.7_x64_portable.exe",
   // 0.6.6 — released 2026-08-28. TLS trust anchors are now merged (OS store +
   // bundled Mozilla set): rustls trusted the OS store alone, which Windows
   // populates lazily, so the sharer could not connect at all on machines whose
