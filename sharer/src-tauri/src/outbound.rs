@@ -66,10 +66,59 @@ impl OutboundSink {
                 .map_err(|e| format!("unattended relay send: {e}")),
         }
     }
+
+    /// Send a connection-telemetry frame (gh #109).
+    ///
+    /// Unattended only, and deliberately silent for AdHoc: `connection_log`
+    /// is keyed by device_id and an ad-hoc session has no device, so the
+    /// backend would have nothing to attribute the row to. Errors are
+    /// returned but callers treat them as advisory — losing a telemetry
+    /// frame must never affect the session.
+    pub async fn send_telemetry(&self, frame: SharerFrame) -> Result<(), String> {
+        match self {
+            Self::AdHoc(_) => Ok(()),
+            Self::Unattended(tx) => tx
+                .send(HeartbeatCommand::Send(frame))
+                .await
+                .map_err(|e| format!("unattended telemetry send: {e}")),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn telemetry_reaches_the_heartbeat_channel_when_unattended() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let sink = OutboundSink::Unattended(tx);
+        sink.send_telemetry(SharerFrame::ConnectionEnded { bytes_relayed: 7 })
+            .await
+            .expect("send");
+        match rx.recv().await {
+            Some(HeartbeatCommand::Send(SharerFrame::ConnectionEnded { bytes_relayed })) => {
+                assert_eq!(bytes_relayed, 7);
+            }
+            other => panic!("expected ConnectionEnded, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn telemetry_is_dropped_on_the_adhoc_path() {
+        // connection_log is device-keyed; an ad-hoc session has no device, so
+        // the frame has nowhere to land and must not surface as an error.
+        let (tx, mut rx) = mpsc::channel(4);
+        let sink = OutboundSink::AdHoc(tx);
+        sink.send_telemetry(SharerFrame::ConnectionStarted {
+            connection_type: crate::heartbeat::ConnectionKind::P2p,
+        })
+        .await
+        .expect("adhoc telemetry is a silent no-op, not an error");
+        assert!(
+            rx.try_recv().is_err(),
+            "nothing may be queued on the adhoc channel"
+        );
+    }
     use super::*;
 
     #[tokio::test]

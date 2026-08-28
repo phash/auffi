@@ -22,6 +22,7 @@ import {
   resetPwFail,
   UnattendedSessions,
 } from "./unattended_sessions.js";
+import { startConnectionLog, endConnectionLog } from "./connection_log.js";
 import {
   checkIpRateLimit as checkRateLimit,
   stripIpv4Mapped,
@@ -334,6 +335,47 @@ export function registerSignaling(
             // Stay paired — viewer can try again. Back to awaiting-pw.
             sessions.transition(sess.deviceId, "awaiting-pw");
           }
+          return;
+        }
+
+        // gh #109: unattended telemetry. Confirmed sessions only — before
+        // that there is no agreed pairing to attribute a row to. Both frames
+        // are advisory: a malformed or unexpected one is dropped silently
+        // rather than answered with an error, because the heartbeat treats
+        // `error` as a fatal disconnect.
+        if (msg.type === "connection-started") {
+          const sess = sessions.findBySharer(peer);
+          if (!sess || sess.state !== "confirmed" || sess.logId !== null) return;
+          if (msg.connectionType !== "p2p" && msg.connectionType !== "relay") return;
+          try {
+            sess.logId = startConnectionLog(
+              db,
+              sess.deviceId,
+              sess.viewerIpPrefix,
+              msg.connectionType,
+            );
+          } catch (e) {
+            // The device row can vanish mid-session (account or device
+            // delete racing the evict), and the FK then rejects the insert.
+            // Telemetry must never take the socket down with it.
+            req.log.warn({ err: e }, "connection-started: log insert failed");
+          }
+          return;
+        }
+
+        if (msg.type === "connection-ended") {
+          const sess = sessions.findBySharer(peer);
+          if (!sess || sess.logId === null) return;
+          const bytes =
+            typeof msg.bytesRelayed === "number" && Number.isFinite(msg.bytesRelayed)
+              ? Math.max(0, Math.floor(msg.bytesRelayed))
+              : 0;
+          try {
+            endConnectionLog(db, sess.logId, bytes);
+          } catch (e) {
+            req.log.warn({ err: e }, "connection-ended: log update failed");
+          }
+          sess.logId = null;
           return;
         }
 

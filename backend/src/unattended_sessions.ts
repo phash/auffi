@@ -145,6 +145,12 @@ export interface UnattendedSession {
    */
   viewerIpPrefix: string;
   /**
+   * connection_log row id once the sharer reported `connection-started`, so
+   * `connection-ended` finalises the same row. Null until then, and for
+   * sessions that end before ICE settles.
+   */
+  logId: number | null;
+  /**
    * When the session entered "awaiting-pw" (epoch ms). Bounds the
    * pre-confirmed lifetime — see [`PW_ENTRY_TIMEOUT_MS`].
    */
@@ -208,6 +214,7 @@ export class UnattendedSessions {
       viewer,
       sharer,
       state: "awaiting-pw",
+      logId: null,
       viewerIpPrefix,
       createdAt: now,
     });

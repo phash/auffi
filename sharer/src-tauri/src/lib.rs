@@ -208,6 +208,14 @@ struct SwitchState(Mutex<Option<mpsc::Sender<SwitchMsg>>>);
 /// wiring works in both modes. See `outbound.rs`.
 struct OutboundSinkState(Arc<tokio::sync::Mutex<Option<outbound::OutboundSink>>>);
 
+/// Bytes handed to the WebRTC track this session (gh #109).
+///
+/// Reported to the backend as `bytesRelayed` when the unattended session
+/// ends, which is what fills `connection_log.bytes_relayed` and the admin
+/// stats' relay-byte figure. Reset when a session starts, so a new session
+/// never inherits the previous one's total.
+struct SessionBytesState(Arc<std::sync::atomic::AtomicU64>);
+
 /// Two-phase swap protocol so the OLD capture pipeline tears down before
 /// the NEW portal dialog is opened. On Plasma, two concurrent
 /// `org.freedesktop.portal.ScreenCast` pipelines confuse the compositor
@@ -384,6 +392,7 @@ async fn start_streaming(
     switch_state: State<'_, SwitchState>,
     outbound_state: State<'_, OutboundSinkState>,
     unattended_state: State<'_, unattended_cmd::UnattendedState>,
+    bytes_state: State<'_, SessionBytesState>,
 ) -> Result<(), String> {
     dbg_log(&format!(
         "[start_streaming] enter monitor_id={} session_code=*** os={} arch={} v{}",
@@ -478,6 +487,7 @@ async fn start_streaming(
     });
 
     let app_for_conn_type = app.clone();
+    let outbound_for_conn_type = Arc::clone(&outbound_state.0);
     let timer_state_for_cb = Arc::clone(&timer_state.0);
     peer.on_connection_type(move |conn_type| {
         use webrtc_peer::ConnectionType;
@@ -488,6 +498,30 @@ async fn start_streaming(
         dbg_log(&format!("[ice-connected] type={value}"));
         if let Err(e) = app_for_conn_type.emit("connection-type", value) {
             log::warn!("connection-type emit failed: {e}");
+        }
+
+        // gh #109: open the connection_log row now that the media path is
+        // known. Unattended only — send_telemetry is a no-op on the ad-hoc
+        // sink, since that table is keyed by device.
+        {
+            let sink_arc = Arc::clone(&outbound_for_conn_type);
+            let kind = match conn_type {
+                ConnectionType::P2p => heartbeat::ConnectionKind::P2p,
+                ConnectionType::Relay => heartbeat::ConnectionKind::Relay,
+            };
+            tauri::async_runtime::spawn(async move {
+                let sink = sink_arc.lock().await.clone();
+                if let Some(sink) = sink {
+                    if let Err(e) = sink
+                        .send_telemetry(heartbeat::SharerFrame::ConnectionStarted {
+                            connection_type: kind,
+                        })
+                        .await
+                    {
+                        dbg_log(&format!("[ice-connected] telemetry start: {e}"));
+                    }
+                }
+            });
         }
 
         match conn_type {
@@ -684,6 +718,10 @@ async fn start_streaming(
     }
     let controller_arc_for_loop = Arc::clone(&input_state.0);
     let app_for_loop = app.clone();
+    // Fresh session, fresh count — otherwise connection-ended would report
+    // the previous session's bytes on top of this one's.
+    bytes_state.0.store(0, std::sync::atomic::Ordering::Relaxed);
+    let bytes_for_loop = Arc::clone(&bytes_state.0);
 
     tauri::async_runtime::spawn(async move {
         streaming_loop(
@@ -693,6 +731,7 @@ async fn start_streaming(
             track,
             switch_rx,
             controller_arc_for_loop,
+            bytes_for_loop,
         )
         .await;
     });
@@ -869,6 +908,7 @@ async fn disconnect_streaming(
     timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
     outbound_state: State<'_, OutboundSinkState>,
+    bytes_state: State<'_, SessionBytesState>,
     keep_signaling: Option<bool>,
 ) -> Result<(), String> {
     let keep_signaling = keep_signaling.unwrap_or(false);
@@ -919,6 +959,24 @@ async fn disconnect_streaming(
         let mut sink_guard = outbound_state.0.lock().await;
         if sink_guard.as_ref().is_some_and(|s| s.is_adhoc()) {
             *sink_guard = None;
+        }
+    }
+
+    // gh #109: close the connection_log row before tearing the peer down.
+    // Read-and-reset so a later teardown in the same process cannot report
+    // the same bytes twice. No-op on the ad-hoc sink.
+    {
+        let sent = bytes_state.0.swap(0, std::sync::atomic::Ordering::Relaxed);
+        let sink = outbound_state.0.lock().await.clone();
+        if let Some(sink) = sink {
+            if let Err(e) = sink
+                .send_telemetry(heartbeat::SharerFrame::ConnectionEnded {
+                    bytes_relayed: sent,
+                })
+                .await
+            {
+                dbg_log(&format!("[disconnect_streaming] telemetry end: {e}"));
+            }
         }
     }
 
@@ -993,6 +1051,7 @@ async fn streaming_loop(
     track: std::sync::Arc<TrackLocalStaticSample>,
     mut switch_rx: mpsc::Receiver<SwitchMsg>,
     controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
+    bytes_sent: Arc<std::sync::atomic::AtomicU64>,
 ) {
     dbg_log("[streaming_loop] entered");
     let mut write_failures = 0u64;
@@ -1146,6 +1205,10 @@ async fn streaming_loop(
             match track.write_sample(&sample).await {
                 Ok(_) => {
                     sample_count += 1;
+                    bytes_sent.fetch_add(
+                        sample.data.len() as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     // Only CONSECUTIVE failures should kill the loop — a
                     // cumulative counter meant 30 transient blips spread over
                     // a long session ended it too.
@@ -1427,6 +1490,9 @@ pub fn run() {
         .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .manage(SwitchState(Mutex::new(None)))
         .manage(OutboundSinkState(Arc::new(tokio::sync::Mutex::new(None))))
+        .manage(SessionBytesState(Arc::new(
+            std::sync::atomic::AtomicU64::new(0),
+        )))
         .manage(unattended_cmd::UnattendedState::default())
         .invoke_handler(tauri::generate_handler![
             start_signaling,

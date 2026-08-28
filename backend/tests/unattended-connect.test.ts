@@ -359,6 +359,97 @@ describe("/signal unattended connect flow (gh #17)", () => {
     sharer.close();
   });
 
+  // gh #109: connection_log had a read surface (device log page, admin stats,
+  // 30-day retention) and no writer at all — every query returned empty. The
+  // sharer reports the negotiated path once ICE settles and the byte count
+  // when the session ends.
+  async function confirmedPair(): Promise<{ sharer: WebSocket; viewer: WebSocket }> {
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message"); // needs-password
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    await once(sharer, "message"); // pw-check
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    await once(viewer, "message"); // peer-confirmed
+    await once(sharer, "message"); // peer-joined
+    return { sharer, viewer };
+  }
+
+  it("connection-started writes a connection_log row for the device", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    const row = db
+      .prepare<[string], { device_id: string; connection_type: string; ended_at: number | null; bytes_relayed: number }>(
+        "SELECT device_id, connection_type, ended_at, bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId);
+    expect(row, "a row must exist after connection-started").toBeTruthy();
+    expect(row!.connection_type).toBe("relay");
+    expect(row!.ended_at, "row stays open until connection-ended").toBeNull();
+    expect(row!.bytes_relayed).toBe(0);
+    viewer.close();
+    sharer.close();
+  });
+
+  it("connection-ended finalises the same row with the byte count", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
+    await new Promise((r) => setTimeout(r, 80));
+    sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 4096 }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    const rows = db
+      .prepare<[string], { ended_at: number | null; bytes_relayed: number }>(
+        "SELECT ended_at, bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .all(deviceId);
+    expect(rows.length, "must finalise, not insert a second row").toBe(1);
+    expect(rows[0].ended_at).not.toBeNull();
+    expect(rows[0].bytes_relayed).toBe(4096);
+    viewer.close();
+    sharer.close();
+  });
+
+  it("ignores telemetry from a session that never reached confirmed", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    // Pre-confirm there is no agreed session to attribute the row to, and
+    // accepting it would let an unconfirmed peer write log entries.
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message");
+
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await new Promise((r) => setTimeout(r, 80));
+    const count = db
+      .prepare<[string], { c: number }>("SELECT COUNT(*) AS c FROM connection_log WHERE device_id = ?")
+      .get(deviceId)!.c;
+    expect(count).toBe(0);
+    expect(sharer.readyState, "and the sharer stays connected").toBe(sharer.OPEN);
+    viewer.close();
+    sharer.close();
+  });
+
+  it("rejects a bogus connectionType without writing a row", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "carrier-pigeon" }));
+    await new Promise((r) => setTimeout(r, 80));
+    const count = db
+      .prepare<[string], { c: number }>("SELECT COUNT(*) AS c FROM connection_log WHERE device_id = ?")
+      .get(deviceId)!.c;
+    expect(count).toBe(0);
+    viewer.close();
+    sharer.close();
+  });
+
   it("rejects pw-attempt with password >256 chars (Sec H-4)", async () => {
     const sharer = await openSharer();
     const viewer = openViewer();

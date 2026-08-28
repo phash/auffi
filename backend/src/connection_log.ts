@@ -10,13 +10,51 @@ export interface ConnectionLogRow {
   bytesRelayed: number;
 }
 
-// The WRITE path (startConnectionLog / endConnectionLog, fed by the
-// connection-started / connection-ended wire frames) was removed as
-// dead code: no client ever emitted the frames, so connection_log rows
-// were never produced in production. gh #109 tracks (re)introducing
-// the telemetry end-to-end. The READ surface below stays — the table
-// exists, GET /api/devices/:id/log and the admin stats query it, and
-// purge.ts enforces its 30-day retention.
+/**
+ * Insert a connection_log row when the sharer reports it has finished ICE.
+ * `viewerIpPrefix` is the redacted form ("84.xxx") captured at join time —
+ * see lib/redact-ip. `bytesRelayed` starts at 0 and is finalised by
+ * [`endConnectionLog`] when the sharer reports the session ended.
+ *
+ * Unattended sessions only: the row is keyed by device_id, and the ad-hoc
+ * flow has no device (gh #109).
+ *
+ * Returns the new row's id so the caller can finalise it later.
+ */
+export function startConnectionLog(
+  db: Db,
+  deviceId: string,
+  viewerIpPrefix: string,
+  connectionType: "p2p" | "relay",
+  now: number = Date.now(),
+): number {
+  const res = db
+    .prepare(
+      `INSERT INTO connection_log
+         (device_id, started_at, ended_at, viewer_ip_prefix, connection_type, bytes_relayed)
+       VALUES (?, ?, NULL, ?, ?, 0)`,
+    )
+    .run(deviceId, now, viewerIpPrefix, connectionType);
+  return Number(res.lastInsertRowid);
+}
+
+/**
+ * Finalise a row: set `ended_at` and the reported byte count. Idempotent —
+ * an unknown id is a no-op, which is what a late frame after the device was
+ * deleted looks like.
+ */
+export function endConnectionLog(
+  db: Db,
+  id: number,
+  bytesRelayed: number,
+  now: number = Date.now(),
+): void {
+  db.prepare("UPDATE connection_log SET ended_at = ?, bytes_relayed = ? WHERE id = ?").run(
+    now,
+    bytesRelayed,
+    id,
+  );
+}
 
 /**
  * Page of connection_log rows for a device, newest first. The

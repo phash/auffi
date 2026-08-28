@@ -261,6 +261,43 @@ degradation to a failed REST fetch).
 > (`UnattendedRegistry`), which is already true during the viewer's
 > pre-join fetch.
 
+### `connection-started` (sharer → server)
+
+Sent once ICE settles and the sharer knows whether media flows directly or
+through TURN. The server opens a `connection_log` row for the device, keyed by
+the viewer IP prefix captured at join time.
+
+```json
+{ "type": "connection-started", "connectionType": "p2p" | "relay" }
+```
+
+### `connection-ended` (sharer → server)
+
+Closes the row opened above with the bytes this session pushed through the
+video track. The server sets `ended_at` and `bytes_relayed`.
+
+```json
+{ "type": "connection-ended", "bytesRelayed": 4096 }
+```
+
+> **Unattended only (gh #109).** `connection_log.device_id` is `NOT NULL` and
+> references `devices(id)`, so an ad-hoc session has nothing to attribute a row
+> to — the sharer's ad-hoc path deliberately sends neither frame
+> (`OutboundSink::send_telemetry` is a silent no-op there).
+>
+> Both frames are **advisory**: the server ignores them outside a `confirmed`
+> session, ignores an unknown `connectionType`, ignores `connection-ended`
+> without a preceding `connection-started`, and never answers with an `error`
+> — the sharer's heartbeat treats `error` as a fatal disconnect, so losing
+> telemetry must not cost the session. A device row deleted mid-session makes
+> the insert fail the foreign key; that is caught and logged, not propagated.
+>
+> These rows are what `GET /api/devices/:id/log`, the admin connection stats
+> and the 30-day retention in `purge.ts` operate on. The free-tier relay
+> cutoff is **not** driven by them — it runs client-side in
+> `sharer/src-tauri/src/free_tier_timer.rs` and arms on a relay connection
+> regardless of mode.
+
 > **Manual-confirm routing (sharer-internal).** When `autoAccept` is false the
 > sharer Rust core raises a `needs-confirm` Tauri event to its own webview
 > carrying a monotonic `confirmId`; the webview must echo that id back through

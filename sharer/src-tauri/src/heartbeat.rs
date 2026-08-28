@@ -181,6 +181,24 @@ pub enum SharerFrame {
     /// `BackendFrame::TurnCredentials`.
     #[serde(rename = "turn-credentials-request")]
     TurnCredentialsRequest,
+    /// Unattended telemetry (gh #109). Sent once ICE settles and the media
+    /// path is known; the backend opens a `connection_log` row for the
+    /// device. The ad-hoc path sends nothing — that table is keyed by
+    /// device and an ad-hoc session has none.
+    #[serde(rename = "connection-started", rename_all = "camelCase")]
+    ConnectionStarted { connection_type: ConnectionKind },
+    /// Closes the row opened by [`SharerFrame::ConnectionStarted`] with the
+    /// bytes this session pushed through the track.
+    #[serde(rename = "connection-ended", rename_all = "camelCase")]
+    ConnectionEnded { bytes_relayed: u64 },
+}
+
+/// Negotiated media path, as the backend's `connectionType` field spells it.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectionKind {
+    P2p,
+    Relay,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -586,6 +604,29 @@ fn describe_parse_failure(txt: &str, err: &serde_json::Error) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    // gh #109: the backend reads `connectionType` / `bytesRelayed` in
+    // camelCase off the wire; the struct fields are snake_case, so the
+    // rename has to hold or the frames are silently ignored.
+    #[test]
+    fn connection_started_matches_the_backend_wire_shape() {
+        let v = serde_json::to_value(SharerFrame::ConnectionStarted {
+            connection_type: ConnectionKind::Relay,
+        })
+        .expect("serialize");
+        assert_eq!(v["type"], "connection-started");
+        assert_eq!(v["connectionType"], "relay");
+    }
+
+    #[test]
+    fn connection_ended_matches_the_backend_wire_shape() {
+        let v = serde_json::to_value(SharerFrame::ConnectionEnded {
+            bytes_relayed: 4096,
+        })
+        .expect("serialize");
+        assert_eq!(v["type"], "connection-ended");
+        assert_eq!(v["bytesRelayed"], 4096);
+    }
     use super::*;
 
     // ── Pure helpers ────────────────────────────────────────────────

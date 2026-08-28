@@ -55,6 +55,19 @@ export type TurnCredentialsMsg = {
   credentials: TurnCredentialsPayload | null;
 };
 
+/**
+ * Unattended sharer → backend telemetry (gh #109). `connection-started` lands
+ * once ICE settles and the sharer knows whether media goes direct or through
+ * TURN; `connection-ended` closes the row with the relayed byte count. Only
+ * the unattended path sends these — connection_log is keyed by device, and an
+ * ad-hoc session has no device.
+ */
+export type ConnectionStarted = {
+  type: "connection-started";
+  connectionType: "p2p" | "relay";
+};
+export type ConnectionEnded = { type: "connection-ended"; bytesRelayed: number };
+
 export type IncomingMessage =
   | SharerRegister
   | SharerConfirm
@@ -62,7 +75,9 @@ export type IncomingMessage =
   | RelayMsg
   | PwAttempt
   | PwCheckResult
-  | TurnCredentialsRequest;
+  | TurnCredentialsRequest
+  | ConnectionStarted
+  | ConnectionEnded;
 
 export type CodeAssigned = {
   type: "code-assigned";
