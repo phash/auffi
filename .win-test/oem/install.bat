@@ -4,11 +4,11 @@ REM dockur /oem: laeuft nach der Windows-OOBE automatisch als Administrator.
 REM Auffi-Installer-Smoke: MSI still installieren, auffi-sharer.exe starten, Prozess +
 REM Debug-Log pruefen. Ergebnis -> \\host.lan\Data -> share/install-result.txt.
 set "RES=\\host.lan\Data\install-result.txt"
-set "MSI=\\host.lan\Data\Auffi_0.6.5_x64_en-US.msi"
+set "MSI=\\host.lan\Data\Auffi_0.6.6_x64_en-US.msi"
 set "MSILOG=\\host.lan\Data\msi-log.txt"
 set "FAILED=0"
 
-> "%RES%" echo ===== Auffi 0.6.5 Windows-Installer-Smoke =====
+> "%RES%" echo ===== Auffi 0.6.6 Windows-Installer-Smoke =====
 >> "%RES%" echo Start: %date% %time%
 >> "%RES%" echo.
 
@@ -40,17 +40,17 @@ if exist "%TEMP%\auffi-debug.log" (
     >> "%RES%" echo   --- auffi-debug.log ---
     type "%TEMP%\auffi-debug.log" >> "%RES%" 2>&1
     >> "%RES%" echo   --- ende ---
-) else ( >> "%RES%" echo   (kein Debug-Log — App evtl. noch im Portal-Init) )
+) else ( >> "%RES%" echo   ^(kein Debug-Log - App evtl. noch im Portal-Init^) )
 
 taskkill /F /IM auffi-sharer.exe >nul 2>&1
 
 REM ---- Portable-Test (nur wenn die Portable-Exe in der share liegt) ----
-set "PORT=\\host.lan\Data\Auffi_0.6.5_x64_portable.exe"
+set "PORT=\\host.lan\Data\Auffi_0.6.6_x64_portable.exe"
 if not exist "%PORT%" (
     >> "%RES%" echo.
     >> "%RES%" echo [portable] uebersprungen — %PORT% nicht vorhanden ^(CI noch nicht fertig^)
     goto REM ---- NSIS-Setup-Test (nur wenn die setup.exe in der share liegt) ----
-set "NSIS=\\host.lan\Data\Auffi_0.6.5_x64-setup.exe"
+set "NSIS=\\host.lan\Data\Auffi_0.6.6_x64-setup.exe"
 if not exist "%NSIS%" (
     >> "%RES%" echo.
     >> "%RES%" echo [nsis] uebersprungen — %NSIS% nicht vorhanden

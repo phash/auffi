@@ -14,6 +14,17 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.6.6 — released 2026-08-28. TLS trust anchors are now merged (OS store +
+  // bundled Mozilla set): rustls trusted the OS store alone, which Windows
+  // populates lazily, so the sharer could not connect at all on machines whose
+  // store lacked ISRG Root X2 while the browser on the same machine worked.
+  // Carries the 0.6.5 security fixes too (see below).
+  "Auffi_0.6.6_amd64.deb",
+  "Auffi-0.6.6-1.x86_64.rpm",
+  "Auffi_0.6.6_amd64.AppImage",
+  "Auffi_0.6.6_x64-setup.exe",
+  "Auffi_0.6.6_x64_en-US.msi",
+  "Auffi_0.6.6_x64_portable.exe",
   // 0.6.5 — released 2026-08-28. Security + reliability: unauthenticated
   // WS-frame DoS on the signaling server, revoke/deactivate now end a live
   // remote-control session, suspension cuts unattended access, pause hotkey
