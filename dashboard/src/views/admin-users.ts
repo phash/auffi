@@ -158,7 +158,10 @@ export const renderAdminUsers: RouteRenderer = (
     }
     if (!res.ok) {
       if (res.status === 401) {
-        navigate("/login");
+        // Only navigate if this view is still mounted. Cancelling the debounce
+        // alone left an already-dispatched request able to yank the user off
+        // whatever page they opened next.
+        if (!unmounted) navigate("/login");
         return;
       }
       status.className = "error";
@@ -287,6 +290,7 @@ export const renderAdminUsers: RouteRenderer = (
 
   // Wire search with debounce
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  let unmounted = false;
   search.addEventListener("input", () => {
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
@@ -304,6 +308,7 @@ export const renderAdminUsers: RouteRenderer = (
   // a view the user already left, and its 401 branch calls navigate("/login")
   // — a global history mutation they never asked for.
   return () => {
+    unmounted = true;
     if (searchTimer) clearTimeout(searchTimer);
   };
 };

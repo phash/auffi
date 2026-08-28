@@ -177,6 +177,7 @@ export class UnattendedSessions {
   private readonly byDevice = new Map<string, UnattendedSession>();
   private readonly viewerToDevice = new Map<WebSocket, string>();
   private onStaleReap: ((sess: UnattendedSession) => void) | null = null;
+  private onRemove?: (sess: UnattendedSession) => void;
 
   /**
    * Callback invoked for every session [`sweepStale`] reaps, AFTER it
@@ -187,6 +188,21 @@ export class UnattendedSessions {
    */
   setOnStaleReap(cb: (sess: UnattendedSession) => void): void {
     this.onStaleReap = cb;
+  }
+
+  /**
+   * Fired for every session that leaves the store, whatever the cause —
+   * viewer close, sharer close, stale reap, explicit remove.
+   *
+   * The connection_log row has to be closed here rather than from the
+   * sharer's `connection-ended` frame: the sharer can only send that from
+   * its teardown, which runs at least one round-trip AFTER the viewer's
+   * socket closed, so on the common ending the frame reaches a session that
+   * no longer exists. A crashed sharer never sends one at all. The store
+   * owns the session lifetime, so it is the only place that always knows.
+   */
+  setOnRemove(cb: (sess: UnattendedSession) => void): void {
+    this.onRemove = cb;
   }
 
   /**
@@ -275,6 +291,7 @@ export class UnattendedSessions {
     if (!sess) return;
     this.byDevice.delete(deviceId);
     this.viewerToDevice.delete(sess.viewer);
+    this.onRemove?.(sess);
   }
 
   /**

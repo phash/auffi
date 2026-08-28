@@ -285,12 +285,25 @@ video track. The server sets `ended_at` and `bytes_relayed`.
 > to — the sharer's ad-hoc path deliberately sends neither frame
 > (`OutboundSink::send_telemetry` is a silent no-op there).
 >
+> **The server owns the row's end, not the frame.** `connection-ended` can
+> only be sent from the sharer's teardown, which runs at least one round-trip
+> after the viewer's socket closed — so on the ordinary ending (helper closes
+> the tab) it reaches a session that is already gone, and a crashed sharer
+> never sends one at all. The row is therefore finalised whenever the session
+> leaves the store, whatever the cause: viewer close, sharer close, stale
+> reap. A session that never reported a byte count logs `0` rather than a
+> guess. `connection-ended` arriving in time simply supplies a better number.
+>
 > Both frames are **advisory**: the server ignores them outside a `confirmed`
 > session, ignores an unknown `connectionType`, ignores `connection-ended`
 > without a preceding `connection-started`, and never answers with an `error`
 > — the sharer's heartbeat treats `error` as a fatal disconnect, so losing
 > telemetry must not cost the session. A device row deleted mid-session makes
 > the insert fail the foreign key; that is caught and logged, not propagated.
+>
+> `bytesRelayed` counts **relayed** bytes only. The column is sized at TURN
+> traffic (`0 for p2p` in the schema), so the sharer reports its track total
+> only when ICE settled on a relay path and `0` otherwise.
 >
 > These rows are what `GET /api/devices/:id/log`, the admin connection stats
 > and the 30-day retention in `purge.ts` operate on. The free-tier relay

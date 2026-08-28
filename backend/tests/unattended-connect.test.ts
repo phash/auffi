@@ -437,6 +437,86 @@ describe("/signal unattended connect flow (gh #17)", () => {
     sharer.close();
   });
 
+  it("finalises an open row when the viewer ends the session", async () => {
+    // The sharer can only send connection-ended from disconnect_streaming,
+    // which runs at least one round-trip AFTER the viewer socket closed — so
+    // on the common ending the frame arrives to a session that no longer
+    // exists and is dropped. The row must be closed by the backend, which
+    // owns the session lifetime, not by a best-effort client frame.
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    viewer.close();
+    await new Promise((r) => setTimeout(r, 150));
+
+    const row = db
+      .prepare<[string], { ended_at: number | null }>(
+        "SELECT ended_at FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId);
+    expect(row, "row still exists").toBeTruthy();
+    expect(row!.ended_at, "viewer teardown must close the row").not.toBeNull();
+    sharer.close();
+  });
+
+  it("finalises an open row when the sharer drops", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    sharer.close();
+    await new Promise((r) => setTimeout(r, 150));
+
+    const row = db
+      .prepare<[string], { ended_at: number | null }>(
+        "SELECT ended_at FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId);
+    expect(row!.ended_at, "sharer teardown must close the row too").not.toBeNull();
+    viewer.close();
+  });
+
+  it("does not double-finalise a row the sharer already closed", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await new Promise((r) => setTimeout(r, 80));
+    sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 999 }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    viewer.close();
+    await new Promise((r) => setTimeout(r, 150));
+
+    const row = db
+      .prepare<[string], { bytes_relayed: number }>(
+        "SELECT bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId);
+    expect(row!.bytes_relayed, "the reported count must survive the teardown sweep").toBe(999);
+    sharer.close();
+  });
+
+  it("clamps an absurd byte count instead of binding a float", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await new Promise((r) => setTimeout(r, 80));
+    sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 1e30 }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    const row = db
+      .prepare<[string], { bytes_relayed: number }>(
+        "SELECT bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId);
+    expect(Number.isSafeInteger(row!.bytes_relayed), `got ${row!.bytes_relayed}`).toBe(true);
+    viewer.close();
+    sharer.close();
+  });
+
   it("rejects a bogus connectionType without writing a row", async () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();

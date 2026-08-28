@@ -168,6 +168,26 @@ export function registerSignaling(
     sess.viewer.close();
   });
 
+  // gh #109: close any connection_log row the session still has open. The
+  // sharer's `connection-ended` only arrives while the session lives, which
+  // on the common ending (viewer closes the tab) it no longer does — and a
+  // crashed sharer never sends one. Without this the row keeps ended_at NULL
+  // forever and the device log renders it as still running.
+  if (unattended) {
+    const { db: logDb, sessions: logSessions } = unattended;
+    logSessions.setOnRemove((sess) => {
+      if (sess.logId === null) return;
+      try {
+        // Bytes are whatever the sharer managed to report; an unreported
+        // session honestly logs 0 rather than a guess.
+        endConnectionLog(logDb, sess.logId, 0);
+      } catch (e) {
+        app.log.warn({ err: e }, "connection_log finalise on session removal failed");
+      }
+      sess.logId = null;
+    });
+  }
+
   app.get("/signal", { websocket: true }, (socket, req) => {
     const peer = socket;
     let role: "sharer" | "viewer" | "unattended-sharer" | null = null;
@@ -366,10 +386,13 @@ export function registerSignaling(
         if (msg.type === "connection-ended") {
           const sess = sessions.findBySharer(peer);
           if (!sess || sess.logId === null) return;
-          const bytes =
-            typeof msg.bytesRelayed === "number" && Number.isFinite(msg.bytesRelayed)
-              ? Math.max(0, Math.floor(msg.bytesRelayed))
-              : 0;
+          // Clamp both ends: SQLite binds a non-integer JS number as a float,
+          // which would land a REAL in an INTEGER column and break the SUM in
+          // the admin stats. MAX_SAFE_INTEGER is far above any real session.
+          const raw = typeof msg.bytesRelayed === "number" ? msg.bytesRelayed : 0;
+          const bytes = Number.isFinite(raw)
+            ? Math.min(Math.max(0, Math.floor(raw)), Number.MAX_SAFE_INTEGER)
+            : 0;
           try {
             endConnectionLog(db, sess.logId, bytes);
           } catch (e) {

@@ -208,13 +208,24 @@ struct SwitchState(Mutex<Option<mpsc::Sender<SwitchMsg>>>);
 /// wiring works in both modes. See `outbound.rs`.
 struct OutboundSinkState(Arc<tokio::sync::Mutex<Option<outbound::OutboundSink>>>);
 
-/// Bytes handed to the WebRTC track this session (gh #109).
+/// Per-session telemetry counters (gh #109).
 ///
-/// Reported to the backend as `bytesRelayed` when the unattended session
-/// ends, which is what fills `connection_log.bytes_relayed` and the admin
-/// stats' relay-byte figure. Reset when a session starts, so a new session
-/// never inherits the previous one's total.
-struct SessionBytesState(Arc<std::sync::atomic::AtomicU64>);
+/// `bytes` accumulates what was handed to the WebRTC track. It is reported as
+/// `bytesRelayed` ONLY when the path is a TURN relay — `connection_log`
+/// documents that column as "0 for p2p", and filling it with total track
+/// bytes made every direct session look like multi-GB relay traffic.
+///
+/// `generation` rises on every `start_streaming`. Callbacks capture the value
+/// they were installed with, so a late ICE callback from a torn-down session
+/// cannot open a log row for the session that replaced it.
+#[derive(Default)]
+struct SessionMetrics {
+    bytes: std::sync::atomic::AtomicU64,
+    is_relay: std::sync::atomic::AtomicBool,
+    generation: std::sync::atomic::AtomicU64,
+}
+
+struct SessionBytesState(Arc<SessionMetrics>);
 
 /// Two-phase swap protocol so the OLD capture pipeline tears down before
 /// the NEW portal dialog is opened. On Plasma, two concurrent
@@ -488,6 +499,20 @@ async fn start_streaming(
 
     let app_for_conn_type = app.clone();
     let outbound_for_conn_type = Arc::clone(&outbound_state.0);
+    let metrics_for_cb = Arc::clone(&bytes_state.0);
+    // Fresh session: zero the counters and claim a generation. Callbacks
+    // installed below capture it, so one that fires after this session is
+    // gone can tell and stay quiet.
+    {
+        use std::sync::atomic::Ordering;
+        bytes_state.0.bytes.store(0, Ordering::Relaxed);
+        bytes_state.0.is_relay.store(false, Ordering::Relaxed);
+    }
+    let my_generation = bytes_state
+        .0
+        .generation
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        + 1;
     let timer_state_for_cb = Arc::clone(&timer_state.0);
     peer.on_connection_type(move |conn_type| {
         use webrtc_peer::ConnectionType;
@@ -504,12 +529,26 @@ async fn start_streaming(
         // known. Unattended only — send_telemetry is a no-op on the ad-hoc
         // sink, since that table is keyed by device.
         {
+            use std::sync::atomic::Ordering;
             let sink_arc = Arc::clone(&outbound_for_conn_type);
+            let metrics = Arc::clone(&metrics_for_cb);
             let kind = match conn_type {
                 ConnectionType::P2p => heartbeat::ConnectionKind::P2p,
                 ConnectionType::Relay => heartbeat::ConnectionKind::Relay,
             };
+            // Only a relayed path accrues billable bytes; the teardown reads
+            // this to decide whether to report the track total or 0.
+            metrics.is_relay.store(
+                matches!(conn_type, ConnectionType::Relay),
+                Ordering::Relaxed,
+            );
             tauri::async_runtime::spawn(async move {
+                // A late callback from a torn-down session must not open a row
+                // against whatever session replaced it.
+                if metrics.generation.load(Ordering::Relaxed) != my_generation {
+                    dbg_log("[ice-connected] stale callback — telemetry start skipped");
+                    return;
+                }
                 let sink = sink_arc.lock().await.clone();
                 if let Some(sink) = sink {
                     if let Err(e) = sink
@@ -720,8 +759,7 @@ async fn start_streaming(
     let app_for_loop = app.clone();
     // Fresh session, fresh count — otherwise connection-ended would report
     // the previous session's bytes on top of this one's.
-    bytes_state.0.store(0, std::sync::atomic::Ordering::Relaxed);
-    let bytes_for_loop = Arc::clone(&bytes_state.0);
+    let metrics_for_loop = Arc::clone(&bytes_state.0);
 
     tauri::async_runtime::spawn(async move {
         streaming_loop(
@@ -731,7 +769,7 @@ async fn start_streaming(
             track,
             switch_rx,
             controller_arc_for_loop,
-            bytes_for_loop,
+            metrics_for_loop,
         )
         .await;
     });
@@ -966,7 +1004,16 @@ async fn disconnect_streaming(
     // Read-and-reset so a later teardown in the same process cannot report
     // the same bytes twice. No-op on the ad-hoc sink.
     {
-        let sent = bytes_state.0.swap(0, std::sync::atomic::Ordering::Relaxed);
+        use std::sync::atomic::Ordering;
+        // connection_log.bytes_relayed means RELAYED bytes — the schema
+        // documents "0 for p2p". Reporting the track total regardless of path
+        // made every direct session look like multi-GB relay traffic in the
+        // admin stats. Read-and-reset so a second teardown cannot re-report.
+        let written = bytes_state.0.bytes.swap(0, Ordering::Relaxed);
+        let sent = reportable_relay_bytes(
+            written,
+            bytes_state.0.is_relay.swap(false, Ordering::Relaxed),
+        );
         let sink = outbound_state.0.lock().await.clone();
         if let Some(sink) = sink {
             if let Err(e) = sink
@@ -1035,6 +1082,20 @@ async fn disconnect_streaming(
     Ok(())
 }
 
+/// Bytes to report as `bytesRelayed` for a finished session.
+///
+/// `connection_log.bytes_relayed` documents itself as "0 for p2p": the column
+/// exists to size TURN traffic. Reporting the track total regardless of path
+/// made every direct session show up as multi-GB relay traffic in the admin
+/// stats, which is the opposite of what the figure is for.
+fn reportable_relay_bytes(written: u64, was_relay: bool) -> u64 {
+    if was_relay {
+        written
+    } else {
+        0
+    }
+}
+
 /// Emitted on every abnormal (self-initiated) exit of `streaming_loop` so the
 /// webview can run its disconnect + UI-reset flow instead of showing
 /// "Streaming läuft." over a dead loop. Deliberate teardown via the switch
@@ -1051,7 +1112,7 @@ async fn streaming_loop(
     track: std::sync::Arc<TrackLocalStaticSample>,
     mut switch_rx: mpsc::Receiver<SwitchMsg>,
     controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
-    bytes_sent: Arc<std::sync::atomic::AtomicU64>,
+    metrics: Arc<SessionMetrics>,
 ) {
     dbg_log("[streaming_loop] entered");
     let mut write_failures = 0u64;
@@ -1205,7 +1266,7 @@ async fn streaming_loop(
             match track.write_sample(&sample).await {
                 Ok(_) => {
                     sample_count += 1;
-                    bytes_sent.fetch_add(
+                    metrics.bytes.fetch_add(
                         sample.data.len() as u64,
                         std::sync::atomic::Ordering::Relaxed,
                     );
@@ -1490,9 +1551,7 @@ pub fn run() {
         .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .manage(SwitchState(Mutex::new(None)))
         .manage(OutboundSinkState(Arc::new(tokio::sync::Mutex::new(None))))
-        .manage(SessionBytesState(Arc::new(
-            std::sync::atomic::AtomicU64::new(0),
-        )))
+        .manage(SessionBytesState(Arc::new(SessionMetrics::default())))
         .manage(unattended_cmd::UnattendedState::default())
         .invoke_handler(tauri::generate_handler![
             start_signaling,
@@ -1619,7 +1678,18 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    use super::reportable_relay_bytes;
     use std::sync::Mutex;
+
+    // gh #109 follow-up: bytes_relayed is a TURN-traffic figure. Filling it
+    // with the track total on a direct path made every p2p session read as
+    // multi-GB relay traffic in the admin stats.
+    #[test]
+    fn relay_bytes_are_reported_only_for_a_relayed_path() {
+        assert_eq!(reportable_relay_bytes(41_231_872, true), 41_231_872);
+        assert_eq!(reportable_relay_bytes(41_231_872, false), 0);
+        assert_eq!(reportable_relay_bytes(0, true), 0);
+    }
 
     // Serialises the tests that flip the process-global DEBUG_LOGGING atomic so
     // cargo's parallel runner cannot interleave their enabled/disabled windows.

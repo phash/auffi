@@ -41,6 +41,34 @@ afterEach(() => {
 });
 
 describe("renderAdminUsers", () => {
+  it("does not navigate away after unmount when an in-flight request 401s", async () => {
+    // Cancelling the debounce is not enough: a request already dispatched can
+    // still resolve, and its 401 branch calls navigate("/login") — pulling the
+    // admin off whichever page they opened next.
+    let release: null | (() => void) = null;
+    const fire = (): void => { if (release) release(); };
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(
+        async () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(jsonResponse({ error: "unauthorized" }, 401));
+          }),
+      ) as unknown as typeof fetch,
+    });
+    const before = location.pathname;
+    const root = makeRoot();
+    const cleanup = renderAdminUsers(root, ctx);
+    await flush();
+
+    (cleanup as () => void)();
+    fire();
+    await flush();
+    await flush();
+
+    expect(location.pathname, "must not have navigated after unmount").toBe(before);
+  });
+
   it("returns a cleanup that cancels a pending search debounce", async () => {
     // The 300 ms debounce outlived the view: leaving mid-typing let it fire
     // against an unmounted view, and its 401 branch calls navigate("/login")
