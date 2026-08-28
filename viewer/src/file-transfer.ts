@@ -74,8 +74,13 @@ export function sanitizeFilename(input: string): string {
  * so the browser won't auto-execute, but we still prevent a `text/html`-labelled
  * blob from appearing on disk with that type (which some browsers open in-tab).
  * Any MIME not matching the allowlist falls back to `application/octet-stream`.
+ *
+ * SVG is excluded from the image branch: it is XML that runs inline `<script>`
+ * and event handlers when opened in a browser, so labelling a blob with it
+ * reintroduces exactly the hazard this allowlist exists to block.
  */
 export function sanitizeMime(mime: string): string {
+  if (/^image\/svg/i.test(mime)) return "application/octet-stream";
   if (
     /^image\//.test(mime) ||
     /^video\//.test(mime) ||

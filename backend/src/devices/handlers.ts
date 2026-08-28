@@ -261,7 +261,11 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
         if (!ok) {
           return bad(reply, 401, "bad-token", "invalid device token");
         }
-        db.prepare("DELETE FROM devices WHERE id = ?").run(id);
+        // Same cascade as the owner path below: rate_limit_buckets has no FK
+        // back to devices, and a partial-fail bucket matches no purge
+        // predicate, so a bare DELETE leaves a row keyed to a device that no
+        // longer exists — forever.
+        db.transaction(() => deleteDeviceCascade(db, id))();
         registry?.evict(id);
         return reply.status(204).send();
       }

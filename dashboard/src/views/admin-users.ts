@@ -299,4 +299,11 @@ export const renderAdminUsers: RouteRenderer = (
 
   setActiveChip();
   void fetchPage(true);
+
+  // Router-invoked cleanup: a debounce that survives the unmount fires against
+  // a view the user already left, and its 401 branch calls navigate("/login")
+  // — a global history mutation they never asked for.
+  return () => {
+    if (searchTimer) clearTimeout(searchTimer);
+  };
 };

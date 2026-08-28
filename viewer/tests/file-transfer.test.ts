@@ -3,6 +3,16 @@ import { FileTransferManager, sanitizeFilename, sanitizeMime } from "../src/file
 import type { FileEvent } from "../src/protocol.js";
 
 describe("sanitizeMime", () => {
+  it("rejects image/svg+xml — the one image type that executes script", () => {
+    // The allowlist exists so a sharer-supplied blob cannot land on disk with
+    // a browser-renderable, script-capable type. SVG is XML that runs inline
+    // <script> and event handlers when opened, i.e. the same hazard class as
+    // text/html, which the comment already names as the threat.
+    expect(sanitizeMime("image/svg+xml")).toBe("application/octet-stream");
+    expect(sanitizeMime("image/svg+xml; charset=utf-8")).toBe("application/octet-stream");
+    expect(sanitizeMime("IMAGE/SVG+XML")).toBe("application/octet-stream");
+  });
+
   it("allows image/* types", () => {
     expect(sanitizeMime("image/png")).toBe("image/png");
     expect(sanitizeMime("image/jpeg")).toBe("image/jpeg");

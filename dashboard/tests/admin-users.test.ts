@@ -41,6 +41,35 @@ afterEach(() => {
 });
 
 describe("renderAdminUsers", () => {
+  it("returns a cleanup that cancels a pending search debounce", async () => {
+    // The 300 ms debounce outlived the view: leaving mid-typing let it fire
+    // against an unmounted view, and its 401 branch calls navigate("/login")
+    // — a global history mutation that yanks the admin off whichever page
+    // they had just opened.
+    let calls = 0;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () => {
+        calls += 1;
+        return jsonResponse({ items: [USER], next_cursor: null });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    const cleanup = renderAdminUsers(root, ctx);
+    await flush();
+    const afterMount = calls;
+
+    const search = root.querySelector<HTMLInputElement>('input[type="search"], input')!;
+    search.value = "someone";
+    search.dispatchEvent(new Event("input"));
+
+    expect(typeof cleanup, "renderer must return a cleanup for the router").toBe("function");
+    (cleanup as () => void)();
+
+    await new Promise((r) => setTimeout(r, 400));
+    expect(calls, "no fetch may fire after unmount").toBe(afterMount);
+  });
+
   it("filter chips are an aria-pressed button group, not a faux tablist", async () => {
     _setApiClientForTests({
       base: "",

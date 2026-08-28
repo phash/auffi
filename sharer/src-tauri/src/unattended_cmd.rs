@@ -241,7 +241,14 @@ pub fn unattended_set_mode(app: AppHandle, mode: String) -> CmdResult<()> {
 
 // ── Heartbeat lifecycle ──────────────────────────────────────────────
 
+/// Payload of the `unattended-event` Tauri event.
+///
+/// camelCase across the board: the webview's `interface UnattendedEvent`
+/// declares `deviceId`, and reading `ev.deviceId` off a snake_case payload
+/// silently yielded `undefined` — the status line showed a bare "Verbunden"
+/// and never told the user which device-id the helper has to type.
 #[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 struct UnattendedEvent<'a> {
     kind: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -253,7 +260,7 @@ struct UnattendedEvent<'a> {
     /// Set only on `needs-confirm`. The frontend echoes this back via
     /// `unattended_confirm` so the user's click routes to the right
     /// pending waiter (Sec M-1).
-    #[serde(skip_serializing_if = "Option::is_none", rename = "confirmId")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     confirm_id: Option<u64>,
 }
 
@@ -793,6 +800,38 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
 
 #[cfg(test)]
 mod tests {
+
+    // The webview declares `deviceId` and reads `ev.deviceId`, but the struct
+    // serialized snake_case with only confirm_id renamed — so the status line
+    // showed a bare "Verbunden" and the user never saw which device-id the
+    // helper has to type.
+    #[test]
+    fn event_fields_serialize_in_the_camel_case_the_webview_reads() {
+        let ev = UnattendedEvent {
+            device_id: Some("284-915-073".to_string()),
+            viewer_info: Some(serde_json::json!({ "ipPrefix": "84.xxx" })),
+            confirm_id: Some(7),
+            ..UnattendedEvent::kind("connected")
+        };
+        let v = serde_json::to_value(&ev).expect("serialize");
+        assert_eq!(v["kind"], "connected");
+        assert_eq!(v["deviceId"], "284-915-073", "webview reads ev.deviceId");
+        assert!(v.get("device_id").is_none(), "snake_case must not leak");
+        assert!(
+            v.get("viewerInfo").is_some(),
+            "viewer_info must be camelCase too"
+        );
+        assert!(v.get("viewer_info").is_none());
+        assert_eq!(v["confirmId"], 7);
+    }
+
+    #[test]
+    fn absent_fields_stay_absent() {
+        let v = serde_json::to_value(UnattendedEvent::kind("revoked")).expect("serialize");
+        assert_eq!(v["kind"], "revoked");
+        assert!(v.get("deviceId").is_none());
+        assert!(v.get("reason").is_none());
+    }
     use super::*;
 
     // Pure helpers we can test without a Tauri app instance. The

@@ -526,6 +526,50 @@ describe("DELETE /api/devices/:id", () => {
     expect(log.c).toBe(0);
   });
 
+  it("clears the device's rate-limit buckets on self-revoke too", async () => {
+    // The sharer's own "Entkoppeln" deletes via bearer, not the session
+    // cookie. That branch ran a bare DELETE FROM devices, so a partial-fail
+    // bucket (fail_count 1-4, locked_until NULL) matched no purge predicate
+    // and survived forever, keyed to a device that no longer exists.
+    const code = (
+      await h.app.inject({
+        method: "POST",
+        url: "/api/devices/pairing-code",
+        headers: { cookie: `__Host-auffi_session=${cookie}` },
+      })
+    ).json().code;
+    const redeemed = (
+      await h.app.inject({
+        method: "POST",
+        url: "/api/devices/redeem",
+        payload: { code, alias: "self-revoking" },
+      })
+    ).json();
+
+    h.db
+      .prepare("INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES (?, 2, NULL)")
+      .run(`device:${redeemed.deviceId}:pwfail`);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/devices/${redeemed.deviceId}`,
+      headers: {
+        authorization: `Bearer ${redeemed.token}`,
+        "x-auffi-device-id": redeemed.deviceId,
+      },
+    });
+    expect(res.statusCode).toBe(204);
+
+    const dev = h.db
+      .prepare("SELECT COUNT(*) AS c FROM devices WHERE id = ?")
+      .get(redeemed.deviceId) as { c: number };
+    expect(dev.c).toBe(0);
+    const buckets = h.db
+      .prepare("SELECT COUNT(*) AS c FROM rate_limit_buckets WHERE key LIKE ?")
+      .get(`device:${redeemed.deviceId}:%`) as { c: number };
+    expect(buckets.c, "self-revoke must sweep the device's buckets").toBe(0);
+  });
+
   it("clears the device's rate-limit buckets on delete (parity with the admin route)", async () => {
     // A re-paired device must not inherit a pwfail lockout; the admin
     // delete already sweeps these — the owner delete has to match.
