@@ -270,7 +270,54 @@
 
       <section class="release-notes" aria-labelledby="releases-heading">
         <h2 id="releases-heading">Was ist neu</h2>
-        <h3>0.6.7 (2026-07-02)</h3>
+        <h3>0.6.7 (2026-08-29)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Die Geräte-ID steht wieder in der Statuszeile</strong> — im
+            unbeaufsichtigten Modus zeigte die App nur „Verbunden", ohne die
+            Nummer, die der Helfer eintippen muss.
+          </li>
+          <li>
+            <strong>Entkoppeln wirkt jetzt auch serverseitig</strong> — bisher
+            wurde nur der lokale Zugang gelöscht, der Token auf dem Server
+            blieb bestehen.
+          </li>
+          <li>
+            Verbindungs-Statistik für gepairte Geräte: Dauer und Art der
+            Verbindung landen im Geräte-Protokoll.
+          </li>
+        </ul>
+        <h3>0.6.6 (2026-08-28)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Verbindet sich auch auf frisch installiertem Windows</strong>
+            — auf Rechnern, deren Zertifikatsspeicher noch nicht aktuell war,
+            scheiterte jede Verbindung mit einem Zertifikatsfehler, obwohl der
+            Browser auf demselben Gerät funktionierte.
+          </li>
+        </ul>
+        <h3>0.6.5 (2026-08-28)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Sicherheit:</strong> ein einzelnes fehlerhaftes Datenpaket
+            konnte den Verbindungsserver beenden und alle laufenden Sitzungen
+            trennen.
+          </li>
+          <li>
+            <strong>Zugriff entziehen beendet die Sitzung sofort</strong> — wer
+            ein Gerät im Dashboard löscht oder den unbeaufsichtigten Modus
+            abschaltet, trennt damit jetzt auch eine gerade laufende
+            Fernsteuerung.
+          </li>
+          <li>
+            <strong>Pause-Taste gibt gedrückte Tasten frei</strong> — pausierte
+            man mitten im Ziehen, blieb die Maustaste am System gedrückt.
+          </li>
+          <li>
+            „Beenden" bleibt sichtbar, während auf das erste Bild gewartet wird.
+          </li>
+        </ul>
+        <h3>0.6.4 (2026-07-02)</h3>
         <ul class="release-list">
           <li>
             <strong>Unbeaufsichtigter Zugriff: Folge-Verbindungen funktionieren</strong>

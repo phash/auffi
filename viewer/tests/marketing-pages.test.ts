@@ -112,3 +112,40 @@ describe("landing pages: download links stay consistent", () => {
     });
   }
 });
+
+// The version bump rewrites the download pages with a blanket string replace,
+// which silently dragged the newest changelog heading along with it: after
+// three releases the page announced "0.6.7 (2026-07-02)" above 0.6.4's release
+// notes, and 0.6.5/0.6.6/0.6.7 were undocumented. Shipping assets for a
+// version without saying what changed in it is the defect; pin that.
+describe("download pages document every version they ship", () => {
+  const shipped = (): string[] => {
+    const src = readFileSync(resolve(__dirname, "../../backend/src/downloads/handlers.ts"), "utf-8");
+    return [...new Set(Array.from(src.matchAll(/Auffi[_-](\d+\.\d+\.\d+)/g)).map((m) => m[1]))];
+  };
+  const changelog = (rel: string): string[] =>
+    Array.from(pageDoc(rel).querySelectorAll("h3"))
+      .map((h) => /^(\d+\.\d+\.\d+)\s*\(/.exec((h.textContent ?? "").trim())?.[1])
+      .filter((v): v is string => v !== undefined);
+
+  for (const [name, rel] of [
+    ["download (de)", "../public/download/index.html"],
+    ["download (en)", "../public/en/download/index.html"],
+  ] as const) {
+    it(`${name}: every version in KNOWN_ASSETS has release notes`, () => {
+      const documented = new Set(changelog(rel));
+      const missing = shipped().filter((v) => !documented.has(v));
+      expect(missing, `undocumented shipped versions: ${missing.join(", ")}`).toEqual([]);
+    });
+
+    it(`${name}: the newest entry is the version the page advertises`, () => {
+      const declared = softwareApp(pageDoc(rel)).softwareVersion;
+      expect(changelog(rel)[0], "top changelog entry must be the current release").toBe(declared);
+    });
+
+    it(`${name}: no two entries claim the same version`, () => {
+      const all = changelog(rel);
+      expect(all.length, "duplicate version headings").toBe(new Set(all).size);
+    });
+  }
+});

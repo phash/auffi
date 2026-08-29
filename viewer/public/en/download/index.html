@@ -274,7 +274,51 @@
 
       <section class="release-notes" aria-labelledby="releases-heading">
         <h2 id="releases-heading">What's new</h2>
-        <h3>0.6.7 (2026-07-02)</h3>
+        <h3>0.6.7 (2026-08-29)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>The device id is back in the status line</strong> — in
+            unattended mode the app only said "Connected", without the number
+            the helper has to type.
+          </li>
+          <li>
+            <strong>Unpairing now takes effect server-side</strong> — it used to
+            clear only the local pairing, leaving the server-side token alive.
+          </li>
+          <li>
+            Connection history for paired devices: duration and connection type
+            now show up in the device log.
+          </li>
+        </ul>
+        <h3>0.6.6 (2026-08-28)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Connects on freshly installed Windows too</strong> — on
+            machines whose certificate store was not yet up to date every
+            connection failed with a certificate error, even though the browser
+            on the same machine worked fine.
+          </li>
+        </ul>
+        <h3>0.6.5 (2026-08-28)</h3>
+        <ul class="release-list">
+          <li>
+            <strong>Security:</strong> a single malformed packet could take the
+            signalling server down and drop every live session with it.
+          </li>
+          <li>
+            <strong>Revoking access ends the session immediately</strong> —
+            deleting a device in the dashboard, or switching unattended mode
+            off, now also cuts a remote-control session that is already running.
+          </li>
+          <li>
+            <strong>The pause hotkey releases held keys</strong> — pausing
+            mid-drag used to leave the mouse button down at the OS level.
+          </li>
+          <li>
+            "Stop" stays reachable while waiting for the first frame.
+          </li>
+        </ul>
+        <h3>0.6.4 (2026-07-02)</h3>
         <ul class="release-list">
           <li>
             <strong>Unattended access: follow-up connections now work</strong> —
