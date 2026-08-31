@@ -14,15 +14,15 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
-  // 0.6.8 — released 2026-08-31. Fixes a black screen for the helper when the
+  // 0.6.9 — released 2026-08-31. Fixes a black screen for the helper when the
   // shared screen is static: the only keyframe was emitted before the peer
   // connected, and nothing could ask for another one.
-  "Auffi_0.6.8_amd64.deb",
-  "Auffi-0.6.8-1.x86_64.rpm",
-  "Auffi_0.6.8_amd64.AppImage",
-  "Auffi_0.6.8_x64-setup.exe",
-  "Auffi_0.6.8_x64_en-US.msi",
-  "Auffi_0.6.8_x64_portable.exe",
+  "Auffi_0.6.9_amd64.deb",
+  "Auffi-0.6.9-1.x86_64.rpm",
+  "Auffi_0.6.9_amd64.AppImage",
+  "Auffi_0.6.9_x64-setup.exe",
+  "Auffi_0.6.9_x64_en-US.msi",
+  "Auffi_0.6.9_x64_portable.exe",
   // 0.6.7 — released 2026-08-29. Unattended connection telemetry (gh #109)
   // and the device-id now showing in the sharer's status line. Carries the
   // 0.6.6 TLS trust-anchor fix and the 0.6.5 security fixes.
