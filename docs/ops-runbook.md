@@ -53,7 +53,7 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
   sharer/src-tauri/target/release/bundle/appimage/Auffi_X.Y.Z_amd64.AppImage
 # 4) Bump filenames in viewer/public/download/index.html + the
 #    KNOWN_ASSETS-Set in backend/src/downloads/handlers.ts
-#    (Portable nicht vergessen — die CI baut keins, s. Gotcha unten)
+#    (Portable baut die CI seit v0.6.4 mit — aber `?tag=vX.Y.Z`-Pin nicht vergessen, s. unten)
 # 5) ./ops/deploy.sh --yes
 # Windows-Builds laufen jetzt im CI (release.yml / build-sharer.yml auf
 # windows-latest, seit PR #117). Die separate Windows-Box / das gh-Issue-
@@ -68,6 +68,10 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 
 **Portable-.exe (seit v0.6.4 von CI gebaut):** `build-sharer.yml` stagt nach `tauri:build` die unbundled `target/release/auffi-sharer.exe` (heißt nach dem Cargo-Package, NICHT `Auffi.exe`/productName) als `Auffi_X.Y.Z_x64_portable.exe` und lädt sie mit den Windows-Bundles hoch → `release.yml` (globt `windows/**`) hängt sie automatisch ans Tag-Release. Kein Handbuild mehr nötig. **Aber** das Portable ist NICHT latest-getrackt → `KNOWN_ASSETS`-Eintrag + Download-Button-href müssen **auf `?tag=vX.Y.Z` gepinnt** sein, sonst 502t der „Portable (.exe)"-Button (Asset nicht auf `/releases/latest`). Der Rest (KNOWN_ASSETS + Button-Wiring) bleibt manuell im Release-Commit.
 > **Alt (vor v0.6.4 / falls CI mal klemmt):** Portable lokal auf Windows bauen, dann (a) `gh release upload vX.Y.Z …/Auffi_X.Y.Z_x64_portable.exe`, (b) `SHA256SUMS` um die Hash-Zeile ergänzen und `--clobber` neu hochladen — **die lokale Datei MUSS exakt `SHA256SUMS` heißen** (sonst legt `gh` ein Zweit-Asset an statt zu überschreiben). Beispiele: v0.6.3 = f487524 (manueller Upload); der alte generische Name `auffi-sharer-windows-x64.exe` war ein früherer 502-Verursacher.
+
+**Ein veröffentlichter Tag bleibt bei einem Commit.** Ist ein Release defekt: `gh release edit vX.Y.Z --prerelease` (nimmt es aus `/releases/latest` → Update-Notifier fällt auf das vorige volle Release zurück), dann den nächsten Patch schneiden. Tag NICHT neu bespielen — sonst zeigt kein Bisect und kein Bug-Report mehr verlässlich auf denselben Code. So mit v0.6.8 → v0.6.9 verfahren (v0.6.8 war ohne Keyframe-Throttle + ICE-Teardown gebaut worden).
+
+**Der Versions-Bump fasst nur `href=` und `softwareVersion` an.** Install-Befehle (`msiexec /i …`, `dpkg -i`, `rpm -i`, AppImage-`chmod`), Versions-Badge und der `/releases/tag/`-Link müssen mitgezogen werden — aber NUR oberhalb der ersten `<h3>X.Y.Z (…)`-Changelog-Überschrift, sonst frisst ein pauschales Replace die Changelog-Einträge (so passiert in v0.6.7). Guard: `viewer/tests/marketing-pages.test.ts`.
 
 ## Admin-Promote auf prod
 
