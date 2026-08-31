@@ -1,0 +1,220 @@
+[1788158487420] [debug-logging] runtime gate set to true
+[1788158517712] [debug-logging] runtime gate set to true
+[1788158517729] [tls] trust anchors: 26 from the OS store, 147 total after merging the bundled set
+[1788158517731] [DEBUG] reqwest::connect: starting new connection 'Some("api.github.com")'
+[1788158517940] [DEBUG] tungstenite::handshake::client: Client handshake done.
+[1788158528714] [start_streaming] enter monitor_id=0 session_code=*** os=windows arch=x86_64 v0.6.7
+[1788158528715] [start_streaming] backend_http_url=https://auffi.app
+[1788158528716] [DEBUG] reqwest::connect: starting new connection 'Some("auffi.app")'
+[1788158528815] [DEBUG] auffi_sharer::turn_config: TURN fetch: credentials valid for 3600 seconds
+[1788158528815] [turn-fetch] urls=["turn:turn.auffi.app:3478", "turns:turn.auffi.app:5349"] username_len=47 credential_len=28 ttl=3600
+[1788158528817] [start_streaming] ice_servers count=2
+[1788158528827] [DEBUG] igd_next::aio::tokio: sending broadcast request to: 239.255.255.250:1900 on interface: Ok(0.0.0.0:62761)
+[1788158530339] [nat_traversal] no upnp public ip available — relying on stun/turn
+[1788158530375] [start_streaming] before ScreenCapturer::start
+[1788158530525] [capture] WGC active
+[1788158530526] [start_streaming] capturer ready 1920x1080
+[1788158530547] [start_streaming] encoder ready
+[1788158530548] [DEBUG] enigo: using default settings
+[1788158530549] [DEBUG] enigo::platform::win_impl: [93mconnection established on windows[0m
+[1788158530551] [start_streaming] success — streaming loop spawned
+[1788158530551] [streaming_loop] entered
+[1788158530551] [streaming_loop] FIRST FRAME received: 8294400 bytes, pts=19536
+[1788158530552] [receive_offer] enter sdp_len=7305
+[1788158530554] [INFO] webrtc::peer_connection: signaling state changed to have-remote-offer
+[1788158530560] [INFO] webrtc_ice::mdns: mDNS is using 0.0.0.0:5353 as dest_addr
+[1788158530571] [streaming_loop] first encode -> 1 packets
+[1788158530582] [INFO] webrtc_mdns::conn: Looping and listening Ok(0.0.0.0:5353)
+[1788158530583] [DEBUG] webrtc_ice::agent::agent_internal: Started agent: isControlling? false, remoteUfrag: qt2M, remotePwd: 6jy1ny2ahC9HQ8F27KGn4xat
+[1788158530584] [INFO] webrtc::peer_connection: signaling state changed to stable
+[1788158530585] [INFO] webrtc_ice::agent::agent_internal: [controlled]: Setting new connection state: Checking
+[1788158530586] [INFO] webrtc::peer_connection: ICE connection state changed: checking
+[1788158530586] [receive_offer] answer_sdp_len=3576
+[1788158530587] [receive_offer] answer sent
+[1788158530587] [remote-ice] candidate='candidate:2554070857 1 udp 2113937151 6ff69016-a5ce-4d1d-97e3-a7f3fb641d40.local 56859 typ host generation 0 ufrag qt2M network-cost 999' mid=Some("0") mline=Some(0)
+[1788158530588] [INFO] webrtc::peer_connection: peer connection state changed: connecting
+[1788158530588] [WARN] webrtc_ice::agent::agent_internal: [controlled]: pingAllCandidates called with no candidate pairs. Connection is not possible yet.
+[1788158530589] [remote-ice] candidate='candidate:2571191260 1 udp 2113939711 1b0efa88-f013-4170-af6c-563f8ba5e592.local 56860 typ host generation 0 ufrag qt2M network-cost 999' mid=Some("0") mline=Some(0)
+[1788158530590] [remote-ice] candidate='candidate:2554070857 1 udp 2113937151 6ff69016-a5ce-4d1d-97e3-a7f3fb641d40.local 56861 typ host generation 0 ufrag qt2M network-cost 999' mid=Some("1") mline=Some(1)
+[1788158530590] [remote-ice] candidate='candidate:2571191260 1 udp 2113939711 1b0efa88-f013-4170-af6c-563f8ba5e592.local 56862 typ host generation 0 ufrag qt2M network-cost 999' mid=Some("1") mline=Some(1)
+[1788158530591] [remote-ice] candidate='candidate:3830321088 1 udp 1677729535 88.xxx 56859 typ srflx raddr 0.xxx rport 0 generation 0 ufrag qt2M network-cost 999' mid=Some("0") mline=Some(0)
+[1788158530592] [remote-ice] candidate='candidate:3830321088 1 udp 1677729535 88.xxx 56861 typ srflx raddr 0.xxx rport 0 generation 0 ufrag qt2M network-cost 999' mid=Some("1") mline=Some(1)
+[1788158530592] [WARN] webrtc_ice::agent::agent_internal: [controlled]: pingAllCandidates called with no candidate pairs. Connection is not possible yet.
+[1788158530592] [remote-ice] candidate='candidate:962208202 1 udp 50340095 82.xxx 59538 typ relay raddr 88.xxx rport 56859 generation 0 ufrag qt2M network-cost 999' mid=Some("0") mline=Some(0)
+[1788158530592] [WARN] webrtc_ice::agent::agent_gather: [controlled]: could not listen udp ::100: io error: Die angeforderte Adresse ist in diesem Kontext ungültig. (os error 10049)
+[1788158530593] [WARN] webrtc_ice::agent::agent_gather: [controlled]: could not listen udp 169.254.171.133: io error: Die angeforderte Adresse ist in diesem Kontext ungültig. (os error 10049)
+[1788158530593] [WARN] webrtc_ice::agent::agent_internal: [controlled]: pingAllCandidates called with no candidate pairs. Connection is not possible yet.[
+1788158530593[] 1788158530593[WARN] webrtc_ice::agent::agent_gather: [controlled]: could not listen udp 169.254.251.28: io error: Die angeforderte Adresse ist in diesem Kontext ungültig. (os error 10049)
+] [remote-ice] candidate='candidate:962208202 1 udp 50340095 82.xxx 61164 typ relay raddr 88.xxx rport 56861 generation 0 ufrag qt2M network-cost 999' mid=Some("1") mline=Some(1)
+[1788158530594[] [DEBUG] turn::client: resolving turn.auffi.app:34781788158530593
+] [WARN] webrtc_ice::agent::agent_gather: [controlled]: failed to resolve stun host: turn.auffi.app:5349: io error: No available ipv6 IP address found!
+[1788158530594] [WARN] webrtc_ice::agent::agent_gather: [controlled]: failed to resolve stun host: turn.auffi.app:3478: io error: No available ipv6 IP address found!
+[1788158530594] [WARN] webrtc_ice::agent::agent_gather: [controlled]: Unable to handle URL in gather_candidates_relay turns:turn.auffi.app:5349?transport=tcp
+[1788158530594] [remote-ice] candidate='candidate:2015770113 1 udp 8191 82.xxx 53682 typ relay raddr 88.xxx rport 61992 generation 0 ufrag qt2M network-cost 999' mid=Some("0") mline=Some(0)
+[1788158530595] [WARN] webrtc_ice::agent::agent_gather: [controlled]: could not listen udp 169.254.137.254: io error: Die angeforderte Adresse ist in diesem Kontext ungültig. (os error 10049)
+[1788158530595] [WARN] webrtc_ice::agent::agent_gather: [controlled]: could not listen udp 80fe::57d1:8b50:8295:ff04: io error: Die angeforderte Adresse ist in diesem Kontext ungültig. (os error 10049)
+[1788158530595] [WARN] webrtc_ice::agent::agent_gather: [controlled]: could not listen udp 169.254.125.113: io error: Die angeforderte Adresse ist in diesem Kontext ungültig. (os error 10049)
+[1788158530595[] [local-ice] candidate='candidate:3316535028 1 udp 2130706431 ab6ea2fe-3a93-4103-923b-3dd80fb0c22c.local 62763 typ host' mid=Some("") mline=Some(0)1788158530595
+] [DEBUG] turn::client: turnServ: 82.165.40.140:3478
+[1788158530595] [remote-ice] candidate='candidate:2015770113 1 udp 8191 82.xxx 56598 typ relay raddr 88.xxx rport 62569 generation 0 ufrag qt2M network-cost 999' mid=Some("1") mline=Some(1)
+[1788158530596] [remote-ice] candidate='candidate:2015770113 1 udp 8191 82.xxx 64122 typ relay raddr 88.xxx rport 62078 generation 0 ufrag qt2M network-cost 999' mid=Some("0") mline=Some(0)
+[1788158530597] [remote-ice] candidate='candidate:2015770113 1 udp 8191 82.xxx 52576 typ relay raddr 88.xxx rport 60838 generation 0 ufrag qt2M network-cost 999' mid=Some("1") mline=Some(1)
+[1788158530598] [DEBUG] turn::client: allocate check: read_ch_tx_opt = false
+[1788158530599] [DEBUG] turn::client: client.Allocate call PerformTransaction 1
+[1788158530617] [local-ice] candidate='candidate:1823093426 1 udp 1694498815 91.xxx 62765 typ srflx raddr 0.xxx rport 62765' mid=Some("") mline=Some(0)
+[1788158530621] [local-ice] candidate='candidate:1823093426 1 udp 1694498815 91.xxx 62764 typ srflx raddr 0.xxx rport 62764' mid=Some("") mline=Some(0)
+[1788158530626] [DEBUG] turn::client: received 112 bytes of udp from 82.165.40.140:3478
+[1788158530627] [DEBUG] turn::client: client.Allocate call PerformTransaction 2
+[1788158530651] [DEBUG] turn::client: received 116 bytes of udp from 82.165.40.140:3478
+[1788158530651] [DEBUG] turn::client: allocate: read_ch_tx_opt = true
+[1788158530652] [DEBUG] turn::client::relay_conn: initial lifetime: 600 seconds
+[1788158530652] [DEBUG] turn::client::relay_conn: refresh_alloc_timer started
+[1788158530652] [DEBUG] turn::client::relay_conn: refresh_perms_timer started
+[1788158530652] [local-ice] candidate='candidate:240176262 1 udp 16777215 82.xxx 61195 typ relay raddr 0.xxx rport 62762' mid=Some("") mline=Some(0)
+[1788158530652] [local-ice] end-of-candidates
+[1788158530653] [DEBUG] turn::client::relay_conn: UDPConn.createPermissions call PerformTransaction 1
+[1788158530677] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530678] [DEBUG] turn::client::relay_conn: UDPConn.createPermissions call PerformTransaction 1
+[1788158530702] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530703] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530703] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530703] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530726] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530727] [DEBUG] turn::client::relay_conn: channel binding successful: 88.xxx:56859 16384
+[1788158530751] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530751] [DEBUG] turn::client::relay_conn: channel binding successful: 88.xxx:56861 16385
+[1788158530751] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530776] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530776] [DEBUG] turn::client::relay_conn: channel binding successful: 82.165.40.140:59538 16386
+[1788158530777] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530801] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530801] [DEBUG] turn::client::relay_conn: channel binding successful: 82.165.40.140:61164 16387
+[1788158530802] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530805] [INFO] webrtc_ice::agent::agent_internal: [controlled]: Setting new connection state: Connected
+[1788158530805] [INFO] webrtc::peer_connection: ICE connection state changed: connected
+[1788158530820] [DEBUG] turn::client: received 132 bytes of udp from 82.165.40.140:3478
+[1788158530820] [DEBUG] turn::client: data indication received from 82.165.40.140:53682
+[1788158530820] [DEBUG] turn::client: read_ch_tx_opt = true
+[1788158530821] [DEBUG] turn::client: try_send data = [1, 1, 0, 44, 33, 18, 164, 66, 57, 213, 200, 76, 216, 125, 66, 197, 25, 98, 9, 56, 0, 32, 0, 8, 0, 1, 206, 25, 115, 183, 140, 206, 0, 8, 0, 20, 160, 1, 1, 225, 148, 65, 31, 207, 166, 189, 154, 158, 206, 229, 53, 248, 205, 231, 94, 88, 128, 40, 0, 4, 205, 44, 53, 16], from = 82.165.40.140:53682
+[1788158530825] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530826] [DEBUG] turn::client::relay_conn: channel binding successful: 82.165.40.140:53682 16388
+[1788158530826] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530850] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530850] [DEBUG] turn::client::relay_conn: channel binding successful: 82.165.40.140:56598 16389
+[1788158530851] [DEBUG] turn::client::relay_conn: UDPConn.bind call PerformTransaction 1
+[1788158530855] [INFO] webrtc::peer_connection: peer connection state changed: connected
+[[1788158530857] 1788158530857[DEBUG] webrtc_sctp::association: [] write_loop entered] 
+[DEBUG] webrtc_sctp::association: [] read_loop entered
+[1788158530857] [DEBUG] webrtc_sctp::association: [] recving 44 bytes
+[1788158530858] [DEBUG] webrtc_sctp::association::association_internal: [] state change: 'Closed' => 'CookieWait'
+[1788158530858] [DEBUG] webrtc_sctp::association::association_internal: [] sending INIT
+[1788158530860] [DEBUG] webrtc_sctp::association::association_internal: [] chunkInit received in state 'CookieWait'
+[1788158530861] [DEBUG] webrtc_sctp::association::association_internal: [] use ForwardTSN (on init)
+[1788158530870] [DEBUG] turn::client: received 132 bytes of udp from 82.165.40.140:3478
+[1788158530870] [DEBUG] turn::client: data indication received from 82.165.40.140:64122
+[1788158530870] [DEBUG] turn::client: read_ch_tx_opt = true
+[1788158530870] [DEBUG] turn::client: try_send data = [1, 1, 0, 44, 33, 18, 164, 66, 131, 177, 43, 88, 92, 31, 114, 222, 50, 175, 196, 235, 0, 32, 0, 8, 0, 1, 206, 25, 115, 183, 140, 206, 0, 8, 0, 20, 8, 3, 168, 86, 8, 180, 131, 53, 243, 51, 201, 247, 150, 113, 245, 252, 123, 44, 216, 182, 128, 40, 0, 4, 5, 84, 185, 202], from = 82.165.40.140:64122
+[1788158530875] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+[1788158530875] [DEBUG] turn::client::relay_conn: channel binding successful: 82.165.40.140:64122 16390
+[1788158530876] [DEBUG] webrtc_sctp::association: [] recving 96 bytes
+[1788158530876] [DEBUG] webrtc_sctp::association::association_internal: [] chunkInitAck received in state 'CookieWait'
+[1788158530877] [DEBUG] webrtc_sctp::association::association_internal: [] initial rwnd=5242880
+[1788158530878] [DEBUG] webrtc_sctp::association::association_internal: [] use ForwardTSN (on initAck)
+[1788158530878] [DEBUG] webrtc_sctp::association::association_internal: [] sending COOKIE-ECHO
+[1788158530878] [DEBUG] webrtc_sctp::association::association_internal: [] state change: 'CookieWait' => 'CookieEchoed'
+[1788158530878] [DEBUG] webrtc_sctp::association: [] recving 48 bytes
+[1788158530879] [DEBUG] webrtc_sctp::association::association_internal: [] COOKIE-ECHO received in state 'CookieEchoed'
+[1788158530879] [DEBUG] webrtc_sctp::association::association_internal: [] state change: 'CookieEchoed' => 'Established'
+[1788158530894] [DEBUG] webrtc_sctp::association: [] recving 16 bytes
+[1788158530895] [DEBUG] webrtc_sctp::association::association_internal: [] COOKIE-ACK received in state 'Established'
+[1788158530896] [DEBUG] webrtc_sctp::association: [] recving 48 bytes
+[1788158530897] [DEBUG] webrtc_sctp::association::association_internal: [] accepted a new stream (streamIdentifier: 1)
+[1788158530897] [DEBUG] webrtc_sctp::stream: [1:] reassemblyQueue readable=true
+[1788158530898] [DEBUG] webrtc_sctp::stream: [1:] readNotifier.signal()
+[1788158530898] [DEBUG] webrtc_sctp::stream: [1:] readNotifier.signal() done
+[1788158530898] [DEBUG] webrtc_sctp::stream: [1:] reliability params: ordered=true type=Reliable value=0
+[[1788158530899] [DEBUG] turn::client: received 76 bytes of udp from 82.165.40.140:3478
+1788158530899] [DEBUG] webrtc_sctp::association::association_internal: [] peer_last_tsn = 4168794431
+[1788158530900] [DEBUG] turn::client::relay_conn: channel binding successful: 82.165.40.140:52576 16391
+[1788158530900] [DEBUG] webrtc_sctp::association::association_internal: [] peer_last_tsn = 4168794432
+[1788158530901] [DEBUG] webrtc_sctp::association: [] recving 48 bytes
+[1788158530901] [DEBUG] webrtc_sctp::association::association_internal: [] accepted a new stream (streamIdentifier: 3)
+[1788158530902] [DEBUG] webrtc_sctp::stream: [3:] reassemblyQueue readable=true
+[1788158530902] [DEBUG] webrtc_sctp::stream: [3:] readNotifier.signal()
+[1788158530903] [DEBUG] webrtc_sctp::stream: [3:] readNotifier.signal() done
+[1788158530903] [DEBUG] webrtc_sctp::stream: [3:] reliability params: ordered=true type=Reliable value=0
+[1788158530903] [DEBUG] webrtc_sctp::association::association_internal: [] peer_last_tsn = 4168794432
+[1788158530904] [DEBUG] webrtc_sctp::association::association_internal: [] peer_last_tsn = 4168794433
+[1788158530904] [DEBUG] webrtc_sctp::association::association_internal: [] sending SACK: SACK cumTsnAck=4168794433 arwnd=1048576 dupTsn=[]
+[1788158530915] [DEBUG] webrtc_sctp::association: [] recving 28 bytes
+[1788158530919] [DEBUG] webrtc_sctp::association: [] recving 28 bytes
+[1788158530988] [ice-connected] type=p2p
+[1788158532981] [streaming_loop] alive: frames=21 samples=21 write_failures=0 fps=8.6 avg_encode_ms=12.5
+[1788158535476] [streaming_loop] alive: frames=26 samples=26 write_failures=0 fps=2.0 avg_encode_ms=9.2
+[1788158537478] [streaming_loop] alive: frames=30 samples=30 write_failures=0 fps=2.0 avg_encode_ms=9.1
+[1788158539988] [streaming_loop] alive: frames=35 samples=35 write_failures=0 fps=2.0 avg_encode_ms=9.4
+[1788158542479] [streaming_loop] alive: frames=40 samples=40 write_failures=0 fps=2.0 avg_encode_ms=10.1
+[1788158544480] [streaming_loop] alive: frames=47 samples=47 write_failures=0 fps=3.5 avg_encode_ms=9.1
+[1788158546485] [streaming_loop] alive: frames=51 samples=51 write_failures=0 fps=2.0 avg_encode_ms=9.7
+[1788158548990] [streaming_loop] alive: frames=56 samples=56 write_failures=0 fps=2.0 avg_encode_ms=9.8
+[1788158551465] [streaming_loop] alive: frames=61 samples=61 write_failures=0 fps=2.0 avg_encode_ms=9.6
+[1788158553469] [streaming_loop] alive: frames=65 samples=65 write_failures=0 fps=2.0 avg_encode_ms=10.0
+[1788158555983] [streaming_loop] alive: frames=70 samples=70 write_failures=0 fps=2.0 avg_encode_ms=10.4
+[1788158557306] [DEBUG] webrtc_sctp::association: [] recving 36 bytes
+[1788158557308] [DEBUG] webrtc_sctp::association::association_internal: [] resetStream(): senderLastTSN=4168794433 <= peer_last_tsn=4168794433
+[1788158557308] [DEBUG] webrtc_sctp::association::association_internal: [] RESET RESPONSE: Packet:
+        source_port: 5000
+        destination_port: 5000
+        verification_tag: 4118941392
+        Chunk: Param A:
+ Re-configuration Response Parameter 4168794432 1: Success - Performed
+[1788158557310] [DEBUG] webrtc_sctp::association: [] recving 32 bytes
+[1788158557310] [WARN] webrtc_sctp::association: [] failed to handle_inbound: ErrChunk
+[1788158557311] [DEBUG] webrtc_sctp::association::association_internal: [] state change: 'Established' => 'Closed'
+[1788158557311] [DEBUG] webrtc_sctp::association::association_internal: [] closing association..
+[1788158557312] [DEBUG] webrtc_sctp::association::association_internal: [] association closed
+[1788158557312] [DEBUG] webrtc_sctp::association::association_internal: [] stats nDATAs (in) : 2
+[1788158557312] [DEBUG] webrtc_sctp::association::association_internal: [] stats nSACKs (in) : 2
+[1788158557313] [DEBUG] webrtc_sctp::association::association_internal: [] stats nT3Timeouts : 0
+[1788158557313] [DEBUG] webrtc_sctp::association::association_internal: [] stats nAckTimeouts: 0
+[1788158557313] [DEBUG] webrtc_sctp::association::association_internal: [] stats nFastRetrans: 0
+[1788158557313] [DEBUG] webrtc_sctp::association: [] read_loop exited
+[1788158557314] [DEBUG] webrtc_sctp::association: [] write_loop exited
+[1788158558488] [streaming_loop] alive: frames=75 samples=75 write_failures=0 fps=2.0 avg_encode_ms=10.0
+[1788158560979] [streaming_loop] alive: frames=80 samples=80 write_failures=0 fps=2.0 avg_encode_ms=10.3
+[1788158562329] [INFO] webrtc_ice::agent::agent_internal: [controlled]: Setting new connection state: Disconnected
+[1788158562331] [INFO] webrtc::peer_connection: ICE connection state changed: disconnected
+[1788158562332] [INFO] webrtc::peer_connection: peer connection state changed: disconnected
+[1788158562984] [streaming_loop] alive: frames=84 samples=84 write_failures=0 fps=2.0 avg_encode_ms=8.7
+[1788158564988] [streaming_loop] alive: frames=88 samples=88 write_failures=0 fps=2.0 avg_encode_ms=8.6
+[1788158567478] [streaming_loop] alive: frames=93 samples=93 write_failures=0 fps=2.0 avg_encode_ms=9.1
+[1788158569484] [streaming_loop] alive: frames=176 samples=176 write_failures=0 fps=41.4 avg_encode_ms=10.6
+[1788158571501] [streaming_loop] alive: frames=278 samples=278 write_failures=0 fps=50.6 avg_encode_ms=10.0
+[1788158573504] [streaming_loop] alive: frames=367 samples=367 write_failures=0 fps=44.4 avg_encode_ms=10.7
+[1788158575563] [streaming_loop] alive: frames=476 samples=476 write_failures=0 fps=52.9 avg_encode_ms=11.3
+[1788158577567] [streaming_loop] alive: frames=582 samples=582 write_failures=0 fps=52.9 avg_encode_ms=12.6
+[1788158579579] [streaming_loop] alive: frames=651 samples=651 write_failures=0 fps=34.3 avg_encode_ms=13.2
+[1788158581584] [streaming_loop] alive: frames=706 samples=706 write_failures=0 fps=27.4 avg_encode_ms=12.9
+[1788158583987] [streaming_loop] alive: frames=714 samples=714 write_failures=0 fps=3.3 avg_encode_ms=14.7
+[1788158586238] [streaming_loop] alive: frames=726 samples=726 write_failures=0 fps=5.3 avg_encode_ms=12.0
+[1788158587334] [DEBUG] turn::client::relay_conn: send refresh request (dont_wait=true)
+[1788158587335] [DEBUG] turn::client::relay_conn: refresh request sent
+[1788158587356] [[WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 srflx 88.xxx:56859 related 0.0.0.0:0: the agent is closed
+1788158587356] [DEBUG] turn::client: exiting read loop
+[1788158587357] [WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 srflx 88.xxx:56861 related 0.0.0.0:0: the agent is closed
+[1788158587357] [WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 relay 82.165.40.140:59538 related 88.xxx:56859: the agent is closed
+[1788158587357] [WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 relay 82.165.40.140:61164 related 88.xxx:56861: the agent is closed
+[1788158587357] [WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 relay 82.165.40.140:53682 related 88.xxx:61992: the agent is closed
+[1788158587357] [WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 relay 82.165.40.140:56598 related 88.xxx:62569: the agent is closed
+[1788158587357] [WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 relay 82.165.40.140:64122 related 88.xxx:62078: the agent is closed
+[1788158587357] [WARN] webrtc_ice::agent::agent_internal: [controlled]: Failed to close candidate udp4 relay 82.165.40.140:52576 related 88.xxx:60838: the agent is closed
+[1788158587357] [INFO] webrtc_ice::agent::agent_internal: [controlled]: Setting new connection state: Failed
+[1788158587358] [INFO] webrtc::peer_connection: ICE connection state changed: failed
+[1788158587358] [INFO] webrtc::peer_connection: peer connection state changed: failed
+[1788158588241] [streaming_loop] alive: frames=812 samples=812 write_failures=0 fps=42.9 avg_encode_ms=12.1
+[1788158590326] [streaming_loop] alive: frames=907 samples=907 write_failures=0 fps=45.6 avg_encode_ms=12.8
+[1788158592454] [streaming_loop] alive: frames=967 samples=967 write_failures=0 fps=28.2 avg_encode_ms=13.4
+[1788158594465] [streaming_loop] alive: frames=1068 samples=1068 write_failures=0 fps=50.3 avg_encode_ms=13.0
+[1788158596466] [streaming_loop] alive: frames=1147 samples=1147 write_failures=0 fps=39.5 avg_encode_ms=13.4
+[1788158598479] [streaming_loop] alive: frames=1241 samples=1241 write_failures=0 fps=46.7 avg_encode_ms=11.8
+[1788158600492] [streaming_loop] alive: frames=1336 samples=1336 write_failures=0 fps=47.2 avg_encode_ms=13.0

@@ -12,6 +12,12 @@
 #include <vpx/vp8cx.h>
 #include <vpx/vpx_image.h>
 
+/* Upper bound on frames between automatic keyframes. At the ~30 fps ceiling
+ * this is roughly 10 s; on a near-static screen, where WGC delivers only a
+ * couple of frames a second, it is correspondingly longer in wall-clock but
+ * still bounded — unlike libvpx's 9999-frame default. */
+#define VPX_SHIM_KF_MAX_DIST 300
+
 /* VP8 realtime speed setting. Per libvpx, VP8E_SET_CPUUSED > 0 trades quality
  * for speed (valid range -16..16); the default of 0 is the slowest path and
  * software-encoding a full desktop on a GPU-less host (e.g. a server reached
@@ -51,6 +57,13 @@ VpxEncoderCtx *vpx_shim_create(uint32_t width, uint32_t height, uint32_t bitrate
     ctx->cfg.rc_buf_sz          = 1000; /* ms */
     ctx->cfg.rc_buf_initial_sz  = 500;
     ctx->cfg.rc_buf_optimal_sz  = 600;
+    /* Bound the automatic keyframe interval. libvpx's default (9999 frames)
+     * means a static screen can go many minutes without one — and a viewer
+     * that missed the first keyframe decodes nothing until the next, i.e.
+     * shows black. VPX_SHIM_KF_MAX_DIST caps that wait; the explicit
+     * force_keyframe below covers the common case directly. */
+    ctx->cfg.kf_mode            = VPX_KF_AUTO;
+    ctx->cfg.kf_max_dist        = VPX_SHIM_KF_MAX_DIST;
 
     err = vpx_codec_enc_init(&ctx->codec, vpx_codec_vp8_cx(), &ctx->cfg, 0);
     if (err) { free(ctx); return NULL; }
@@ -79,6 +92,10 @@ void vpx_shim_destroy(VpxEncoderCtx *ctx) {
  *
  * `i420`    – raw I420 bytes (size = w*h + 2*(w/2)*(h/2))
  * `pts_us`  – presentation timestamp in microseconds
+ * `force_keyframe` – non-zero emits a keyframe regardless of scene detection.
+ *                    Needed when a viewer joins: the encoder cannot know a new
+ *                    decoder just attached, and on a static screen its own
+ *                    scene detection will not fire for a long time.
  *
  * Calls `cb(data, size, is_keyframe, user_data)` once per output packet.
  */
@@ -87,7 +104,7 @@ typedef void (*vpx_shim_packet_cb)(const uint8_t *data, size_t size,
 
 int vpx_shim_encode(VpxEncoderCtx *ctx, const uint8_t *i420,
                     uint32_t width, uint32_t height,
-                    int64_t pts_us,
+                    int64_t pts_us, int force_keyframe,
                     vpx_shim_packet_cb cb, void *user_data) {
     if (!ctx || !ctx->initialized) return -1;
 
@@ -100,7 +117,7 @@ int vpx_shim_encode(VpxEncoderCtx *ctx, const uint8_t *i420,
     vpx_codec_err_t err = vpx_codec_encode(
         &ctx->codec, &img, pts_us,
         1,  /* duration (1 timebase unit = 1 µs) */
-        0,  /* flags */
+        force_keyframe ? VPX_EFLAG_FORCE_KF : 0,
         VPX_DL_REALTIME);
     if (err) return (int)err;
 
