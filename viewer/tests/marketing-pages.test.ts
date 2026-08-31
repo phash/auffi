@@ -149,3 +149,42 @@ describe("download pages document every version they ship", () => {
     });
   }
 });
+
+// The bump script rewrites href= and the JSON-LD softwareVersion, and nothing
+// else. Everything a reader is told to *type* — `msiexec /i Auffi_X.Y.Z…`,
+// `dpkg -i`, `rpm -i`, the AppImage chmod — plus the version badge and the
+// release-notes tag link stayed on the previous release, so the page handed
+// out a 0.6.9 download alongside a 0.6.7 install command. Prose is part of the
+// release, not decoration around it.
+describe("download pages: prose and links follow the shipped version", () => {
+  for (const [name, rel] of [
+    ["download (de)", "../public/download/index.html"],
+    ["download (en)", "../public/en/download/index.html"],
+  ] as const) {
+    it(`${name}: no element outside the changelog names an older version`, () => {
+      const doc = pageDoc(rel);
+      const current = softwareApp(doc).softwareVersion;
+      // The changelog is the one place older versions legitimately appear.
+      for (const h of Array.from(doc.querySelectorAll("h3"))) {
+        if (/^\d+\.\d+\.\d+\s*\(/.test((h.textContent ?? "").trim())) {
+          h.closest("li, section, div, article")?.remove();
+        }
+      }
+      const stale = new Set(
+        Array.from((doc.body.textContent ?? "").matchAll(/\b(\d+\.\d+\.\d+)\b/g))
+          .map((m) => m[1])
+          .filter((v) => v !== current),
+      );
+      expect([...stale], `stale versions in prose (current ${current})`).toEqual([]);
+    });
+
+    it(`${name}: every release-notes link points at the shipped tag`, () => {
+      const doc = pageDoc(rel);
+      const current = softwareApp(doc).softwareVersion;
+      const wrong = Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href*='/releases/tag/']"))
+        .map((a) => a.href)
+        .filter((h) => !h.endsWith(`/releases/tag/v${current}`));
+      expect(wrong, "release-notes links must follow the bump").toEqual([]);
+    });
+  }
+});
