@@ -14,6 +14,15 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.7.0 — released 2026-08-31. Congestion control: the encoder bitrate now
+  // follows what the link actually carries (gh #120) instead of pushing a
+  // fixed 2 Mbps into it.
+  "Auffi_0.7.0_amd64.deb",
+  "Auffi-0.7.0-1.x86_64.rpm",
+  "Auffi_0.7.0_amd64.AppImage",
+  "Auffi_0.7.0_x64-setup.exe",
+  "Auffi_0.7.0_x64_en-US.msi",
+  "Auffi_0.7.0_x64_portable.exe",
   // 0.6.9 — released 2026-08-31. Fixes a black screen for the helper when the
   // shared screen is static: the only keyframe was emitted before the peer
   // connected, and nothing could ask for another one.
