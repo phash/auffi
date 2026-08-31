@@ -71,6 +71,14 @@ cd dashboard && npm run dev        # vite on :5174
 cd dashboard && npm test           # vitest (jsdom + custom router)
 cd dashboard && npm run build      # static dist/
 
+# CSP-Hashes nach jedem Edit an Inline-Scripts/JSON-LD nachziehen (schreibt caddy/Caddyfile)
+cd viewer && npm run csp:sync     # csp:check = nur prüfen (CI-tauglich)
+
+# Windows-Installer-Smoke (dockur/QEMU, braucht /dev/kvm), Ergebnis in .win-test/share/install-result.txt
+# ZUERST alle 3 Windows-Assets nach .win-test/share/ laden UND sha256 gegen SHA256SUMS prüfen,
+# ERST DANN booten — sonst liest install.bat ein halb-übertragenes MSI: `msiexec exit=1619`.
+cd .win-test && docker compose down -v && docker compose up -d   # noVNC: http://127.0.0.1:8007
+
 # Local stack (nur backend — voller Stack lokal via ./ops/smoke.sh)
 docker compose up --build
 
@@ -137,7 +145,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-08-28 (v0.6.6): backend 478, sharer-lib 256 (+ 9 `#[ignore]` Display-requiring), viewer 583, dashboard 174, sharer-js 83. `purge.test.ts` hält timing-sensitive Scheduler-Tests, die in Full-Suite-Läufen intermittierend failen können — re-run the flaked file ISOLATED before believing a red run; keine Regression. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-08-31 (v0.6.9): backend 478, sharer-lib 256 (+ 9 `#[ignore]` Display-requiring), viewer 593, dashboard 174, sharer-js 83. `purge.test.ts` hält timing-sensitive Scheduler-Tests, die in Full-Suite-Läufen intermittierend failen können — re-run the flaked file ISOLATED before believing a red run; keine Regression. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy -- -D warnings`. (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
