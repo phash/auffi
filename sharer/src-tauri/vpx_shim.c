@@ -80,6 +80,24 @@ VpxEncoderCtx *vpx_shim_create(uint32_t width, uint32_t height, uint32_t bitrate
     return ctx;
 }
 
+/*
+ * Change the target bitrate of a running encoder.
+ *
+ * libvpx accepts a config change mid-stream via vpx_codec_enc_config_set as
+ * long as the frame geometry is unchanged, so this does NOT reset the encoder
+ * and does NOT force a keyframe — the reference chain survives, which matters
+ * because congestion control fires exactly when spare bandwidth for a keyframe
+ * is what we do not have.
+ *
+ * Returns 0 on success, the vpx error code otherwise.
+ */
+int vpx_shim_set_bitrate(VpxEncoderCtx *ctx, uint32_t bitrate_kbps) {
+    if (!ctx || !ctx->initialized) return -1;
+    if (ctx->cfg.rc_target_bitrate == bitrate_kbps) return 0;
+    ctx->cfg.rc_target_bitrate = bitrate_kbps;
+    return (int)vpx_codec_enc_config_set(&ctx->codec, &ctx->cfg);
+}
+
 /* Destroy encoder context. */
 void vpx_shim_destroy(VpxEncoderCtx *ctx) {
     if (!ctx) return;

@@ -19,6 +19,8 @@ mod ffi {
 
         pub fn vpx_shim_destroy(ctx: *mut c_void);
 
+        pub fn vpx_shim_set_bitrate(ctx: *mut c_void, bitrate_kbps: c_uint) -> c_int;
+
         pub fn vpx_shim_encode(
             ctx: *mut c_void,
             i420: *const c_uchar,
@@ -49,6 +51,9 @@ pub struct Vp8Encoder {
     force_keyframe: bool,
     /// When the last keyframe left the encoder, for [`Vp8Encoder::request_keyframe_throttled`].
     last_keyframe_at: Option<std::time::Instant>,
+    /// Target bitrate currently configured in libvpx, so a repeated request
+    /// for the same rate does not reconfigure the codec.
+    bitrate_kbps: u32,
 }
 
 /// Safety: The libvpx context is not shared; we move `Vp8Encoder` between threads only
@@ -91,11 +96,10 @@ impl Vp8Encoder {
             // attaches later needs one on demand — see request_keyframe.
             force_keyframe: false,
             last_keyframe_at: None,
+            bitrate_kbps,
         })
     }
 
-    /// Encode one BGRA frame.
-    ///
     /// Shortest gap between two keyframes produced on request.
     ///
     /// A viewer on a lossy link sends a Picture Loss Indication whenever it
@@ -129,6 +133,34 @@ impl Vp8Encoder {
         }
     }
 
+    /// The bitrate libvpx is currently targeting, in kbps.
+    ///
+    /// Test-only: production reads the target from `SessionMetrics` and lets
+    /// [`Self::set_bitrate_kbps`] decide whether anything changed.
+    #[cfg(test)]
+    pub fn bitrate_kbps(&self) -> u32 {
+        self.bitrate_kbps
+    }
+
+    /// Retarget the encoder without restarting it.
+    ///
+    /// Congestion control adjusts this while streaming (gh #120). Reconfiguring
+    /// keeps the reference chain, so it costs no keyframe — which is the point,
+    /// since the rate drops precisely when there is no room for one.
+    pub fn set_bitrate_kbps(&mut self, bitrate_kbps: u32) -> Result<(), String> {
+        if bitrate_kbps == self.bitrate_kbps {
+            return Ok(());
+        }
+        let rc = unsafe { ffi::vpx_shim_set_bitrate(self.ctx, bitrate_kbps) };
+        if rc != 0 {
+            return Err(format!("vpx_shim_set_bitrate error code {rc}"));
+        }
+        self.bitrate_kbps = bitrate_kbps;
+        Ok(())
+    }
+
+    /// Encode one BGRA frame.
+    ///
     /// Converts BGRA→I420 (BT.601 limited-range) then calls libvpx.
     /// Returns zero or more encoded packets per call.
     ///
@@ -481,5 +513,92 @@ mod tests {
         // 1 crops to 0 — there is no valid even encode size left.
         assert!(Vp8Encoder::new(1, 64, 500).is_err());
         assert!(Vp8Encoder::new(64, 1, 500).is_err());
+    }
+
+    /// A frame with enough detail that the encoder's output actually tracks
+    /// the target bitrate — a flat surface compresses to almost nothing at any
+    /// setting and would make a rate test meaningless.
+    fn noisy_frame(w: u32, h: u32, seed: u32) -> Vec<u8> {
+        let mut v = vec![0u8; (w * h * 4) as usize];
+        let mut x = seed.wrapping_mul(2_654_435_761).wrapping_add(1);
+        for b in v.iter_mut() {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            *b = (x >> 24) as u8;
+        }
+        v
+    }
+
+    #[test]
+    fn a_new_encoder_reports_the_bitrate_it_was_built_with() {
+        assert_eq!(
+            Vp8Encoder::new(64, 64, 750)
+                .expect("encoder")
+                .bitrate_kbps(),
+            750
+        );
+    }
+
+    #[test]
+    fn set_bitrate_is_accepted_by_libvpx_mid_stream() {
+        let mut enc = Vp8Encoder::new(320, 240, 2000).expect("encoder");
+        enc.encode(&noisy_frame(320, 240, 1), 0).expect("first");
+        enc.set_bitrate_kbps(400)
+            .expect("libvpx must accept a mid-stream retarget");
+        assert_eq!(enc.bitrate_kbps(), 400);
+        // Still encodes afterwards — a rejected config would break the codec.
+        enc.encode(&noisy_frame(320, 240, 2), 33_000)
+            .expect("after retarget");
+    }
+
+    #[test]
+    fn retargeting_does_not_cost_a_keyframe() {
+        // Congestion control lowers the rate exactly when there is no spare
+        // bandwidth; if the change itself forced a keyframe it would make the
+        // congestion worse than doing nothing.
+        let mut enc = Vp8Encoder::new(320, 240, 2000).expect("encoder");
+        let frame = noisy_frame(320, 240, 7);
+        enc.encode(&frame, 0).expect("first");
+        enc.set_bitrate_kbps(300).expect("retarget");
+        let packets = enc.encode(&frame, 33_000).expect("next");
+        assert!(
+            !packets.iter().any(|p| p.is_keyframe),
+            "a bitrate change must not reset the reference chain"
+        );
+    }
+
+    #[test]
+    fn a_lower_bitrate_actually_produces_fewer_bytes() {
+        // Proves the setting reaches libvpx's rate control rather than just
+        // being recorded in our own field.
+        fn bytes_at(kbps: u32) -> usize {
+            let mut enc = Vp8Encoder::new(320, 240, kbps).expect("encoder");
+            let mut total = 0usize;
+            // Skip the keyframe: its size is dominated by the intra coding.
+            enc.encode(&noisy_frame(320, 240, 0), 0).expect("first");
+            for i in 1..30u64 {
+                for p in enc
+                    .encode(&noisy_frame(320, 240, i as u32), i * 33_000)
+                    .expect("frame")
+                {
+                    total += p.data.len();
+                }
+            }
+            total
+        }
+        let high = bytes_at(2000);
+        let low = bytes_at(200);
+        assert!(
+            low < high,
+            "200 kbps produced {low} bytes, 2000 kbps {high}"
+        );
+    }
+
+    #[test]
+    fn setting_the_same_bitrate_twice_is_a_no_op() {
+        let mut enc = Vp8Encoder::new(64, 64, 500).expect("encoder");
+        enc.set_bitrate_kbps(500).expect("same value");
+        assert_eq!(enc.bitrate_kbps(), 500);
     }
 }

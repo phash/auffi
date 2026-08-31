@@ -118,6 +118,53 @@ pub struct SharerPeer {
     type_cb: ObserverSlot<ConnectionType>,
 }
 
+/// What a viewer's RTCP told us.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SenderFeedback {
+    /// The decoder cannot continue and needs a fresh reference frame (PLI/FIR).
+    KeyframeRequest,
+    /// A Receiver Report's loss fraction, 8-bit fixed point (256 = 100 %).
+    Loss { fraction_lost: u8 },
+    /// A REMB estimate: the receiver naming a bitrate ceiling, in bits/s.
+    Remb { bitrate_bps: f32 },
+}
+
+/// Map one RTCP packet to zero or more pieces of sender feedback.
+///
+/// Split out from the read loop so the mapping is testable without a live
+/// peer connection — the loop itself is then trivial enough to read.
+fn classify_rtcp(packet: &(dyn webrtc::rtcp::packet::Packet + Send + Sync)) -> Vec<SenderFeedback> {
+    use webrtc::rtcp::payload_feedbacks::{
+        full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
+        receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
+    };
+    use webrtc::rtcp::receiver_report::ReceiverReport;
+
+    let any = packet.as_any();
+    if any.downcast_ref::<PictureLossIndication>().is_some()
+        || any.downcast_ref::<FullIntraRequest>().is_some()
+    {
+        return vec![SenderFeedback::KeyframeRequest];
+    }
+    if let Some(remb) = any.downcast_ref::<ReceiverEstimatedMaximumBitrate>() {
+        return vec![SenderFeedback::Remb {
+            bitrate_bps: remb.bitrate,
+        }];
+    }
+    if let Some(rr) = any.downcast_ref::<ReceiverReport>() {
+        // One report block per source the viewer is hearing. With a single
+        // video track there is normally exactly one.
+        return rr
+            .reports
+            .iter()
+            .map(|r| SenderFeedback::Loss {
+                fraction_lost: r.fraction_lost,
+            })
+            .collect();
+    }
+    Vec::new()
+}
+
 impl SharerPeer {
     /// Create a new peer connection with the provided ICE servers.
     pub async fn new(ice_servers: Vec<RTCIceServer>) -> Result<Self, Error> {
@@ -253,33 +300,24 @@ impl SharerPeer {
         *self.ice_state_cb.lock().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(handler));
     }
 
-    /// Drain the video sender's RTCP stream, calling `on_keyframe_request`
-    /// whenever the viewer asks for a fresh reference frame.
+    /// Drain the video sender's RTCP stream and report what the viewer said.
     ///
-    /// A VP8 decoder that missed the keyframe — packet loss, or simply
-    /// attaching after it was sent — renders nothing and signals that with a
-    /// Picture Loss Indication. Ignoring PLI leaves such a viewer permanently
-    /// black, which no amount of waiting fixes on a static screen.
+    /// There is exactly ONE drain: `read_rtcp` hands each packet to a single
+    /// reader, so a second loop elsewhere would not see a copy — it would race
+    /// for packets and both would miss half. Every consumer of sender feedback
+    /// therefore goes through this one callback.
     ///
     /// Runs until the sender closes; errors end the loop rather than spin.
-    pub fn spawn_keyframe_request_listener<F>(&self, on_keyframe_request: F)
+    pub fn spawn_rtcp_listener<F>(&self, on_feedback: F)
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn(SenderFeedback) + Send + Sync + 'static,
     {
-        use webrtc::rtcp::payload_feedbacks::{
-            full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
-        };
         let sender = Arc::clone(&self.sender);
         tokio::spawn(async move {
             while let Ok((packets, _)) = sender.read_rtcp().await {
                 for packet in packets {
-                    let wants_keyframe = packet
-                        .as_any()
-                        .downcast_ref::<PictureLossIndication>()
-                        .is_some()
-                        || packet.as_any().downcast_ref::<FullIntraRequest>().is_some();
-                    if wants_keyframe {
-                        on_keyframe_request();
+                    for feedback in classify_rtcp(packet.as_ref()) {
+                        on_feedback(feedback);
                     }
                 }
             }
@@ -632,5 +670,97 @@ mod tests {
         let bytes = b"not valid json {{{";
         let result = serde_json::from_slice::<InputEvent>(bytes);
         assert!(result.is_err(), "malformed JSON must be rejected");
+    }
+
+    mod classify {
+        use super::super::{classify_rtcp, SenderFeedback};
+        use webrtc::rtcp::payload_feedbacks::{
+            full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
+            receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
+        };
+        use webrtc::rtcp::receiver_report::ReceiverReport;
+        use webrtc::rtcp::reception_report::ReceptionReport;
+
+        #[test]
+        fn a_picture_loss_indication_asks_for_a_keyframe() {
+            let pli = PictureLossIndication::default();
+            assert_eq!(classify_rtcp(&pli), vec![SenderFeedback::KeyframeRequest]);
+        }
+
+        #[test]
+        fn a_full_intra_request_asks_for_a_keyframe() {
+            // FIR is the other spelling of the same ask; a viewer may send
+            // either, and answering only one leaves the other black.
+            let fir = FullIntraRequest::default();
+            assert_eq!(classify_rtcp(&fir), vec![SenderFeedback::KeyframeRequest]);
+        }
+
+        #[test]
+        fn a_remb_carries_its_bitrate_through() {
+            let remb = ReceiverEstimatedMaximumBitrate {
+                bitrate: 750_000.0,
+                ..Default::default()
+            };
+            assert_eq!(
+                classify_rtcp(&remb),
+                vec![SenderFeedback::Remb {
+                    bitrate_bps: 750_000.0
+                }]
+            );
+        }
+
+        #[test]
+        fn a_receiver_report_yields_its_loss_fraction() {
+            let rr = ReceiverReport {
+                reports: vec![ReceptionReport {
+                    fraction_lost: 64,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            assert_eq!(
+                classify_rtcp(&rr),
+                vec![SenderFeedback::Loss { fraction_lost: 64 }]
+            );
+        }
+
+        #[test]
+        fn every_report_block_is_reported() {
+            // One block per source the viewer hears. Taking only the first
+            // would silently ignore feedback once anything else is added.
+            let rr = ReceiverReport {
+                reports: vec![
+                    ReceptionReport {
+                        fraction_lost: 8,
+                        ..Default::default()
+                    },
+                    ReceptionReport {
+                        fraction_lost: 40,
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            };
+            assert_eq!(
+                classify_rtcp(&rr),
+                vec![
+                    SenderFeedback::Loss { fraction_lost: 8 },
+                    SenderFeedback::Loss { fraction_lost: 40 },
+                ]
+            );
+        }
+
+        #[test]
+        fn a_report_with_no_blocks_says_nothing() {
+            assert!(classify_rtcp(&ReceiverReport::default()).is_empty());
+        }
+
+        #[test]
+        fn an_unrelated_packet_is_ignored() {
+            // Sender Reports arrive on the same stream and carry no feedback
+            // for us; treating an unknown packet as loss would be a disaster.
+            let sr = webrtc::rtcp::sender_report::SenderReport::default();
+            assert!(classify_rtcp(&sr).is_empty());
+        }
     }
 }

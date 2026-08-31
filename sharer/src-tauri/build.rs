@@ -1,6 +1,12 @@
 fn main() {
     tauri_build::build();
 
+    // Without this, an edit to the shim can leave the previously compiled
+    // object in place: the Rust side then links a stale C function — or fails
+    // with `undefined symbol` for one that was just added — and the cause is
+    // invisible in the source.
+    println!("cargo:rerun-if-changed=vpx_shim.c");
+
     let mut build = cc::Build::new();
     build.file("vpx_shim.c").flag_if_supported("-O2");
 
