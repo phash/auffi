@@ -228,6 +228,9 @@ struct SessionMetrics {
     /// keyframe arrives, and on a static screen the encoder's own scene
     /// detection will not produce one.
     keyframe_requested: std::sync::atomic::AtomicBool,
+    /// Same, but from the viewer's repeated PLI — rate-limited by the encoder
+    /// so answering packet loss cannot amplify it.
+    keyframe_requested_throttled: std::sync::atomic::AtomicBool,
     generation: std::sync::atomic::AtomicU64,
 }
 
@@ -509,8 +512,10 @@ async fn start_streaming(
     {
         let metrics_for_pli = Arc::clone(&bytes_state.0);
         peer.spawn_keyframe_request_listener(move || {
+            // Throttled: a viewer on a lossy link repeats the request, and an
+            // unthrottled answer feeds the congestion that caused it.
             metrics_for_pli
-                .keyframe_requested
+                .keyframe_requested_throttled
                 .store(true, std::sync::atomic::Ordering::Relaxed);
         });
     }
@@ -1268,8 +1273,14 @@ async fn streaming_loop(
             .keyframe_requested
             .swap(false, std::sync::atomic::Ordering::Relaxed)
         {
-            dbg_log("[streaming_loop] keyframe requested — forcing one");
+            dbg_log("[streaming_loop] peer connected — forcing a keyframe");
             encoder.request_keyframe();
+        }
+        if metrics
+            .keyframe_requested_throttled
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            encoder.request_keyframe_throttled();
         }
         let packets = match encoder.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,

@@ -47,6 +47,8 @@ pub struct Vp8Encoder {
     /// Set by [`Vp8Encoder::request_keyframe`], consumed by the next
     /// [`Vp8Encoder::encode`].
     force_keyframe: bool,
+    /// When the last keyframe left the encoder, for [`Vp8Encoder::request_keyframe_throttled`].
+    last_keyframe_at: Option<std::time::Instant>,
 }
 
 /// Safety: The libvpx context is not shared; we move `Vp8Encoder` between threads only
@@ -88,11 +90,22 @@ impl Vp8Encoder {
             // The first encoded frame is a keyframe anyway, but a viewer that
             // attaches later needs one on demand — see request_keyframe.
             force_keyframe: false,
+            last_keyframe_at: None,
         })
     }
 
     /// Encode one BGRA frame.
     ///
+    /// Shortest gap between two keyframes produced on request.
+    ///
+    /// A viewer on a lossy link sends a Picture Loss Indication whenever it
+    /// cannot decode, which can be several times a second. Honouring each one
+    /// is a feedback loop: a keyframe is an order of magnitude larger than a
+    /// delta, so answering loss with more bytes causes more loss. One per
+    /// second is enough to recover a stalled decoder without feeding the
+    /// congestion that stalled it.
+    const MIN_KEYFRAME_GAP: std::time::Duration = std::time::Duration::from_secs(1);
+
     /// Ask for the next encoded frame to be a keyframe.
     ///
     /// A VP8 decoder cannot show anything until it has one. The encoder's own
@@ -102,6 +115,18 @@ impl Vp8Encoder {
     /// black until something moves.
     pub fn request_keyframe(&mut self) {
         self.force_keyframe = true;
+    }
+
+    /// Like [`Self::request_keyframe`], but ignored if one was produced less
+    /// than [`Self::MIN_KEYFRAME_GAP`] ago. Use for viewer-driven requests
+    /// (PLI); a peer actually connecting should use the unthrottled call.
+    pub fn request_keyframe_throttled(&mut self) {
+        let recent = self
+            .last_keyframe_at
+            .is_some_and(|t| t.elapsed() < Self::MIN_KEYFRAME_GAP);
+        if !recent {
+            self.force_keyframe = true;
+        }
     }
 
     /// Converts BGRA→I420 (BT.601 limited-range) then calls libvpx.
@@ -133,6 +158,9 @@ impl Vp8Encoder {
 
         if result != 0 {
             return Err(format!("vpx_shim_encode error code {result}"));
+        }
+        if packets.iter().any(|p| p.is_keyframe) {
+            self.last_keyframe_at = Some(std::time::Instant::now());
         }
         Ok(packets)
     }
@@ -408,6 +436,43 @@ mod tests {
                 .iter()
                 .any(|p| p.is_keyframe),
             "the flag must be consumed, not stick for every later frame"
+        );
+    }
+
+    #[test]
+    fn a_throttled_request_is_dropped_right_after_a_keyframe() {
+        // A viewer on a lossy link repeats its PLI several times a second.
+        // Answering each one sends an order of magnitude more bytes into the
+        // congestion that caused the loss.
+        let mut enc = Vp8Encoder::new(64, 64, 500).expect("encoder");
+        let frame = flat_frame(64, 64);
+        enc.encode(&frame, 0).expect("first is a keyframe");
+
+        enc.request_keyframe_throttled();
+        assert!(
+            !enc.encode(&frame, 33_000)
+                .expect("throttled")
+                .iter()
+                .any(|p| p.is_keyframe),
+            "a request within the gap must be dropped"
+        );
+    }
+
+    #[test]
+    fn a_connect_request_is_never_throttled() {
+        // The peer connecting is not congestion feedback — that viewer has
+        // nothing to decode at all and must be served immediately.
+        let mut enc = Vp8Encoder::new(64, 64, 500).expect("encoder");
+        let frame = flat_frame(64, 64);
+        enc.encode(&frame, 0).expect("first is a keyframe");
+
+        enc.request_keyframe();
+        assert!(
+            enc.encode(&frame, 33_000)
+                .expect("forced")
+                .iter()
+                .any(|p| p.is_keyframe),
+            "an unthrottled request must be honoured even right after a keyframe"
         );
     }
 
