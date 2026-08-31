@@ -37,3 +37,10 @@ screens/
 
 # Superpowers brainstorming mockups — local, never committed
 .superpowers/
+
+# Diagnostic logs pasted in for support. They carry raw IPs in the turn-crate
+# debug lines (our own dbg_log redacts, the library's does not), so they must
+# never be committed.
+auffi-debug*.log
+Textdokument*.txt
+*-debug.log
