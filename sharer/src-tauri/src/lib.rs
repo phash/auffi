@@ -586,6 +586,17 @@ async fn start_streaming(
         use std::sync::atomic::Ordering;
         bytes_state.0.bytes.store(0, Ordering::Relaxed);
         bytes_state.0.is_relay.store(false, Ordering::Relaxed);
+        // SessionMetrics is `manage`d once for the whole app — that is what
+        // `generation` exists to paper over — so a per-session value left
+        // behind here is inherited by the next session. Without this reset a
+        // session that backed off to the floor on a bad link would start the
+        // NEXT one, on a different viewer's possibly fine link, pinned at that
+        // floor until its first receiver report arrives. Zero means "this
+        // session's controller has not spoken yet; leave the encoder alone".
+        bytes_state
+            .0
+            .target_bitrate_kbps
+            .store(0, Ordering::Relaxed);
     }
     let my_generation = bytes_state
         .0
