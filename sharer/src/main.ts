@@ -16,6 +16,7 @@ import { setupTabs } from "./tabs.js";
 import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-banner.js";
 import { formatConnectionRequest } from "./connect-format.js";
 import { formatExpiry } from "./code-expiry.js";
+import { planIceState, ICE_DISCONNECTED_GRACE_MS, type IceState } from "./ice-teardown-policy.js";
 
 interface FileOfferPayload {
   id: string;
@@ -924,6 +925,50 @@ listen<{ reason: string }>("streaming-failed", (e) => {
 // without this the sharer sees nothing (only file-received was wired).
 listen<{ name: string; reason: string }>("file-failed", (e) => {
   setStatus(`Datei „${e.payload.name}“ konnte nicht empfangen werden.`, "error");
+});
+
+// The sharer had no answer to a dying connection: Rust reacted only to
+// connected/completed, so a viewer that went away left the capture and encoder
+// running forever. Mirrors the viewer's grace window rather than inventing a
+// second policy.
+let iceGraceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearIceGrace(): void {
+  if (iceGraceTimer !== null) {
+    clearTimeout(iceGraceTimer);
+    iceGraceTimer = null;
+  }
+}
+
+async function endStreamAfterIceLoss(status: string): Promise<void> {
+  clearIceGrace();
+  setStatus(status, "error");
+  // keepSignaling: the peer is gone, but this sharer stays available for the
+  // next viewer — dropping the signaling channel would release the code (or,
+  // in unattended mode, the heartbeat's OutboundSink).
+  await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+}
+
+listen<string>("ice-state", (e) => {
+  const plan = planIceState(e.payload as IceState, iceGraceTimer !== null);
+  switch (plan.kind) {
+    case "teardown":
+      void endStreamAfterIceLoss(plan.status);
+      break;
+    case "arm-grace":
+      setStatus(plan.status, "waiting");
+      iceGraceTimer = setTimeout(() => {
+        iceGraceTimer = null;
+        void endStreamAfterIceLoss("Verbindung verloren.");
+      }, ICE_DISCONNECTED_GRACE_MS);
+      break;
+    case "recovered":
+      clearIceGrace();
+      setStatus(plan.status, "success");
+      break;
+    case "ignore":
+      break;
+  }
 });
 
 listen<string>("connection-type", (e) => {
