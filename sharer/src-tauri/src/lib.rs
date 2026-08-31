@@ -1,5 +1,6 @@
 mod account;
 mod backend_urls;
+mod bitrate_controller;
 mod capture;
 mod device_password;
 mod encoder;
@@ -231,6 +232,11 @@ struct SessionMetrics {
     /// Same, but from the viewer's repeated PLI — rate-limited by the encoder
     /// so answering packet loss cannot amplify it.
     keyframe_requested_throttled: std::sync::atomic::AtomicBool,
+    /// Target bitrate in kbps, decided by the congestion controller from the
+    /// viewer's RTCP and applied by the streaming loop. An atomic rather than
+    /// a channel because only the newest value matters — a backlog of stale
+    /// rates would be worse than dropping them.
+    target_bitrate_kbps: std::sync::atomic::AtomicU32,
     generation: std::sync::atomic::AtomicU64,
 }
 
@@ -510,13 +516,50 @@ async fn start_streaming(
     // A viewer that lost the reference frame asks for a new one via RTCP PLI.
     // Without this the request is never read and the viewer stays black.
     {
-        let metrics_for_pli = Arc::clone(&bytes_state.0);
-        peer.spawn_keyframe_request_listener(move || {
-            // Throttled: a viewer on a lossy link repeats the request, and an
-            // unthrottled answer feeds the congestion that caused it.
-            metrics_for_pli
-                .keyframe_requested_throttled
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+        use webrtc_peer::SenderFeedback;
+        let metrics_for_rtcp = Arc::clone(&bytes_state.0);
+        // The controller is owned by the callback: RTCP for one session is
+        // delivered on one task, so a Mutex here is uncontended, and tying its
+        // lifetime to the listener means a new session starts from the default
+        // rate rather than inheriting the last one's congestion state.
+        let congestion = std::sync::Mutex::new(bitrate_controller::BitrateController::new(
+            bitrate_controller::START_BITRATE_KBPS,
+        ));
+        peer.spawn_rtcp_listener(move |feedback| match feedback {
+            SenderFeedback::KeyframeRequest => {
+                // Throttled: a viewer on a lossy link repeats the request, and
+                // an unthrottled answer feeds the congestion that caused it.
+                metrics_for_rtcp
+                    .keyframe_requested_throttled
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            SenderFeedback::Loss { fraction_lost } => {
+                let changed = congestion
+                    .lock()
+                    .map(|mut c| c.on_receiver_report(fraction_lost))
+                    .unwrap_or(None);
+                if let Some(kbps) = changed {
+                    dbg_log(&format!(
+                        "[congestion] loss {:.1}% -> {kbps} kbps",
+                        f64::from(fraction_lost) / 256.0 * 100.0
+                    ));
+                    metrics_for_rtcp
+                        .target_bitrate_kbps
+                        .store(kbps, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+            SenderFeedback::Remb { bitrate_bps } => {
+                let changed = congestion
+                    .lock()
+                    .map(|mut c| c.on_remb(bitrate_bps))
+                    .unwrap_or(None);
+                if let Some(kbps) = changed {
+                    dbg_log(&format!("[congestion] remb -> {kbps} kbps"));
+                    metrics_for_rtcp
+                        .target_bitrate_kbps
+                        .store(kbps, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
         });
     }
 
@@ -671,12 +714,14 @@ async fn start_streaming(
     // every retry until a webview reload).
     let enc = close_peer_on_err(
         &peer,
-        encoder::Vp8Encoder::new(width, height, 2000).map_err(|e| {
-            dbg_log(&format!(
-                "[start_streaming] Vp8Encoder::new FAILED ({width}x{height}): {e}"
-            ));
-            e
-        }),
+        encoder::Vp8Encoder::new(width, height, bitrate_controller::START_BITRATE_KBPS).map_err(
+            |e| {
+                dbg_log(&format!(
+                    "[start_streaming] Vp8Encoder::new FAILED ({width}x{height}): {e}"
+                ));
+                e
+            },
+        ),
     )
     .await?;
     dbg_log("[start_streaming] encoder ready");
@@ -891,7 +936,8 @@ async fn switch_monitor(
         })?;
     let w = new_capturer.width();
     let h = new_capturer.height();
-    let new_enc = encoder::Vp8Encoder::new(w, h, 2000).map_err(|e| e.to_string())?;
+    let new_enc = encoder::Vp8Encoder::new(w, h, bitrate_controller::START_BITRATE_KBPS)
+        .map_err(|e| e.to_string())?;
     let (new_x, new_y) = capture::list_displays()
         .into_iter()
         .find(|m| m.id == monitor_id)
@@ -1295,6 +1341,17 @@ async fn streaming_loop(
             .swap(false, std::sync::atomic::Ordering::Relaxed)
         {
             encoder.request_keyframe_throttled();
+        }
+        // Apply whatever the congestion controller last decided. set_bitrate
+        // is a no-op when the value is unchanged, so this costs nothing on a
+        // steady link.
+        let target = metrics
+            .target_bitrate_kbps
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if target != 0 {
+            if let Err(e) = encoder.set_bitrate_kbps(target) {
+                log::warn!("[streaming_loop] bitrate retarget failed: {e}");
+            }
         }
         let packets = match encoder.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,
