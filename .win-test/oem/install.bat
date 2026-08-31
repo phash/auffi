@@ -48,12 +48,32 @@ REM ---- Portable-Test (nur wenn die Portable-Exe in der share liegt) ----
 set "PORT=\\host.lan\Data\Auffi_0.6.9_x64_portable.exe"
 if not exist "%PORT%" (
     >> "%RES%" echo.
-    >> "%RES%" echo [portable] uebersprungen — %PORT% nicht vorhanden ^(CI noch nicht fertig^)
-    goto REM ---- NSIS-Setup-Test (nur wenn die setup.exe in der share liegt) ----
+    >> "%RES%" echo [portable] uebersprungen - %PORT% nicht vorhanden
+    goto :nsis
+)
+>> "%RES%" echo.
+>> "%RES%" echo [portable 1/3] Portable lokal kopieren + starten ^(kein Install^) ...
+copy /Y "%PORT%" "%TEMP%\Auffi_portable.exe" >nul
+del "%TEMP%\auffi-debug.log" >nul 2>&1
+start "" /b "%TEMP%\Auffi_portable.exe"
+timeout /t 25 /nobreak >nul
+>> "%RES%" echo [portable 2/3] Prozess laeuft? ...
+tasklist /FI "IMAGENAME eq Auffi_portable.exe" 2>nul | find /I "Auffi_portable.exe" >nul
+if "!errorlevel!"=="0" ( >> "%RES%" echo   Portable LAEUFT ) else ( >> "%RES%" echo FEHLER: Portable laeuft nicht & set FAILED=1 )
+>> "%RES%" echo [portable 3/3] Debug-Log ...
+if exist "%TEMP%\auffi-debug.log" (
+    >> "%RES%" echo   --- auffi-debug.log ^(portable^) ---
+    type "%TEMP%\auffi-debug.log" >> "%RES%" 2>&1
+    >> "%RES%" echo   --- ende ---
+) else ( >> "%RES%" echo   ^(kein Debug-Log^) )
+taskkill /F /IM Auffi_portable.exe >nul 2>&1
+
+:nsis
+REM ---- NSIS-Setup-Test (nur wenn die setup.exe in der share liegt) ----
 set "NSIS=\\host.lan\Data\Auffi_0.6.9_x64-setup.exe"
 if not exist "%NSIS%" (
     >> "%RES%" echo.
-    >> "%RES%" echo [nsis] uebersprungen — %NSIS% nicht vorhanden
+    >> "%RES%" echo [nsis] uebersprungen - %NSIS% nicht vorhanden
     goto :done
 )
 >> "%RES%" echo.
@@ -76,25 +96,6 @@ timeout /t 25 /nobreak >nul
 tasklist /FI "IMAGENAME eq auffi-sharer.exe" 2>nul | find /I "auffi-sharer.exe" >nul
 if "!errorlevel!"=="0" ( >> "%RES%" echo   NSIS-Installation LAEUFT ) else ( >> "%RES%" echo FEHLER: NSIS-Installation laeuft nicht & set FAILED=1 )
 taskkill /F /IM auffi-sharer.exe >nul 2>&1
-
-:done
-)
->> "%RES%" echo.
->> "%RES%" echo [portable 1/3] Portable lokal kopieren + starten ^(kein Install^) ...
-copy /Y "%PORT%" "%TEMP%\Auffi_portable.exe" >nul
-del "%TEMP%\auffi-debug.log" >nul 2>&1
-start "" /b "%TEMP%\Auffi_portable.exe"
-timeout /t 25 /nobreak >nul
->> "%RES%" echo [portable 2/3] Prozess laeuft? ...
-tasklist /FI "IMAGENAME eq Auffi_portable.exe" 2>nul | find /I "Auffi_portable.exe" >nul
-if "!errorlevel!"=="0" ( >> "%RES%" echo   Portable LAEUFT ) else ( >> "%RES%" echo FEHLER: Portable laeuft nicht & set FAILED=1 )
->> "%RES%" echo [portable 3/3] Debug-Log ...
-if exist "%TEMP%\auffi-debug.log" (
-    >> "%RES%" echo   --- auffi-debug.log ^(portable^) ---
-    type "%TEMP%\auffi-debug.log" >> "%RES%" 2>&1
-    >> "%RES%" echo   --- ende ---
-) else ( >> "%RES%" echo   ^(kein Debug-Log^) )
-taskkill /F /IM Auffi_portable.exe >nul 2>&1
 
 :done
 >> "%RES%" echo.
