@@ -93,6 +93,10 @@ const MDNS_MODE: MulticastDnsMode = MulticastDnsMode::QueryAndGather;
 /// sharer can send file offers and chunks back.
 pub struct SharerPeer {
     pc: Arc<RTCPeerConnection>,
+    /// The video track's RTP sender. Kept so the caller can drain its RTCP
+    /// stream — a viewer that lost the reference frame asks for a new one
+    /// there (PLI), and without reading it we would never hear the request.
+    sender: Arc<webrtc::rtp_transceiver::rtp_sender::RTCRtpSender>,
     pub track: Arc<TrackLocalStaticSample>,
     /// The `"files"` DataChannel, set once the viewer opens it.
     files_dc: Arc<tokio::sync::Mutex<Option<Arc<RTCDataChannel>>>>,
@@ -160,14 +164,51 @@ impl SharerPeer {
             "auffi".to_string(),
         ));
 
-        pc.add_track(track.clone() as Arc<dyn webrtc::track::track_local::TrackLocal + Send + Sync>)
+        let sender = pc
+            .add_track(
+                track.clone() as Arc<dyn webrtc::track::track_local::TrackLocal + Send + Sync>
+            )
             .await?;
 
         Ok(Self {
             pc,
             track,
+            sender,
             files_dc: Arc::new(tokio::sync::Mutex::new(None)),
         })
+    }
+
+    /// Drain the video sender's RTCP stream, calling `on_keyframe_request`
+    /// whenever the viewer asks for a fresh reference frame.
+    ///
+    /// A VP8 decoder that missed the keyframe — packet loss, or simply
+    /// attaching after it was sent — renders nothing and signals that with a
+    /// Picture Loss Indication. Ignoring PLI leaves such a viewer permanently
+    /// black, which no amount of waiting fixes on a static screen.
+    ///
+    /// Runs until the sender closes; errors end the loop rather than spin.
+    pub fn spawn_keyframe_request_listener<F>(&self, on_keyframe_request: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        use webrtc::rtcp::payload_feedbacks::{
+            full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
+        };
+        let sender = Arc::clone(&self.sender);
+        tokio::spawn(async move {
+            while let Ok((packets, _)) = sender.read_rtcp().await {
+                for packet in packets {
+                    let wants_keyframe = packet
+                        .as_any()
+                        .downcast_ref::<PictureLossIndication>()
+                        .is_some()
+                        || packet.as_any().downcast_ref::<FullIntraRequest>().is_some();
+                    if wants_keyframe {
+                        on_keyframe_request();
+                    }
+                }
+            }
+        });
     }
 
     /// Set the remote offer SDP and return a local answer SDP string.

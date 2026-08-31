@@ -222,6 +222,12 @@ struct OutboundSinkState(Arc<tokio::sync::Mutex<Option<outbound::OutboundSink>>>
 struct SessionMetrics {
     bytes: std::sync::atomic::AtomicU64,
     is_relay: std::sync::atomic::AtomicBool,
+    /// Set when something learns a decoder needs a fresh reference frame —
+    /// a peer connecting, or the viewer asking via RTCP PLI. The streaming
+    /// loop consumes it and tells the encoder. VP8 shows nothing until a
+    /// keyframe arrives, and on a static screen the encoder's own scene
+    /// detection will not produce one.
+    keyframe_requested: std::sync::atomic::AtomicBool,
     generation: std::sync::atomic::AtomicU64,
 }
 
@@ -498,6 +504,17 @@ async fn start_streaming(
     });
 
     let app_for_conn_type = app.clone();
+    // A viewer that lost the reference frame asks for a new one via RTCP PLI.
+    // Without this the request is never read and the viewer stays black.
+    {
+        let metrics_for_pli = Arc::clone(&bytes_state.0);
+        peer.spawn_keyframe_request_listener(move || {
+            metrics_for_pli
+                .keyframe_requested
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+
     let outbound_for_conn_type = Arc::clone(&outbound_state.0);
     let metrics_for_cb = Arc::clone(&bytes_state.0);
     // Fresh session: zero the counters and claim a generation. Callbacks
@@ -542,6 +559,11 @@ async fn start_streaming(
                 matches!(conn_type, ConnectionType::Relay),
                 Ordering::Relaxed,
             );
+            // A viewer just attached. Its decoder has nothing to reference
+            // until a keyframe arrives, and the encoder cannot know that on
+            // its own — the first keyframe was emitted before this connection
+            // existed and went nowhere.
+            metrics.keyframe_requested.store(true, Ordering::Relaxed);
             tauri::async_runtime::spawn(async move {
                 // A late callback from a torn-down session must not open a row
                 // against whatever session replaced it.
@@ -1242,6 +1264,13 @@ async fn streaming_loop(
             ));
         }
         let enc_start = std::time::Instant::now();
+        if metrics
+            .keyframe_requested
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            dbg_log("[streaming_loop] keyframe requested — forcing one");
+            encoder.request_keyframe();
+        }
         let packets = match encoder.encode(&frame.data, frame.pts_us) {
             Ok(p) => p,
             Err(e) => {
@@ -1249,6 +1278,15 @@ async fn streaming_loop(
                 continue;
             }
         };
+        if packets.iter().any(|p| p.is_keyframe) {
+            // The signal that tells a black-screen report apart from a
+            // network problem: without a keyframe the viewer decodes nothing,
+            // and on a static screen the encoder emits none by itself.
+            dbg_log(&format!(
+                "[streaming_loop] keyframe emitted at frame {}",
+                frame_count + 1
+            ));
+        }
         frames_since_log += 1;
         encode_us_since_log += enc_start.elapsed().as_micros() as u64;
         if frame_count == 1 {

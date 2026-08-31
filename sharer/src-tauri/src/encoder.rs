@@ -25,6 +25,7 @@ mod ffi {
             width: c_uint,
             height: c_uint,
             pts_us: i64,
+            force_keyframe: c_int,
             cb: vpx_shim_packet_cb,
             user_data: *mut c_void,
         ) -> c_int;
@@ -43,6 +44,9 @@ pub struct Vp8Encoder {
     /// odd source is cropped away.
     enc_width: u32,
     enc_height: u32,
+    /// Set by [`Vp8Encoder::request_keyframe`], consumed by the next
+    /// [`Vp8Encoder::encode`].
+    force_keyframe: bool,
 }
 
 /// Safety: The libvpx context is not shared; we move `Vp8Encoder` between threads only
@@ -51,6 +55,10 @@ unsafe impl Send for Vp8Encoder {}
 
 pub struct EncodedPacket {
     pub data: Vec<u8>,
+    /// True for a keyframe. Reported by libvpx and surfaced here so callers —
+    /// and tests — can tell whether a requested keyframe actually happened,
+    /// rather than inferring it from packet size.
+    pub is_keyframe: bool,
 }
 
 impl Vp8Encoder {
@@ -77,18 +85,36 @@ impl Vp8Encoder {
             src_height: height,
             enc_width,
             enc_height,
+            // The first encoded frame is a keyframe anyway, but a viewer that
+            // attaches later needs one on demand — see request_keyframe.
+            force_keyframe: false,
         })
     }
 
     /// Encode one BGRA frame.
     ///
+    /// Ask for the next encoded frame to be a keyframe.
+    ///
+    /// A VP8 decoder cannot show anything until it has one. The encoder's own
+    /// scene detection will not fire on a static screen, and it has no way to
+    /// know a viewer just attached — so whoever learns that a peer connected
+    /// has to say so. Without this, a helper joining a motionless screen sees
+    /// black until something moves.
+    pub fn request_keyframe(&mut self) {
+        self.force_keyframe = true;
+    }
+
     /// Converts BGRA→I420 (BT.601 limited-range) then calls libvpx.
     /// Returns zero or more encoded packets per call.
+    ///
+    /// Consumes any pending [`Self::request_keyframe`]: the flag is cleared
+    /// here so one request produces exactly one keyframe.
     pub fn encode(
         &mut self,
         frame_bgra: &[u8],
         timestamp_us: u64,
     ) -> Result<Vec<EncodedPacket>, String> {
+        let force = std::mem::take(&mut self.force_keyframe);
         let i420 = bgra_to_i420(frame_bgra, self.src_width, self.src_height)?;
         let mut packets: Vec<EncodedPacket> = Vec::new();
 
@@ -99,6 +125,7 @@ impl Vp8Encoder {
                 self.enc_width,
                 self.enc_height,
                 timestamp_us as i64,
+                c_int::from(force),
                 collect_packet,
                 &mut packets as *mut Vec<EncodedPacket> as *mut c_void,
             )
@@ -126,8 +153,10 @@ unsafe extern "C" fn collect_packet(
 ) {
     let packets = &mut *(user_data as *mut Vec<EncodedPacket>);
     let bytes = std::slice::from_raw_parts(data, size).to_vec();
-    let _ = is_keyframe; // consumed by libvpx RTP packetizer; not needed by caller
-    packets.push(EncodedPacket { data: bytes });
+    packets.push(EncodedPacket {
+        data: bytes,
+        is_keyframe: is_keyframe != 0,
+    });
 }
 
 /// Maximum supported frame dimension on either axis.
@@ -315,6 +344,71 @@ mod tests {
         let frame = vec![0x80u8; 65 * 65 * 4];
         let packets = enc.encode(&frame, 0).expect("encode odd frame");
         assert!(!packets.is_empty(), "expected packets for odd-dim frame");
+    }
+
+    // The bug this guards (2026-08-31, from a user log): the sole keyframe was
+    // emitted 234 ms BEFORE the peer connection existed, so it went nowhere.
+    // The screen was then static, VP8 scene detection never fired, and the
+    // helper saw black for the whole session. Whoever learns a viewer attached
+    // must be able to demand a keyframe.
+    fn flat_frame(w: u32, h: u32) -> Vec<u8> {
+        vec![0x40u8; (w * h * 4) as usize]
+    }
+
+    #[test]
+    fn a_static_screen_stops_producing_keyframes_on_its_own() {
+        // Establishes the premise: without an explicit request there is
+        // nothing for a late viewer to decode.
+        let mut enc = Vp8Encoder::new(64, 64, 500).expect("encoder");
+        let frame = flat_frame(64, 64);
+        assert!(
+            enc.encode(&frame, 0)
+                .expect("first")
+                .iter()
+                .any(|p| p.is_keyframe),
+            "the very first frame is always a keyframe"
+        );
+        for i in 1..20u64 {
+            let packets = enc.encode(&frame, i * 33_000).expect("delta");
+            assert!(
+                !packets.iter().any(|p| p.is_keyframe),
+                "frame {i} on an unchanging picture must not be a keyframe"
+            );
+        }
+    }
+
+    #[test]
+    fn request_keyframe_forces_one_on_the_next_frame() {
+        let mut enc = Vp8Encoder::new(64, 64, 500).expect("encoder");
+        let frame = flat_frame(64, 64);
+        enc.encode(&frame, 0).expect("first");
+        enc.encode(&frame, 33_000).expect("delta");
+
+        enc.request_keyframe();
+        assert!(
+            enc.encode(&frame, 66_000)
+                .expect("forced")
+                .iter()
+                .any(|p| p.is_keyframe),
+            "a requested keyframe must actually be a keyframe"
+        );
+    }
+
+    #[test]
+    fn one_request_produces_exactly_one_keyframe() {
+        let mut enc = Vp8Encoder::new(64, 64, 500).expect("encoder");
+        let frame = flat_frame(64, 64);
+        enc.encode(&frame, 0).expect("first");
+
+        enc.request_keyframe();
+        enc.encode(&frame, 33_000).expect("forced");
+        assert!(
+            !enc.encode(&frame, 66_000)
+                .expect("after")
+                .iter()
+                .any(|p| p.is_keyframe),
+            "the flag must be consumed, not stick for every later frame"
+        );
     }
 
     #[test]
