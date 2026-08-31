@@ -89,6 +89,14 @@ pub fn resolve_connection_type(
 /// getters for its internal state).
 const MDNS_MODE: MulticastDnsMode = MulticastDnsMode::QueryAndGather;
 
+/// Slot holding an optional observer callback.
+///
+/// webrtc-rs allows one `on_ice_connection_state_change` handler, so the ICE
+/// registration installed in [`SharerPeer::new`] dispatches to these instead —
+/// neither observer can displace the other, whatever order the caller
+/// registers them in.
+type ObserverSlot<T> = Arc<std::sync::Mutex<Option<Arc<dyn Fn(T) + Send + Sync>>>>;
+
 /// `files_dc` is populated once the viewer opens the `"files"` channel so the
 /// sharer can send file offers and chunks back.
 pub struct SharerPeer {
@@ -100,6 +108,14 @@ pub struct SharerPeer {
     pub track: Arc<TrackLocalStaticSample>,
     /// The `"files"` DataChannel, set once the viewer opens it.
     files_dc: Arc<tokio::sync::Mutex<Option<Arc<RTCDataChannel>>>>,
+    /// Observer for every ICE connection-state change.
+    ///
+    /// webrtc-rs allows a single `on_ice_connection_state_change` handler, and
+    /// the connection-type resolution already claims it. Both observers hang
+    /// off one registration installed in [`SharerPeer::new`] instead, so
+    /// neither can silently displace the other.
+    ice_state_cb: ObserverSlot<RTCIceConnectionState>,
+    type_cb: ObserverSlot<ConnectionType>,
 }
 
 impl SharerPeer {
@@ -170,12 +186,71 @@ impl SharerPeer {
             )
             .await?;
 
+        let ice_state_cb: ObserverSlot<RTCIceConnectionState> =
+            Arc::new(std::sync::Mutex::new(None));
+        let type_cb: ObserverSlot<ConnectionType> = Arc::new(std::sync::Mutex::new(None));
+
+        // The single ICE-state registration. Both observers read their slot at
+        // call time, so registration order at the call site does not matter and
+        // neither can overwrite the other.
+        {
+            let pc_for_cb = Arc::clone(&pc);
+            let state_slot = Arc::clone(&ice_state_cb);
+            let type_slot = Arc::clone(&type_cb);
+            let last: Arc<tokio::sync::Mutex<Option<ConnectionType>>> =
+                Arc::new(tokio::sync::Mutex::new(None));
+            pc.on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
+                let pc = Arc::clone(&pc_for_cb);
+                let state_slot = Arc::clone(&state_slot);
+                let type_slot = Arc::clone(&type_slot);
+                let last = Arc::clone(&last);
+                Box::pin(async move {
+                    let observer = state_slot.lock().unwrap_or_else(|p| p.into_inner()).clone();
+                    if let Some(observer) = observer {
+                        observer(state);
+                    }
+                    if state != RTCIceConnectionState::Connected
+                        && state != RTCIceConnectionState::Completed
+                    {
+                        return;
+                    }
+                    let report = pc.get_stats().await;
+                    let Some(conn_type) = resolve_connection_type(&report.reports) else {
+                        return;
+                    };
+                    let mut guard = last.lock().await;
+                    if *guard != Some(conn_type) {
+                        *guard = Some(conn_type);
+                        let handler = type_slot.lock().unwrap_or_else(|p| p.into_inner()).clone();
+                        if let Some(handler) = handler {
+                            handler(conn_type);
+                        }
+                    }
+                })
+            }));
+        }
+
         Ok(Self {
             pc,
             track,
             sender,
             files_dc: Arc::new(tokio::sync::Mutex::new(None)),
+            ice_state_cb,
+            type_cb,
         })
+    }
+
+    /// Observe every ICE connection-state change, including the terminal ones.
+    ///
+    /// `disconnected`, `failed` and `closed` were previously discarded, so the
+    /// sharer never learned that the viewer had gone: it kept capturing and
+    /// encoding into a dead peer indefinitely. The viewer has had the mirror
+    /// of this since the beginning (`viewer/src/ice-state-handler.ts`).
+    pub fn on_ice_state<F>(&self, handler: F)
+    where
+        F: Fn(RTCIceConnectionState) + Send + Sync + 'static,
+    {
+        *self.ice_state_cb.lock().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(handler));
     }
 
     /// Drain the video sender's RTCP stream, calling `on_keyframe_request`
@@ -251,32 +326,7 @@ impl SharerPeer {
     where
         F: Fn(ConnectionType) + Send + Sync + 'static,
     {
-        let pc_for_closure = Arc::clone(&self.pc);
-        let handler = Arc::new(handler);
-        let last: Arc<tokio::sync::Mutex<Option<ConnectionType>>> =
-            Arc::new(tokio::sync::Mutex::new(None));
-
-        self.pc
-            .on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
-                let pc = Arc::clone(&pc_for_closure);
-                let handler = Arc::clone(&handler);
-                let last = Arc::clone(&last);
-                Box::pin(async move {
-                    if state != RTCIceConnectionState::Connected
-                        && state != RTCIceConnectionState::Completed
-                    {
-                        return;
-                    }
-                    let report = pc.get_stats().await;
-                    let conn_type = resolve_connection_type(&report.reports);
-                    let Some(conn_type) = conn_type else { return };
-                    let mut guard = last.lock().await;
-                    if *guard != Some(conn_type) {
-                        *guard = Some(conn_type);
-                        handler(conn_type);
-                    }
-                })
-            }));
+        *self.type_cb.lock().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(handler));
     }
 
     /// Register senders for both the `"input"` and `"files"` DataChannels in a

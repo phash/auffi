@@ -520,6 +520,20 @@ async fn start_streaming(
         });
     }
 
+    // Surface every ICE state to the webview, which owns "stop the stream"
+    // and knows whether the signaling channel must survive (it must — the
+    // sharer stays available for the next viewer).
+    {
+        let app_for_ice = app.clone();
+        peer.on_ice_state(move |state| {
+            let value = format!("{state}").to_lowercase();
+            dbg_log(&format!("[ice-state] {value}"));
+            if let Err(e) = app_for_ice.emit("ice-state", value) {
+                log::warn!("ice-state emit failed: {e}");
+            }
+        });
+    }
+
     let outbound_for_conn_type = Arc::clone(&outbound_state.0);
     let metrics_for_cb = Arc::clone(&bytes_state.0);
     // Fresh session: zero the counters and claim a generation. Callbacks
