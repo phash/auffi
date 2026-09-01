@@ -175,3 +175,63 @@ body { line-height: 1.5; }
   color: var(--muted);
   line-height: 1.55;
 }
+
+/* Fallback to the previous release.
+ *
+ * Collapsed by default and deliberately quieter than a .download-item: a
+ * helper following the page top-to-bottom should reach the current build, not
+ * pause over a choice between two version numbers they have no basis to make.
+ * It only has to be findable by someone who already knows they need it. */
+.previous-release {
+  margin-top: 2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: 0 1.25rem;
+}
+.previous-release > summary {
+  cursor: pointer;
+  padding: 0.875rem 0;
+  font-weight: 600;
+  color: var(--muted);
+  list-style-position: inside;
+}
+.previous-release > summary:hover,
+.previous-release > summary:focus-visible {
+  color: inherit;
+}
+.previous-release[open] > summary {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.875rem;
+}
+.previous-release > p {
+  font-size: 0.9375rem;
+  color: var(--muted);
+  max-width: 62ch;
+}
+.previous-release-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.875rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.previous-release-list a {
+  display: inline-block;
+  padding: 0.4375rem 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: 0.875rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.previous-release-list a:hover,
+.previous-release-list a:focus-visible {
+  border-color: var(--brand);
+  color: var(--brand-strong);
+}
+.previous-release > .hint {
+  margin-bottom: 1.25rem;
+}

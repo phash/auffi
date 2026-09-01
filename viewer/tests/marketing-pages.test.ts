@@ -39,13 +39,22 @@ function softwareApp(doc: Document): LdNode {
   throw new Error("no SoftwareApplication JSON-LD found");
 }
 
+/// Asset links that must track the current release.
+///
+/// Excludes the previous-release fallback block, whose whole purpose is to
+/// point at an older version — it is checked separately, and by its own
+/// version, in "the previous release stays reachable" below. Scoping it here
+/// rather than at each call site means a new consumer of this helper cannot
+/// forget the exemption and start reporting the fallback as drift.
 function downloadAssets(doc: Document): string[] {
   return Array.from(
     doc.querySelectorAll<HTMLAnchorElement>('a[href*="/api/downloads/file/"]'),
-  ).map((a) => {
-    const href = a.getAttribute("href") ?? "";
-    return href.slice(href.lastIndexOf("/") + 1);
-  });
+  )
+    .filter((a) => !a.closest("[data-previous-release]"))
+    .map((a) => {
+      const href = a.getAttribute("href") ?? "";
+      return href.slice(href.lastIndexOf("/") + 1);
+    });
 }
 
 /** Asset filename with any `?tag=` pin stripped. */
@@ -164,12 +173,16 @@ describe("download pages: prose and links follow the shipped version", () => {
     it(`${name}: no element outside the changelog names an older version`, () => {
       const doc = pageDoc(rel);
       const current = softwareApp(doc).softwareVersion;
-      // The changelog is the one place older versions legitimately appear.
+      // The changelog is one place older versions legitimately appear.
       for (const h of Array.from(doc.querySelectorAll("h3"))) {
         if (/^\d+\.\d+\.\d+\s*\(/.test((h.textContent ?? "").trim())) {
           h.closest("li, section, div, article")?.remove();
         }
       }
+      // The fallback block is the other. It is removed by its own marker
+      // rather than by "anything that mentions an old version", so drift
+      // anywhere else on the page still fails this test.
+      doc.querySelector("[data-previous-release]")?.remove();
       const stale = new Set(
         Array.from((doc.body.textContent ?? "").matchAll(/\b(\d+\.\d+\.\d+)\b/g))
           .map((m) => m[1])
@@ -181,10 +194,63 @@ describe("download pages: prose and links follow the shipped version", () => {
     it(`${name}: every release-notes link points at the shipped tag`, () => {
       const doc = pageDoc(rel);
       const current = softwareApp(doc).softwareVersion;
-      const wrong = Array.from(doc.querySelectorAll<HTMLAnchorElement>("a[href*='/releases/tag/']"))
+      const doc2 = pageDoc(rel);
+      doc2.querySelector("[data-previous-release]")?.remove();
+      const wrong = Array.from(doc2.querySelectorAll<HTMLAnchorElement>("a[href*='/releases/tag/']"))
         .map((a) => a.href)
         .filter((h) => !h.endsWith(`/releases/tag/v${current}`));
       expect(wrong, "release-notes links must follow the bump").toEqual([]);
+    });
+  }
+});
+
+// A release that changes how streaming behaves needs a way back that a
+// non-technical helper can find. 0.7.0 replaces the fixed send rate with
+// congestion control, and that had never run against a real link when it
+// shipped — so the previous build stays one click away rather than only
+// reachable by digging through GitHub's release list.
+describe("download pages: the previous release stays reachable", () => {
+  const KINDS = ["x64-setup.exe", "x64_portable.exe", "x64_en-US.msi", "amd64.deb", "x86_64.rpm", "amd64.AppImage"];
+
+  for (const [name, rel] of [
+    ["download (de)", "../public/download/index.html"],
+    ["download (en)", "../public/en/download/index.html"],
+  ] as const) {
+    const block = () => {
+      const el = pageDoc(rel).querySelector("[data-previous-release]");
+      if (!el) throw new Error("no [data-previous-release] block on the page");
+      return el;
+    };
+
+    it(`${name}: offers the previous version the backend still serves`, () => {
+      const version = block().getAttribute("data-previous-release");
+      const src = readFileSync(resolve(__dirname, "../../backend/src/downloads/handlers.ts"), "utf-8");
+      const shipped = [...new Set(Array.from(src.matchAll(/Auffi[_-](\d+\.\d+\.\d+)/g)).map((m) => m[1]))];
+      // Second entry: the newest is the current release, the one below it is
+      // what the fallback must point at. Offering a version the allow-list
+      // dropped would 404 every button in the block.
+      expect(version, `KNOWN_ASSETS order: ${shipped.join(", ")}`).toBe(shipped[1]);
+    });
+
+    it(`${name}: every fallback link is tag-pinned to that version`, () => {
+      const version = block().getAttribute("data-previous-release");
+      const hrefs = Array.from(block().querySelectorAll<HTMLAnchorElement>("a[href*='/api/downloads/file/']"))
+        .map((a) => a.getAttribute("href") ?? "");
+      // Pinning matters more here than for the current release: the previous
+      // version is by definition not what /releases/latest resolves to.
+      for (const href of hrefs) {
+        expect(href, `${href} must name ${version}`).toContain(version);
+        expect(href, `${href} must be tag-pinned`).toContain(`?tag=v${version}`);
+      }
+      expect(hrefs.length, "one link per package kind").toBe(KINDS.length);
+    });
+
+    it(`${name}: covers every package kind the current release offers`, () => {
+      const hrefs = Array.from(block().querySelectorAll<HTMLAnchorElement>("a[href*='/api/downloads/file/']"))
+        .map((a) => a.getAttribute("href") ?? "");
+      for (const kind of KINDS) {
+        expect(hrefs.some((h) => h.includes(kind)), `no fallback for ${kind}`).toBe(true);
+      }
     });
   }
 });
