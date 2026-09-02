@@ -121,7 +121,11 @@ pub async fn cached_external_endpoint() -> Option<ExternalEndpoint> {
 /// Cache policy with the clock and the prober injected, so the TTL contract
 /// is unit-testable without a router. The lock is held across the probe on
 /// purpose: two sessions starting at once must not both discover.
-async fn external_endpoint_at<F, Fut>(cache: &Cache, now: Instant, probe: F) -> Option<ExternalEndpoint>
+async fn external_endpoint_at<F, Fut>(
+    cache: &Cache,
+    now: Instant,
+    probe: F,
+) -> Option<ExternalEndpoint>
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Option<ExternalEndpoint>>,
@@ -210,7 +214,11 @@ mod tests {
                 ep(2)
             })
             .await;
-            assert_eq!(probes.load(Ordering::SeqCst), 1, "second call must hit the cache");
+            assert_eq!(
+                probes.load(Ordering::SeqCst),
+                1,
+                "second call must hit the cache"
+            );
             assert_eq!(first.map(|e| e.ip), second.map(|e| e.ip));
         }
 
@@ -220,14 +228,20 @@ mod tests {
             let t0 = Instant::now();
             external_endpoint_at(&cache, t0, || async { ep(1) }).await;
             let later = external_endpoint_at(&cache, t0 + CACHE_TTL, || async { ep(2) }).await;
-            assert_eq!(later.map(|e| e.ip), ep(2).map(|e| e.ip), "rotated IP must win");
+            assert_eq!(
+                later.map(|e| e.ip),
+                ep(2).map(|e| e.ip),
+                "rotated IP must win"
+            );
         }
 
         #[tokio::test]
         async fn a_failed_probe_is_retried_once_the_ttl_passed() {
             let cache: Cache = Mutex::const_new(None);
             let t0 = Instant::now();
-            assert!(external_endpoint_at(&cache, t0, || async { None }).await.is_none());
+            assert!(external_endpoint_at(&cache, t0, || async { None })
+                .await
+                .is_none());
             assert!(
                 external_endpoint_at(&cache, t0 + CACHE_TTL / 2, || async { ep(1) })
                     .await
@@ -295,9 +309,9 @@ mod tests {
         for addr in [
             "::ffff:192.168.1.1".parse::<Ipv6Addr>().unwrap(), // IPv4-mapped RFC1918
             "::ffff:127.0.0.1".parse::<Ipv6Addr>().unwrap(),   // IPv4-mapped loopback
-            Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),          // link-local
-            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),      // documentation (RFC 3849)
-            Ipv6Addr::new(0x3fff, 0x0abc, 0, 0, 0, 0, 0, 1),     // documentation (RFC 9637)
+            Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),        // link-local
+            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),    // documentation (RFC 3849)
+            Ipv6Addr::new(0x3fff, 0x0abc, 0, 0, 0, 0, 0, 1),   // documentation (RFC 9637)
         ] {
             assert!(
                 !is_plausible_external_ip(&IpAddr::V6(addr)),

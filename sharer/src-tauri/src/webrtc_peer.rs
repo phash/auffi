@@ -434,7 +434,9 @@ impl SharerPeer {
                         dc.on_close(Box::new(move || {
                             let tx = close_tx.clone();
                             Box::pin(async move {
-                                crate::dbg_log("[input] data channel closed — releasing held input");
+                                crate::dbg_log(
+                                    "[input] data channel closed — releasing held input",
+                                );
                                 let _ = tx.send(InputCommand::ReleaseAll).await;
                             })
                         }));

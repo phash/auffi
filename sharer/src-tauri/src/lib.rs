@@ -1295,7 +1295,9 @@ async fn streaming_loop(
     let payloader = match track.codec().payloader_for_codec() {
         Ok(p) => p,
         Err(e) => {
-            dbg_log(&format!("[streaming_loop] no payloader for track codec: {e}"));
+            dbg_log(&format!(
+                "[streaming_loop] no payloader for track codec: {e}"
+            ));
             on_failed("internal");
             return;
         }
@@ -2079,7 +2081,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("auffi-debug.log");
         super::ensure_log_file(&path).expect("create");
-        let mode = std::fs::metadata(&path).expect("metadata").permissions().mode() & 0o777;
+        let mode = std::fs::metadata(&path)
+            .expect("metadata")
+            .permissions()
+            .mode()
+            & 0o777;
         assert_eq!(mode, 0o600, "log file must be owner-only, got {mode:o}");
         super::ensure_log_file(&path).expect("an existing regular file is fine");
     }
@@ -2092,7 +2098,10 @@ mod tests {
         std::fs::write(&target, b"secret").expect("target");
         let path = dir.path().join("auffi-debug.log");
         std::os::unix::fs::symlink(&target, &path).expect("symlink");
-        assert!(super::ensure_log_file(&path).is_err(), "must not open through a symlink");
+        assert!(
+            super::ensure_log_file(&path).is_err(),
+            "must not open through a symlink"
+        );
     }
 
     #[test]
@@ -2532,7 +2541,10 @@ mod tests {
         .expect("press");
         let state = Arc::new(tokio::sync::Mutex::new(Some(ctrl)));
         assert!(super::release_input_on_exit(&state));
-        assert!(state.blocking_lock().is_none(), "controller must be gone after exit");
+        assert!(
+            state.blocking_lock().is_none(),
+            "controller must be gone after exit"
+        );
     }
 
     // A persistent frame/encoder size mismatch (Wayland renegotiation, any

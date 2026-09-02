@@ -384,8 +384,15 @@ mod tests {
 
         // Closed, or — if another thread already reused the number — a
         // different file entirely. Either way our pipe end is gone.
-        assert_ne!(inode_of(raw), Some(inode), "read end must be closed by Drop");
-        assert!(inode_of(write_end.as_raw_fd()).is_some(), "control: the write end is untouched");
+        assert_ne!(
+            inode_of(raw),
+            Some(inode),
+            "read end must be closed by Drop"
+        );
+        assert!(
+            inode_of(write_end.as_raw_fd()).is_some(),
+            "control: the write end is untouched"
+        );
     }
 
     /// End-to-end leak check against a real portal. Needs a Wayland session
@@ -401,7 +408,11 @@ mod tests {
             drop(cap);
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
-        assert_eq!(open_fds(), baseline, "every start/drop cycle must return all fds");
+        assert_eq!(
+            open_fds(),
+            baseline,
+            "every start/drop cycle must return all fds"
+        );
     }
 
     // The pipeline caps pin only `format=BGRA`, so a compositor renegotiation
@@ -419,7 +430,10 @@ mod tests {
     fn check_frame_geometry_rejects_renegotiated_dimensions() {
         let err = check_frame_geometry((1920, 1080), Some((2560, 1440)), 2560 * 1440 * 4)
             .expect_err("a larger stream must not be consumed with the old stride");
-        assert!(err.contains("1920x1080") && err.contains("2560x1440"), "{err}");
+        assert!(
+            err.contains("1920x1080") && err.contains("2560x1440"),
+            "{err}"
+        );
         assert!(check_frame_geometry((1920, 1080), Some((1280, 720)), 1280 * 720 * 4).is_err());
     }
 

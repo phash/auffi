@@ -1256,6 +1256,7 @@ mod tests {
         cmd_tx
             .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
                 result: PwResult::Ok,
+                attempt_id: None,
             }))
             .await
             .expect("queue send");

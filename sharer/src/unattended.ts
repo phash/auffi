@@ -85,7 +85,6 @@ import { listen } from "@tauri-apps/api/event";
 import { confirmDialog, dismissConfirmDialog } from "./confirm-dialog.js";
 import { UNATTENDED_CONFIRM_OPTIONS } from "./unattended-confirm.js";
 import { planUnattendedTerminal } from "./unattended-terminal-policy.js";
-import { friendlyDisconnectReason } from "./disconnect-reason.js";
 import { SignalingBuffer, type WireIceCandidate } from "./signaling-buffer.js";
 import { wireAutostartToggle } from "./autostart-toggle.js";
 
@@ -403,8 +402,9 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       void refresh();
       break;
     case "disconnected":
-      console.warn("[unattended] heartbeat disconnected:", ev.reason);
-      setStatusText(friendlyDisconnectReason(ev.reason ?? ""));
+      // The raw reason stays in the Rust debug log; the heartbeat follows up
+      // with a `reconnecting` event carrying the countdown.
+      setStatusText("Getrennt — Verbindung wird neu aufgebaut…");
       break;
     case "reconnecting":
       setStatusText(

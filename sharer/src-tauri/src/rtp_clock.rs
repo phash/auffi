@@ -96,7 +96,11 @@ impl FramePacketizer {
 
     /// Split one encoded frame captured at `pts_us` into RTP packets whose
     /// timestamp reflects that capture time.
-    pub fn packetize(&mut self, pts_us: u64, frame: Vec<u8>) -> Result<Vec<Packet>, webrtc::rtp::Error> {
+    pub fn packetize(
+        &mut self,
+        pts_us: u64,
+        frame: Vec<u8>,
+    ) -> Result<Vec<Packet>, webrtc::rtp::Error> {
         // `packetize` stamps the CURRENT timestamp and then adds `samples`
         // for the next call; advancing first and passing 0 puts the whole
         // delta on this frame instead of the next one.

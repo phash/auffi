@@ -102,6 +102,9 @@ ashpd = { version = "=0.10.2", default-features = false, features = ["tokio"] }
 # Windows host — do it in a Linux build session together with ashpd.
 gstreamer = "=0.24.0"
 gstreamer-app = "=0.24.0"
+# capture/gst_portal.rs reads VideoInfo from the negotiated caps to reject
+# frames whose size disagrees with the declared one.
+gstreamer-video = "=0.24.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 xcap = { version = "=0.9.8", features = ["wgc"] }

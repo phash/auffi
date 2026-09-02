@@ -377,6 +377,7 @@ dependencies = [
  "getrandom 0.4.3",
  "gstreamer",
  "gstreamer-app",
+ "gstreamer-video",
  "igd-next",
  "image",
  "keyring",
@@ -2509,6 +2510,36 @@ dependencies = [
  "cfg-if",
  "glib-sys 0.21.5",
  "gobject-sys 0.21.5",
+ "libc",
+ "system-deps 7.0.8",
+]
+
+[[package]]
+name = "gstreamer-video"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7f312d41e9b1d830fb60bcfb68234ff00f8933cbb27a1179bde81e0241cb863"
+dependencies = [
+ "cfg-if",
+ "futures-channel",
+ "glib 0.21.5",
+ "gstreamer",
+ "gstreamer-base",
+ "gstreamer-video-sys",
+ "libc",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "gstreamer-video-sys"
+version = "0.24.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20236fa412d7a50e59aa234b46828a99e3e5f06c4f80d271a49ecd2a1d3bfcbe"
+dependencies = [
+ "glib-sys 0.21.5",
+ "gobject-sys 0.21.5",
+ "gstreamer-base-sys",
+ "gstreamer-sys",
  "libc",
  "system-deps 7.0.8",
 ]

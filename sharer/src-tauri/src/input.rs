@@ -460,18 +460,36 @@ mod tests {
     // a single printable character; named keys fall back to the code table.
     #[test]
     fn resolve_key_prefers_layout_char() {
-        assert!(matches!(resolve_key("KeyY", Some("z")), Some(Key::Unicode('z'))));
-        assert!(matches!(resolve_key("Quote", Some("ä")), Some(Key::Unicode('ä'))));
-        assert!(matches!(resolve_key("Minus", Some("ß")), Some(Key::Unicode('ß'))));
-        assert!(matches!(resolve_key("Digit1", Some("!")), Some(Key::Unicode('!'))));
+        assert!(matches!(
+            resolve_key("KeyY", Some("z")),
+            Some(Key::Unicode('z'))
+        ));
+        assert!(matches!(
+            resolve_key("Quote", Some("ä")),
+            Some(Key::Unicode('ä'))
+        ));
+        assert!(matches!(
+            resolve_key("Minus", Some("ß")),
+            Some(Key::Unicode('ß'))
+        ));
+        assert!(matches!(
+            resolve_key("Digit1", Some("!")),
+            Some(Key::Unicode('!'))
+        ));
     }
 
     #[test]
     fn resolve_key_falls_back_to_code_for_named_and_missing_keys() {
-        assert!(matches!(resolve_key("Enter", Some("Enter")), Some(Key::Return)));
+        assert!(matches!(
+            resolve_key("Enter", Some("Enter")),
+            Some(Key::Return)
+        ));
         assert!(resolve_key("Quote", Some("Dead")).is_none());
         assert!(matches!(resolve_key("KeyA", None), Some(Key::Unicode('a'))));
-        assert!(matches!(resolve_key("NumpadEnter", Some("Enter")), Some(Key::Return)));
+        assert!(matches!(
+            resolve_key("NumpadEnter", Some("Enter")),
+            Some(Key::Return)
+        ));
     }
 
     #[test]
@@ -506,7 +524,11 @@ mod tests {
             pressed: false,
         })
         .unwrap();
-        assert_eq!(ctrl.held_keys_count(), 0, "release by code, whatever `key` says now");
+        assert_eq!(
+            ctrl.held_keys_count(),
+            0,
+            "release by code, whatever `key` says now"
+        );
     }
 
     #[test]
@@ -626,7 +648,11 @@ mod tests {
 
         let (paused, release) = held.toggle_paused();
         assert!(paused, "first toggle pauses");
-        assert_eq!(release.len(), 2, "pausing must release the held button and key");
+        assert_eq!(
+            release.len(),
+            2,
+            "pausing must release the held button and key"
+        );
         assert!(release.contains(&Held::Button(Button::Left)));
         assert!(release.contains(&Held::Key(Key::Shift)));
         assert!(held.buttons.is_empty() && held.keys.is_empty());
@@ -790,8 +816,16 @@ mod tests {
         assert_eq!(ctrl.held_buttons_count(), 1);
         assert_eq!(ctrl.held_keys_count(), 1);
         ctrl.release_held();
-        assert_eq!(ctrl.held_buttons_count(), 0, "button must be released and forgotten");
-        assert_eq!(ctrl.held_keys_count(), 0, "key must be released and forgotten");
+        assert_eq!(
+            ctrl.held_buttons_count(),
+            0,
+            "button must be released and forgotten"
+        );
+        assert_eq!(
+            ctrl.held_keys_count(),
+            0,
+            "key must be released and forgotten"
+        );
         // Drop with nothing left to release must be a no-op, not a panic.
         drop(ctrl);
     }
