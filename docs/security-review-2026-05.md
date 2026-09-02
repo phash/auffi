@@ -40,7 +40,7 @@ None of these block the 70 % gate. Logging as a follow-up rather than a blocker.
 | WebRTC encryption | DTLS-SRTP default in webrtc-rs 0.17.1 and browser native; never disabled | `sharer/src-tauri/src/webrtc_peer.rs:106-111` |
 | TLS for sharer    | tokio-tungstenite + reqwest both use `rustls-tls-native-roots`; no `danger_accept_invalid_certs` anywhere | `sharer/src-tauri/Cargo.toml:16,28` |
 | Caddy headers     | HSTS, X-Frame-Options, X-Content-Type-Options, no-referrer, tight CSP (no `unsafe-inline`) | `caddy/Caddyfile:13-19` |
-| Bot UA filter     | scrapy / wget / curl / bot / crawler / spider / sqlmap / nmap / nikto / phantomjs 403 (with /healthz exception) | `caddy/Caddyfile:23-30` |
+| Bot UA filter     | scrapy / wget / curl / bot / crawler / spider / sqlmap / nmap / nikto / phantomjs 403 (with /healthz exception). **Erratum (2026-05-14):** the generic `bot` / `crawler` / `spider` substrings 403'd Googlebot, bingbot & co. and caused a two-day SEO outage; they were removed. The audited posture is NOT the one to restore — the current narrow list and the rule live in `docs/footguns.md` § Caddyfile Footguns. | `caddy/Caddyfile:23-30` |
 | Caddy rate-limit  | 300/min general zone, 10/min on /turn-credentials, both per-IP | `caddy/Caddyfile:36-54` |
 | Log redaction     | `cookie`, `authorization`, `x-forwarded-for`, `x-real-ip` all stripped from request logs | `server.ts:38-45` |
 | DSGVO IP prefix   | Signaling: first octet only; audit log: first two octets — never the full IP | `signaling.ts:71-76`, `admin/middleware.ts:50-63` |
