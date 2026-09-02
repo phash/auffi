@@ -6,7 +6,7 @@ import { stubLocalStorage } from "./helpers/local-storage-stub";
 // opt-in banner is only informed consent if the visitor can read it, so
 // the copy must follow <html lang> like help-overlay.js does (review
 // 2026-08). The decision table itself is pinned by
-// matomo-consent-decision.test.ts.
+// matomo-consent-behaviour.test.ts.
 
 function showBanner(lang: "de" | "en"): HTMLElement {
   document.documentElement.lang = lang;

@@ -11,10 +11,10 @@
  *   - === 'no' → kein Matomo, kein Banner (User hat schon abgelehnt).
  *   - unbekannt → Banner unten zeigen mit „Statistik OK" + „Ablehnen".
  *
- * Die Entscheidungslogik ist parallel in viewer/src/matomo-consent-
- * decision.ts gepflegt + getestet. Diese vanilla-JS-Datei dupliziert
- * die paar Zeilen, damit sie ohne Vite-Bundling auf den statischen
- * Marketing-Pages funktioniert.
+ * Vanilla JS ohne Vite-Bundling, damit die statischen Marketing-Pages
+ * die Datei direkt laden können. Die Entscheidungs-Tabelle (consent ×
+ * DNT → load/banner/skip) ist über tests/matomo-consent-behaviour.test.ts
+ * gepinnt, das diese Datei ausführt.
  *
  * Kein Cookie für die Consent-Speicherung selbst — wir nutzen
  * localStorage, das nach TTDSG §25 für Funktionalität gespeichert
@@ -155,9 +155,9 @@
   }
 
   /**
-   * Entscheidungs-Tabelle — Synchronisation mit viewer/src/matomo-
-   * consent-decision.ts (decideAction()). Anyone, der hier was ändert,
-   * sollte auch die TS-Variante + ihre Tests anpassen.
+   * Entscheidungs-Tabelle: DNT gewinnt immer (User hat im Browser schon
+   * abgelehnt — kein Nachfragen), „no" hält den Banner still statt zu
+   * nerven, nur unbekannter Consent zeigt den Banner.
    */
   function decideAction(consent, dnt) {
     if (dnt) return "skip";
