@@ -16,7 +16,7 @@
 //! On Windows the xcap backend (Windows Graphics Capture under the hood) is
 //! always selected. `list_displays` returns all monitors enumerated by xcap.
 //!
-//! # Public interface (unchanged from the original single-file implementation)
+//! # Public interface
 //!
 //! ```text
 //! pub fn list_displays() -> Vec<DisplayInfo>;
@@ -24,12 +24,16 @@
 //! pub struct BgraFrame  { data: Vec<u8>, pts_us: u64 }
 //! pub struct ScreenCapturer { … }
 //! impl ScreenCapturer {
-//!     pub fn start(display_id: u32) -> Result<Self, String>;
+//!     pub async fn start(display_id: u32) -> Result<Self, String>;
 //!     pub fn next_frame(&mut self) -> Result<NextFrame, String>;
 //!     pub fn width(&self) -> u32;
 //!     pub fn height(&self) -> u32;
 //! }
 //! ```
+//!
+//! `start` is `async` on purpose — the portal handshake must run on the
+//! caller's long-lived tokio runtime (pinned by
+//! `lib.rs::tests::screen_capturer_start_remains_async`).
 
 #[cfg(target_os = "linux")]
 mod gst_portal;
@@ -182,13 +186,15 @@ pub fn list_displays() -> Vec<DisplayInfo> {
 
 /// Opaque stop handle whose Drop impl ends the capture session.
 ///
-/// For the X11 and Windows backends this wraps an `mpsc::SyncSender<()>`; for
-/// the portal backend it is a `pw::channel::Sender<()>`. We box-erase the type
-/// so `ScreenCapturer` doesn't need to be generic.
+/// For the X11 and Windows backends this wraps the worker's
+/// `mpsc::SyncSender<()>`; for the portal backend it boxes the whole
+/// `GstPortalCapturer`, whose Drop sets the GStreamer pipeline to Null and
+/// then closes the PipeWire fd and portal session. We box-erase the type so
+/// `ScreenCapturer` doesn't need to be generic.
 ///
-/// The inner value is intentionally never read — it exists solely so that the
-/// boxed sender is dropped together with `ScreenCapturer`, closing the channel
-/// and causing the capture thread to exit.
+/// The inner value is intentionally never read — it exists solely so that
+/// whatever it holds is dropped together with `ScreenCapturer`, which is the
+/// backend's teardown signal.
 struct StopHandle(#[allow(dead_code)] Box<dyn Send>);
 
 /// An active screen capture session.
