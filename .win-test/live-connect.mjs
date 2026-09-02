@@ -32,7 +32,14 @@ const url = opt("--url", "https://auffi.app/");
 const browser = await chromium.launch({
   args: ["--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, locale: "de-DE" });
+// A plain Chrome UA: the Caddyfile 403s HeadlessChrome (scraper block,
+// docs/footguns.md § Caddyfile), which is exactly what Playwright announces.
+const page = await browser.newPage({
+  viewport: { width: 1280, height: 800 },
+  locale: "de-DE",
+  userAgent:
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+});
 await page.goto(`${url}?code=${code.replace(/-/g, "")}`, { waitUntil: "domcontentloaded" });
 // Consent banner (if any) must not sit on top of the connect button.
 await page.locator("#code").waitFor({ state: "visible", timeout: 20_000 });

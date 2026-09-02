@@ -52,6 +52,10 @@ if exist "%LOCALAPPDATA%\Auffi\uninstall.exe" (
     "%LOCALAPPDATA%\Auffi\uninstall.exe" /S
     ping -n 16 127.0.0.1 >nul
 )
+REM WiX uebernimmt HKCU\Software\auffi\Auffi\InstallDir als INSTALLDIR. Ein
+REM vorheriges NSIS-Install lenkt die MSI damit still nach %LOCALAPPDATA% um -
+REM der Schluessel muss weg, damit die MSI wie auf einem frischen PC landet.
+reg delete "HKCU\Software\auffi\Auffi" /f >nul 2>&1
 del "%TEMP%\auffi-debug.log" >nul 2>&1
 
 REM ---------------------------------------------------------------- MSI
@@ -75,7 +79,11 @@ for %%P in ("%ProgramFiles%\Auffi\auffi-sharer.exe" "%ProgramFiles(x86)%\Auffi\a
     if exist "%%~P" set "EXE=%%~P"
 )
 if "!EXE!"=="" (
-    >> "%RES%" echo   FEHLER: auffi-sharer.exe nach Install nicht gefunden
+    if exist "%LOCALAPPDATA%\Auffi\auffi-sharer.exe" (
+        >> "%RES%" echo   FEHLER: MSI landete in %LOCALAPPDATA%\Auffi statt in Program Files - InstallDir-Registry-Rest?
+    ) else (
+        >> "%RES%" echo   FEHLER: auffi-sharer.exe nach Install nicht gefunden
+    )
     set FAILED=1
     goto :portable
 )
