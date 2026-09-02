@@ -24,6 +24,7 @@ import {
 } from "./ice-teardown-policy.js";
 import { resetSessionIndicators } from "./session-indicators.js";
 import { planViewerBye } from "./viewer-bye-policy.js";
+import { unattendedMainStatus } from "./unattended-mode-status.js";
 import { planSignalingLost } from "./signaling-lost-policy.js";
 
 interface FileOfferPayload {
@@ -1155,8 +1156,21 @@ async function restartSignaling(): Promise<void> {
   await invoke("start_signaling");
 }
 
-const UNATTENDED_MODE_STATUS =
-  "Unattended-Modus aktiv — Helfer verbinden sich über das Dashboard.";
+/**
+ * Derive the main-panel line from Rust-side truth rather than from mode.txt
+ * alone: the select persists "unattended" before pairing (the pairing UI
+ * only renders in that mode), so "aktiv" must wait for a running heartbeat.
+ * Each probe degrades to its safe falsy default — a keyring hiccup right
+ * after login must read as "noch nicht aktiviert", not throw.
+ */
+async function unattendedStatusLine(): Promise<string> {
+  const [paired, pwSet, active] = await Promise.all([
+    invoke<string | null>("unattended_is_paired").catch(() => null),
+    invoke<boolean>("unattended_is_password_set").catch(() => false),
+    invoke<boolean>("unattended_is_active").catch(() => false),
+  ]);
+  return unattendedMainStatus({ paired: paired !== null, pwSet, active });
+}
 
 /**
  * Keep the ad-hoc surface consistent with the persisted mode. Rust keeps a
@@ -1179,7 +1193,7 @@ async function reconcileAdhocSurface(): Promise<void> {
     }
     resetCode();
     hideReconnect();
-    setStatus(UNATTENDED_MODE_STATUS, "idle");
+    setStatus(await unattendedStatusLine(), "idle");
     return;
   }
   if (adhocSurfaceActive) return;
@@ -1210,7 +1224,7 @@ renderTrustedPeers().catch(() => {});
   const mode = await invoke<string>("unattended_get_mode").catch(() => "adhoc");
   if (mode === "unattended") {
     resetCode();
-    setStatus(UNATTENDED_MODE_STATUS, "idle");
+    setStatus(await unattendedStatusLine(), "idle");
     return;
   }
   await restartSignaling();

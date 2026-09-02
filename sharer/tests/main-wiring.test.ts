@@ -58,10 +58,11 @@ async function emit(name: string, payload: unknown): Promise<void> {
   await flush();
 }
 
-async function mount(): Promise<void> {
+async function mount(overrides: Record<string, unknown> = {}): Promise<void> {
+  const results = { ...INVOKE_RESULTS, ...overrides };
   listeners.clear();
   invokeMock.mockReset();
-  invokeMock.mockImplementation((cmd: string) => Promise.resolve(INVOKE_RESULTS[cmd]));
+  invokeMock.mockImplementation((cmd: string) => Promise.resolve(results[cmd]));
   document.body.innerHTML = html.slice(html.indexOf("<body>") + "<body>".length, html.lastIndexOf("</body>"));
   vi.resetModules();
   await import("../src/main.js");
@@ -83,7 +84,28 @@ async function startStream(): Promise<void> {
 }
 
 describe("main.ts ad-hoc wiring", () => {
-  beforeEach(mount);
+  beforeEach(() => mount());
+
+  // mode.txt says "unattended" but the device was never paired: nothing is
+  // listening, so the main panel must not claim the mode is active.
+  it("tells the truth about an unattended mode that is not ready", async () => {
+    await mount({ unattended_get_mode: "unattended" });
+    expect(calls("start_signaling")).toHaveLength(0);
+    expect(byId("status").textContent).toContain("noch nicht gekoppelt");
+    expect(byId("status").textContent).not.toMatch(/aktiv —/);
+  });
+
+  it("reports an active unattended heartbeat as active", async () => {
+    await mount({
+      unattended_get_mode: "unattended",
+      unattended_is_paired: "dev-1",
+      unattended_is_password_set: true,
+      unattended_is_active: true,
+    });
+    expect(byId("status").textContent).toBe(
+      "Unattended-Modus aktiv — Helfer verbinden sich über das Dashboard.",
+    );
+  });
 
   it("accepts a connection request exactly once however fast the user clicks", async () => {
     await joinPeer();
