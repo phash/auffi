@@ -195,7 +195,7 @@ use webrtc::track::track_local::TrackLocalWriter;
 
 use capture::DisplayInfo;
 use files::FileMessage;
-use input::{InputController, InputEvent};
+use input::{InputCommand, InputController};
 
 struct SignalingState(Mutex<Option<signaling::Signaling>>);
 
@@ -771,7 +771,7 @@ async fn start_streaming(
         .map(|m| (m.x, m.y))
         .unwrap_or((0, 0));
 
-    let (input_tx, mut input_rx) = mpsc::channel::<InputEvent>(256);
+    let (input_tx, mut input_rx) = mpsc::channel::<InputCommand>(256);
     let (files_msg_tx, mut files_msg_rx) = mpsc::channel::<FileMessage>(256);
     peer.on_data_channels(input_tx, files_msg_tx);
 
@@ -788,10 +788,10 @@ async fn start_streaming(
 
     let controller_arc = Arc::clone(&input_state.0);
     tauri::async_runtime::spawn(async move {
-        while let Some(ev) = input_rx.recv().await {
+        while let Some(cmd) = input_rx.recv().await {
             let mut guard = controller_arc.lock().await;
             if let Some(ctrl) = guard.as_mut() {
-                if let Err(e) = ctrl.apply(ev) {
+                if let Err(e) = ctrl.handle(cmd) {
                     log::warn!("input apply: {e}");
                 }
             }

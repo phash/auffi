@@ -30,6 +30,19 @@ pub enum InputEvent {
     },
 }
 
+/// What the input DataChannel hands to the applier task. Wire events are
+/// wrapped so the channel can also carry the one thing that is NOT a wire
+/// message: the channel itself going away.
+#[derive(Debug)]
+pub enum InputCommand {
+    Apply(InputEvent),
+    /// The viewer's `input` DataChannel closed (tab closed mid-drag). Release
+    /// everything still held NOW rather than when ICE notices — that takes
+    /// the failure-detection time plus the 10 s disconnected grace, long
+    /// enough for the local user to drag their own desktop around.
+    ReleaseAll,
+}
+
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Button {
@@ -167,9 +180,9 @@ impl InputController {
     }
 
     /// Release every mouse-button and key we sent a Press for without a
-    /// matching Release, and forget them. Shared by the pause hotkey and
-    /// `Drop`.
-    fn release_held(&mut self) {
+    /// matching Release, and forget them. Shared by the pause hotkey,
+    /// `InputCommand::ReleaseAll` and `Drop`.
+    pub fn release_held(&mut self) {
         let release = self.held.drain();
         self.release(release);
     }
@@ -194,6 +207,16 @@ impl InputController {
     #[cfg(test)]
     pub fn is_paused(&self) -> bool {
         self.held.paused
+    }
+
+    pub fn handle(&mut self, command: InputCommand) -> Result<(), String> {
+        match command {
+            InputCommand::Apply(event) => self.apply(event),
+            InputCommand::ReleaseAll => {
+                self.release_held();
+                Ok(())
+            }
+        }
     }
 
     pub fn apply(&mut self, event: InputEvent) -> Result<(), String> {
@@ -731,6 +754,20 @@ mod tests {
             0,
             "paused presses are not sent to enigo, so must not be tracked either",
         );
+    }
+
+    #[test]
+    #[ignore]
+    fn release_all_command_empties_held_sets_with_real_enigo() {
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.handle(InputCommand::Apply(InputEvent::MouseButton {
+            button: Button::Left,
+            pressed: true,
+        }))
+        .unwrap();
+        assert_eq!(ctrl.held_buttons_count(), 1);
+        ctrl.handle(InputCommand::ReleaseAll).unwrap();
+        assert_eq!(ctrl.held_buttons_count(), 0);
     }
 
     #[test]

@@ -23,7 +23,7 @@ use webrtc::{
 };
 
 use crate::files::FileMessage;
-use crate::input::InputEvent;
+use crate::input::{InputCommand, InputEvent};
 
 /// Whether the active ICE path uses a TURN relay or a direct route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -402,7 +402,7 @@ impl SharerPeer {
     /// - binary frames: a raw chunk frame with an 8-byte header.
     pub fn on_data_channels(
         &self,
-        input_tx: mpsc::Sender<InputEvent>,
+        input_tx: mpsc::Sender<InputCommand>,
         files_tx: mpsc::Sender<FileMessage>,
     ) {
         let files_dc_slot = Arc::clone(&self.files_dc);
@@ -411,6 +411,7 @@ impl SharerPeer {
             match label.as_str() {
                 "input" => {
                     let tx = input_tx.clone();
+                    let close_tx = input_tx.clone();
                     Box::pin(async move {
                         dc.on_message(Box::new(move |msg| {
                             let tx = tx.clone();
@@ -418,7 +419,7 @@ impl SharerPeer {
                             Box::pin(async move {
                                 match serde_json::from_slice::<InputEvent>(&bytes) {
                                     Ok(event) => {
-                                        if tx.send(event).await.is_err() {
+                                        if tx.send(InputCommand::Apply(event)).await.is_err() {
                                             log::warn!("input channel: receiver dropped");
                                         }
                                     }
@@ -426,6 +427,15 @@ impl SharerPeer {
                                         log::warn!("input channel: failed to parse event: {e}");
                                     }
                                 }
+                            })
+                        }));
+                        // Through the same queue as the events, so a release
+                        // never overtakes a press that is still in flight.
+                        dc.on_close(Box::new(move || {
+                            let tx = close_tx.clone();
+                            Box::pin(async move {
+                                crate::dbg_log("[input] data channel closed — releasing held input");
+                                let _ = tx.send(InputCommand::ReleaseAll).await;
                             })
                         }));
                     })
