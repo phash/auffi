@@ -1777,6 +1777,10 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Unattended mode must come up without a click — that is what
+            // autostart + minimise-to-tray promise.
+            unattended_cmd::resume_on_launch(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {

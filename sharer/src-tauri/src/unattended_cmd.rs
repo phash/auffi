@@ -282,6 +282,18 @@ pub async fn unattended_start(
     state: State<'_, UnattendedState>,
     outbound_state: State<'_, crate::OutboundSinkState>,
 ) -> CmdResult<()> {
+    start_heartbeat(&app, state.inner(), outbound_state.inner()).await
+}
+
+/// The one place the heartbeat is brought up — shared by the Aktivieren
+/// button (`unattended_start`) and the launch-time resume
+/// (`resume_on_launch`), so both apply the same pairing/password gate and
+/// the same double-start guard.
+pub(crate) async fn start_heartbeat(
+    app: &AppHandle,
+    state: &UnattendedState,
+    outbound_state: &crate::OutboundSinkState,
+) -> CmdResult<()> {
     // Hold the commands lock across the WHOLE start body (tokio Mutex,
     // so holding it over the awaits below is legal). Releasing it after
     // the guard check used to let two concurrent invokes (double-click
@@ -292,7 +304,7 @@ pub async fn unattended_start(
     if cmd_guard.is_some() {
         return Err("unattended bereits aktiv".to_string());
     }
-    let dir = app_data_dir(&app)?;
+    let dir = app_data_dir(app)?;
     let device_id = account::read_device_id(&dir)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Gerät nicht gepaart".to_string())?;
@@ -301,7 +313,7 @@ pub async fn unattended_start(
         .read()
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Token fehlt im Keyring".to_string())?;
-    let pw_path = device_password_path(&app)?;
+    let pw_path = device_password_path(app)?;
     if !device_password::is_set(&pw_path) {
         return Err("Geräte-Passwort nicht gesetzt".to_string());
     }
@@ -340,6 +352,66 @@ pub async fn unattended_start(
 
     *cmd_guard = Some(commands);
     Ok(())
+}
+
+/// Whether a launch brings the heartbeat up by itself. `mode` is the raw
+/// content of the persisted mode file (`None` when there is none).
+pub(crate) fn resumes_on_launch(mode: Option<&str>) -> bool {
+    mode.is_some_and(|m| m.trim() == "unattended")
+}
+
+/// Keyring/backend hiccups at login get this many tries, this far apart.
+/// At session start the secret service is often still unlocking; ten
+/// tries over half a minute cover that without spinning forever.
+const RESUME_ATTEMPTS: u32 = 10;
+const RESUME_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Bring the heartbeat up at launch when unattended mode is selected.
+///
+/// Without this the app came up "Inaktiv" after every reboot and waited for
+/// someone to click Aktivieren — the one thing unattended access exists to
+/// not need; autostart delivered a sharer nobody could reach. Missing
+/// pairing or password is definitive (the webview shows the setup step for
+/// it); every other failure is retried a few times because the keyring may
+/// not be unlocked yet this early in the session.
+pub(crate) fn resume_on_launch(app: AppHandle) {
+    let mode = mode_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok());
+    if !resumes_on_launch(mode.as_deref()) {
+        return;
+    }
+    let paired = app_data_dir(&app)
+        .ok()
+        .and_then(|dir| account::read_device_id(&dir).ok().flatten())
+        .is_some();
+    let pw_set = device_password_path(&app)
+        .map(|p| device_password::is_set(&p))
+        .unwrap_or(false);
+    if !paired || !pw_set {
+        crate::dbg_log(&format!(
+            "[unattended] not resumed on launch: paired={paired} password_set={pw_set}"
+        ));
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<UnattendedState>();
+        let outbound = app.state::<crate::OutboundSinkState>();
+        for attempt in 1..=RESUME_ATTEMPTS {
+            match start_heartbeat(&app, state.inner(), outbound.inner()).await {
+                Ok(()) => {
+                    crate::dbg_log(&format!("[unattended] resumed on launch (attempt {attempt})"));
+                    return;
+                }
+                Err(e) => {
+                    crate::dbg_log(&format!(
+                        "[unattended] resume attempt {attempt}/{RESUME_ATTEMPTS} failed: {e}"
+                    ));
+                    tokio::time::sleep(RESUME_RETRY_DELAY).await;
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -800,6 +872,21 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
 
 #[cfg(test)]
 mod tests {
+
+    // Autostart used to deliver a sharer that sat "Inaktiv" until someone
+    // clicked Aktivieren. Only the persisted "unattended" choice resumes;
+    // anything else — ad-hoc, no file, garbage — must leave the heartbeat
+    // down so an ad-hoc user never gets a bearer WSS opened behind their back.
+    #[test]
+    fn launch_resumes_only_when_unattended_mode_is_persisted() {
+        assert!(super::resumes_on_launch(Some("unattended")));
+        assert!(super::resumes_on_launch(Some("unattended\n")));
+        assert!(super::resumes_on_launch(Some("  unattended  ")));
+        assert!(!super::resumes_on_launch(Some("adhoc")));
+        assert!(!super::resumes_on_launch(Some("Unattended")));
+        assert!(!super::resumes_on_launch(Some("")));
+        assert!(!super::resumes_on_launch(None));
+    }
 
     // The webview declares `deviceId` and reads `ev.deviceId`, but the struct
     // serialized snake_case with only confirm_id renamed — so the status line
