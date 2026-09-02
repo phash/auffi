@@ -264,8 +264,6 @@ struct UnattendedEvent<'a> {
     kind: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    viewer_info: Option<serde_json::Value>,
     /// Set only on `needs-confirm`. The frontend echoes this back via
     /// `unattended_confirm` so the user's click routes to the right
     /// pending waiter (Sec M-1).
@@ -437,7 +435,9 @@ pub(crate) fn resume_on_launch(app: AppHandle) {
         for attempt in 1..=RESUME_ATTEMPTS {
             match start_heartbeat(&app, state.inner(), outbound.inner()).await {
                 Ok(()) => {
-                    crate::dbg_log(&format!("[unattended] resumed on launch (attempt {attempt})"));
+                    crate::dbg_log(&format!(
+                        "[unattended] resumed on launch (attempt {attempt})"
+                    ));
                     return;
                 }
                 Err(e) => {
@@ -883,14 +883,8 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                     }
                 }
             }
-            HeartbeatEvent::PeerJoined { viewer_info } => {
-                let _ = app.emit(
-                    "unattended-event",
-                    UnattendedEvent {
-                        viewer_info: Some(viewer_info),
-                        ..UnattendedEvent::kind("peer-joined")
-                    },
-                );
+            HeartbeatEvent::PeerJoined => {
+                let _ = app.emit("unattended-event", UnattendedEvent::kind("peer-joined"));
             }
             HeartbeatEvent::Relay { payload } => {
                 // Pre-confirm the backend synthesises the bye a closed tab
@@ -974,7 +968,6 @@ mod tests {
     fn event_fields_serialize_in_the_camel_case_the_webview_reads() {
         let ev = UnattendedEvent {
             device_id: Some("284-915-073".to_string()),
-            viewer_info: Some(serde_json::json!({ "ipPrefix": "84.xxx" })),
             confirm_id: Some(7),
             ..UnattendedEvent::kind("connected")
         };
@@ -982,11 +975,6 @@ mod tests {
         assert_eq!(v["kind"], "connected");
         assert_eq!(v["deviceId"], "284-915-073", "webview reads ev.deviceId");
         assert!(v.get("device_id").is_none(), "snake_case must not leak");
-        assert!(
-            v.get("viewerInfo").is_some(),
-            "viewer_info must be camelCase too"
-        );
-        assert!(v.get("viewer_info").is_none());
         assert_eq!(v["confirmId"], 7);
     }
 
@@ -1183,7 +1171,9 @@ mod tests {
     #[test]
     fn relay_bye_is_recognised_and_other_relays_are_not() {
         assert!(relay_is_bye(&serde_json::json!({ "kind": "bye" })));
-        assert!(!relay_is_bye(&serde_json::json!({ "kind": "sdp", "sdp": {} })));
+        assert!(!relay_is_bye(
+            &serde_json::json!({ "kind": "sdp", "sdp": {} })
+        ));
         assert!(!relay_is_bye(&serde_json::json!("bye")));
     }
 
@@ -1331,7 +1321,10 @@ mod tests {
     fn validate_backend_url_rejects_https_it_is_not_a_websocket_url() {
         let err = validate_backend_url("https://auffi.app/signal", false)
             .expect_err("https:// is not a WebSocket URL");
-        assert!(err.contains("wss://"), "error must name the expected scheme: {err}");
+        assert!(
+            err.contains("wss://"),
+            "error must name the expected scheme: {err}"
+        );
     }
 
     #[test]

@@ -120,7 +120,10 @@ impl std::fmt::Debug for HeartbeatConfig {
         f.debug_struct("HeartbeatConfig")
             .field("backend_ws_url", &self.backend_ws_url)
             .field("device_id", &self.device_id)
-            .field("token", &format_args!("<redacted, {} bytes>", self.token.len()))
+            .field(
+                "token",
+                &format_args!("<redacted, {} bytes>", self.token.len()),
+            )
             .field("origin", &self.origin)
             .field("ping_interval", &self.ping_interval)
             .field("pong_timeout", &self.pong_timeout)
@@ -174,9 +177,11 @@ pub enum BackendFrame {
         #[serde(default)]
         attempt_id: Option<u64>,
     },
-    /// `{"type":"peer-joined","viewerInfo":{...}}`
-    #[serde(rename = "peer-joined", rename_all = "camelCase")]
-    PeerJoined { viewer_info: serde_json::Value },
+    /// `{"type":"peer-joined","viewerInfo":{...}}` — the viewer info is
+    /// for the ad-hoc confirm dialog; the unattended flow confirmed before
+    /// this frame (pw-check), so it is not carried further here.
+    #[serde(rename = "peer-joined")]
+    PeerJoined,
     #[serde(rename = "relay")]
     Relay { payload: serde_json::Value },
     /// Reply to `SharerFrame::TurnCredentialsRequest`. `credentials`
@@ -266,7 +271,7 @@ pub enum HeartbeatEvent {
     /// offer (same as the ad-hoc `peer-joined`). Viewer loss is
     /// signalled via a (possibly backend-synthesized) relay `bye`,
     /// never via a sharer-directed peer-rejected.
-    PeerJoined { viewer_info: serde_json::Value },
+    PeerJoined,
     /// SDP / ICE / hello / bye relay from the viewer.
     Relay { payload: serde_json::Value },
     /// Backend's answer to `SharerFrame::TurnCredentialsRequest`.
@@ -548,10 +553,8 @@ async fn connect_and_run(
                                         })
                                         .await;
                                 }
-                                BackendFrame::PeerJoined { viewer_info } => {
-                                    let _ = evt_tx
-                                        .send(HeartbeatEvent::PeerJoined { viewer_info })
-                                        .await;
+                                BackendFrame::PeerJoined => {
+                                    let _ = evt_tx.send(HeartbeatEvent::PeerJoined).await;
                                 }
                                 BackendFrame::Relay { payload } => {
                                     let _ = evt_tx
@@ -1064,17 +1067,12 @@ mod tests {
     }
 
     #[test]
-    fn incoming_peer_joined_parses_camelcase_viewer_info() {
-        // backend/src/signaling.ts sends viewerInfo (camelCase). If
-        // that drifts to snake_case, this fails before we ship.
+    fn incoming_peer_joined_parses_with_the_viewer_info_the_backend_sends() {
+        // backend/src/signaling.ts mirrors the ad-hoc frame incl. viewerInfo;
+        // the unattended sharer only needs the type.
         let raw = r#"{"type":"peer-joined","viewerInfo":{"ipPrefix":"84.xxx","country":null}}"#;
         let parsed: BackendFrame = serde_json::from_str(raw).unwrap();
-        match parsed {
-            BackendFrame::PeerJoined { viewer_info } => {
-                assert_eq!(viewer_info["ipPrefix"], "84.xxx");
-            }
-            other => panic!("expected PeerJoined, got {other:?}"),
-        }
+        assert!(matches!(parsed, BackendFrame::PeerJoined), "got {parsed:?}");
     }
 
     #[test]
