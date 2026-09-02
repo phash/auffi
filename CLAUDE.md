@@ -134,7 +134,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 ### Architecture
 
 - Each component has **one clear responsibility**. Files small and focused.
-- **Cross-component contracts** (signaling messages, REST endpoints) are documented in `docs/protocol.md`. Both sides reference the same spec.
+- **Cross-component contracts.** Signaling / DataChannel messages are documented in `docs/protocol.md`; both sides reference the same spec. The REST surface (`/api/*`, `/turn-credentials`, `/healthz`, `/readyz`) has no separate spec: the source of truth is the backend route module (`backend/src/<area>/handlers.ts` + its JSON-Schema), and `dashboard/src/api.ts` mirrors those shapes by hand — when a response schema or an error status changes, change BOTH in the same commit (the 429/423 bodies and 204-no-body routes are where they have drifted before).
 - **Backend is stateless across restarts where possible.** In-memory session state is acceptable for MVP, but the design must accommodate horizontal scaling later (e.g., Redis-backed store as a drop-in).
 - **No shared mutable state across module boundaries.** Pass dependencies in.
 
