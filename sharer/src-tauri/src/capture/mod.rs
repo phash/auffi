@@ -332,6 +332,23 @@ impl ScreenCapturer {
         })
     }
 
+    /// Test-only: a capturer fed from a channel instead of a backend, so
+    /// the streaming loop can be driven without a display.
+    #[cfg(test)]
+    pub(crate) fn from_channel(
+        frame_width: u32,
+        frame_height: u32,
+    ) -> (mpsc::SyncSender<BgraFrame>, Self) {
+        let (tx, rx) = mpsc::sync_channel::<BgraFrame>(2);
+        let cap = Self {
+            rx,
+            _stop: StopHandle(Box::new(())),
+            frame_width,
+            frame_height,
+        };
+        (tx, cap)
+    }
+
     /// Wait up to [`NEXT_FRAME_POLL`] for the next BGRA video frame.
     ///
     /// Returns `Ok(NextFrame::Timeout)` when no frame arrived in the window
@@ -479,14 +496,7 @@ mod tests {
     // needs to get back to its switch-channel shutdown check.
 
     fn capturer_with_channel() -> (mpsc::SyncSender<BgraFrame>, ScreenCapturer) {
-        let (tx, rx) = mpsc::sync_channel::<BgraFrame>(2);
-        let cap = ScreenCapturer {
-            rx,
-            _stop: StopHandle(Box::new(())),
-            frame_width: 4,
-            frame_height: 4,
-        };
-        (tx, cap)
+        ScreenCapturer::from_channel(4, 4)
     }
 
     #[test]

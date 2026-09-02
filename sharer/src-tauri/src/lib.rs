@@ -877,19 +877,21 @@ async fn start_streaming(
     }
     let controller_arc_for_loop = Arc::clone(&input_state.0);
     let app_for_loop = app.clone();
+    let on_failed: FailureSink =
+        Arc::new(move |reason: &str| emit_streaming_failed(&app_for_loop, reason));
     // Fresh session, fresh count — otherwise connection-ended would report
     // the previous session's bytes on top of this one's.
     let metrics_for_loop = Arc::clone(&bytes_state.0);
 
     tauri::async_runtime::spawn(async move {
         streaming_loop(
-            app_for_loop,
             Some(capturer),
             Some(enc),
             track,
             switch_rx,
             controller_arc_for_loop,
             metrics_for_loop,
+            on_failed,
         )
         .await;
     });
@@ -1244,38 +1246,182 @@ fn encode_failures_exceeded(consecutive: u64) -> bool {
     consecutive > MAX_CONSECUTIVE_ENCODE_FAILURES
 }
 
+/// Where `streaming_loop` reports its abnormal exits. Production wraps
+/// `emit_streaming_failed`; tests record the reasons.
+type FailureSink = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// One captured frame after encoding, handed from the capture/encode thread
+/// to the RTP writer.
+struct EncodedFrame {
+    pts_us: u64,
+    packets: Vec<encoder::EncodedPacket>,
+}
+
+/// Packet-level counters the RTP writer shares with the capture/encode
+/// thread's periodic "alive" line.
+#[derive(Default)]
+struct WriterStats {
+    packets: std::sync::atomic::AtomicU64,
+    write_failures: std::sync::atomic::AtomicU64,
+}
+
+/// Drives capture → encode → RTP for one session.
+///
+/// Waiting for a frame (`next_frame`, up to 500 ms) and the BGRA→I420 +
+/// libvpx pass are synchronous and cost tens of milliseconds per frame. They
+/// used to run inline in this async fn on Tauri's shared runtime, parking one
+/// worker for the duration — on a single-CPU host (a small Windows Server VM
+/// reached over RDP has exactly one worker) that froze ICE, DTLS/SCTP, the
+/// input applier, signaling keepalives and the heartbeat for every blocked
+/// interval, and on an idle screen the 500 ms poll never even yielded. The
+/// blocking half therefore runs on its own thread (`capture_encode_loop`)
+/// and hands encoded frames over a channel; only the `write_rtp` calls stay
+/// async here.
+///
+/// Teardown is unchanged: the switch channel closing (disconnect_streaming)
+/// ends the capture/encode thread, which drops its frame sender, which ends
+/// this writer. An abnormal exit on either side reports once through
+/// `on_failed` and closes its end of the channel so the other side follows.
 async fn streaming_loop(
-    app: tauri::AppHandle,
-    mut capturer: Option<capture::ScreenCapturer>,
-    mut enc: Option<encoder::Vp8Encoder>,
+    capturer: Option<capture::ScreenCapturer>,
+    enc: Option<encoder::Vp8Encoder>,
     track: std::sync::Arc<TrackLocalStaticRTP>,
-    mut switch_rx: mpsc::Receiver<SwitchMsg>,
+    switch_rx: mpsc::Receiver<SwitchMsg>,
     controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
     metrics: Arc<SessionMetrics>,
+    on_failed: FailureSink,
 ) {
     dbg_log("[streaming_loop] entered");
     let payloader = match track.codec().payloader_for_codec() {
         Ok(p) => p,
         Err(e) => {
             dbg_log(&format!("[streaming_loop] no payloader for track codec: {e}"));
-            emit_streaming_failed(&app, "internal");
+            on_failed("internal");
             return;
         }
     };
     // One packetizer for the session: the track (and its SSRC) survives a
     // monitor switch, so the RTP clock and sequence numbers must too.
     let mut packetizer = rtp_clock::FramePacketizer::new(payloader);
+    let stats = Arc::new(WriterStats::default());
+    let (frame_tx, mut frame_rx) = mpsc::channel::<EncodedFrame>(4);
+    let encoder_side = {
+        let on_failed = Arc::clone(&on_failed);
+        let stats = Arc::clone(&stats);
+        let metrics = Arc::clone(&metrics);
+        tokio::task::spawn_blocking(move || {
+            capture_encode_loop(
+                capturer,
+                enc,
+                switch_rx,
+                controller_arc,
+                metrics,
+                frame_tx,
+                stats,
+                on_failed,
+            )
+        })
+    };
+
     let mut write_failures = 0u64;
+    let mut frame_count = 0u64;
+    while let Some(frame) = frame_rx.recv().await {
+        frame_count += 1;
+        for pkt in frame.packets {
+            let encoded_len = pkt.data.len() as u64;
+            let rtp_packets = match packetizer.packetize(frame.pts_us, pkt.data) {
+                Ok(p) => p,
+                Err(e) => {
+                    dbg_log(&format!("[streaming_loop] packetize failed: {e}"));
+                    on_failed("internal");
+                    return;
+                }
+            };
+            if frame_count == 1 {
+                if let Some(first) = rtp_packets.first() {
+                    dbg_log(&format!(
+                        "[streaming_loop] first frame -> {} rtp packets, ts={}",
+                        rtp_packets.len(),
+                        first.header.timestamp
+                    ));
+                }
+            }
+            let mut frame_written = false;
+            for p in &rtp_packets {
+                match track.write_rtp(p).await {
+                    Ok(_) => {
+                        stats
+                            .packets
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        frame_written = true;
+                        // Only CONSECUTIVE failures should kill the loop — a
+                        // cumulative counter meant 30 transient blips spread
+                        // over a long session ended it too.
+                        write_failures = 0;
+                        stats
+                            .write_failures
+                            .store(0, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    Err(e) => {
+                        write_failures += 1;
+                        stats
+                            .write_failures
+                            .store(write_failures, std::sync::atomic::Ordering::Relaxed);
+                        if write_failures <= 3 || write_failures.is_multiple_of(10) {
+                            dbg_log(&format!(
+                                "[streaming_loop] write_rtp err #{write_failures}: {e}"
+                            ));
+                        }
+                        if write_failures > 30 {
+                            dbg_log("[streaming_loop] write_rtp failing repeatedly; exiting");
+                            on_failed("track-write");
+                            return;
+                        }
+                    }
+                }
+            }
+            if frame_written {
+                metrics
+                    .bytes
+                    .fetch_add(encoded_len, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+    // The capture/encode thread closed the channel: either deliberate
+    // teardown (nothing to report) or a failure it already reported. A panic
+    // over there would otherwise end the stream without a word.
+    if let Err(e) = encoder_side.await {
+        if e.is_panic() {
+            dbg_log("[streaming_loop] capture/encode thread panicked");
+            on_failed("internal");
+        }
+    }
+    dbg_log("[streaming_loop] writer exiting");
+}
+
+/// The blocking half of [`streaming_loop`]: owns capturer + encoder, serves
+/// the switch-channel protocol, and pushes encoded frames to the writer.
+/// Runs on a `spawn_blocking` thread, hence the `blocking_*` calls.
+#[allow(clippy::too_many_arguments)]
+fn capture_encode_loop(
+    mut capturer: Option<capture::ScreenCapturer>,
+    mut enc: Option<encoder::Vp8Encoder>,
+    mut switch_rx: mpsc::Receiver<SwitchMsg>,
+    controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
+    metrics: Arc<SessionMetrics>,
+    frame_tx: mpsc::Sender<EncodedFrame>,
+    stats: Arc<WriterStats>,
+    on_failed: FailureSink,
+) {
     let mut encode_failures = 0u64;
     let mut frame_count = 0u64;
-    let mut packet_count = 0u64;
     let mut last_log_at = std::time::Instant::now();
     // Per-interval accumulators for the throughput diagnostic (effective fps +
     // average encode time) — the key signal for capture/encode lag.
     let mut frames_since_log = 0u64;
     let mut encode_us_since_log = 0u64;
 
-    async fn handle_switch_msg(
+    fn handle_switch_msg(
         msg: SwitchMsg,
         capturer: &mut Option<capture::ScreenCapturer>,
         enc: &mut Option<encoder::Vp8Encoder>,
@@ -1296,7 +1442,7 @@ async fn streaming_loop(
                 // `create_session()` while the old PipeWire connection
                 // still appears active. Give it a beat to release.
                 #[cfg(target_os = "linux")]
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                std::thread::sleep(Duration::from_millis(500));
                 let _ = ack.send(());
             }
             SwitchMsg::Replace {
@@ -1314,10 +1460,7 @@ async fn streaming_loop(
                 *capturer = Some(c);
                 *enc = Some(e);
                 match InputController::new(x, y, width, height) {
-                    Ok(ic) => {
-                        let mut g = controller_arc.lock().await;
-                        *g = Some(ic);
-                    }
+                    Ok(ic) => *controller_arc.blocking_lock() = Some(ic),
                     Err(e) => log::warn!("[streaming_loop] InputController re-init failed: {e}"),
                 }
             }
@@ -1328,9 +1471,9 @@ async fn streaming_loop(
         // Idle state (between Stop and Replace): block on the channel so we
         // don't busy-loop. Channel close is shutdown.
         if capturer.is_none() {
-            match switch_rx.recv().await {
+            match switch_rx.blocking_recv() {
                 Some(msg) => {
-                    handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc).await;
+                    handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc);
                     encode_failures = 0;
                     continue;
                 }
@@ -1344,7 +1487,7 @@ async fn streaming_loop(
         // Active state: non-blocking poll for switch / shutdown between frames.
         match switch_rx.try_recv() {
             Ok(msg) => {
-                handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc).await;
+                handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc);
                 // A fresh capturer + encoder must not inherit the old pair's
                 // failure streak.
                 encode_failures = 0;
@@ -1365,7 +1508,7 @@ async fn streaming_loop(
             (Some(c), Some(e)) => (c, e),
             _ => {
                 dbg_log("[streaming_loop] capturer/encoder unexpectedly absent in active branch; exiting");
-                emit_streaming_failed(&app, "internal");
+                on_failed("internal");
                 return;
             }
         };
@@ -1382,9 +1525,9 @@ async fn streaming_loop(
             }
             Err(e) => {
                 dbg_log(&format!(
-                    "[streaming_loop] next_frame Err after {frame_count} frames / {packet_count} packets: {e}"
+                    "[streaming_loop] next_frame Err after {frame_count} frames: {e}"
                 ));
-                emit_streaming_failed(&app, "capture");
+                on_failed("capture");
                 return;
             }
         };
@@ -1436,7 +1579,7 @@ async fn streaming_loop(
                 }
                 if encode_failures_exceeded(encode_failures) {
                     dbg_log("[streaming_loop] encode failing repeatedly; exiting");
-                    emit_streaming_failed(&app, "encode");
+                    on_failed("encode");
                     return;
                 }
                 continue;
@@ -1447,8 +1590,7 @@ async fn streaming_loop(
             // network problem: without a keyframe the viewer decodes nothing,
             // and on a static screen the encoder emits none by itself.
             dbg_log(&format!(
-                "[streaming_loop] keyframe emitted at frame {}",
-                frame_count + 1
+                "[streaming_loop] keyframe emitted at frame {frame_count}"
             ));
         }
         frames_since_log += 1;
@@ -1459,59 +1601,21 @@ async fn streaming_loop(
                 packets.len()
             ));
         }
-        for pkt in packets {
-            let encoded_len = pkt.data.len() as u64;
-            let rtp_packets = match packetizer.packetize(frame.pts_us, pkt.data) {
-                Ok(p) => p,
-                Err(e) => {
-                    dbg_log(&format!("[streaming_loop] packetize failed: {e}"));
-                    emit_streaming_failed(&app, "internal");
-                    return;
-                }
-            };
-            if frame_count == 1 {
-                if let Some(first) = rtp_packets.first() {
-                    dbg_log(&format!(
-                        "[streaming_loop] first frame -> {} rtp packets, ts={}",
-                        rtp_packets.len(),
-                        first.header.timestamp
-                    ));
-                }
-            }
-            let mut frame_written = false;
-            for p in &rtp_packets {
-                match track.write_rtp(p).await {
-                    Ok(_) => {
-                        packet_count += 1;
-                        frame_written = true;
-                        // Only CONSECUTIVE failures should kill the loop — a
-                        // cumulative counter meant 30 transient blips spread
-                        // over a long session ended it too.
-                        write_failures = 0;
-                    }
-                    Err(e) => {
-                        write_failures += 1;
-                        if write_failures <= 3 || write_failures.is_multiple_of(10) {
-                            dbg_log(&format!(
-                                "[streaming_loop] write_rtp err #{write_failures}: {e}"
-                            ));
-                        }
-                        if write_failures > 30 {
-                            dbg_log("[streaming_loop] write_rtp failing repeatedly; exiting");
-                            emit_streaming_failed(&app, "track-write");
-                            return;
-                        }
-                    }
-                }
-            }
-            if frame_written {
-                metrics
-                    .bytes
-                    .fetch_add(encoded_len, std::sync::atomic::Ordering::Relaxed);
-            }
+        if !packets.is_empty()
+            && frame_tx
+                .blocking_send(EncodedFrame {
+                    pts_us: frame.pts_us,
+                    packets,
+                })
+                .is_err()
+        {
+            // The writer reported its own failure (or was dropped); nothing
+            // left to feed.
+            dbg_log("[streaming_loop] rtp writer gone; exiting");
+            return;
         }
-        // Periodic heartbeat once per second so we know the loop is alive
-        // even when frames flow silently.
+        // Periodic heartbeat so we know the loop is alive even when frames
+        // flow silently.
         if last_log_at.elapsed() >= std::time::Duration::from_secs(2) {
             let secs = last_log_at.elapsed().as_secs_f64();
             let fps = frames_since_log as f64 / secs;
@@ -1521,7 +1625,11 @@ async fn streaming_loop(
                 0.0
             };
             dbg_log(&format!(
-                "[streaming_loop] alive: frames={frame_count} packets={packet_count} write_failures={write_failures} encode_failures={encode_failures} fps={fps:.1} avg_encode_ms={avg_encode_ms:.1}"
+                "[streaming_loop] alive: frames={frame_count} packets={} write_failures={} encode_failures={encode_failures} fps={fps:.1} avg_encode_ms={avg_encode_ms:.1}",
+                stats.packets.load(std::sync::atomic::Ordering::Relaxed),
+                stats
+                    .write_failures
+                    .load(std::sync::atomic::Ordering::Relaxed),
             ));
             frames_since_log = 0;
             encode_us_since_log = 0;
@@ -2282,6 +2390,126 @@ mod tests {
         {
         }
         assert_returns_future(super::capture::ScreenCapturer::start);
+    }
+
+    /// Drives `streaming_loop` with a channel-fed capturer, a real encoder
+    /// and an unbound RTP track (no peer needed); failures are recorded
+    /// instead of emitted to a webview.
+    mod streaming_loop_harness {
+        use super::super::*;
+        use std::sync::Mutex as StdMutex;
+        use std::time::{Duration, Instant};
+        use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
+
+        struct Harness {
+            failures: Arc<StdMutex<Vec<String>>>,
+            switch_tx: mpsc::Sender<SwitchMsg>,
+            frame_tx: std::sync::mpsc::SyncSender<capture::BgraFrame>,
+            task: tokio::task::JoinHandle<()>,
+        }
+
+        fn spawn_loop(frame_w: u32, frame_h: u32) -> Harness {
+            let (frame_tx, cap) = capture::ScreenCapturer::from_channel(frame_w, frame_h);
+            let enc = encoder::Vp8Encoder::new(frame_w, frame_h, 300).expect("encoder");
+            let track = Arc::new(TrackLocalStaticRTP::new(
+                RTCRtpCodecCapability {
+                    mime_type: "video/VP8".to_string(),
+                    ..Default::default()
+                },
+                "video".to_string(),
+                "auffi".to_string(),
+            ));
+            let (switch_tx, switch_rx) = mpsc::channel::<SwitchMsg>(1);
+            let failures = Arc::new(StdMutex::new(Vec::new()));
+            let sink: FailureSink = {
+                let failures = Arc::clone(&failures);
+                Arc::new(move |reason: &str| {
+                    failures
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .push(reason.to_string())
+                })
+            };
+            let task = tokio::spawn(streaming_loop(
+                Some(cap),
+                Some(enc),
+                track,
+                switch_rx,
+                Arc::new(tokio::sync::Mutex::new(None)),
+                Arc::new(SessionMetrics::default()),
+                sink,
+            ));
+            Harness {
+                failures,
+                switch_tx,
+                frame_tx,
+                task,
+            }
+        }
+
+        // next_frame blocks up to 500 ms and encode is synchronous; both ran
+        // inline on the runtime, so on a one-worker runtime (single-CPU host)
+        // every other task — ICE, input applier, heartbeat — stalled with it,
+        // and an idle capture source never even yielded. Observed from a
+        // separate OS thread because a parked runtime cannot run the probe.
+        #[test]
+        fn waiting_for_a_frame_does_not_block_the_runtime() {
+            let (done_tx, done_rx) = std::sync::mpsc::channel::<Duration>();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("runtime");
+                rt.block_on(async move {
+                    let h = spawn_loop(4, 4);
+                    let started = Instant::now();
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    let _ = done_tx.send(started.elapsed());
+                    drop(h.switch_tx);
+                    drop(h.frame_tx);
+                    let _ = tokio::time::timeout(Duration::from_secs(3), h.task).await;
+                    assert!(
+                        h.failures.lock().unwrap().is_empty(),
+                        "deliberate teardown reports nothing"
+                    );
+                });
+            });
+            let waited = done_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("the streaming loop parked the runtime — a 50 ms timer never fired");
+            assert!(
+                waited < Duration::from_millis(1000),
+                "a 50 ms timer took {waited:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn persistent_encode_failures_end_the_stream_with_reason_encode() {
+            let h = spawn_loop(4, 4);
+            let producer = {
+                let tx = h.frame_tx.clone();
+                tokio::task::spawn_blocking(move || {
+                    for i in 0..60u64 {
+                        // Far too short for 4x4 BGRA — every encode fails.
+                        let undersized = capture::BgraFrame {
+                            data: vec![0u8; 8],
+                            pts_us: i * 33_000,
+                        };
+                        if tx.send(undersized).is_err() {
+                            break;
+                        }
+                    }
+                })
+            };
+            tokio::time::timeout(Duration::from_secs(5), h.task)
+                .await
+                .expect("loop must give up instead of spinning")
+                .expect("no panic");
+            assert_eq!(*h.failures.lock().unwrap(), vec!["encode".to_string()]);
+            drop(h.switch_tx);
+            drop(h.frame_tx);
+            let _ = producer.await;
+        }
     }
 
     #[test]
