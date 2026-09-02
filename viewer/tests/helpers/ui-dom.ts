@@ -110,5 +110,17 @@ export function buildUiTestDOM(): void {
   freeTierToast.id = "free-tier-warning-toast";
   app.appendChild(freeTierToast);
 
+  const cardToggle = document.createElement("button");
+  cardToggle.id = "card-toggle";
+  app.appendChild(cardToggle);
+  const compactLine = document.createElement("div");
+  compactLine.className = "compact-status-line";
+  for (const id of ["compact-status-text", "compact-duration", "compact-bytes"]) {
+    const span = document.createElement("span");
+    span.id = id;
+    compactLine.appendChild(span);
+  }
+  app.appendChild(compactLine);
+
   document.body.replaceChildren(app);
 }

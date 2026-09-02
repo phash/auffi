@@ -464,7 +464,12 @@ export function bindUI(backendWsUrl: string): void {
   // Detached, unit-testable handler for ICE-state events (see #74).
   const iceState = createIceStateHandler({
     teardown: (reason, kind, canReconnect) => teardown(reason, kind, canReconnect),
-    setStatus,
+    // Mirror into the compact bar: while streaming, #status is hidden inside
+    // the collapsed card and the compact line is the only status visible.
+    setStatus: (text, kind) => {
+      setStatus(text, kind);
+      compactBar?.setStatus(text);
+    },
   });
   const clearIceGraceTimer = (): void => iceState.clear();
 
