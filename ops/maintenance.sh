@@ -121,7 +121,7 @@ case "${SUBCOMMAND}" in
     remote "docker run --rm \
       -v ${CERT_VOLUME}:/certs:ro \
       -v '${BACKUP_DIR}':/backup \
-      busybox tar czf '/backup/certs-${DATE}.tar.gz' /certs"
+      alpine:3.20 tar czf '/backup/certs-${DATE}.tar.gz' /certs"
     log_ok "Cert backup written to ${DEPLOY_SSH}:${BACKUP_FILE}"
     ;;
 

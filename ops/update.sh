@@ -154,7 +154,7 @@ if [[ -z "${CLUSTER_PROXY:-}" ]]; then
     remote "docker run --rm \
       -v screenie_viewer-static:/data \
       -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
-      busybox sh -c 'cp -a /src/. /data/'"
+      busybox:1.36.1 sh -c 'cp -a /src/. /data/'"
 else
   log_info "Cluster mode — viewer container bind-mounts viewer-dist directly"
 fi

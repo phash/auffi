@@ -330,7 +330,7 @@ populate_viewer_static_volume() {
   remote "docker run --rm \
     -v screenie_viewer-static:/data \
     -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
-    busybox sh -c 'cp -a /src/. /data/'"
+    busybox:1.36.1 sh -c 'cp -a /src/. /data/'"
 }
 
 # ---------------------------------------------------------------------------
