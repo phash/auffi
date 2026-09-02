@@ -1,8 +1,8 @@
 //! UPnP-IGD external-IP discovery — phase 1 of issue #89.
 //!
 //! Asks the home router (if it speaks UPnP) for its public IPv4 and
-//! caches the result for the process lifetime. `SharerPeer::new` reads
-//! the cache and, if a public IP was found, declares it to `webrtc-rs`
+//! caches the result for [`CACHE_TTL`]. `SharerPeer::new` reads the
+//! cache and, if a public IP was found, declares it to `webrtc-rs`
 //! as a `Srflx` candidate via `SettingEngine::set_nat_1to1_ips`. That
 //! adds a second path to our public address alongside STUN — useful
 //! when the STUN server is unreachable but the router still answers,
@@ -18,12 +18,13 @@
 //! `external_ip:external_port`. That needs a SharerPeer construction
 //! restructure and is its own work item.
 
+use std::future::Future;
 use std::net::IpAddr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use igd_next::aio::tokio::search_gateway;
 use igd_next::SearchOptions;
-use tokio::sync::OnceCell;
+use tokio::sync::Mutex;
 
 /// Discovered external endpoint. Currently a single-field wrapper around
 /// the public IPv4; kept as a struct (rather than a bare `IpAddr`) so
@@ -78,11 +79,26 @@ fn is_documentation_v6(v6: &std::net::Ipv6Addr) -> bool {
     (s[0] == 0x2001 && s[1] == 0x0db8) || (s[0] == 0x3fff && (s[1] & 0xf000) == 0)
 }
 
-/// Process-wide cache. First caller pays the discovery cost; the rest
-/// see the cached `Option<…>` instantly. A `None` value is cached too —
-/// once we know the router doesn't speak UPnP there's no reason to
-/// re-ask every session start.
-static CACHE: OnceCell<Option<ExternalEndpoint>> = OnceCell::const_new();
+/// One discovery result and when it was obtained.
+struct CachedProbe {
+    probed_at: Instant,
+    endpoint: Option<ExternalEndpoint>,
+}
+
+type Cache = Mutex<Option<CachedProbe>>;
+
+/// Process-wide cache. Callers within [`CACHE_TTL`] of the last probe see
+/// its result instantly; the first caller after that pays the discovery
+/// cost again. The unattended sharer runs for days — residential ISPs
+/// rotate the public IPv4 nightly and laptops roam — so a result must not
+/// live for the process lifetime, and a probe that failed because the
+/// network was not up yet at autostart must not disable the feature for
+/// good. A `None` is cached for the same TTL: a router without UPnP would
+/// otherwise cost every session start the full discovery budget.
+static CACHE: Cache = Mutex::const_new(None);
+
+/// How long a discovery result (positive or negative) is trusted.
+const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
 /// Hard upper bound on the SSDP+SOAP roundtrip. Routers that don't
 /// answer within this window are treated as "no UPnP available." Kept
@@ -91,13 +107,37 @@ static CACHE: OnceCell<Option<ExternalEndpoint>> = OnceCell::const_new();
 /// "Verbindung wird hergestellt…" UI.
 const DISCOVERY_BUDGET: Duration = Duration::from_millis(1500);
 
-/// Return the cached external endpoint, running discovery on the first
-/// call. Discovery has a hard `DISCOVERY_BUDGET` so a slow or
-/// unreachable router can't stall the caller.
+/// Return the cached external endpoint, running discovery when the cache
+/// is empty or older than [`CACHE_TTL`]. Discovery has a hard
+/// `DISCOVERY_BUDGET` so a slow or unreachable router can't stall the
+/// caller.
 pub async fn cached_external_endpoint() -> Option<ExternalEndpoint> {
-    *CACHE
-        .get_or_init(|| async { probe_with_budget(DISCOVERY_BUDGET).await })
-        .await
+    external_endpoint_at(&CACHE, Instant::now(), || {
+        probe_with_budget(DISCOVERY_BUDGET)
+    })
+    .await
+}
+
+/// Cache policy with the clock and the prober injected, so the TTL contract
+/// is unit-testable without a router. The lock is held across the probe on
+/// purpose: two sessions starting at once must not both discover.
+async fn external_endpoint_at<F, Fut>(cache: &Cache, now: Instant, probe: F) -> Option<ExternalEndpoint>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Option<ExternalEndpoint>>,
+{
+    let mut guard = cache.lock().await;
+    if let Some(cached) = guard.as_ref() {
+        if now.saturating_duration_since(cached.probed_at) < CACHE_TTL {
+            return cached.endpoint;
+        }
+    }
+    let endpoint = probe().await;
+    *guard = Some(CachedProbe {
+        probed_at: now,
+        endpoint,
+    });
+    endpoint
 }
 
 /// Probe the local UPnP IGD gateway for its external IP, with a hard
@@ -137,6 +177,66 @@ mod tests {
             result.is_none(),
             "expected None on zero budget, got {result:?}"
         );
+    }
+
+    // The result used to live in a OnceCell for the process lifetime. An
+    // unattended sharer runs for days: after the ISP's nightly IPv4 rotation
+    // or a laptop roaming to another network, every new session advertised
+    // the OLD address as its srflx candidate, and a probe that failed because
+    // the network was not up yet at autostart disabled the feature for good.
+    mod cache {
+        use super::super::*;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::Instant;
+
+        fn ep(last: u8) -> Option<ExternalEndpoint> {
+            Some(ExternalEndpoint {
+                ip: IpAddr::V4(std::net::Ipv4Addr::new(84, 131, 5, last)),
+            })
+        }
+
+        #[tokio::test]
+        async fn a_fresh_result_is_reused_within_the_ttl() {
+            let cache: Cache = Mutex::const_new(None);
+            let probes = AtomicUsize::new(0);
+            let t0 = Instant::now();
+            let first = external_endpoint_at(&cache, t0, || async {
+                probes.fetch_add(1, Ordering::SeqCst);
+                ep(1)
+            })
+            .await;
+            let second = external_endpoint_at(&cache, t0 + CACHE_TTL / 2, || async {
+                probes.fetch_add(1, Ordering::SeqCst);
+                ep(2)
+            })
+            .await;
+            assert_eq!(probes.load(Ordering::SeqCst), 1, "second call must hit the cache");
+            assert_eq!(first.map(|e| e.ip), second.map(|e| e.ip));
+        }
+
+        #[tokio::test]
+        async fn a_stale_result_is_reprobed_and_replaced() {
+            let cache: Cache = Mutex::const_new(None);
+            let t0 = Instant::now();
+            external_endpoint_at(&cache, t0, || async { ep(1) }).await;
+            let later = external_endpoint_at(&cache, t0 + CACHE_TTL, || async { ep(2) }).await;
+            assert_eq!(later.map(|e| e.ip), ep(2).map(|e| e.ip), "rotated IP must win");
+        }
+
+        #[tokio::test]
+        async fn a_failed_probe_is_retried_once_the_ttl_passed() {
+            let cache: Cache = Mutex::const_new(None);
+            let t0 = Instant::now();
+            assert!(external_endpoint_at(&cache, t0, || async { None }).await.is_none());
+            assert!(
+                external_endpoint_at(&cache, t0 + CACHE_TTL / 2, || async { ep(1) })
+                    .await
+                    .is_none(),
+                "a negative answer is cached for the TTL, not re-asked on every session start"
+            );
+            let recovered = external_endpoint_at(&cache, t0 + CACHE_TTL, || async { ep(1) }).await;
+            assert_eq!(recovered.map(|e| e.ip), ep(1).map(|e| e.ip));
+        }
     }
 
     #[test]
