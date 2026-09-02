@@ -89,7 +89,10 @@ dockur/windows (QEMU-in-Docker, braucht `/dev/kvm`) bootet ein Windows 11. Beim 
 .win-test/run.sh v0.7.1 --fresh         # VM-Disk verwerfen → frisches Windows (ISO via Mirror + Setup ≈ 15–60 min)
 .win-test/run.sh v0.7.1 --no-download   # share/ ist schon bestückt (z. B. lokaler Build)
 node .win-test/screenshot.mjs [out.png] [--click X,Y] [--type TEXT] [--key Enter]   # VM-Bildschirm via noVNC; Klick in Screenshot-Pixeln
+node .win-test/live-connect.mjs NNN-NNN-NNN [--wait 40]   # Browser-Seite: auffi.app mit dem Code aus dem Screenshot, Verbinden, Status + Video prüfen
 ```
+
+**Echter Ad-hoc-Connect Windows → Browser (≈ 2 min, nach `--keep-running`):** `screenshot.mjs` → Code aus der App ablesen → `live-connect.mjs <Code>` starten (wartet bis 40 s) → währenddessen `screenshot.mjs --click X,Y` auf „Akzeptieren“ im VM-Screenshot → `live-connect.mjs` meldet `video playing: WxH`, `share/viewer.png` zeigt den Windows-Desktop im Browser. Exit 0 = Stream lief. Das ist der Beweis über den Installer-Smoke hinaus: TLS-Trust, WSS, TURN-Credentials, Capture (WGC/GDI) und WebRTC bis ins erste Frame.
 
 - **Warm halten.** Die VM-Disk (Volume `auffi-wintest_auffi-win-data`) ist der Unterschied zwischen vier Minuten und einer Stunde. `docker compose stop` gibt die 4 GB RAM frei und behält die Disk; `down -v` nur, wenn ein wirklich frisches Windows gebraucht wird (z. B. Zertifikatsspeicher-Test wie 0.6.6).
 - **RAM.** Die VM braucht 4 GB; `run.sh` verweigert den Start unter 4,6 GB `MemAvailable` (dockur drosselt sonst `RAM_SIZE`, die OOBE hängt). Nachbar-VMs (`t2cw-windows`, PraxisZeit) vorher stoppen.
