@@ -375,7 +375,15 @@ else
   log_info "Last deployed: ${LAST_DEPLOYED_SHA}, current: ${APP_VERSION}"
   if git -C "${REPO_ROOT}" rev-parse "${LAST_DEPLOYED_SHA}" >/dev/null 2>&1; then
     echo
-    git -C "${REPO_ROOT}" log --oneline --no-decorate "${LAST_DEPLOYED_SHA}..HEAD" | head -30
+    # --max-count, not `| head`: under `set -o pipefail` git dies of SIGPIPE
+    # once head has its 30 lines, and set -e then ended the deploy right here
+    # — silently, exit 0 through the caller's tail — the first time a deploy
+    # carried more than 30 commits (0.7.1).
+    git -C "${REPO_ROOT}" log --oneline --no-decorate --max-count=30 "${LAST_DEPLOYED_SHA}..HEAD"
+    DIFF_COMMITS="$(git -C "${REPO_ROOT}" rev-list --count "${LAST_DEPLOYED_SHA}..HEAD")"
+    if (( DIFF_COMMITS > 30 )); then
+      log_info "… und $((DIFF_COMMITS - 30)) weitere Commits (insgesamt ${DIFF_COMMITS})"
+    fi
     echo
     git -C "${REPO_ROOT}" diff --stat "${LAST_DEPLOYED_SHA}..HEAD" | tail -40
     echo
