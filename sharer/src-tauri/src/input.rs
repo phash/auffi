@@ -2,7 +2,7 @@ use enigo::{
     Axis, Button as EnigoButton, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings,
 };
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -21,6 +21,11 @@ pub enum InputEvent {
     },
     Key {
         code: String,
+        /// Layout-resolved `KeyboardEvent.key`, present only when it is a
+        /// single printable character. Optional so older viewers (code-only)
+        /// keep working.
+        #[serde(default)]
+        key: Option<String>,
         pressed: bool,
         modifiers: Modifiers,
     },
@@ -61,11 +66,12 @@ pub struct InputController {
     /// release everything still tracked here.
     held_buttons: HashSet<Button>,
     /// Same idea for held keys — viewer Press without matching Release.
-    /// Keys are stored by their wire `code` (e.g. "ShiftLeft") so the
-    /// Drop path can re-parse them; if `parse_key` fails on a key that
-    /// was already pressed, the release is silently dropped (we only got
-    /// here because the press succeeded, so the parse should round-trip).
-    held_keys: HashSet<String>,
+    /// Keyed by the wire `code` (e.g. "ShiftLeft"), storing the enigo `Key`
+    /// that was actually pressed: the release event may carry a different
+    /// layout-resolved `key` (Shift let go first turns "A" into "a"), and
+    /// releasing a different keysym than was pressed leaves the pressed one
+    /// stuck on X11.
+    held_keys: HashMap<String, Key>,
 }
 
 impl InputController {
@@ -79,7 +85,7 @@ impl InputController {
             height,
             paused: false,
             held_buttons: HashSet::new(),
-            held_keys: HashSet::new(),
+            held_keys: HashMap::new(),
         })
     }
 
@@ -128,14 +134,12 @@ impl InputController {
         // Snapshot first — iterating while mutating would not borrow-check,
         // and the sets should end up empty either way.
         let buttons: Vec<Button> = self.held_buttons.drain().collect();
-        let keys: Vec<String> = self.held_keys.drain().collect();
+        let keys: Vec<Key> = self.held_keys.drain().map(|(_, key)| key).collect();
         for button in buttons {
             let _ = self.enigo.button(map_button(button), Direction::Release);
         }
-        for code in keys {
-            if let Some(key) = parse_key(&code) {
-                let _ = self.enigo.key(key, Direction::Release);
-            }
+        for key in keys {
+            let _ = self.enigo.key(key, Direction::Release);
         }
     }
 
@@ -194,20 +198,28 @@ impl InputController {
             }
             InputEvent::Key {
                 code,
+                key,
                 pressed,
                 modifiers: _,
             } => {
-                let key = parse_key(&code).ok_or_else(|| format!("unknown key: {code}"))?;
-                let dir = if pressed {
-                    Direction::Press
-                } else {
-                    Direction::Release
-                };
-                self.enigo.key(key, dir).map_err(|e| e.to_string())?;
                 if pressed {
-                    self.held_keys.insert(code);
+                    let resolved = resolve_key(&code, key.as_deref())
+                        .ok_or_else(|| format!("unknown key: {code}"))?;
+                    self.enigo
+                        .key(resolved, Direction::Press)
+                        .map_err(|e| e.to_string())?;
+                    self.held_keys.insert(code, resolved);
                 } else {
-                    self.held_keys.remove(&code);
+                    // Release what was pressed under this code; a release for
+                    // a key we never saw pressed still goes out best-effort.
+                    let resolved = self
+                        .held_keys
+                        .remove(&code)
+                        .or_else(|| resolve_key(&code, key.as_deref()))
+                        .ok_or_else(|| format!("unknown key: {code}"))?;
+                    self.enigo
+                        .key(resolved, Direction::Release)
+                        .map_err(|e| e.to_string())?;
                 }
             }
         }
@@ -294,9 +306,24 @@ fn map_button(button: Button) -> EnigoButton {
     }
 }
 
+/// Turn a key event into the enigo `Key` to inject.
+///
+/// The layout-resolved `key` wins whenever it is a single character: that is
+/// what the helper sees printed on the cap, whatever layout either side runs
+/// (QWERTZ Z on a `KeyY` position, ä on `Quote`, Shift+1 as `!`). Named keys
+/// ("Enter", "ArrowUp", "Dead", modifiers) and viewers that predate the
+/// field fall back to the physical `code` table.
+pub fn resolve_key(code: &str, key: Option<&str>) -> Option<Key> {
+    let mut chars = key.unwrap_or_default().chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(Key::Unicode(c)),
+        _ => parse_key(code),
+    }
+}
+
 pub fn parse_key(code: &str) -> Option<Key> {
     match code {
-        "Enter" => Some(Key::Return),
+        "Enter" | "NumpadEnter" => Some(Key::Return),
         "Escape" => Some(Key::Escape),
         "Backspace" => Some(Key::Backspace),
         "Tab" => Some(Key::Tab),
@@ -363,6 +390,64 @@ mod tests {
         } else {
             panic!("expected Key variant");
         }
+    }
+
+    // The viewer only used to send the physical W3C `code`, whose names are
+    // US-layout positions: a QWERTZ helper pressing the key labelled Z sent
+    // `KeyY` and the sharer typed 'y'; ä/ö/ü/ß and all punctuation had no
+    // arm at all and were dropped. The layout-resolved `key` wins when it is
+    // a single printable character; named keys fall back to the code table.
+    #[test]
+    fn resolve_key_prefers_layout_char() {
+        assert!(matches!(resolve_key("KeyY", Some("z")), Some(Key::Unicode('z'))));
+        assert!(matches!(resolve_key("Quote", Some("ä")), Some(Key::Unicode('ä'))));
+        assert!(matches!(resolve_key("Minus", Some("ß")), Some(Key::Unicode('ß'))));
+        assert!(matches!(resolve_key("Digit1", Some("!")), Some(Key::Unicode('!'))));
+    }
+
+    #[test]
+    fn resolve_key_falls_back_to_code_for_named_and_missing_keys() {
+        assert!(matches!(resolve_key("Enter", Some("Enter")), Some(Key::Return)));
+        assert!(resolve_key("Quote", Some("Dead")).is_none());
+        assert!(matches!(resolve_key("KeyA", None), Some(Key::Unicode('a'))));
+        assert!(matches!(resolve_key("NumpadEnter", Some("Enter")), Some(Key::Return)));
+    }
+
+    #[test]
+    fn deserialize_key_event_with_key_field() {
+        let json = r#"{"kind":"key","code":"KeyY","key":"z","pressed":true,"modifiers":{"shift":false,"ctrl":false,"alt":false,"meta":false}}"#;
+        let ev: InputEvent = serde_json::from_str(json).unwrap();
+        if let InputEvent::Key { code, key, .. } = ev {
+            assert_eq!(code, "KeyY");
+            assert_eq!(key.as_deref(), Some("z"));
+        } else {
+            panic!("expected Key variant");
+        }
+    }
+
+    // Shift is usually released before the letter: down arrives as "A", up
+    // as "a". Releasing a different enigo Key than was pressed leaves the
+    // pressed keysym stuck on X11, so the release must use the stored Key.
+    #[test]
+    #[ignore]
+    fn release_uses_the_key_that_was_pressed_with_real_enigo() {
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.apply(InputEvent::Key {
+            code: "KeyA".to_string(),
+            key: Some("A".to_string()),
+            pressed: true,
+            modifiers: Modifiers::default(),
+        })
+        .unwrap();
+        assert_eq!(ctrl.held_keys_count(), 1);
+        ctrl.apply(InputEvent::Key {
+            code: "KeyA".to_string(),
+            key: Some("a".to_string()),
+            pressed: false,
+            modifiers: Modifiers::default(),
+        })
+        .unwrap();
+        assert_eq!(ctrl.held_keys_count(), 0, "release by code, whatever `key` says now");
     }
 
     #[test]
@@ -601,6 +686,7 @@ mod tests {
         .unwrap();
         ctrl.apply(InputEvent::Key {
             code: "ShiftLeft".to_string(),
+            key: None,
             pressed: true,
             modifiers: Modifiers::default(),
         })
@@ -629,6 +715,7 @@ mod tests {
         assert_eq!(ctrl.held_keys_count(), 0);
         ctrl.apply(InputEvent::Key {
             code: "ControlLeft".to_string(),
+            key: None,
             pressed: true,
             modifiers: Modifiers::default(),
         })
@@ -636,6 +723,7 @@ mod tests {
         assert_eq!(ctrl.held_keys_count(), 1);
         ctrl.apply(InputEvent::Key {
             code: "ControlLeft".to_string(),
+            key: None,
             pressed: false,
             modifiers: Modifiers::default(),
         })

@@ -11,7 +11,7 @@ export type InputEvent =
   | { kind: "mouse-move"; x: number; y: number }
   | { kind: "mouse-button"; button: "left" | "right" | "middle"; pressed: boolean }
   | { kind: "scroll"; dx: number; dy: number }
-  | { kind: "key"; code: string; pressed: boolean; modifiers: Modifier };
+  | { kind: "key"; code: string; key?: string; pressed: boolean; modifiers: Modifier };
 
 /**
  * JSON messages sent over the `files` DataChannel.

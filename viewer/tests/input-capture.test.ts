@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { InputCapture, videoContentRect } from "../src/input-capture.js";
+import { InputCapture, printableKey, videoContentRect } from "../src/input-capture.js";
 
 function makeVideo(width = 1920, height = 1080): HTMLVideoElement {
   const v = document.createElement("video");
@@ -211,6 +211,44 @@ describe("InputCapture", () => {
     cap.enable();
     video.dispatchEvent(new PointerEvent("pointerdown", { button: 1 }));
     expect(emit).toHaveBeenCalledWith({ kind: "mouse-button", button: "middle", pressed: true });
+  });
+
+  // W3C `code` is a US-layout position name; a QWERTZ helper's Z key is
+  // `KeyY`. The layout-resolved `key` travels alongside so the sharer types
+  // what the helper sees on the cap — but only for single printable chars,
+  // named keys ("Enter", "Dead", "Shift") keep the code-only shape.
+  it("adds the layout-resolved key for printable characters", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyY", key: "z" }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ kind: "key", code: "KeyY", key: "z", pressed: true }));
+    video.dispatchEvent(new KeyboardEvent("keyup", { code: "Quote", key: "ä" }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ kind: "key", code: "Quote", key: "ä", pressed: false }));
+  });
+
+  it("omits key for named keys and dead keys", () => {
+    const video = makeVideo();
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter", key: "Enter" }));
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "Quote", key: "Dead" }));
+    for (const call of emit.mock.calls) {
+      expect(call[0]).not.toHaveProperty("key");
+    }
+    expect(emit).toHaveBeenCalledTimes(2);
+  });
+
+  it("printableKey accepts exactly one code point", () => {
+    expect(printableKey("z")).toBe("z");
+    expect(printableKey("ß")).toBe("ß");
+    expect(printableKey("😀")).toBe("😀");
+    expect(printableKey(" ")).toBe(" ");
+    expect(printableKey("Enter")).toBeUndefined();
+    expect(printableKey("Dead")).toBeUndefined();
+    expect(printableKey("")).toBeUndefined();
   });
 
   it("emits keyup events with pressed: false", () => {

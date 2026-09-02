@@ -396,10 +396,19 @@ converts with `trunc(delta / 120)` scroll lines and clamps each event to
 DataChannel bypasses the backend's rate limits); the viewer discards the
 excess of a clamped burst instead of replaying it later.
 
-**Key** — W3C `KeyboardEvent.code` values:
+**Key** — W3C `KeyboardEvent.code` values, plus the layout-resolved
+`KeyboardEvent.key` when it is a single printable character:
 ```json
-{ "kind": "key", "code": "KeyA", "pressed": true, "modifiers": { "shift": false, "ctrl": false, "alt": false, "meta": false } }
+{ "kind": "key", "code": "KeyY", "key": "z", "pressed": true, "modifiers": { "shift": false, "ctrl": false, "alt": false, "meta": false } }
+{ "kind": "key", "code": "Enter", "pressed": true, "modifiers": { "shift": false, "ctrl": false, "alt": false, "meta": false } }
 ```
+`code` names a US-layout position (a QWERTZ helper's Z key is `KeyY`), so the
+sharer types `key` when present and falls back to its `code` table for named
+keys (`Enter`, arrows, F-keys, modifiers) and for viewers that omit the field.
+Dead keys (`key: "Dead"`) are sent code-only and dropped by the sharer; the
+composed character arrives with the following key event. Held-key tracking on
+both sides is by `code`, so a release is matched to its press even when Shift
+was let go in between and `key` changed case.
 
 ---
 

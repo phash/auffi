@@ -68,6 +68,27 @@ export function videoContentRect(
   };
 }
 
+/**
+ * The layout-resolved character for a key event, or `undefined` for named
+ * keys ("Enter", "Shift", "Dead", …). W3C `code` names US-layout positions —
+ * a QWERTZ helper's Z key is `KeyY` — so the sharer needs `key` to type what
+ * the helper actually sees; it must not receive named keys as text.
+ */
+export function printableKey(key: string): string | undefined {
+  return [...key].length === 1 ? key : undefined;
+}
+
+function keyEvent(ev: KeyboardEvent, pressed: boolean): InputEvent {
+  const key = printableKey(ev.key);
+  return {
+    kind: "key",
+    code: ev.code,
+    ...(key === undefined ? {} : { key }),
+    pressed,
+    modifiers: modifiers(ev),
+  };
+}
+
 export class InputCapture {
   private enabled = false;
   private handlers: Array<{ type: string; handler: EventListener }> = [];
@@ -197,7 +218,7 @@ export class InputCapture {
       // and would stay held on the shared machine — and it would also
       // dismiss dialogs over there. Never forward it.
       if (ev.code === "Escape") return;
-      this.emit({ kind: "key", code: ev.code, pressed: true, modifiers: modifiers(ev) });
+      this.emit(keyEvent(ev, true));
       this.heldKeys.add(ev.code);
     };
 
@@ -205,7 +226,7 @@ export class InputCapture {
       const ev = e as KeyboardEvent;
       ev.preventDefault();
       if (ev.code === "Escape") return;
-      this.emit({ kind: "key", code: ev.code, pressed: false, modifiers: modifiers(ev) });
+      this.emit(keyEvent(ev, false));
       this.heldKeys.delete(ev.code);
     };
 
