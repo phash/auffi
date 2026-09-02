@@ -139,50 +139,70 @@ start it again (cold copy). Full restore steps are in
 
 ### TLS for coturn
 
-Caddy handles its own cert (auffi.app) automatically. For the TURN subdomain (`turn.auffi.app`) coturn needs a separate cert. Two approaches:
+Caddy handles its own cert (auffi.app) automatically. For the TURN subdomain
+(`turn.auffi.app`) coturn needs a separate cert. coturn
+(`coturn/entrypoint.sh` + `turnserver.conf.tmpl`) reads FLAT files
+`cert.pem` + `key.pem` from the volume mounted at `/var/lib/turn`; a missing
+pair is non-fatal (TURNS on 5349 is disabled, plain TURN on 3478 keeps
+working — which is exactly how an expired cert hides for weeks). Which path
+applies depends on the deployment mode:
 
-**Approach A — certbot on the host (recommended for simplicity)**
+**Cluster mode (current prod) — Caddy certificate export via the
+`turn-cert-stage` sidecar. Nothing to install.**
 
-coturn (`coturn/entrypoint.sh` + `turnserver.conf.tmpl`) reads FLAT files
-`cert.pem` + `key.pem` from the `turn-certs` volume (mounted at
-`/var/lib/turn`). certbot's `live/` paths are symlinks into `archive/` —
-mount all of `/etc/letsencrypt` and resolve them with `cp -L`. The volume
-name carries the `screenie_` prefix: that is the compose project name on
-prod (`DEPLOY_PATH=/opt/screenie`, see CLAUDE.md rebrand notes) — a wrong
-prefix is silently auto-created as a fresh empty volume coturn never reads.
+`docker-compose.cluster.yml` runs a one-shot `turn-cert-stage` container on
+every `docker compose up`: it copies `turn.auffi.app.crt/.key` out of the
+cluster Caddy's data volume (`caddyserver_caddy_data`) into the
+`turn-certs-staged` volume that coturn mounts. Prerequisite: the cluster
+Caddyfile has a site block for `turn.auffi.app` so Caddy obtains and renews
+the cert. A renewal reaches coturn on the next deploy or
+`./ops/maintenance.sh restart coturn` (coturn reads the cert at startup) —
+`./ops/maintenance.sh cert-info` shows what 5349 currently presents.
+
+**Standalone mode — certbot on the host.**
+
+Our own `auffi-caddy` owns :80/:443, so certbot's `--standalone`
+authenticator cannot bind :80: `certbot renew --quiet` fails silently every
+night and the TURNS cert expires after 90 days. Stop Caddy around the
+challenge (a few seconds of downtime) and do not silence the output:
 
 ```sh
-ssh musikersuche@musikersuche.org
+ssh <your-host>
 sudo apt install certbot
 sudo certbot certonly --standalone \
-  -d turn.auffi.app \
-  -m m.roedig@gmail.com \
-  --agree-tos --non-interactive
-# Stage the flat cert pair into the Docker volume:
+  -d turn.<your-domain> \
+  -m <your-mail> \
+  --agree-tos --non-interactive \
+  --pre-hook 'docker stop auffi-caddy' --post-hook 'docker start auffi-caddy'
+# Stage the flat cert pair into the Docker volume. certbot's live/ paths are
+# symlinks into archive/ — mount all of /etc/letsencrypt and resolve them
+# with cp -L. The volume name carries the compose project prefix (screenie_
+# on prod, DEPLOY_PATH=/opt/screenie, see CLAUDE.md rebrand notes) — a wrong
+# prefix is silently auto-created as a fresh empty volume coturn never reads.
 docker run --rm \
   -v /etc/letsencrypt:/src:ro \
   -v screenie_turn-certs:/dst \
-  busybox sh -c 'cp -L /src/live/turn.auffi.app/fullchain.pem /dst/cert.pem \
-    && cp -L /src/live/turn.auffi.app/privkey.pem /dst/key.pem \
+  busybox:1.36.1 sh -c 'cp -L /src/live/turn.<your-domain>/fullchain.pem /dst/cert.pem \
+    && cp -L /src/live/turn.<your-domain>/privkey.pem /dst/key.pem \
     && chmod 644 /dst/cert.pem /dst/key.pem'
 ```
 
-Set up certbot auto-renewal:
+Auto-renewal — the hooks stop/start Caddy only when a renewal is actually
+due, and the run is logged so a failure is visible:
 ```sh
-echo '0 3 * * * root certbot renew --quiet && \
-  docker run --rm \
-    -v /etc/letsencrypt:/src:ro \
-    -v screenie_turn-certs:/dst \
-    busybox sh -c "cp -L /src/live/turn.auffi.app/fullchain.pem /dst/cert.pem \
-      && cp -L /src/live/turn.auffi.app/privkey.pem /dst/key.pem \
-      && chmod 644 /dst/cert.pem /dst/key.pem" && \
-  docker compose -f /opt/screenie/docker-compose.prod.yml restart coturn' \
+echo '0 3 * * * root certbot renew \
+    --pre-hook "docker stop auffi-caddy" --post-hook "docker start auffi-caddy" \
+    --deploy-hook "docker run --rm -v /etc/letsencrypt:/src:ro -v screenie_turn-certs:/dst \
+      busybox:1.36.1 sh -c \"cp -L /src/live/turn.<your-domain>/fullchain.pem /dst/cert.pem \
+      && cp -L /src/live/turn.<your-domain>/privkey.pem /dst/key.pem \
+      && chmod 644 /dst/cert.pem /dst/key.pem\" \
+      && docker compose -f /opt/screenie/docker-compose.prod.yml restart coturn" \
+    >> /var/log/certbot-auffi.log 2>&1' \
   | sudo tee /etc/cron.d/certbot-auffi
 ```
 
-**Approach B — Caddy certificate export (deferred)**
-
-Caddy 2 stores ACME certs in the `caddy-data` volume under `/data/caddy/certificates/`. To share this with coturn, you would mount `caddy-data` read-only into the coturn container and adjust the cert/pkey paths in `turnserver.conf.tmpl`. This is viable but requires knowing Caddy's internal path layout (`/data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>/<domain>.crt`). Left as a future simplification; Approach A is cleaner.
+If your DNS provider has a certbot plugin, `--preferred-challenges dns` avoids
+the Caddy stop/start entirely.
 
 ---
 
