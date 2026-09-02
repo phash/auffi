@@ -209,6 +209,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
   let db: Db;
   const token = "abcdef00".repeat(8);
   const deviceId = "777-777-777";
+  let tokenHash: string;
 
   beforeAll(async () => {
     db = openDb(":memory:");
@@ -216,7 +217,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare(
       "INSERT INTO accounts (id, email, password_hash, email_verified_at, created_at) VALUES (1, 'owner@a', 'x', ?, ?)",
     ).run(Date.now(), Date.now());
-    const tokenHash = await hashPassword(token);
+    tokenHash = await hashPassword(token);
     db.prepare(
       `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
        VALUES (?, 1, 'D', ?, 1, ?)`,
@@ -537,6 +538,51 @@ describe("/signal unattended connect flow (gh #17)", () => {
     expect(count).toBe(0);
     viewer.close();
     sharer.close();
+  });
+
+  // B1 (review 2026-07-02, guard restored in a3e6129): if the device row
+  // vanishes (account/device hard-delete racing the registry evict) while
+  // its unattended WSS stays open, `connection-started` hits the FK on
+  // connection_log.device_id. Thrown out of the ws 'message' listener that
+  // is an uncaughtException that takes the whole process — every live
+  // session — down. The handler catches it at the module boundary; this
+  // deletes the row directly (bypassing the route's evict) and pins that
+  // the socket, its viewer and the server all survive.
+  it("connection-started after the device row was deleted is swallowed, not fatal (B1)", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    try {
+      db.prepare("DELETE FROM devices WHERE id = ?").run(deviceId);
+      const stray: unknown[] = [];
+      const onMessage = (d: Buffer): void => {
+        stray.push(JSON.parse(d.toString()));
+      };
+      sharer.on("message", onMessage);
+      sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
+      await new Promise((r) => setTimeout(r, 80));
+      sharer.off("message", onMessage);
+
+      expect(stray).toEqual([]);
+      expect(sharer.readyState).toBe(sharer.OPEN);
+      expect(viewer.readyState).toBe(viewer.OPEN);
+      expect(
+        db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM connection_log").get(),
+      ).toEqual({ n: 0 });
+    } finally {
+      viewer.close();
+      sharer.close();
+      // Let both close handlers run before the row comes back, or the next
+      // openSharer meets a stale confirmed session for this device.
+      await new Promise((r) => setTimeout(r, 50));
+      db.prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
+         VALUES (?, 1, 'D', ?, 1, ?)`,
+      ).run(deviceId, tokenHash, Date.now());
+    }
+    // The server is still serving: a fresh pair authenticates and pairs.
+    const again = await confirmedPair();
+    again.viewer.close();
+    again.sharer.close();
   });
 
   it("rejects pw-attempt with password >256 chars (Sec H-4)", async () => {
@@ -1068,15 +1114,6 @@ describe("device DELETE force-closes a live unattended WSS (TC C-5)", () => {
     expect(c.code).toBe(4401);
   });
 });
-
-// B1 (review 2026-07-02): if a device row vanishes (account/device
-// hard-delete) while its unattended WSS stays open, a subsequent
-// `connection-started` used to throw a FK SqliteError inside the ws
-// 'message' listener — an uncaughtException that could drop every session.
-// The handler now catches it at the module boundary. This simulates the
-// delete-without-evict race by deleting the row directly (bypassing the
-// route's registry.evict) and asserts the backend neither crashes nor
-// kills the sharer socket.
 
 // ── Stale-session reap notifies the sharer ────────────────────────────
 //
