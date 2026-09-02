@@ -592,15 +592,28 @@ describe("/signal unattended connect flow (gh #17)", () => {
     viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
     await once(viewer, "message");
 
+    // The property is "dropped server-side, never forwarded": the sharer's
+    // argon2 path must not see the over-long attempt at all.
+    const stray: unknown[] = [];
+    const onMessage = (d: Buffer): void => {
+      stray.push(JSON.parse(d.toString()));
+    };
+    sharer.on("message", onMessage);
+
     const tooLong = "x".repeat(257);
     viewer.send(JSON.stringify({ type: "pw-attempt", password: tooLong }));
     const out = await once(viewer, "message");
     expect(out.type).toBe("error");
     expect(out.message).toContain("password too long");
-    // Sharer never sees the pw-check forward — gated server-side.
-    // We can't directly assert "sharer didn't receive" without a
-    // race-free hook, but the session state remains awaiting-pw,
-    // which the next legitimate pw-attempt observes.
+    await new Promise((r) => setTimeout(r, 80));
+    expect(stray).toEqual([]);
+
+    // The session stayed in awaiting-pw: the next legitimate attempt is the
+    // FIRST thing the sharer receives.
+    sharer.off("message", onMessage);
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    const check = await once(sharer, "message");
+    expect(check).toMatchObject({ type: "pw-check", attempt: "right" });
     viewer.close();
     sharer.close();
   });
