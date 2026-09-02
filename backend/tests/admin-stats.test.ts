@@ -8,11 +8,13 @@ import { registerAuthRoutes } from "../src/auth/handlers.js";
 import { registerAdminStatsRoutes, _clearStatsCache } from "../src/admin/stats.js";
 import { captureTransport } from "../src/email/transport.js";
 import { buildAuthMailer } from "../src/email/mailer.js";
+import { recordCodeCreated } from "../src/tracking/code_events.js";
 
 async function build(): Promise<{
   app: FastifyInstance;
   db: Db;
   adminCookie: () => Promise<string>;
+  plainCookie: () => Promise<string>;
 }> {
   _clearStatsCache();
   const db = openDb(":memory:");
@@ -27,6 +29,18 @@ async function build(): Promise<{
   registerAdminStatsRoutes(app, db);
   await app.ready();
 
+  async function loginCookie(email: string, password: string): Promise<string> {
+    await app.inject({ method: "POST", url: "/api/auth/signup", payload: { email, password } });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email, password },
+    });
+    const sc = login.headers["set-cookie"] as string | string[] | undefined;
+    const raw = Array.isArray(sc) ? sc[0] : sc!;
+    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
+  }
+
   async function adminCookie(): Promise<string> {
     await app.inject({
       method: "POST",
@@ -34,17 +48,12 @@ async function build(): Promise<{
       payload: { email: "admin@example.com", password: "admin-account-pw" },
     });
     db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run("admin@example.com");
-    const login = await app.inject({
-      method: "POST",
-      url: "/api/auth/login",
-      payload: { email: "admin@example.com", password: "admin-account-pw" },
-    });
-    const sc = login.headers["set-cookie"] as string | string[] | undefined;
-    const raw = Array.isArray(sc) ? sc[0] : sc!;
-    return raw.match(/^__Host-auffi_session=([^;]+)/)![1];
+    return loginCookie("admin@example.com", "admin-account-pw");
   }
 
-  return { app, db, adminCookie };
+  const plainCookie = (): Promise<string> => loginCookie("plain@example.com", "plain-account-pw");
+
+  return { app, db, adminCookie, plainCookie };
 }
 
 function seedData(db: Db): void {
@@ -165,18 +174,7 @@ describe("GET /api/admin/stats", () => {
   });
 
   it("returns 403 for non-admin", async () => {
-    await h.app.inject({
-      method: "POST",
-      url: "/api/auth/signup",
-      payload: { email: "plain@example.com", password: "plain-account-pw" },
-    });
-    const login = await h.app.inject({
-      method: "POST",
-      url: "/api/auth/login",
-      payload: { email: "plain@example.com", password: "plain-account-pw" },
-    });
-    const sc = login.headers["set-cookie"] as string | string[] | undefined;
-    const cookie = (Array.isArray(sc) ? sc[0] : sc!).match(/^__Host-auffi_session=([^;]+)/)![1];
+    const cookie = await h.plainCookie();
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/stats",
@@ -188,5 +186,75 @@ describe("GET /api/admin/stats", () => {
   it("returns 401 for anonymous", async () => {
     const res = await h.app.inject({ method: "GET", url: "/api/admin/stats" });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("GET /api/admin/stats/codes", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  beforeEach(async () => {
+    h = await build();
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  it("returns 401 for anonymous", async () => {
+    const res = await h.app.inject({ method: "GET", url: "/api/admin/stats/codes" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 403 for non-admin", async () => {
+    const cookie = await h.plainCookie();
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/stats/codes",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns all-zero windows and no buckets on an empty DB", async () => {
+    const c = await h.adminCookie();
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/stats/codes",
+      headers: { cookie: `__Host-auffi_session=${c}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ total: 0, last24h: 0, last7d: 0, last30d: 0, perDay: [] });
+  });
+
+  it("reflects seeded code_events per window, uncached", async () => {
+    const c = await h.adminCookie();
+    const now = Date.now();
+    // One recent mint and one outside every window but `total`. Offsets
+    // rather than wall-clock dates so the assertion is UTC-midnight-safe.
+    recordCodeCreated(h.db, now - 10_000);
+    recordCodeCreated(h.db, now - 40 * 24 * 3600 * 1000);
+
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/stats/codes",
+      headers: { cookie: `__Host-auffi_session=${c}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(2);
+    expect(body.last24h).toBe(1);
+    expect(body.last7d).toBe(1);
+    expect(body.last30d).toBe(1);
+    expect(body.perDay).toHaveLength(1);
+    expect(body.perDay[0].count).toBe(1);
+
+    // Unlike /api/admin/stats this route is not cached: a new mint shows up
+    // on the very next call.
+    recordCodeCreated(h.db, now - 5_000);
+    const again = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/stats/codes",
+      headers: { cookie: `__Host-auffi_session=${c}` },
+    });
+    expect(again.json().total).toBe(3);
   });
 });
