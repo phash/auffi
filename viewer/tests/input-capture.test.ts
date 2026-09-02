@@ -420,3 +420,44 @@ describe("InputCapture — non-16:9 coordinate mapping", () => {
     document.body.removeChild(video);
   });
 });
+
+describe("InputCapture: losing window focus releases what is held", () => {
+  // Alt-Tab, a notification, clicking another monitor: the keyup for a key
+  // held at that moment goes to the other window. The shared machine kept the
+  // key (or mouse button) pressed until the session ended.
+  it("synthesizes releases for held keys and buttons on window blur", () => {
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "AltLeft", altKey: true }));
+    emit.mockClear();
+    window.dispatchEvent(new Event("blur"));
+    expect(emit).toHaveBeenCalledWith({ kind: "mouse-button", button: "left", pressed: false });
+    expect(emit).toHaveBeenCalledWith({
+      kind: "key", code: "AltLeft", pressed: false,
+      modifiers: { shift: false, ctrl: false, alt: false, meta: false },
+    });
+    expect(emit).toHaveBeenCalledTimes(2);
+    // Nothing is held any more, so disable() has nothing left to release.
+    emit.mockClear();
+    cap.disable();
+    expect(emit).not.toHaveBeenCalled();
+    document.body.removeChild(video);
+  });
+
+  it("stops listening for blur once disabled", () => {
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    cap.disable();
+    emit.mockClear();
+    window.dispatchEvent(new Event("blur"));
+    expect(emit).not.toHaveBeenCalled();
+    document.body.removeChild(video);
+  });
+});

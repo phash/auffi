@@ -77,6 +77,9 @@ export class InputCapture {
   // remote OS keeps the button/key held (mid-session variant of gh #97).
   private heldButtons = new Set<"left" | "right" | "middle">();
   private heldKeys = new Set<string>();
+  // Window-level: a keyup after Alt-Tab lands in the other window, so the
+  // held key would stay pressed on the shared machine until the session ends.
+  private onWindowBlur: EventListener | null = null;
 
   private wheelAccX = 0;
   private wheelAccY = 0;
@@ -214,6 +217,10 @@ export class InputCapture {
     this.bind("wheel", onWheel);
     this.bind("keydown", onKeyDown);
     this.bind("keyup", onKeyUp);
+
+    const onBlur = (): void => this.releaseEverything();
+    window.addEventListener("blur", onBlur);
+    this.onWindowBlur = onBlur;
   }
 
   disable(): void {
@@ -221,17 +228,26 @@ export class InputCapture {
     // Release before detaching, while the input channel is still up:
     // teardown calls disable() before closing the peer, and the Esc-to-stop
     // path removes the listeners before the user's keyup can arrive.
+    this.releaseEverything();
+    for (const { type, handler } of this.handlers) {
+      this.video.removeEventListener(type, handler);
+    }
+    this.handlers = [];
+    if (this.onWindowBlur) {
+      window.removeEventListener("blur", this.onWindowBlur);
+      this.onWindowBlur = null;
+    }
+    this.wheelAccX = 0;
+    this.wheelAccY = 0;
+  }
+
+  /** Forward a release for every button and key still held. */
+  private releaseEverything(): void {
     this.releaseHeldButtons();
     for (const code of this.heldKeys) {
       this.emit({ kind: "key", code, pressed: false, modifiers: NO_MODIFIERS });
     }
     this.heldKeys.clear();
-    for (const { type, handler } of this.handlers) {
-      this.video.removeEventListener(type, handler);
-    }
-    this.handlers = [];
-    this.wheelAccX = 0;
-    this.wheelAccY = 0;
   }
 
   private releaseHeldButtons(): void {
