@@ -479,3 +479,75 @@ Offset  Size  Type         Description
 The receiver reconstructs the file by concatenating chunk payloads in sequence
 order. After the last chunk the sender sends a `file-done` JSON message to
 signal completion.
+
+---
+
+## REST Endpoints Shared Across Components
+
+The WSS frames above are the bulk of the cross-component surface, but three
+REST routes are called from more than one codebase and are therefore part of
+this contract too. Account / device management (`/api/auth/*`, `/api/me`,
+`/api/devices/*`, `/api/admin/*`) is dashboard-only and documented in the
+handler modules.
+
+### `POST /api/feedback` (dashboard, viewer, sharer → backend)
+
+Callers: `dashboard/src/components/feedback-fab.ts`, `viewer/public/feedback-fab.js`,
+`sharer/src-tauri/src/unattended_cmd.rs::unattended_submit_feedback`.
+Handler: `backend/src/feedback/handlers.ts`.
+
+```json
+{ "source": "dashboard" | "viewer" | "sharer",
+  "category": "bug" | "feature" | "praise" | "other",
+  "rating": 1..5,
+  "body": "<1..4000 chars, trimmed server-side>" }
+```
+
+Authentication is decided by `source` and must match the credential offered —
+a logged-in dashboard user cannot post as `sharer`, nor a sharer as `dashboard`:
+
+| `source`               | Credential                                                                 |
+|------------------------|----------------------------------------------------------------------------|
+| `dashboard`, `viewer`  | `__Host-auffi_session` cookie (same session as the dashboard).             |
+| `sharer`               | `Authorization: Bearer <device-token>` + `X-Auffi-Device-Id: <id>` — the same pair the `/signal` upgrade uses. The feedback row is attached to the device's owner account. Unlike the WSS connect this does **not** stamp `devices.last_seen_at`; feedback is not a presence signal. |
+
+Responses: `202 {"ok":true}` · `400` with `error` one of `bad-source`,
+`bad-category`, `bad-rating`, `bad-body` · `401 no-auth` (missing/invalid
+credential, or credential does not match `source`) · `429 rate-limited` on the
+Bearer path only (per-IP cap in front of the argon2 verify,
+`FEEDBACK_BEARER_RATE_LIMIT_MAX`, default 5/min). The route itself is capped
+at 20/min/IP. Anonymous posts are rejected.
+
+### `GET /api/downloads` (viewer download pages → backend)
+
+Handler: `backend/src/downloads/handlers.ts`. Public, no auth.
+
+```json
+{ "counts": { "Auffi_0.7.0_amd64.deb": 123, "...": 0 } }
+```
+
+One key per allow-listed asset (`KNOWN_ASSETS`), zero for assets never
+downloaded. Consumed by `viewer/public/download/counts.js`.
+
+### `GET | HEAD /api/downloads/file/:asset[?tag=vX.Y.Z]` (viewer download pages → backend → GitHub)
+
+Stream-through proxy for release artefacts; the pages link it directly so the
+visible download URL stays on `auffi.app` and the counter is server-side.
+
+- `:asset` must be in `KNOWN_ASSETS` — anything else is `404 unknown-asset`
+  **before** any upstream call. Bump the list with every release.
+- `?tag=` is optional; absent means GitHub's `latest`. Present, it must match
+  `^v\d+\.\d+\.\d+$` or the answer is `400 invalid-tag`.
+- `HEAD` short-circuits: `200` with the same `Content-Type` /
+  `Content-Disposition` a successful `GET` would carry, **no** upstream fetch,
+  **no** counter bump (link-preview crawlers, uptime checks).
+- `GET`: upstream is fetched with a 15 s headers deadline. A non-2xx, a
+  missing body, or a network-level failure (DNS, reset, TLS, timeout) is
+  `502 upstream-unavailable` and does not bump the counter. On success the
+  body streams through as `application/octet-stream` +
+  `Content-Disposition: attachment` + `X-Content-Type-Options: nosniff`
+  regardless of upstream headers, and the per-asset counter increments once.
+- Rate limit 30/min/IP.
+
+See `docs/footguns.md` § Download-Proxy Patterns for the reasoning behind
+each of these.
