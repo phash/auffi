@@ -29,6 +29,7 @@ use std::sync::mpsc;
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
+use gstreamer_video as gst_video;
 
 use ashpd::desktop::{
     screencast::{CursorMode, Screencast, SourceType},
@@ -183,6 +184,39 @@ async fn open_portal() -> Result<PortalStreams, String> {
     })
 }
 
+/// Whether a delivered sample still matches the geometry the encoder was
+/// built for. The pipeline caps pin only `format=BGRA`, so when the
+/// compositor renegotiates the PipeWire stream (output mode or scale change
+/// mid-session) `videoconvert` passes the new size straight through. The
+/// encoder downstream rejects a smaller buffer on every frame (frozen
+/// picture) and reads a larger one with the stale stride (skewed picture),
+/// both silently — so the capture must end instead and let the
+/// `streaming-failed` restart machinery take over.
+fn check_frame_geometry(
+    expected: (u32, u32),
+    caps: Option<(u32, u32)>,
+    len: usize,
+) -> Result<(), String> {
+    let (w, h) = expected;
+    if let Some((cw, ch)) = caps {
+        if (cw, ch) != (w, h) {
+            return Err(format!(
+                "stream renegotiated to {cw}x{ch}, encoder expects {w}x{h}"
+            ));
+        }
+    }
+    let needed = (w as usize)
+        .checked_mul(h as usize)
+        .and_then(|n| n.checked_mul(4))
+        .ok_or_else(|| format!("dimension overflow at {w}x{h}"))?;
+    if len < needed {
+        return Err(format!(
+            "buffer holds {len} bytes, {w}x{h} BGRA needs {needed}"
+        ));
+    }
+    Ok(())
+}
+
 /// Active GStreamer-based capture session.
 pub struct GstPortalCapturer {
     /// Wrapped in Option so callers can `.take_rx()` and store the receiver
@@ -246,10 +280,20 @@ impl GstPortalCapturer {
 
         let (tx, rx) = mpsc::sync_channel::<BgraFrame>(4);
         let start_instant = std::time::Instant::now();
+        let expected = (streams.width, streams.height);
 
+        // The sender lives in an Option so a geometry mismatch can drop it
+        // from inside the callback: closing the channel is what makes
+        // `ScreenCapturer::next_frame` return Err and the streaming loop
+        // emit `streaming-failed`. GStreamer may call `new_sample` again
+        // before the pipeline reaches Null, hence the idempotent `take`.
+        let mut tx = Some(tx);
         appsink.set_callbacks(
             gst_app::AppSinkCallbacks::builder()
                 .new_sample(move |sink| {
+                    let Some(sender) = tx.as_ref() else {
+                        return Err(gst::FlowError::Eos);
+                    };
                     let sample = match sink.pull_sample() {
                         Ok(s) => s,
                         Err(_) => return Err(gst::FlowError::Eos),
@@ -262,6 +306,17 @@ impl GstPortalCapturer {
                         Ok(m) => m,
                         Err(_) => return Ok(gst::FlowSuccess::Ok),
                     };
+                    let caps_dims = sample
+                        .caps()
+                        .and_then(|c| gst_video::VideoInfo::from_caps(c).ok())
+                        .map(|info| (info.width(), info.height()));
+                    if let Err(e) = check_frame_geometry(expected, caps_dims, map.len()) {
+                        dbg_log(&format!(
+                            "[gst-capture] frame geometry changed ({e}) — ending capture so the session restarts"
+                        ));
+                        tx = None;
+                        return Err(gst::FlowError::Error);
+                    }
 
                     let frame = BgraFrame {
                         data: map.as_slice().to_vec(),
@@ -269,7 +324,7 @@ impl GstPortalCapturer {
                     };
                     // try_send: drop the frame if the consumer fell behind
                     // rather than block the GStreamer streaming thread.
-                    let _ = tx.try_send(frame);
+                    let _ = sender.try_send(frame);
                     Ok(gst::FlowSuccess::Ok)
                 })
                 .build(),
@@ -292,5 +347,40 @@ impl Drop for GstPortalCapturer {
     fn drop(&mut self) {
         // Best-effort teardown.
         let _ = self._pipeline.set_state(gst::State::Null);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The pipeline caps pin only `format=BGRA`, so a compositor renegotiation
+    // (dock/undock, scale change during a session) changes the buffer size
+    // under a running encoder built for the portal-declared geometry. That
+    // used to freeze (smaller) or skew (larger) the picture silently; the
+    // callback must refuse such a sample so the stream fails loud instead.
+
+    #[test]
+    fn check_frame_geometry_accepts_matching_caps_and_length() {
+        assert!(check_frame_geometry((4, 4), Some((4, 4)), 64).is_ok());
+    }
+
+    #[test]
+    fn check_frame_geometry_rejects_renegotiated_dimensions() {
+        let err = check_frame_geometry((1920, 1080), Some((2560, 1440)), 2560 * 1440 * 4)
+            .expect_err("a larger stream must not be consumed with the old stride");
+        assert!(err.contains("1920x1080") && err.contains("2560x1440"), "{err}");
+        assert!(check_frame_geometry((1920, 1080), Some((1280, 720)), 1280 * 720 * 4).is_err());
+    }
+
+    #[test]
+    fn check_frame_geometry_rejects_short_buffers_even_without_caps() {
+        assert!(check_frame_geometry((4, 4), None, 48).is_err());
+        assert!(check_frame_geometry((4, 4), None, 64).is_ok());
+    }
+
+    #[test]
+    fn check_frame_geometry_rejects_overflowing_dimensions() {
+        assert!(check_frame_geometry((u32::MAX, u32::MAX), None, usize::MAX).is_err());
     }
 }
