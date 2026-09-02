@@ -20,6 +20,13 @@ export interface StreamingStoppedPlan {
   resetSessionUi: boolean;
   /** Show the generic "Stream beendet." status. */
   showGenericStatus: boolean;
+  /**
+   * Close a pending "Verbindungsanfrage". A full teardown drops the
+   * SignalingState, so confirm_peer for that request can only fail with
+   * "signaling not started" — the dialog must not stand. Never on a
+   * viewer-swap: peer-joined has just opened the dialog for the NEW helper.
+   */
+  dismissConnectionRequest: boolean;
 }
 
 export function planStreamingStopped(
@@ -27,9 +34,13 @@ export function planStreamingStopped(
   specificStatusSet: boolean,
 ): StreamingStoppedPlan {
   if (keepSignaling) {
-    return { resetSessionUi: false, showGenericStatus: false };
+    return { resetSessionUi: false, showGenericStatus: false, dismissConnectionRequest: false };
   }
-  return { resetSessionUi: true, showGenericStatus: !specificStatusSet };
+  return {
+    resetSessionUi: true,
+    showGenericStatus: !specificStatusSet,
+    dismissConnectionRequest: true,
+  };
 }
 
 /**

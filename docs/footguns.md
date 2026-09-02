@@ -25,7 +25,7 @@ Mitigation für die betroffene User-Gruppe: Tailscale/WireGuard-Overlay vorschla
 `disconnect_streaming` looks like one function but is called from three distinct intents and each wants a different subset of state torn down:
 
 1. **End the session** (user clicked Beenden, or bootstrap on F5) — drop everything including `SignalingState`.
-2. **Swap viewers on the same code** (new `peer-joined` arrived while the previous viewer is gone) — keep `SignalingState` (the WS task that just delivered the `peer-joined` is the same one the next `confirm_peer` / `receive_offer` will go through), drop the rest.
+2. **Swap viewers on the same code** (new `peer-joined` arrived while the previous viewer is gone) — keep `SignalingState` (the WS task that just delivered the `peer-joined` is the same one the next `confirm_peer` / `receive_offer` will go through), drop the rest. The same intent serves "the helper left, this sharer stays available": a received relay `bye` and the ICE-loss teardown both pass `keepSignaling: true`, so the code stays redeemable until its TTL (`viewer-bye-policy.ts`, `ice-teardown-policy.ts`).
 3. **Re-bootstrap after webview F5** — full teardown so `start_signaling` doesn't trip the `#64` guard.
 
 Today this is gated by an optional `keep_signaling: bool` parameter. If you refactor in this area, audit which lifetimes each caller wants to end before changing behaviour. See `docs/postmortem-2026-05-12-monitor-switch.md` for the bug chain that led to the current shape.

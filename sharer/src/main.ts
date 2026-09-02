@@ -23,6 +23,7 @@ import {
   type IceState,
 } from "./ice-teardown-policy.js";
 import { resetSessionIndicators } from "./session-indicators.js";
+import { planViewerBye } from "./viewer-bye-policy.js";
 import { planSignalingLost } from "./signaling-lost-policy.js";
 
 interface FileOfferPayload {
@@ -147,10 +148,11 @@ document.addEventListener("keydown", (e) => {
 let currentIpPrefix: string | null = null;
 let currentCode: string | null = null;
 
-// One-shot: set by paths that show their own stop/restart status (bye,
-// stop-confirm, decline via restartSignaling, mode switch) right before they
-// trigger disconnect_streaming. The streaming-stopped listener consumes it
-// and skips the generic "Stream beendet." so the specific message survives.
+// One-shot: set by paths that show their own stop/restart status
+// (stop-confirm, streaming-failed, decline via restartSignaling, mode switch)
+// right before they trigger a FULL disconnect_streaming. The streaming-stopped
+// listener consumes it and skips the generic "Stream beendet." so the specific
+// message survives. keepSignaling teardowns never consume it — don't set it.
 let specificStopStatusPending = false;
 
 // True while the ad-hoc surface (9-digit code + signaling WS) is meant to be
@@ -445,6 +447,15 @@ function hideStreamingActions(): void {
   signalBuffer.reset();
 }
 
+// Close the "Verbindungsanfrage" and forget the helper it was about. A null
+// currentIpPrefix afterwards is what the accept handler checks to notice that
+// the request was withdrawn while confirm_peer was in flight.
+function dismissConnectionRequest(): void {
+  confirmEl.classList.remove("visible");
+  rememberPeerCheckbox.checked = false;
+  currentIpPrefix = null;
+}
+
 // ── Tab navigation ───────────────────────────────────────────────────────────
 
 setupTabs({
@@ -497,6 +508,10 @@ document.getElementById("accept")!.addEventListener("click", () => {
 
   invoke("confirm_peer", { accepted: true })
     .then(async () => {
+      // A bye or disconnect withdrew the request while confirm_peer was in
+      // flight: the helper is gone and the backend ignores the stale accept
+      // — starting a stream for nobody would only strand the portal dialog.
+      if (currentIpPrefix === null) return;
       confirmEl.classList.remove("visible");
 
       if (rememberIt && ip) {
@@ -571,9 +586,7 @@ function renderMonitorChoices(monitors: DisplayInfo[]): void {
 }
 
 declineBtn.addEventListener("click", async () => {
-  confirmEl.classList.remove("visible");
-  rememberPeerCheckbox.checked = false;
-  currentIpPrefix = null;
+  dismissConnectionRequest();
   setStatus("Abgelehnt. Neuer Code wird angefragt…", "waiting");
   // Await before restarting: confirm_peer clears SignalingState only AFTER
   // the decline frame is sent Rust-side. Racing start_signaling against it
@@ -868,22 +881,29 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
   } else if (p.kind === "ice" && p.candidate) {
     signalBuffer.ice(p.candidate);
   } else if (p.kind === "bye") {
-    // Viewer pressed Beenden — without this branch the sharer would only
-    // notice when ICE eventually times out, which surfaces as the
-    // generic "Verbindung verloren" message instead of the friendly
-    // "Helfer hat die Verbindung beendet" the user actually wants.
-    specificStopStatusPending = true;
-    invoke("disconnect_streaming").catch(() => {
-      specificStopStatusPending = false;
+    const plan = planViewerBye({
+      confirmPending: confirmEl.classList.contains("visible"),
+      freeTierCutoffSeen,
     });
-    hideStreamingActions();
-    setStatus(
-      freeTierCutoffSeen
-        ? "Übertragung beendet — Zeitlimit für kostenlose Relay-Verbindungen erreicht."
-        : "Helfer hat die Verbindung beendet.",
-      "idle",
-    );
-    newCodeBtn.classList.add("visible");
+    freeTierCutoffSeen = false;
+    dismissConnectionRequest();
+    closeMonitorPicker();
+    if (plan.kind === "end-stream") {
+      // The helper is gone, this sharer is not: keepSignaling keeps the WS
+      // registration, so the code stays redeemable until its TTL and the
+      // viewer's 30 s "doch nochmal verbinden" (gh #71) can find it. The
+      // streaming-stopped event for a keepSignaling teardown is ignored by
+      // its listener, so the session UI is reset here — before the invoke,
+      // as the swap path does (relay frames may arrive during the await).
+      hideStreamingActions();
+      streamBtn.disabled = false;
+      void invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+    }
+    setStatus(plan.status, "idle");
+    if (currentCode !== null) {
+      newCodeBtn.classList.add("visible");
+      resumeExpiryCountdown();
+    }
   }
 });
 
@@ -891,8 +911,7 @@ listen<{ reason: string }>("disconnected", (e) => {
   // Read before hideStreamingActions() — it resets the buffer this keys on.
   const streamActive = signalBuffer.hasActivity();
   const plan = planSignalingLost(streamActive, e.payload.reason);
-  confirmEl.classList.remove("visible");
-  currentIpPrefix = null;
+  dismissConnectionRequest();
   closeMonitorPicker();
   // The WS task has exited, so the backend released the code either way.
   resetCode();
@@ -930,7 +949,7 @@ listen<{ keepSignaling: boolean }>("streaming-stopped", (e) => {
     setStatus("Stream beendet.", "idle");
   }
   streamBtn.disabled = false;
-  currentIpPrefix = null;
+  if (plan.dismissConnectionRequest) dismissConnectionRequest();
   hideStreamingActions();
   // Full teardown drops the signaling WS, so the ad-hoc code is released
   // server-side — clear it instead of leaving a dead code on screen.

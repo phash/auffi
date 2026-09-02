@@ -6,13 +6,17 @@ import {
 
 describe("planStreamingStopped", () => {
   it("viewer-swap (keepSignaling): leaves the join state and status alone", () => {
+    // The peer-joined handler has just opened the confirm dialog for the NEW
+    // helper — dismissing it here would kill that request.
     expect(planStreamingStopped(true, false)).toEqual({
       resetSessionUi: false,
       showGenericStatus: false,
+      dismissConnectionRequest: false,
     });
     expect(planStreamingStopped(true, true)).toEqual({
       resetSessionUi: false,
       showGenericStatus: false,
+      dismissConnectionRequest: false,
     });
   });
 
@@ -20,6 +24,7 @@ describe("planStreamingStopped", () => {
     expect(planStreamingStopped(false, false)).toEqual({
       resetSessionUi: true,
       showGenericStatus: true,
+      dismissConnectionRequest: true,
     });
   });
 
@@ -27,7 +32,16 @@ describe("planStreamingStopped", () => {
     expect(planStreamingStopped(false, true)).toEqual({
       resetSessionUi: true,
       showGenericStatus: false,
+      dismissConnectionRequest: true,
     });
+  });
+
+  it("full teardown dismisses a pending Verbindungsanfrage — its channel is gone", () => {
+    // confirm_peer against a dropped SignalingState can only fail with
+    // "signaling not started"; a dialog nobody can answer must not stand.
+    for (const specific of [true, false]) {
+      expect(planStreamingStopped(false, specific).dismissConnectionRequest).toBe(true);
+    }
   });
 });
 

@@ -82,6 +82,13 @@ Confirmed sessions never get a synthesized bye on viewer WS loss — a Wi-Fi
 blip must keep the ICE grace / reconnect window alive instead of tearing the
 stream down.
 
+The ad-hoc sharer answers a received bye by dropping only its WebRTC session
+and **keeping its WS registration**: a pending confirm dialog is dismissed, the
+code stays redeemable until its TTL, and the next `join` on it produces a
+fresh `peer-joined` (and a fresh confirmation). This is what lets the viewer's
+30 s "doch nochmal verbinden" after its own Beenden succeed
+(`sharer/src/viewer-bye-policy.ts`).
+
 ## Viewer-Initiated Messages
 
 ### `join`
