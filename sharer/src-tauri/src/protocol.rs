@@ -20,10 +20,6 @@ pub enum Incoming {
         #[serde(rename = "viewerInfo")]
         viewer_info: ViewerInfo,
     },
-    PeerConfirmed,
-    PeerRejected {
-        reason: String,
-    },
     Relay {
         payload: serde_json::Value,
     },

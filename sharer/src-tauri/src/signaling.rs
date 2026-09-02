@@ -264,10 +264,6 @@ where
                 }),
             );
         }
-        Incoming::PeerConfirmed => {}
-        Incoming::PeerRejected { reason } => {
-            emit("disconnected", serde_json::json!({ "reason": reason }));
-        }
         Incoming::Relay { payload } => {
             emit("relay", serde_json::json!({ "payload": payload }));
         }
