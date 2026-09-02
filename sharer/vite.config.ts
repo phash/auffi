@@ -14,7 +14,9 @@ export default defineConfig({
   define: {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkgVersion),
   },
-  server: { port: 5174, strictPort: true },
+  // 5175, not 5174: the dashboard dev server owns 5174, and strictPort (which
+  // tauri.conf.json's devUrl needs) made `tauri dev` fail whenever it ran.
+  server: { port: 5175, strictPort: true },
   build: {
     rollupOptions: {
       input: {
