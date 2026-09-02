@@ -306,6 +306,12 @@ export function registerSignaling(
             // comment).
             return;
           }
+          if (typeof msg.attemptId === "number" && msg.attemptId !== sess.attemptId) {
+            // F053: the answer belongs to an attempt this session no
+            // longer holds (a sharer waiter that outlived its viewer).
+            // Same silent-drop rule as above — never an error frame.
+            return;
+          }
           if (sess.viewer.readyState !== sess.viewer.OPEN) {
             // Same TC C-2 give-up, caught mid-handshake: the viewer's
             // close frame has been received (readyState CLOSING/CLOSED)
@@ -617,11 +623,13 @@ export function registerSignaling(
         // every pw-check so a dashboard toggle takes effect without
         // sharer reconnect.
         const autoAccept = getAutoAccept(unattended.db, sess.deviceId);
-        unattended.sessions.transition(sess.deviceId, "pw-in-flight");
+        const attemptId = unattended.sessions.beginPwCheck(sess.deviceId);
+        if (attemptId === null) return;
         send(sess.sharer, {
           type: "pw-check",
           attempt: msg.password,
           autoAccept,
+          attemptId,
         });
         return;
       }

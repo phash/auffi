@@ -605,6 +605,60 @@ pub(crate) fn pw_outcome_to_action(outcome: &PwCheckOutcome) -> PwAction {
     }
 }
 
+/// How a manual-confirm wait ended.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ConfirmOutcome {
+    /// The owner clicked; `true` = Akzeptieren.
+    Answered(bool),
+    /// The sender was dropped without a click: the viewer this prompt
+    /// was raised for is gone (relay `bye`) or a newer pw-check
+    /// superseded it.
+    Evicted,
+    /// Nobody clicked within the 60 s window.
+    TimedOut,
+}
+
+pub(crate) async fn await_confirm(
+    rx: tokio::sync::oneshot::Receiver<bool>,
+    timeout: std::time::Duration,
+) -> ConfirmOutcome {
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(v)) => ConfirmOutcome::Answered(v),
+        Ok(Err(_)) => ConfirmOutcome::Evicted,
+        Err(_) => ConfirmOutcome::TimedOut,
+    }
+}
+
+/// What a finished wait puts on the wire. `None` = nothing: an evicted
+/// waiter's attempt is not the one the backend holds any more, and the
+/// backend attributes a `pw-check-result` to whichever viewer is
+/// pw-in-flight NOW (F053) — so a stale answer would decline, or worse
+/// confirm, a viewer the owner never saw. A timeout still declines,
+/// otherwise the waiting viewer would hang.
+pub(crate) fn confirm_reply(outcome: &ConfirmOutcome) -> Option<heartbeat::PwResult> {
+    match outcome {
+        ConfirmOutcome::Answered(true) => Some(heartbeat::PwResult::Ok),
+        ConfirmOutcome::Answered(false) | ConfirmOutcome::TimedOut => {
+            Some(heartbeat::PwResult::Rejected)
+        }
+        ConfirmOutcome::Evicted => None,
+    }
+}
+
+/// Drop every parked confirm sender so its waiter observes
+/// [`ConfirmOutcome::Evicted`]. One viewer per device: a new pw-check or
+/// a relay `bye` means every prompt still open belongs to a viewer the
+/// backend no longer holds.
+pub(crate) async fn evict_pending_confirms(
+    pending: &Mutex<HashMap<u64, tokio::sync::oneshot::Sender<bool>>>,
+) {
+    pending.lock().await.clear();
+}
+
+pub(crate) fn relay_is_bye(payload: &serde_json::Value) -> bool {
+    payload.get("kind").and_then(|k| k.as_str()) == Some("bye")
+}
+
 /// Everything one forwarder run needs. Bundled so the spawn site stays
 /// readable and clippy's argument-count lint has nothing to say.
 struct ForwarderCtx {
@@ -678,7 +732,9 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
             HeartbeatEvent::PwCheck {
                 attempt,
                 auto_accept,
+                attempt_id,
             } => {
+                evict_pending_confirms(&pending_confirms).await;
                 // Lockout gate under the mutex (cheap); the argon2id
                 // verify (m=64 MiB, t=3 — hundreds of ms) then runs on
                 // a blocking worker WITHOUT the lockout mutex held so
@@ -715,6 +771,7 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                     PwAction::ReplyOk => {
                         let _ = cmds
                             .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                                attempt_id,
                                 result: heartbeat::PwResult::Ok,
                             }))
                             .await;
@@ -752,21 +809,12 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                         let pending_for_waiter = pending_confirms.clone();
                         let app_for_waiter = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let (accepted, answered_by_user) =
-                                match tokio::time::timeout(std::time::Duration::from_secs(60), rx)
-                                    .await
-                                {
-                                    Ok(Ok(v)) => (v, true),
-                                    // timeout OR sender dropped (a
-                                    // newer attempt evicted this one) →
-                                    // decline. Without this the viewer
-                                    // would hang for the full 60 s.
-                                    _ => (false, false),
-                                };
+                            let outcome =
+                                await_confirm(rx, std::time::Duration::from_secs(60)).await;
                             // Belt-and-braces cleanup in case the
                             // confirm command was never invoked.
                             pending_for_waiter.lock().await.remove(&confirm_id);
-                            if !answered_by_user {
+                            if !matches!(outcome, ConfirmOutcome::Answered(_)) {
                                 // The webview dialog would otherwise stand
                                 // open while any answer routes to a dead
                                 // confirm_id — tell it to dismiss.
@@ -778,21 +826,20 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                                     },
                                 );
                             }
-                            let result = if accepted {
-                                heartbeat::PwResult::Ok
-                            } else {
-                                heartbeat::PwResult::Rejected
-                            };
-                            let _ = cmds_for_waiter
-                                .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
-                                    result,
-                                }))
-                                .await;
+                            if let Some(result) = confirm_reply(&outcome) {
+                                let _ = cmds_for_waiter
+                                    .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                                        attempt_id,
+                                        result,
+                                    }))
+                                    .await;
+                            }
                         });
                     }
                     PwAction::ReplyFail => {
                         let _ = cmds
                             .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                                attempt_id,
                                 result: heartbeat::PwResult::Fail,
                             }))
                             .await;
@@ -815,6 +862,12 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                 );
             }
             HeartbeatEvent::Relay { payload } => {
+                // Pre-confirm the backend synthesises the bye a closed tab
+                // never sends; the prompt (and its waiter) must not
+                // outlive the viewer it was raised for.
+                if relay_is_bye(&payload) {
+                    evict_pending_confirms(&pending_confirms).await;
+                }
                 let _ = app.emit(
                     "unattended-event",
                     serde_json::json!({"kind":"relay","payload":payload}),
@@ -1040,20 +1093,73 @@ mod tests {
         );
     }
 
+    // ── confirm waiter outcomes (F053) ────────────────────────────────
+    //
+    // A waiter whose sender was dropped was raised for a viewer that is
+    // gone (bye) or superseded by a newer pw-check. The backend has
+    // already moved on; any frame it sends now is attributed to whoever
+    // is pw-in-flight NEXT — a rejected-by-user nobody clicked, or an
+    // Ok that confirms a stranger before the sharer's own verdict.
+
     #[tokio::test]
-    async fn pending_confirms_dropped_sender_collapses_to_decline() {
-        // Sec M-1 contract: when a confirm_id is evicted from the
-        // map without a click (e.g. start_unattended teardown), the
-        // sender drops → the spawned waiter's rx errors → it
-        // replies "rejected". This test pins the underlying
-        // oneshot behaviour we rely on.
+    async fn await_confirm_reports_the_owners_click() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        tx.send(true).unwrap();
+        assert_eq!(
+            await_confirm(rx, std::time::Duration::from_secs(1)).await,
+            ConfirmOutcome::Answered(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn await_confirm_dropped_sender_is_evicted_not_declined() {
         let state = UnattendedState::default();
         let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
         state.pending_confirms.lock().await.insert(1, tx);
-        // Drop the sender by clearing the map.
-        state.pending_confirms.lock().await.clear();
-        let outcome = rx.await;
-        assert!(outcome.is_err(), "dropped sender must surface as Err");
+        evict_pending_confirms(&state.pending_confirms).await;
+        assert_eq!(
+            await_confirm(rx, std::time::Duration::from_secs(1)).await,
+            ConfirmOutcome::Evicted
+        );
+        assert!(state.pending_confirms.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn await_confirm_times_out_without_a_click() {
+        let (_tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        assert_eq!(
+            await_confirm(rx, std::time::Duration::from_millis(10)).await,
+            ConfirmOutcome::TimedOut
+        );
+    }
+
+    #[test]
+    fn confirm_reply_sends_nothing_for_an_evicted_waiter() {
+        assert_eq!(confirm_reply(&ConfirmOutcome::Evicted), None);
+    }
+
+    #[test]
+    fn confirm_reply_maps_click_and_timeout_onto_the_wire() {
+        assert_eq!(
+            confirm_reply(&ConfirmOutcome::Answered(true)),
+            Some(heartbeat::PwResult::Ok)
+        );
+        assert_eq!(
+            confirm_reply(&ConfirmOutcome::Answered(false)),
+            Some(heartbeat::PwResult::Rejected)
+        );
+        // The viewer must not hang for a click that never comes.
+        assert_eq!(
+            confirm_reply(&ConfirmOutcome::TimedOut),
+            Some(heartbeat::PwResult::Rejected)
+        );
+    }
+
+    #[test]
+    fn relay_bye_is_recognised_and_other_relays_are_not() {
+        assert!(relay_is_bye(&serde_json::json!({ "kind": "bye" })));
+        assert!(!relay_is_bye(&serde_json::json!({ "kind": "sdp", "sdp": {} })));
+        assert!(!relay_is_bye(&serde_json::json!("bye")));
     }
 
     // ── forwarder state-clear regression (CQ C-1 + ownership) ─────────

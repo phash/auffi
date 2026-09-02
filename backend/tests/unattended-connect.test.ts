@@ -331,7 +331,12 @@ describe("/signal unattended connect flow (gh #17)", () => {
     viewer.send(JSON.stringify({ type: "pw-attempt", password: "hunter2" }));
     const onSharer = await once(sharer, "message");
     // gh #25 added autoAccept which reflects devices.auto_accept (1 in seed).
-    expect(onSharer).toEqual({ type: "pw-check", attempt: "hunter2", autoAccept: true });
+    expect(onSharer).toEqual({
+      type: "pw-check",
+      attempt: "hunter2",
+      autoAccept: true,
+      attemptId: expect.any(Number),
+    });
     viewer.close();
     sharer.close();
   });
@@ -352,6 +357,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
       type: "pw-check",
       attempt: "irrelevant",
       autoAccept: false,
+      attemptId: expect.any(Number),
     });
     // Reset for any later test.
     db.prepare("UPDATE devices SET auto_accept = 1 WHERE id = ?").run(deviceId);
@@ -713,6 +719,69 @@ describe("/signal unattended connect flow (gh #17)", () => {
     }
     // And the sharer's WSS is still open.
     expect(sharer.readyState).toBe(sharer.OPEN);
+    sharer.close();
+  });
+
+  // F053: the result frame used to carry no correlation, so a sharer
+  // waiter that outlived its viewer (60 s timeout, or the webview
+  // displacing an orphaned confirm dialog) answered for whichever viewer
+  // was pw-in-flight NEXT — a rejected-by-user nobody clicked, or a
+  // confirm before the sharer's own verdict on that viewer's password.
+  it("a pw-check-result for a stale attemptId is ignored; the current attempt still resolves", async () => {
+    const sharer = await openSharer();
+    const a = openViewer();
+    await new Promise<void>((r) => a.once("open", () => r()));
+    a.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(a, "message"); // needs-password
+    a.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    const checkA = await once(sharer, "message");
+    expect(checkA.type).toBe("pw-check");
+    const staleId: number = checkA.attemptId;
+
+    // A gives up mid-confirm; the backend synthesises a bye to the sharer.
+    a.close();
+    expect(await once(sharer, "message")).toEqual({ type: "relay", payload: { kind: "bye" } });
+
+    const b = openViewer();
+    await new Promise<void>((r) => b.once("open", () => r()));
+    b.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(b, "message"); // needs-password
+    b.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    const checkB = await once(sharer, "message");
+    expect(checkB.type).toBe("pw-check");
+    expect(checkB.attemptId).not.toBe(staleId);
+
+    const toB: unknown[] = [];
+    const onMessage = (data: Buffer): void => {
+      toB.push(JSON.parse(data.toString()));
+    };
+    b.on("message", onMessage);
+    sharer.send(JSON.stringify({ type: "pw-check-result", attemptId: staleId, result: "rejected" }));
+    sharer.send(JSON.stringify({ type: "pw-check-result", attemptId: staleId, result: "ok" }));
+    await new Promise((r) => setTimeout(r, 80));
+    expect(toB, `B must not hear A's stale answers: ${JSON.stringify(toB)}`).toEqual([]);
+    expect(b.readyState).toBe(b.OPEN);
+    b.off("message", onMessage);
+
+    sharer.send(
+      JSON.stringify({ type: "pw-check-result", attemptId: checkB.attemptId, result: "ok" }),
+    );
+    expect(await once(b, "message")).toEqual({ type: "peer-confirmed" });
+    b.close();
+    sharer.close();
+  });
+
+  it("a pw-check-result without attemptId is still honoured (sharer predating the id)", async () => {
+    const sharer = await openSharer();
+    const viewer = openViewer();
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await once(viewer, "message"); // needs-password
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    await once(sharer, "message"); // pw-check
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    expect(await once(viewer, "message")).toEqual({ type: "peer-confirmed" });
+    viewer.close();
     sharer.close();
   });
 

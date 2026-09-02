@@ -144,8 +144,17 @@ pub enum BackendFrame {
     /// on every pw-check so a dashboard toggle takes effect without
     /// sharer reconnect. False → caller shows a confirm toast after
     /// argon2-verify succeeds.
+    ///
+    /// `attempt_id` is the backend-minted correlation id echoed in
+    /// [`SharerFrame::PwCheckResult`] (F053). Optional so a backend
+    /// predating it still parses — the sharer then answers without one.
     #[serde(rename = "pw-check", rename_all = "camelCase")]
-    PwCheck { attempt: String, auto_accept: bool },
+    PwCheck {
+        attempt: String,
+        auto_accept: bool,
+        #[serde(default)]
+        attempt_id: Option<u64>,
+    },
     /// `{"type":"peer-joined","viewerInfo":{...}}`
     #[serde(rename = "peer-joined", rename_all = "camelCase")]
     PeerJoined { viewer_info: serde_json::Value },
@@ -169,8 +178,15 @@ pub enum BackendFrame {
 #[derive(Debug, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum SharerFrame {
-    #[serde(rename = "pw-check-result")]
-    PwCheckResult { result: PwResult },
+    /// `attempt_id` echoes the `pw-check` this answers so the backend
+    /// can drop a result that belongs to an attempt it no longer holds
+    /// (F053). `None` only when the backend sent no id.
+    #[serde(rename = "pw-check-result", rename_all = "camelCase")]
+    PwCheckResult {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attempt_id: Option<u64>,
+        result: PwResult,
+    },
     #[serde(rename = "relay")]
     Relay { payload: serde_json::Value },
     /// Ask the backend for ephemeral TURN credentials before building
@@ -219,8 +235,13 @@ pub enum HeartbeatEvent {
     /// Viewer is attempting an unattended connect — verify locally,
     /// reply via `SharerFrame::PwCheckResult`. `auto_accept` mirrors
     /// `devices.auto_accept`; the caller uses it to choose between
-    /// auto-replying Ok or showing a manual-confirm toast.
-    PwCheck { attempt: String, auto_accept: bool },
+    /// auto-replying Ok or showing a manual-confirm toast. `attempt_id`
+    /// must be echoed in the reply.
+    PwCheck {
+        attempt: String,
+        auto_accept: bool,
+        attempt_id: Option<u64>,
+    },
     /// After `PwCheckResult::Ok`, the backend pairs viewer+sharer
     /// and forwards this. The sharer should now start the WebRTC
     /// offer (same as the ad-hoc `peer-joined`). Viewer loss is
@@ -498,11 +519,13 @@ async fn connect_and_run(
                                 BackendFrame::PwCheck {
                                     attempt,
                                     auto_accept,
+                                    attempt_id,
                                 } => {
                                     let _ = evt_tx
                                         .send(HeartbeatEvent::PwCheck {
                                             attempt,
                                             auto_accept,
+                                            attempt_id,
                                         })
                                         .await;
                                 }
@@ -793,6 +816,7 @@ mod tests {
         for _ in 0..3 {
             cmd_tx
                 .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                    attempt_id: None,
                     result: PwResult::Fail,
                 }))
                 .await
@@ -896,10 +920,38 @@ mod tests {
     #[test]
     fn outgoing_pw_check_result_matches_backend_wire_shape() {
         let frame = SharerFrame::PwCheckResult {
+            attempt_id: None,
             result: PwResult::Ok,
         };
         let json = serde_json::to_string(&frame).unwrap();
         assert_eq!(json, r#"{"type":"pw-check-result","result":"ok"}"#);
+    }
+
+    // F053: without an attempt id on the wire the backend attributes a
+    // stale confirm waiter's answer to whichever viewer is pw-in-flight
+    // NOW — a rejected-by-user nobody clicked, or a confirm before the
+    // sharer's own verdict. The echo is what lets the backend drop it.
+    #[test]
+    fn outgoing_pw_check_result_echoes_the_attempt_id_in_camel_case() {
+        let frame = SharerFrame::PwCheckResult {
+            attempt_id: Some(7),
+            result: PwResult::Ok,
+        };
+        let v = serde_json::to_value(&frame).unwrap();
+        assert_eq!(v["type"], "pw-check-result");
+        assert_eq!(v["attemptId"], 7, "backend reads camelCase attemptId");
+        assert_eq!(v["result"], "ok");
+        assert!(v.get("attempt_id").is_none(), "snake_case must not leak");
+    }
+
+    #[test]
+    fn incoming_pw_check_parses_the_attempt_id() {
+        let raw = r#"{"type":"pw-check","attempt":"hunter2","autoAccept":false,"attemptId":3}"#;
+        let parsed: BackendFrame = serde_json::from_str(raw).unwrap();
+        match parsed {
+            BackendFrame::PwCheck { attempt_id, .. } => assert_eq!(attempt_id, Some(3)),
+            other => panic!("expected PwCheck, got {other:?}"),
+        }
     }
 
     #[test]
@@ -943,9 +995,11 @@ mod tests {
             BackendFrame::PwCheck {
                 attempt,
                 auto_accept,
+                attempt_id,
             } => {
                 assert_eq!(attempt, "hunter2");
                 assert!(auto_accept);
+                assert_eq!(attempt_id, None, "a backend without ids must still parse");
             }
             other => panic!("expected PwCheck, got {other:?}"),
         }

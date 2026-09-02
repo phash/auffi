@@ -138,6 +138,13 @@ export interface UnattendedSession {
    */
   state: "awaiting-pw" | "pw-in-flight" | "confirmed";
   /**
+   * Correlation id of the pw-check currently in flight, minted by
+   * [`beginPwCheck`]; `null` until the first attempt. A `pw-check-result`
+   * echoing any other id belongs to an attempt this store no longer
+   * holds and must be dropped (F053).
+   */
+  attemptId: number | null;
+  /**
    * The viewer's IP prefix at JOIN time (e.g. "84.xxx"). Stored on
    * the session because the mirrored `peer-joined` to the sharer is
    * sent from the SHARER's connection handler, where the viewer's
@@ -176,6 +183,8 @@ export const PW_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
 export class UnattendedSessions {
   private readonly byDevice = new Map<string, UnattendedSession>();
   private readonly viewerToDevice = new Map<WebSocket, string>();
+  /** Store-wide so an id is never reused across sessions of one device. */
+  private nextAttemptId = 1;
   private onStaleReap: ((sess: UnattendedSession) => void) | null = null;
   private onRemove?: (sess: UnattendedSession) => void;
 
@@ -230,6 +239,7 @@ export class UnattendedSessions {
       viewer,
       sharer,
       state: "awaiting-pw",
+      attemptId: null,
       logId: null,
       viewerIpPrefix,
       createdAt: now,
@@ -281,6 +291,19 @@ export class UnattendedSessions {
   transition(deviceId: string, to: UnattendedSession["state"]): void {
     const sess = this.byDevice.get(deviceId);
     if (sess) sess.state = to;
+  }
+
+  /**
+   * Move the session to "pw-in-flight" under a fresh attempt id and
+   * return that id for the outgoing `pw-check`. Returns `null` when
+   * the device has no session.
+   */
+  beginPwCheck(deviceId: string): number | null {
+    const sess = this.byDevice.get(deviceId);
+    if (!sess) return null;
+    sess.attemptId = this.nextAttemptId++;
+    sess.state = "pw-in-flight";
+    return sess.attemptId;
   }
 
   /**

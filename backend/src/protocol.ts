@@ -170,6 +170,13 @@ export type PwCheck = {
   type: "pw-check";
   attempt: string;
   autoAccept: boolean;
+  /**
+   * Backend-minted per-attempt correlation id. The sharer echoes it in
+   * `pw-check-result`; a result whose id is not the one in flight is
+   * dropped silently (F053) — without it, a sharer waiter that outlived
+   * its viewer answered for whichever viewer came next.
+   */
+  attemptId: number;
 };
 
 /**
@@ -185,6 +192,11 @@ export type PwCheck = {
 export type PwCheckResult = {
   type: "pw-check-result";
   result: "ok" | "fail" | "rejected";
+  /**
+   * Echo of `PwCheck.attemptId`. Optional for one release: sharers from
+   * before v0.7.1 send none and are honoured as-is (they cannot mismatch).
+   */
+  attemptId?: number;
 };
 
 export type OutgoingMessage =

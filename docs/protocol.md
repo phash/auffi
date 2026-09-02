@@ -216,15 +216,17 @@ Backend forwards the attempt to the sharer, which argon2-verifies it **locally**
 (the backend never sees the device password hash). `autoAccept` mirrors
 `devices.auto_accept` and is sent on every check so a dashboard toggle takes
 effect without a sharer reconnect.
+`attemptId` is a backend-minted correlation id, unique per attempt on this
+device; the sharer echoes it in `pw-check-result`.
 ```json
-{ "type": "pw-check", "attempt": "the-device-password", "autoAccept": false }
+{ "type": "pw-check", "attempt": "the-device-password", "autoAccept": false, "attemptId": 7 }
 ```
 
 ### `pw-check-result` (sharer → server)
 Result of the local verify (and the optional manual-confirm dialog when
 `autoAccept` is false):
 ```json
-{ "type": "pw-check-result", "result": "ok" | "fail" | "rejected" }
+{ "type": "pw-check-result", "attemptId": 7, "result": "ok" | "fail" | "rejected" }
 ```
 - `ok` → backend pairs the peers and sends `peer-confirmed` to the viewer; SDP/ICE relay proceeds as in the ad-hoc flow.
 - `fail` → argon2 rejected; backend increments the per-device lockout counter and sends `wrong-password`.
@@ -234,6 +236,16 @@ Result of the local verify (and the optional manual-confirm dialog when
 > viewer already gave up) is **silently dropped**, not error-reported — a
 > `bad-message` error here would make the sharer's heartbeat treat it as a
 > fatal disconnect (TC C-2).
+>
+> The same silent drop applies to a result whose `attemptId` is not the one
+> currently in flight for that device (F053): without the id, a sharer
+> waiter that outlived its viewer (60 s timeout, or an orphaned confirm
+> dialog displaced by the next prompt) was attributed to whichever viewer
+> came next. A result **without** `attemptId` is honoured as before —
+> transitional clause for sharers older than v0.7.1; remove once those are
+> gone. On the sharer, a new `pw-check` or a pre-confirm relay `bye` evicts
+> every open confirm prompt, and an evicted prompt sends **nothing** (only a
+> click or the 60 s timeout produces a frame).
 
 ### `wrong-password` (→ viewer)
 ```json
