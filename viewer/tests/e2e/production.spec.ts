@@ -1,8 +1,24 @@
+/**
+ * Live smoke against production: spawns scripts/mock-sharer.mjs against
+ * wss://auffi.app/signal and connects the real auffi.app viewer to it.
+ *
+ * SIDE EFFECT — this mutates production usage statistics. The mock sharer's
+ * `register` mints a real code, which writes a permanent `code_events` row
+ * (the reliable usage counter, 365 d retention) and fires a Matomo
+ * code_created event on the live instance. Opt in explicitly:
+ *
+ *   AUFFI_PROD_E2E=1 npx playwright test production.spec.ts
+ */
 import { test, expect } from "@playwright/test";
 import { spawn, ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+
+test.skip(
+  !process.env.AUFFI_PROD_E2E,
+  "mutates prod usage stats (code_events + Matomo) — set AUFFI_PROD_E2E=1 to run",
+);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROD_VIEWER = "https://auffi.app";
