@@ -57,7 +57,8 @@ curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-li
 - **macOS:** noch kein Build (kein Capture-Backend — nur Linux + Windows).
 
 Oder manuell aus den [Releases](https://github.com/phash/auffi/releases) —
-detaillierte Anleitung inkl. Arch-PKGBUILD: [INSTALL.md](INSTALL.md).
+Paket-Installation Schritt für Schritt: [INSTALL-LINUX.md](INSTALL-LINUX.md);
+selbst bauen inkl. Arch-PKGBUILD: [INSTALL.md](INSTALL.md).
 Was sich pro Version geändert hat, steht im [CHANGELOG](CHANGELOG.md).
 
 ---

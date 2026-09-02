@@ -1,6 +1,8 @@
-# Auffi auf Linux installieren
+# Auffi auf Linux installieren (fertige Pakete)
 
-Diese Anleitung beschreibt die Installation der **Auffi Sharer-App** auf dem Linux-Desktop.
+Diese Anleitung installiert die **Auffi Sharer-App** aus den fertigen
+Release-Paketen. Wer den Sharer selbst aus dem Source bauen will (inkl.
+Arch-PKGBUILD), nimmt [INSTALL.md](INSTALL.md).
 
 Der **Viewer** (Helfer-Seite) benötigt keine Installation — einfach Browser öffnen und
 `https://auffi.app` aufrufen.
@@ -10,11 +12,13 @@ Der **Viewer** (Helfer-Seite) benötigt keine Installation — einfach Browser �
 ## Schnell-Installation
 
 ```bash
-curl -fsSL https://auffi.app/download/install-linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
 ```
 
-Das Skript erkennt die Distribution, installiert Abhängigkeiten, holt die
-neueste Version aus `https://auffi.app/download/latest.txt` und richtet Auffi ein.
+Das Skript erkennt die Distribution, installiert die Laufzeit-Abhängigkeiten,
+ermittelt die neueste Version über die GitHub-Releases-API und installiert das
+passende Paket (`.deb` auf Debian/Ubuntu, `.rpm` auf Fedora/RHEL, sonst AppImage).
+Eine bestimmte Version erzwingen: `AUFFI_VERSION=vX.Y.Z` vor dem `bash` setzen.
 
 ---
 
@@ -32,9 +36,8 @@ neueste Version aus `https://auffi.app/download/latest.txt` und richtet Auffi ei
 Systemdialog ("Choose what to share"), den der User bei **jedem Start** bestätigen muss.
 Das ist das Sicherheitsmodell des Compositors — es gibt kein "Immer erlauben" für
 Screen Capture. Der Dialog erscheint in der Regel als Fenster des Desktop-Environments
-(KDE, GNOME usw.).
-
-Für PipeWire-Support sind folgende Pakete erforderlich:
+(KDE, GNOME usw.). Fehlt `gst-plugin-pipewire`, startet das Streamen auf Wayland gar
+nicht („Streamen konnte nicht gestartet werden") — es gibt keinen stillen Fallback.
 
 ### Distro-spezifische Abhängigkeiten
 
@@ -64,43 +67,52 @@ sudo dnf install -y webkit2gtk4.1 libvpx pipewire xdg-desktop-portal \
 
 ## Download
 
-Alle Binaries werden direkt von `https://auffi.app/download/` gehostet — kein
-GitHub-Account, keine Drittanbieter. Verzeichnis-Listing:
+Alle Installer sind auf der Download-Seite gebündelt — kein GitHub-Account nötig:
 
 **[https://auffi.app/download/](https://auffi.app/download/)**
 
-Verfügbare Formate: `.AppImage`, `.deb`, `.rpm` (Linux), `.msi`, `.exe` (Windows).
-Aktuelle Version steht in `https://auffi.app/download/latest.txt`.
+Verfügbare Formate: `.AppImage`, `.deb`, `.rpm` (Linux), `.msi`, `.exe`, Portable
+`.exe` (Windows). Die aktuelle Versionsnummer steht dort neben den Buttons; die
+Downloads laufen über den Stream-Proxy `https://auffi.app/api/downloads/file/<Asset>?tag=vX.Y.Z`
+(die Assets liegen auf den [GitHub-Releases](https://github.com/phash/auffi/releases)).
+Asset-Namen sind case-sensitiv und beginnen mit großem `A`:
+
+| Format | Asset-Name |
+|---|---|
+| Debian/Ubuntu | `Auffi_X.Y.Z_amd64.deb` |
+| Fedora/RHEL | `Auffi-X.Y.Z-1.x86_64.rpm` |
+| AppImage | `Auffi_X.Y.Z_amd64.AppImage` |
+
+Prüfsumme: jedes Release trägt eine `SHA256SUMS`-Datei
+(`sha256sum -c --ignore-missing SHA256SUMS`).
 
 ---
 
 ## Installation per .deb (Debian/Ubuntu)
 
 ```bash
-# Datei herunterladen (Version anpassen)
-wget https://auffi.app/download/auffi_0.2.0_amd64.deb
+# Datei herunterladen (X.Y.Z durch die aktuelle Version ersetzen)
+wget "https://auffi.app/api/downloads/file/Auffi_X.Y.Z_amd64.deb?tag=vX.Y.Z" -O Auffi_X.Y.Z_amd64.deb
 
 # Installieren
-sudo dpkg -i auffi_0.2.0_amd64.deb
+sudo dpkg -i Auffi_X.Y.Z_amd64.deb
 
 # Falls Abhängigkeiten fehlen:
 sudo apt-get install -f
 ```
 
-Starten: `auffi` oder über das Anwendungsmenü.
+Starten: über das Anwendungsmenü („Auffi") oder im Terminal `auffi-sharer`.
 
 ---
 
 ## Installation per .rpm (Fedora/RHEL)
 
 ```bash
-# Datei herunterladen
-wget https://auffi.app/download/auffi-0.2.0-1.x86_64.rpm
+wget "https://auffi.app/api/downloads/file/Auffi-X.Y.Z-1.x86_64.rpm?tag=vX.Y.Z" -O Auffi-X.Y.Z-1.x86_64.rpm
 
-# Installieren
-sudo rpm -i auffi-0.2.0-1.x86_64.rpm
+sudo dnf localinstall Auffi-X.Y.Z-1.x86_64.rpm
 # oder
-sudo dnf localinstall auffi-0.2.0-1.x86_64.rpm
+sudo rpm -U Auffi-X.Y.Z-1.x86_64.rpm
 ```
 
 ---
@@ -108,21 +120,17 @@ sudo dnf localinstall auffi-0.2.0-1.x86_64.rpm
 ## Installation per AppImage
 
 ```bash
-# AppImage herunterladen
-wget https://auffi.app/download/auffi_0.2.0_amd64.AppImage
+wget "https://auffi.app/api/downloads/file/Auffi_X.Y.Z_amd64.AppImage?tag=vX.Y.Z" -O Auffi_X.Y.Z_amd64.AppImage
 
-# Ausführbar machen
-chmod +x auffi_0.2.0_amd64.AppImage
+chmod +x Auffi_X.Y.Z_amd64.AppImage
+./Auffi_X.Y.Z_amd64.AppImage
 
-# Ausführen
-./auffi_0.2.0_amd64.AppImage
-
-# Optional: Systemweit verfügbar machen
-sudo ln -sf "$(pwd)/auffi_0.2.0_amd64.AppImage" /usr/local/bin/auffi
+# Optional: systemweit verfügbar machen
+sudo ln -sf "$(pwd)/Auffi_X.Y.Z_amd64.AppImage" /usr/local/bin/auffi
 ```
 
 AppImages benötigen keine Installation — einfach herunterladen und ausführen.
-Optional `libfuse2` installieren, falls das AppImage nicht startet:
+Falls das AppImage nicht startet, fehlt meist FUSE 2:
 
 ```bash
 # Debian/Ubuntu
@@ -130,29 +138,9 @@ sudo apt-get install -y libfuse2
 
 # Fedora
 sudo dnf install -y fuse-libs
-```
 
----
-
-## Manuelle Installation (Tarball)
-
-Falls du die einzelnen Dateien manuell installieren möchtest:
-
-```bash
-# Tarball entpacken
-tar -xzf auffi-linux-x86_64.tar.gz
-
-# Binary installieren
-sudo install -m 755 auffi /usr/local/bin/auffi
-
-# Desktop-Eintrag (optional)
-sudo install -m 644 auffi.desktop /usr/share/applications/auffi.desktop
-
-# Icon (optional)
-sudo install -m 644 auffi.png /usr/share/pixmaps/auffi.png
-
-# Desktop-Datenbank aktualisieren
-sudo update-desktop-database /usr/share/applications/ 2>/dev/null || true
+# Arch
+sudo pacman -S fuse2
 ```
 
 ---
@@ -160,7 +148,7 @@ sudo update-desktop-database /usr/share/applications/ 2>/dev/null || true
 ## Erstmaliger Start
 
 Beim Start erscheint auf **Wayland** ein Screen-Capture-Portal-Dialog ("Choose what to
-share") — dieser muss bei **jedem Start** bestätigt werden.  Das ist das
+share") — dieser muss bei **jedem Start** bestätigt werden. Das ist das
 Sicherheitsmodell des Compositors; es gibt keine dauerhafte Freigabe für Screen Capture.
 
 Auf **X11** ist keine zusätzliche Berechtigung notwendig.
@@ -172,6 +160,9 @@ der ihn unter `https://auffi.app` eingibt.
 
 ## Update
 
+Die App prüft beim Start selbst, ob ein neueres Release existiert, und zeigt
+einen Banner mit Link auf die Download-Seite.
+
 ### Per .deb / .rpm
 
 Neue Version herunterladen und mit demselben Befehl installieren — dpkg/rpm ersetzen die alte
@@ -179,10 +170,10 @@ Version automatisch.
 
 ```bash
 # .deb
-sudo dpkg -i auffi_NEUVERSION_amd64.deb
+sudo dpkg -i Auffi_NEUVERSION_amd64.deb
 
 # .rpm
-sudo rpm -U auffi-NEUVERSION-1.x86_64.rpm
+sudo rpm -U Auffi-NEUVERSION-1.x86_64.rpm
 ```
 
 ### Per AppImage
@@ -191,8 +182,12 @@ Alte AppImage löschen, neue herunterladen und ausführbar machen. Falls du eine
 angelegt hast, diesen aktualisieren:
 
 ```bash
-sudo ln -sf "$(pwd)/auffi_NEUVERSION_amd64.AppImage" /usr/local/bin/auffi
+sudo ln -sf "$(pwd)/Auffi_NEUVERSION_amd64.AppImage" /usr/local/bin/auffi
 ```
+
+### Per install-linux.sh
+
+Das Skript einfach erneut laufen lassen — es installiert die neueste Version über die alte.
 
 ---
 
@@ -214,20 +209,17 @@ sudo rpm -e auffi
 sudo dnf remove auffi
 ```
 
-### Per AppImage / Manuell
+### Per AppImage
 
 ```bash
 sudo rm -f /usr/local/bin/auffi
-sudo rm -f /usr/share/applications/auffi.desktop
-sudo rm -f /usr/share/pixmaps/auffi.png
-# AppImage selbst löschen:
-rm -f auffi_*.AppImage
+rm -f Auffi_*.AppImage
 ```
 
 ### Via install-linux.sh
 
 ```bash
-curl -fsSL https://auffi.app/download/install-linux.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash -s -- --uninstall
 ```
 
 ---
@@ -235,5 +227,6 @@ curl -fsSL https://auffi.app/download/install-linux.sh | bash -s -- --uninstall
 ## Probleme & Hilfe
 
 - **Issues:** [github.com/phash/auffi/issues](https://github.com/phash/auffi/issues)
-- **Schwarzer Bildschirm auf Wayland:** Screen-Capture-Portal-Dialog bestätigen; PipeWire und xdg-desktop-portal installiert?
+- **„Streamen konnte nicht gestartet werden" auf Wayland:** `gst-plugin-pipewire`, PipeWire
+  und `xdg-desktop-portal` installiert? Portal-Dialog bestätigt? Details in `/tmp/auffi-debug.log`.
 - **Verbindung schlägt fehl:** TURN-Fallback ist aktiviert; Firewall auf UDP-Ports 3478/5349 prüfen

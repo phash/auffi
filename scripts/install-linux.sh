@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install-linux.sh — End-user installer for Auffi (Linux)
 # Usage:
-#   curl -fsSL https://auffi.app/download/install-linux.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/phash/auffi/main/scripts/install-linux.sh | bash
 #   bash install-linux.sh --uninstall
 #
 # Release binaries live on GitHub Releases (github.com/phash/auffi); the

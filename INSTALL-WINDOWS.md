@@ -18,7 +18,7 @@ GitHub-Account, keine Drittanbieter.
 **[https://auffi.app/download/](https://auffi.app/download/)**
 
 Verfügbare Windows-Formate: `.msi` (Windows Installer) und `.exe` (NSIS Setup).
-Aktuelle Version steht in `https://auffi.app/download/latest.txt`.
+Die aktuelle Versionsnummer steht auf der Download-Seite neben den Buttons.
 
 ### Per .msi
 
