@@ -18,7 +18,7 @@ use webrtc::{
     peer_connection::{configuration::RTCConfiguration, RTCPeerConnection},
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     stats::StatsReportType,
-    track::track_local::track_local_static_sample::TrackLocalStaticSample,
+    track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
     Error,
 };
 
@@ -105,7 +105,11 @@ pub struct SharerPeer {
     /// stream — a viewer that lost the reference frame asks for a new one
     /// there (PLI), and without reading it we would never hear the request.
     sender: Arc<webrtc::rtp_transceiver::rtp_sender::RTCRtpSender>,
-    pub track: Arc<TrackLocalStaticSample>,
+    /// The video track. RTP-level (not sample-level) on purpose: the streaming
+    /// loop packetizes frames itself so every RTP timestamp carries the
+    /// frame's capture time — see `rtp_clock.rs` for why the constant
+    /// per-sample duration of `TrackLocalStaticSample` was a bitrate bug.
+    pub track: Arc<TrackLocalStaticRTP>,
     /// The `"files"` DataChannel, set once the viewer opens it.
     files_dc: Arc<tokio::sync::Mutex<Option<Arc<RTCDataChannel>>>>,
     /// Observer for every ICE connection-state change.
@@ -218,7 +222,7 @@ impl SharerPeer {
 
         let pc = Arc::new(api.new_peer_connection(config).await?);
 
-        let track = Arc::new(TrackLocalStaticSample::new(
+        let track = Arc::new(TrackLocalStaticRTP::new(
             RTCRtpCodecCapability {
                 mime_type: "video/VP8".to_string(),
                 ..Default::default()

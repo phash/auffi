@@ -15,6 +15,7 @@ mod nat_traversal;
 mod outbound;
 mod protocol;
 mod pw_check;
+mod rtp_clock;
 mod signaling;
 mod tls_roots;
 mod turn_config;
@@ -168,7 +169,8 @@ use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
 
 use tauri::{Emitter, State};
 use tokio::sync::mpsc;
-use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
+use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
+use webrtc::track::track_local::TrackLocalWriter;
 
 use capture::DisplayInfo;
 use files::FileMessage;
@@ -1221,16 +1223,27 @@ async fn streaming_loop(
     app: tauri::AppHandle,
     mut capturer: Option<capture::ScreenCapturer>,
     mut enc: Option<encoder::Vp8Encoder>,
-    track: std::sync::Arc<TrackLocalStaticSample>,
+    track: std::sync::Arc<TrackLocalStaticRTP>,
     mut switch_rx: mpsc::Receiver<SwitchMsg>,
     controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
     metrics: Arc<SessionMetrics>,
 ) {
     dbg_log("[streaming_loop] entered");
+    let payloader = match track.codec().payloader_for_codec() {
+        Ok(p) => p,
+        Err(e) => {
+            dbg_log(&format!("[streaming_loop] no payloader for track codec: {e}"));
+            emit_streaming_failed(&app, "internal");
+            return;
+        }
+    };
+    // One packetizer for the session: the track (and its SSRC) survives a
+    // monitor switch, so the RTP clock and sequence numbers must too.
+    let mut packetizer = rtp_clock::FramePacketizer::new(payloader);
     let mut write_failures = 0u64;
     let mut encode_failures = 0u64;
     let mut frame_count = 0u64;
-    let mut sample_count = 0u64;
+    let mut packet_count = 0u64;
     let mut last_log_at = std::time::Instant::now();
     // Per-interval accumulators for the throughput diagnostic (effective fps +
     // average encode time) — the key signal for capture/encode lag.
@@ -1344,7 +1357,7 @@ async fn streaming_loop(
             }
             Err(e) => {
                 dbg_log(&format!(
-                    "[streaming_loop] next_frame Err after {frame_count} frames / {sample_count} samples: {e}"
+                    "[streaming_loop] next_frame Err after {frame_count} frames / {packet_count} packets: {e}"
                 ));
                 emit_streaming_failed(&app, "capture");
                 return;
@@ -1422,36 +1435,54 @@ async fn streaming_loop(
             ));
         }
         for pkt in packets {
-            let sample = webrtc::media::Sample {
-                data: pkt.data.into(),
-                duration: Duration::from_millis(33),
-                ..Default::default()
-            };
-            match track.write_sample(&sample).await {
-                Ok(_) => {
-                    sample_count += 1;
-                    metrics.bytes.fetch_add(
-                        sample.data.len() as u64,
-                        std::sync::atomic::Ordering::Relaxed,
-                    );
-                    // Only CONSECUTIVE failures should kill the loop — a
-                    // cumulative counter meant 30 transient blips spread over
-                    // a long session ended it too.
-                    write_failures = 0;
-                }
+            let encoded_len = pkt.data.len() as u64;
+            let rtp_packets = match packetizer.packetize(frame.pts_us, pkt.data) {
+                Ok(p) => p,
                 Err(e) => {
-                    write_failures += 1;
-                    if write_failures <= 3 || write_failures.is_multiple_of(10) {
-                        dbg_log(&format!(
-                            "[streaming_loop] write_sample err #{write_failures}: {e}"
-                        ));
+                    dbg_log(&format!("[streaming_loop] packetize failed: {e}"));
+                    emit_streaming_failed(&app, "internal");
+                    return;
+                }
+            };
+            if frame_count == 1 {
+                if let Some(first) = rtp_packets.first() {
+                    dbg_log(&format!(
+                        "[streaming_loop] first frame -> {} rtp packets, ts={}",
+                        rtp_packets.len(),
+                        first.header.timestamp
+                    ));
+                }
+            }
+            let mut frame_written = false;
+            for p in &rtp_packets {
+                match track.write_rtp(p).await {
+                    Ok(_) => {
+                        packet_count += 1;
+                        frame_written = true;
+                        // Only CONSECUTIVE failures should kill the loop — a
+                        // cumulative counter meant 30 transient blips spread
+                        // over a long session ended it too.
+                        write_failures = 0;
                     }
-                    if write_failures > 30 {
-                        dbg_log("[streaming_loop] write_sample failing repeatedly; exiting");
-                        emit_streaming_failed(&app, "track-write");
-                        return;
+                    Err(e) => {
+                        write_failures += 1;
+                        if write_failures <= 3 || write_failures.is_multiple_of(10) {
+                            dbg_log(&format!(
+                                "[streaming_loop] write_rtp err #{write_failures}: {e}"
+                            ));
+                        }
+                        if write_failures > 30 {
+                            dbg_log("[streaming_loop] write_rtp failing repeatedly; exiting");
+                            emit_streaming_failed(&app, "track-write");
+                            return;
+                        }
                     }
                 }
+            }
+            if frame_written {
+                metrics
+                    .bytes
+                    .fetch_add(encoded_len, std::sync::atomic::Ordering::Relaxed);
             }
         }
         // Periodic heartbeat once per second so we know the loop is alive
@@ -1465,7 +1496,7 @@ async fn streaming_loop(
                 0.0
             };
             dbg_log(&format!(
-                "[streaming_loop] alive: frames={frame_count} samples={sample_count} write_failures={write_failures} encode_failures={encode_failures} fps={fps:.1} avg_encode_ms={avg_encode_ms:.1}"
+                "[streaming_loop] alive: frames={frame_count} packets={packet_count} write_failures={write_failures} encode_failures={encode_failures} fps={fps:.1} avg_encode_ms={avg_encode_ms:.1}"
             ));
             frames_since_log = 0;
             encode_us_since_log = 0;
