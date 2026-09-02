@@ -1,8 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Fastify, { FastifyInstance } from "fastify";
 import rateLimit from "@fastify/rate-limit";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { registerDownloadRoutes, KNOWN_ASSETS } from "../src/downloads/handlers.js";
+
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
+const DOWNLOAD_PAGES = [
+  "viewer/index.html",
+  "viewer/public/download/index.html",
+  "viewer/public/en/download/index.html",
+].map((p) => resolve(REPO_ROOT, p));
 
 async function build(
   upstreamFetcher?: (asset: string) => Promise<Response>,
@@ -44,19 +53,41 @@ describe("GET /api/downloads", () => {
     expect(res.json().counts[asset]).toBe(3);
   });
 
-  it("allow-lists every asset of the current release (v0.6.4) that the download pages link", () => {
-    // These names must match the GitHub release assets 1:1 — the pages in
-    // viewer/public/download/ and viewer/index.html link them through the
-    // proxy, which 404s anything off-list.
-    const current = [
-      "Auffi_0.6.4_amd64.deb",
-      "Auffi-0.6.4-1.x86_64.rpm",
-      "Auffi_0.6.4_amd64.AppImage",
-      "Auffi_0.6.4_x64-setup.exe",
-      "Auffi_0.6.4_x64_en-US.msi",
-      "Auffi_0.6.4_x64_portable.exe",
+  it("allow-lists every asset the download pages actually link", () => {
+    // The proxy 404s anything off-list, so a release that bumps the pages
+    // but forgets KNOWN_ASSETS breaks every download button. Derive the
+    // expectation from the pages instead of pinning a version here — a
+    // hard-coded list kept passing for three releases without guarding
+    // the one being shipped.
+    const linked = new Set<string>();
+    for (const page of DOWNLOAD_PAGES) {
+      const html = readFileSync(page, "utf-8");
+      // Lookahead keeps prose like `/api/downloads/file/...` in comments out.
+      for (const m of html.matchAll(/\/api\/downloads\/file\/([A-Za-z0-9._-]+)(?=[?"'])/g)) {
+        linked.add(m[1]);
+      }
+    }
+    expect(linked.size).toBeGreaterThan(0);
+    for (const a of linked) expect(KNOWN_ASSETS.has(a), `${a} linked but not allow-listed`).toBe(true);
+  });
+
+  it("allow-lists all six assets of the sharer version in tauri.conf.json", () => {
+    // The update notifier points users at /download/ for exactly this
+    // version; the release commit bumps tauri.conf.json, KNOWN_ASSETS and
+    // the pages together, so a version bump without the list is a
+    // half-finished release and must go red.
+    const { version } = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, "sharer/src-tauri/tauri.conf.json"), "utf-8"),
+    ) as { version: string };
+    const expected = [
+      `Auffi_${version}_amd64.deb`,
+      `Auffi-${version}-1.x86_64.rpm`,
+      `Auffi_${version}_amd64.AppImage`,
+      `Auffi_${version}_x64-setup.exe`,
+      `Auffi_${version}_x64_en-US.msi`,
+      `Auffi_${version}_x64_portable.exe`,
     ];
-    for (const a of current) expect(KNOWN_ASSETS.has(a)).toBe(true);
+    for (const a of expected) expect(KNOWN_ASSETS.has(a), `${a} missing from KNOWN_ASSETS`).toBe(true);
   });
 
   it("ignores rows that aren't in the allow-list (defensive — table is shared via SQLite)", async () => {
