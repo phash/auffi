@@ -78,6 +78,8 @@ struct PendingOffer {
 /// State tracked for a single incoming file transfer after user acceptance.
 struct ReceiveState {
     name: String,
+    /// Where the bytes land; `discard` removes it on every abort path.
+    path: PathBuf,
     /// Declared total size from the offer; used to enforce the size-cap so
     /// a misbehaving viewer cannot keep streaming bytes past the agreed
     /// length.
@@ -102,14 +104,78 @@ pub struct FileTransferManager {
     pending: HashMap<String, PendingOffer>,
     /// Active transfers where the user has accepted and the file is open.
     active: HashMap<String, ReceiveState>,
+    /// Directory received files are created in (`output_dir()` in
+    /// production; a tempdir in tests).
+    output_dir: PathBuf,
+}
+
+/// Why a `file-done` did not produce a usable file; the partial file has
+/// already been removed when this is returned.
+#[derive(Debug, PartialEq, Eq)]
+pub struct TransferFailure {
+    pub name: String,
+    pub reason: String,
 }
 
 impl FileTransferManager {
-    pub fn new() -> Self {
+    pub fn new(output_dir: PathBuf) -> Self {
         Self {
             pending: HashMap::new(),
             active: HashMap::new(),
+            output_dir,
         }
+    }
+
+    /// The AppHandle-free half of a `file-offer`: cap + size gate, then
+    /// park the offer as pending. `Ok` carries the sanitised name for the
+    /// confirm prompt; `Err` is the `file-error` message for the viewer.
+    pub(crate) fn admit_offer(
+        &mut self,
+        id: &str,
+        name: &str,
+        size: u64,
+    ) -> Result<String, &'static str> {
+        if self.pending.len() + self.active.len() >= MAX_CONCURRENT_TRANSFERS {
+            return Err("too-many-active");
+        }
+        if size > MAX_FILE_SIZE_BYTES {
+            return Err("file-too-large");
+        }
+        let sanitized = sanitize_filename(name);
+        self.pending.insert(
+            id.to_string(),
+            PendingOffer {
+                id: id.to_string(),
+                sanitized_name: sanitized.clone(),
+                total_size: size,
+            },
+        );
+        Ok(sanitized)
+    }
+
+    /// Forget a transfer in whatever state it is, removing the partial
+    /// file if one was already created. Idempotent.
+    pub(crate) fn drop_transfer(&mut self, id: &str) {
+        self.pending.remove(id);
+        if let Some(state) = self.active.remove(id) {
+            discard(state);
+        }
+    }
+
+    /// Finish a transfer on `file-done`. `None` for an unknown id;
+    /// `Ok(path)` once every declared byte is on disk; `Err` when the
+    /// transfer was incomplete — the truncated file is removed so the user
+    /// never finds a document that looks received and is silently corrupt.
+    pub(crate) fn complete(&mut self, id: &str) -> Option<Result<PathBuf, TransferFailure>> {
+        let mut state = self.active.remove(id)?;
+        Some(match verify_complete(&mut state) {
+            Ok(()) => Ok(state.path.clone()),
+            Err(reason) => {
+                let name = state.name.clone();
+                discard(state);
+                Err(TransferFailure { name, reason })
+            }
+        })
     }
 
     /// Process an incoming JSON `FileEvent` and return any response events to
@@ -130,33 +196,16 @@ impl FileTransferManager {
                 size,
                 mime,
             } => {
-                let total = self.pending.len() + self.active.len();
-                if total >= MAX_CONCURRENT_TRANSFERS {
-                    log::warn!("too many active transfers; auto-rejecting offer id={id}");
-                    return vec![FileEvent::FileError {
-                        id,
-                        message: "too-many-active".to_string(),
-                    }];
-                }
-
-                if size > MAX_FILE_SIZE_BYTES {
-                    log::warn!("offer size {size} exceeds cap; rejecting id={id}");
-                    return vec![FileEvent::FileError {
-                        id,
-                        message: "file-too-large".to_string(),
-                    }];
-                }
-
-                let sanitized = sanitize_filename(&name);
-
-                self.pending.insert(
-                    id.clone(),
-                    PendingOffer {
-                        id: id.clone(),
-                        sanitized_name: sanitized.clone(),
-                        total_size: size,
-                    },
-                );
+                let sanitized = match self.admit_offer(&id, &name, size) {
+                    Ok(s) => s,
+                    Err(reason) => {
+                        log::warn!("offer id={id} refused: {reason} (size {size})");
+                        return vec![FileEvent::FileError {
+                            id,
+                            message: reason.to_string(),
+                        }];
+                    }
+                };
 
                 let payload = serde_json::json!({
                     "id": id,
@@ -170,21 +219,20 @@ impl FileTransferManager {
                 vec![]
             }
             FileEvent::FileDone { id } => {
-                let Some(mut state) = self.active.remove(&id) else {
+                let Some(outcome) = self.complete(&id) else {
                     return vec![];
                 };
-                match verify_complete(&mut state) {
-                    Ok(()) => {
-                        let path = output_dir().join(&state.name);
+                match outcome {
+                    Ok(path) => {
                         let payload = serde_json::json!({ "path": path.to_string_lossy() });
                         if let Err(e) = app.emit("file-received", payload) {
                             log::warn!("file-received emit failed: {e}");
                         }
                         vec![]
                     }
-                    Err(reason) => {
-                        log::warn!("transfer '{}' failed on done: {reason}", state.name);
-                        let payload = serde_json::json!({ "name": state.name, "reason": reason });
+                    Err(TransferFailure { name, reason }) => {
+                        log::warn!("transfer '{name}' failed on done: {reason}");
+                        let payload = serde_json::json!({ "name": name, "reason": reason });
                         if let Err(e) = app.emit("file-failed", payload) {
                             log::warn!("file-failed emit failed: {e}");
                         }
@@ -196,8 +244,7 @@ impl FileTransferManager {
                 }
             }
             FileEvent::FileError { id, message } => {
-                self.pending.remove(&id);
-                self.active.remove(&id);
+                self.drop_transfer(&id);
                 log::warn!("file transfer error for id={id}: {message}");
                 vec![]
             }
@@ -219,9 +266,10 @@ impl FileTransferManager {
             };
         };
 
-        match Self::open_output_file(&offer.sanitized_name) {
+        match open_output_file(&self.output_dir, &offer.sanitized_name) {
             Ok((file, final_name)) => {
                 let state = ReceiveState {
+                    path: self.output_dir.join(&final_name),
                     name: final_name,
                     total_size: offer.total_size,
                     received_bytes: 0,
@@ -244,8 +292,7 @@ impl FileTransferManager {
 
     /// Remove a pending offer and return the `file-reject` event to send back.
     pub fn reject(&mut self, id: &str) -> FileEvent {
-        self.pending.remove(id);
-        self.active.remove(id);
+        self.drop_transfer(id);
         FileEvent::FileReject { id: id.to_string() }
     }
 
@@ -323,41 +370,55 @@ impl FileTransferManager {
         };
 
         if let Some(reason) = abort_reason {
-            self.active.remove(&key);
+            if let Some(state) = self.active.remove(&key) {
+                discard(state);
+            }
             return Err(reason);
         }
 
         Ok(())
     }
+}
 
-    /// Returns the opened file plus the filename actually created — which
-    /// differs from `filename` when a collision forced deduplication. The
-    /// caller must track the returned name so success events point at the
-    /// file that was written, not at a pre-existing one.
-    fn open_output_file(filename: &str) -> std::io::Result<(std::fs::File, String)> {
-        let dir = output_dir();
-        std::fs::create_dir_all(&dir)?;
-        // De-duplicate instead of truncating: a viewer-chosen name must never
-        // silently overwrite an existing file in ~/Downloads/Auffi/. `create_new`
-        // (O_EXCL) also closes the check-then-create TOCTOU race.
-        let mut attempt = 0u32;
-        loop {
-            let candidate = if attempt == 0 {
-                filename.to_string()
-            } else {
-                dedupe_filename(filename, attempt)
-            };
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(dir.join(&candidate))
-            {
-                Ok(file) => return Ok((file, candidate)),
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 9999 => {
-                    attempt += 1;
-                }
-                Err(e) => return Err(e),
+/// Returns the opened file plus the filename actually created — which
+/// differs from `filename` when a collision forced deduplication. The
+/// caller must track the returned name so success events point at the
+/// file that was written, not at a pre-existing one.
+fn open_output_file(dir: &std::path::Path, filename: &str) -> std::io::Result<(std::fs::File, String)> {
+    std::fs::create_dir_all(dir)?;
+    // De-duplicate instead of truncating: a viewer-chosen name must never
+    // silently overwrite an existing file in ~/Downloads/Auffi/. `create_new`
+    // (O_EXCL) also closes the check-then-create TOCTOU race.
+    let mut attempt = 0u32;
+    loop {
+        let candidate = if attempt == 0 {
+            filename.to_string()
+        } else {
+            dedupe_filename(filename, attempt)
+        };
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(dir.join(&candidate))
+        {
+            Ok(file) => return Ok((file, candidate)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 9999 => {
+                attempt += 1;
             }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Abandon a transfer: close the writer, then remove the partial file so
+/// nothing that looks like the received document stays behind. The handle
+/// must be gone before the unlink — Windows refuses to delete an open file.
+fn discard(state: ReceiveState) {
+    let path = state.path.clone();
+    drop(state);
+    if let Err(e) = std::fs::remove_file(&path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            log::warn!("could not remove partial file {}: {e}", path.display());
         }
     }
 }
@@ -726,9 +787,14 @@ mod tests {
         assert_eq!(payload_parsed, payload);
     }
 
+    fn mgr_in(dir: &tempfile::TempDir) -> FileTransferManager {
+        FileTransferManager::new(dir.path().to_path_buf())
+    }
+
     #[test]
     fn chunk_too_short_is_rejected() {
-        let mut mgr = FileTransferManager::new();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
         let result = mgr.handle_chunk(&[0u8; 4]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("too short"));
@@ -759,123 +825,157 @@ mod tests {
         }
     }
 
-    // ─── file-offer deferred creation tests ─────────────────────────────────
+    // ─── offer admission + deferred creation (F059 / F060) ─────────────────
+    //
+    // These drive the production admit/accept/reject/complete paths against
+    // a tempdir. The earlier versions re-implemented the cap check inside
+    // the test (so the cap could be deleted from files.rs unnoticed) and
+    // created real files under the developer's ~/Downloads/Auffi/.
 
     #[test]
     fn offer_does_not_create_file_on_disk() {
-        let mut mgr = FileTransferManager::new();
-        let id = "deferred-test-id";
-        let sanitized = sanitize_filename("deferred.txt");
-        let expected_path = output_dir().join(&sanitized);
-
-        mgr.pending.insert(
-            id.to_string(),
-            PendingOffer {
-                id: id.to_string(),
-                sanitized_name: sanitized,
-                total_size: 100,
-            },
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        let sanitized = mgr
+            .admit_offer("deferred-test-id", "deferred.txt", 100)
+            .expect("admitted");
+        assert_eq!(sanitized, "deferred.txt");
+        assert!(mgr.pending.contains_key("deferred-test-id"));
+        assert!(
+            !dir.path().join("deferred.txt").exists(),
+            "file must not exist before accept"
         );
-
-        assert!(!expected_path.exists(), "file must not exist before accept");
     }
 
     #[test]
     fn accept_creates_file_and_moves_to_active() {
-        let mut mgr = FileTransferManager::new();
-        let id = "accept-test-id";
-        let sanitized = "accept_test.txt".to_string();
-        let expected_path = output_dir().join(&sanitized);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("accept-test-id", "accept_test.txt", 5)
+            .expect("admitted");
 
-        mgr.pending.insert(
-            id.to_string(),
-            PendingOffer {
-                id: id.to_string(),
-                sanitized_name: sanitized.clone(),
-                total_size: 5,
-            },
-        );
-
-        let ev = mgr.accept(id);
+        let ev = mgr.accept("accept-test-id");
         assert!(matches!(ev, FileEvent::FileAccept { .. }));
-        assert!(!mgr.pending.contains_key(id));
-        assert!(mgr.active.contains_key(id));
-
-        // Clean up
-        let _ = std::fs::remove_file(&expected_path);
+        assert!(!mgr.pending.contains_key("accept-test-id"));
+        assert!(mgr.active.contains_key("accept-test-id"));
+        assert!(dir.path().join("accept_test.txt").exists());
     }
 
     #[test]
     fn reject_removes_from_pending_no_file_created() {
-        let mut mgr = FileTransferManager::new();
-        let id = "reject-test-id";
-        let sanitized = "reject_test.txt".to_string();
-        let expected_path = output_dir().join(&sanitized);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("reject-test-id", "reject_test.txt", 5)
+            .expect("admitted");
 
-        mgr.pending.insert(
-            id.to_string(),
-            PendingOffer {
-                id: id.to_string(),
-                sanitized_name: sanitized,
-                total_size: 5,
-            },
-        );
-
-        let ev = mgr.reject(id);
+        let ev = mgr.reject("reject-test-id");
         assert!(matches!(ev, FileEvent::FileReject { .. }));
-        assert!(!mgr.pending.contains_key(id));
-        assert!(!expected_path.exists(), "file must not exist after reject");
+        assert!(!mgr.pending.contains_key("reject-test-id"));
+        assert!(
+            !dir.path().join("reject_test.txt").exists(),
+            "file must not exist after reject"
+        );
     }
 
     #[test]
     fn concurrent_cap_auto_rejects_beyond_limit() {
-        let mut mgr = FileTransferManager::new();
-
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
         for i in 0..MAX_CONCURRENT_TRANSFERS {
-            mgr.pending.insert(
-                format!("id-{i}"),
-                PendingOffer {
-                    id: format!("id-{i}"),
-                    sanitized_name: format!("file-{i}.txt"),
-                    total_size: 1,
-                },
-            );
+            mgr.admit_offer(&format!("id-{i}"), &format!("file-{i}.txt"), 1)
+                .expect("under the cap");
         }
+        assert_eq!(
+            mgr.admit_offer("overflow-id", "overflow.txt", 1),
+            Err("too-many-active")
+        );
+        assert!(!mgr.pending.contains_key("overflow-id"));
+    }
 
-        let overflow_offer = FileEvent::FileOffer {
-            id: "overflow-id".to_string(),
-            name: "overflow.txt".to_string(),
-            size: 1,
-            mime: "text/plain".to_string(),
-        };
+    #[test]
+    fn oversized_offer_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        assert_eq!(
+            mgr.admit_offer("big", "big.bin", MAX_FILE_SIZE_BYTES + 1),
+            Err("file-too-large")
+        );
+        assert!(mgr.pending.is_empty());
+    }
 
-        // Simulate handle_offer logic without needing AppHandle
-        let total = mgr.pending.len() + mgr.active.len();
-        assert!(total >= MAX_CONCURRENT_TRANSFERS);
-        let response = if total >= MAX_CONCURRENT_TRANSFERS {
-            vec![FileEvent::FileError {
-                id: "overflow-id".to_string(),
-                message: "too-many-active".to_string(),
-            }]
-        } else {
-            mgr.pending.insert(
-                "overflow-id".to_string(),
-                PendingOffer {
-                    id: "overflow-id".to_string(),
-                    sanitized_name: "overflow.txt".to_string(),
-                    total_size: 1,
-                },
-            );
-            vec![]
-        };
+    // ─── partial files never survive an abort (F059) ──────────────────────
+    //
+    // Every abort path dropped the writer but left the half-written file
+    // under its final name in Downloads — a `report.pdf` that looks like
+    // the document and is silently corrupt, with the retry landing as
+    // `report (1).pdf` next to it.
 
-        let _ = overflow_offer;
-        assert_eq!(response.len(), 1);
-        if let FileEvent::FileError { message, .. } = &response[0] {
-            assert_eq!(message, "too-many-active");
-        } else {
-            panic!("expected FileError");
-        }
+    #[test]
+    fn aborted_chunk_stream_removes_the_partial_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("ov-id", "part.bin", 4).expect("admitted");
+        mgr.accept("ov-id");
+        let path = dir.path().join("part.bin");
+        assert!(path.exists());
+
+        let oversized = vec![0u8; (SIZE_OVERRUN_TOLERANCE_BYTES + 8) as usize];
+        let result = mgr.handle_chunk(&build_chunk_frame("ov-id", 0, &oversized));
+        assert!(result.is_err());
+        assert!(!path.exists(), "aborted transfer must not leave part.bin behind");
+    }
+
+    #[test]
+    fn dropping_an_active_transfer_removes_the_partial_file() {
+        // Shared by the viewer's `file-error` and a late `reject()`.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("err-id", "err.bin", 64).expect("admitted");
+        mgr.accept("err-id");
+        mgr.handle_chunk(&build_chunk_frame("err-id", 0, b"partial"))
+            .expect("chunk");
+        let path = dir.path().join("err.bin");
+        assert!(path.exists());
+
+        mgr.drop_transfer("err-id");
+        assert!(!mgr.active.contains_key("err-id"));
+        assert!(!path.exists(), "dropped transfer must not leave err.bin behind");
+    }
+
+    #[test]
+    fn incomplete_file_done_removes_the_truncated_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("trunc-id", "report.pdf", 100)
+            .expect("admitted");
+        mgr.accept("trunc-id");
+        mgr.handle_chunk(&build_chunk_frame("trunc-id", 0, &[0u8; 40]))
+            .expect("chunk");
+        let path = dir.path().join("report.pdf");
+
+        let outcome = mgr.complete("trunc-id").expect("known id");
+        let failure = outcome.expect_err("40 of 100 bytes is not complete");
+        assert_eq!(failure.name, "report.pdf");
+        assert!(failure.reason.contains("40"), "reason: {}", failure.reason);
+        assert!(!path.exists(), "truncated report.pdf must not be left behind");
+        assert!(mgr.complete("trunc-id").is_none(), "id is gone after done");
+    }
+
+    #[test]
+    fn complete_file_done_keeps_the_file_and_returns_its_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("ok-id", "ok.bin", 4).expect("admitted");
+        mgr.accept("ok-id");
+        mgr.handle_chunk(&build_chunk_frame("ok-id", 0, b"abcd"))
+            .expect("chunk");
+
+        let path = mgr
+            .complete("ok-id")
+            .expect("known id")
+            .expect("complete transfer");
+        assert_eq!(path, dir.path().join("ok.bin"));
+        assert_eq!(std::fs::read(&path).expect("read"), b"abcd");
     }
 
     // ─── out-of-order chunk buffering test ───────────────────────────────────
@@ -889,6 +989,7 @@ mod tests {
 
         let state = ReceiveState {
             name: "oo.bin".to_string(),
+            path: tmp.path().to_path_buf(),
             total_size: 6,
             received_bytes: 0,
             file: BufWriter::new(file),
@@ -896,7 +997,8 @@ mod tests {
             next_seq: 0,
         };
 
-        let mut mgr = FileTransferManager::new();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
         mgr.active.insert("oo-id".to_string(), state);
 
         // Send seq=1 before seq=0 — must be buffered.
@@ -920,11 +1022,13 @@ mod tests {
         use tempfile::NamedTempFile;
         let tmp = NamedTempFile::new().expect("tempfile");
         let file = tmp.reopen().expect("reopen");
-        // Leak the tempfile reference — the underlying file stays open via
-        // BufWriter, and the OS cleans the inode when the BufWriter drops.
+        // Hand the path to the state and forget the guard: `discard` removes
+        // the file on the abort paths; the rest is reaped with the temp dir.
+        let path = tmp.path().to_path_buf();
         std::mem::forget(tmp);
         ReceiveState {
             name: format!("{id}.bin"),
+            path,
             total_size,
             received_bytes: 0,
             file: BufWriter::new(file),
@@ -935,7 +1039,8 @@ mod tests {
 
     #[test]
     fn chunk_overrun_aborts_transfer() {
-        let mut mgr = FileTransferManager::new();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
         mgr.active
             .insert("ov-id".to_string(), make_active_state_with_size("ov-id", 4));
 
@@ -961,13 +1066,15 @@ mod tests {
         let readonly = std::fs::File::open(tmp.path()).expect("open read-only");
         let state = ReceiveState {
             name: "wf.bin".to_string(),
+            path: tmp.path().to_path_buf(),
             total_size: 64 * 1024,
             received_bytes: 0,
             file: BufWriter::new(readonly),
             pending_chunks: BTreeMap::new(),
             next_seq: 0,
         };
-        let mut mgr = FileTransferManager::new();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
         mgr.active.insert("wf-id".to_string(), state);
 
         let payload = vec![0u8; 16 * 1024];
@@ -982,42 +1089,28 @@ mod tests {
 
     #[test]
     fn accept_stores_the_deduplicated_filename() {
-        let mut mgr = FileTransferManager::new();
-        let id = "dedupe-name-id";
-        let sanitized = "dedupe_name_test.txt".to_string();
-        let dir = output_dir();
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        let original = dir.join(&sanitized);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        let original = dir.path().join("dedupe_name_test.txt");
         std::fs::write(&original, b"old").expect("pre-create collision");
-        let deduped = dir.join("dedupe_name_test (1).txt");
+        mgr.admit_offer("dedupe-name-id", "dedupe_name_test.txt", 5)
+            .expect("admitted");
 
-        mgr.pending.insert(
-            id.to_string(),
-            PendingOffer {
-                id: id.to_string(),
-                sanitized_name: sanitized,
-                total_size: 5,
-            },
-        );
-
-        let ev = mgr.accept(id);
-        let state_name = mgr.active.get(id).map(|s| s.name.clone());
-        // Clean up BEFORE asserting so a failure doesn't leave litter
-        // in ~/Downloads/Auffi/ across repeated runs.
-        let _ = std::fs::remove_file(&original);
-        let _ = std::fs::remove_file(&deduped);
-
+        let ev = mgr.accept("dedupe-name-id");
         assert!(matches!(ev, FileEvent::FileAccept { .. }));
+        let state = mgr.active.get("dedupe-name-id").expect("active");
         assert_eq!(
-            state_name.as_deref(),
-            Some("dedupe_name_test (1).txt"),
+            state.name, "dedupe_name_test (1).txt",
             "state must track the file actually created, not the colliding original"
         );
+        assert_eq!(state.path, dir.path().join("dedupe_name_test (1).txt"));
+        assert_eq!(std::fs::read(&original).expect("read"), b"old");
     }
 
     #[test]
     fn too_many_out_of_order_chunks_aborts_transfer() {
-        let mut mgr = FileTransferManager::new();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
         let total = (MAX_PENDING_OUT_OF_ORDER_CHUNKS as u64 + 5) * 16;
         mgr.active.insert(
             "ooo-id".to_string(),
@@ -1098,6 +1191,7 @@ mod tests {
             .expect("small write parks in buffer");
         let mut state = ReceiveState {
             name: "vc-flush.bin".to_string(),
+            path: tmp.path().to_path_buf(),
             total_size: 6,
             received_bytes: 6,
             file,

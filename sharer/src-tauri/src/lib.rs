@@ -801,7 +801,7 @@ async fn start_streaming(
     // Initialize the file transfer manager.
     {
         let mut guard = file_state.0.lock().await;
-        *guard = Some(files::FileTransferManager::new());
+        *guard = Some(files::FileTransferManager::new(files::output_dir()));
     }
 
     // Spawn the file-task that drives incoming file messages.
