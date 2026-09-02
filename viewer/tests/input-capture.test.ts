@@ -47,7 +47,7 @@ describe("InputCapture", () => {
   it("ignores events when disabled", async () => {
     const video = makeVideo();
     const emit = vi.fn();
-    const cap = new InputCapture(video, emit);
+    new InputCapture(video, emit);
     video.dispatchEvent(new PointerEvent("pointermove", { clientX: 100, clientY: 100 }));
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     expect(emit).not.toHaveBeenCalled();

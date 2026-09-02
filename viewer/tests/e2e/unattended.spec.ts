@@ -76,7 +76,7 @@ function uniqueEmail(): string {
 }
 
 test.describe("dashboard auth surface (tier 1)", () => {
-  test.beforeEach(async ({ page }, info) => {
+  test.beforeEach(async ({}, info) => {
     const back = await backendUp();
     const dash = await dashboardUp();
     // Locally a missing service is a skip. In CI it must be a failure:

@@ -81,23 +81,6 @@ function parsedInputEvents(): Array<Record<string, unknown>> {
 }
 
 /**
- * Find the first `FILE_RECEIVED=<id>:<bytes>` line for a transfer and return
- * its byte count, or undefined if not yet arrived.
- */
-function receivedFileBytes(transferId: string): number | undefined {
-  for (const line of sharerOutputLines) {
-    const prefix = `FILE_RECEIVED=${transferId}:`;
-    if (line.startsWith(prefix)) {
-      return Number(line.slice(prefix.length));
-    }
-  }
-  // Also handle lines that only contain the total (without id) for robustness:
-  // `FILE_RECEIVED=<id>:<bytes>` is the canonical form, but allow a partial
-  // scan if the transfer id is unknown at call time (not used here).
-  return undefined;
-}
-
-/**
  * Find any FILE_RECEIVED line and return its byte count (used when the caller
  * does not know the transfer id in advance).
  */

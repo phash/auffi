@@ -2,7 +2,7 @@
  * Run with:  npx playwright test /tmp/visual-audit.spec.ts --config=playwright.config.ts --reporter=list
  * Screenshots land in /tmp/visual-audit/.
  */
-import { test, expect, devices } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
