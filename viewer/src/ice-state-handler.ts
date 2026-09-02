@@ -7,8 +7,7 @@
 // `closed` still tear down immediately because they are terminal.
 
 import { t } from "./i18n.js";
-
-export type StatusKind = "ok" | "err" | "info";
+import type { StatusKind } from "./status-kind.js";
 
 export interface IceStateCallbacks {
   teardown: (reason: string, kind: StatusKind, canReconnect: boolean) => void;

@@ -14,6 +14,7 @@ import { CompactBarController } from "./compact-bar.js";
 import { friendlyJoinError, connectTimeoutMessage } from "./connect-messages.js";
 import { trapFocus } from "./focus-trap.js";
 import { t } from "./i18n.js";
+import type { StatusKind } from "./status-kind.js";
 
 // gh #40: lazy singleton — initialized in setupUi() once the DOM is
 // ready. Module-level so setVideoStream() (also module-level) can
@@ -34,7 +35,7 @@ import { formatBytes } from "./format.js";
 export const CONNECT_CONFIRM_TIMEOUT_MS = 60_000;
 export const CONNECT_MEDIA_TIMEOUT_MS = 30_000;
 
-function setStatus(text: string, kind: "ok" | "err" | "info"): void {
+function setStatus(text: string, kind: StatusKind): void {
   const el = document.getElementById("status")!;
   el.textContent = text;
   el.className = kind;
@@ -602,7 +603,7 @@ export function bindUI(backendWsUrl: string): void {
     if (reconnectWrap) reconnectWrap.classList.remove("active");
   }
 
-  function teardown(reason: string, kind: "ok" | "err" | "info" = "info", canReconnect = false): void {
+  function teardown(reason: string, kind: StatusKind = "info", canReconnect = false): void {
     // Invalidate any in-flight doConnect continuation (see connectGeneration).
     connectGeneration++;
     clearIceGraceTimer();

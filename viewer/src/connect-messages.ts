@@ -15,8 +15,7 @@
 // language (German on /, English on /en/).
 
 import { t, currentLang, type Lang } from "./i18n.js";
-
-export type StatusKind = "ok" | "err" | "info";
+import type { StatusKind } from "./status-kind.js";
 
 export interface JoinErrorMessage {
   text: string;
