@@ -104,7 +104,6 @@ interface UnattendedEvent {
     | "superseded"
     | "locked-out";
   deviceId?: string;
-  reason?: string;
   attempt?: number;
   after_ms?: number;
   /**

@@ -266,8 +266,6 @@ struct UnattendedEvent<'a> {
     device_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     viewer_info: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>,
     /// Set only on `needs-confirm`. The frontend echoes this back via
     /// `unattended_confirm` so the user's click routes to the right
     /// pending waiter (Sec M-1).
@@ -282,6 +280,15 @@ impl<'a> UnattendedEvent<'a> {
             ..Self::default()
         }
     }
+}
+
+/// The heartbeat's `Disconnected.reason` is raw tungstenite/rustls/
+/// backend text — diagnostic, not user-facing. It goes to the debug log;
+/// the webview only learns THAT the link dropped and renders its own
+/// German copy.
+fn disconnected_event(reason: &str) -> UnattendedEvent<'static> {
+    crate::dbg_log(&format!("[heartbeat] disconnected: {reason}"));
+    UnattendedEvent::kind("disconnected")
 }
 
 /// Start the persistent unattended WSS. Requires the device to be
@@ -885,13 +892,7 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                 );
             }
             HeartbeatEvent::Disconnected { reason } => {
-                let _ = app.emit(
-                    "unattended-event",
-                    UnattendedEvent {
-                        reason: Some(reason),
-                        ..UnattendedEvent::kind("disconnected")
-                    },
-                );
+                let _ = app.emit("unattended-event", disconnected_event(&reason));
             }
             HeartbeatEvent::Reconnecting { after, attempt } => {
                 let _ = app.emit(
@@ -1331,6 +1332,23 @@ mod tests {
     fn validate_backend_url_rejects_http_even_with_insecure_flag() {
         // The escape hatch widens the scheme to cleartext, not to non-WS.
         assert!(validate_backend_url("http://localhost:8080", true).is_err());
+    }
+
+    // ── disconnected event (F056) ─────────────────────────────────────
+    //
+    // heartbeat.rs pins `Disconnected.reason` as dbg_log-only, yet the
+    // forwarder handed it to the webview, which rendered raw English
+    // rustls/tungstenite/backend text in the German status line.
+
+    #[test]
+    fn disconnected_event_never_carries_the_raw_reason() {
+        let v = serde_json::to_value(disconnected_event(
+            "connect: TLS error: invalid peer certificate: UnknownIssuer",
+        ))
+        .expect("serialize");
+        assert_eq!(v["kind"], "disconnected");
+        assert!(v.get("reason").is_none());
+        assert!(!v.to_string().contains("UnknownIssuer"));
     }
 
     #[test]
