@@ -155,6 +155,10 @@ let active = false;
 // confirmId of the manual-confirm dialog currently on screen (null when
 // none) — lets a Rust-side "confirm-expired" dismiss exactly that dialog.
 let openConfirmId: number | null = null;
+// confirmId of a prompt the helper's bye withdrew: its dialog was closed
+// programmatically and the resulting `false` must NOT be sent as an answer
+// (see the bye branch) — the Rust waiter's own 60 s timeout closes it.
+let withdrawnConfirmId: number | null = null;
 
 // SDP/ICE buffering for the unattended relay path — same race as the
 // ad-hoc flow: the viewer sends its offer while start_streaming is
@@ -422,6 +426,10 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       void confirmDialog(UNATTENDED_CONFIRM_OPTIONS)
         .then((accepted) => {
           if (openConfirmId === id) openConfirmId = null;
+          if (withdrawnConfirmId === id) {
+            withdrawnConfirmId = null;
+            return;
+          }
           return invoke("unattended_confirm", { confirmId: id, accepted });
         })
         .catch(() => {});
@@ -480,12 +488,23 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
         } else if (p.kind === "ice" && p.candidate) {
           signalBuffer.ice(p.candidate as WireIceCandidate);
         } else if (p.kind === "bye") {
-          // keepSignaling keeps the heartbeat's OutboundSink installed.
-          // The full teardown nulled it, making the device one-shot:
-          // every later helper hit "kein aktiver Signaling-Kanal".
+          // keepSignaling: the heartbeat owns its OutboundSink and the
+          // full-teardown intent is shaped for the ad-hoc lifecycle
+          // (docs/footguns.md § Sharer Teardown).
           signalBuffer.reset();
           void invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
-          setStatusText("Helfer hat die Verbindung getrennt.");
+          if (openConfirmId !== null) {
+            // Pre-confirm bye (tab closed, pw-entry reap): the helper behind
+            // the open prompt is gone. Withdraw it WITHOUT answering — the
+            // backend routes pw-check-result by sharer socket, so a Rejected
+            // sent now could land on a newer helper's in-flight check.
+            withdrawnConfirmId = openConfirmId;
+            openConfirmId = null;
+            dismissConfirmDialog();
+            setStatusText("Zugriffsanfrage zurückgezogen — der Helfer hat abgebrochen.");
+          } else {
+            setStatusText("Helfer hat die Verbindung getrennt.");
+          }
         }
       }
       break;

@@ -97,6 +97,40 @@ describe("unattended.ts settings wiring", () => {
     expect(calls("disconnect_streaming")).toEqual([["disconnect_streaming", { keepSignaling: true }]]);
   });
 
+  it("routes the user's answer to the confirmId the prompt carried", async () => {
+    await emit({ kind: "needs-confirm", confirmId: 7 });
+    expect(document.getElementById("sharer-confirm-backdrop")).not.toBeNull();
+    dialogButton("Erlauben").click();
+    await flush();
+    expect(calls("unattended_confirm")).toEqual([
+      ["unattended_confirm", { confirmId: 7, accepted: true }],
+    ]);
+  });
+
+  // The backend synthesizes the bye when the helper gives up pre-confirm
+  // (tab closed, 2-minute pw-entry reap) precisely so the sharer's pending
+  // prompt does not stand for a gone viewer; the webview only ever closed it
+  // on the Rust-side 60 s timeout. Withdrawing must send NO answer: the
+  // backend routes pw-check-result by sharer socket, so a Rejected fired now
+  // could land on a newer helper's in-flight check.
+  it("withdraws the open access prompt on bye without answering it", async () => {
+    await emit({ kind: "needs-confirm", confirmId: 7 });
+    await emit({ kind: "relay", payload: { kind: "bye" } });
+    expect(document.getElementById("sharer-confirm-backdrop")).toBeNull();
+    expect(calls("unattended_confirm")).toHaveLength(0);
+    expect(byId("unattended-status").textContent).toContain("zurückgezogen");
+  });
+
+  it("still answers a prompt the user decides on after an unrelated bye", async () => {
+    await emit({ kind: "relay", payload: { kind: "bye" } });
+    await emit({ kind: "needs-confirm", confirmId: 8 });
+    dialogButton("Ablehnen").click();
+    await flush();
+    expect(calls("unattended_confirm")).toEqual([
+      ["unattended_confirm", { confirmId: 8, accepted: false }],
+    ]);
+  });
+
   it("unpairs without a teardown when nothing was streaming", async () => {
     byId<HTMLButtonElement>("unattended-unpair-btn").click();
     await flush();
