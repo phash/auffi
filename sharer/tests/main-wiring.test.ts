@@ -97,4 +97,103 @@ describe("main.ts ad-hoc wiring", () => {
     expect(calls("confirm_peer")).toHaveLength(1);
     expect(calls("start_streaming")).toHaveLength(1);
   });
+
+  it("shows the streaming controls once the accepted stream is live", async () => {
+    await startStream();
+    expect(byId("streaming-actions").classList.contains("visible")).toBe(true);
+    expect(byId("status").textContent).toBe("Streaming läuft.");
+  });
+
+  // Backend-synthesized bye: an unconfirmed viewer closed its tab while the
+  // request was up. The dialog closes, nothing is torn down, the code the
+  // user just read aloud stays valid and its countdown resumes.
+  it("dismisses a pending request on bye without releasing the code", async () => {
+    await joinPeer();
+    expect(byId("confirm").classList.contains("visible")).toBe(true);
+    await emit("relay", { payload: { kind: "bye" } });
+    expect(byId("confirm").classList.contains("visible")).toBe(false);
+    expect(calls("disconnect_streaming")).toHaveLength(0);
+    expect(byId("code").textContent).toBe("123456789");
+    expect(byId("code-expiry").textContent).toMatch(/^Gültig noch/);
+    expect(byId("new-code-btn").classList.contains("visible")).toBe(true);
+    expect(byId("status").textContent).toContain("Code bleibt gültig");
+  });
+
+  // Helper pressed Beenden mid-stream. The viewer keeps its lastCode for 30 s
+  // to offer "doch nochmal verbinden" (gh #71) — that only works if the
+  // sharer keeps its WS registration, i.e. keepSignaling.
+  it("ends a live stream on bye but keeps the code redeemable", async () => {
+    await startStream();
+    await emit("relay", { payload: { kind: "bye" } });
+    expect(calls("disconnect_streaming")).toEqual([["disconnect_streaming", { keepSignaling: true }]]);
+    expect(byId("streaming-actions").classList.contains("visible")).toBe(false);
+    expect(byId("code").textContent).toBe("123456789");
+    expect(byId("status").textContent).toBe("Helfer hat die Verbindung beendet.");
+    expect(byId("new-code-btn").classList.contains("visible")).toBe(true);
+  });
+
+  it("re-opens the request for the next helper joining on the kept code", async () => {
+    await startStream();
+    await emit("relay", { payload: { kind: "bye" } });
+    invokeMock.mockClear();
+    await emit("peer-joined", { ipPrefix: "91.xxx", country: "DE" });
+    expect(byId("confirm").classList.contains("visible")).toBe(true);
+    // The bye already tore the stream down — no second (swap) teardown.
+    expect(calls("disconnect_streaming")).toHaveLength(0);
+  });
+
+  // Only the signaling WS died (backend restart, pong timeout); media and
+  // remote input keep flowing P2P. Beenden must stay, "Neu verbinden" (a
+  // full teardown) must not be offered, the released code must go.
+  it("keeps Beenden when the signaling link dies mid-stream", async () => {
+    await startStream();
+    await emit("disconnected", { reason: "socket EOF" });
+    expect(byId("streaming-actions").classList.contains("visible")).toBe(true);
+    expect(byId("reconnect-btn-wrap").style.display).toBe("none");
+    expect(calls("disconnect_streaming")).toHaveLength(0);
+    expect(byId("code").textContent).toBe("— — —");
+    expect(byId("status").textContent).toContain("läuft weiter");
+    expect(byId("status").textContent).not.toContain("EOF");
+  });
+
+  it("offers Neu verbinden when the signaling link dies before a stream", async () => {
+    await joinPeer();
+    await emit("disconnected", { reason: "no pong for 31s" });
+    expect(byId("confirm").classList.contains("visible")).toBe(false);
+    expect(byId("reconnect-btn-wrap").style.display).toBe("block");
+    expect(byId("status").textContent).not.toContain("pong");
+  });
+
+  // ICE failed on a live stream: keepSignaling teardown whose
+  // streaming-stopped event the listener ignores — the controls, banners and
+  // relay label must be cleared here, and the still-valid code re-offered.
+  it("clears the session controls and re-offers Neuer Code after ICE loss", async () => {
+    await startStream();
+    await emit("connection-type", "relay");
+    await emit("input-paused-changed", { paused: true });
+    await emit("ice-state", "failed");
+    expect(calls("disconnect_streaming")).toEqual([["disconnect_streaming", { keepSignaling: true }]]);
+    expect(byId("streaming-actions").classList.contains("visible")).toBe(false);
+    expect(byId("pause-banner").classList.contains("visible")).toBe(false);
+    expect(byId("connection-type-info").textContent).toBe("");
+    expect(byId("new-code-btn").classList.contains("visible")).toBe(true);
+    expect(byId("code-expiry").textContent).toMatch(/^Gültig noch/);
+    expect(byId("status").textContent).toContain("Code bleibt gültig");
+  });
+
+  it("ignores a withdrawn request whose confirm_peer was still in flight", async () => {
+    await joinPeer();
+    let resolveConfirm: () => void = () => {};
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "confirm_peer") return new Promise<void>((r) => (resolveConfirm = r));
+      return Promise.resolve(INVOKE_RESULTS[cmd]);
+    });
+    byId<HTMLButtonElement>("accept").click();
+    await emit("relay", { payload: { kind: "bye" } });
+    resolveConfirm();
+    await flush();
+    // The helper left before the accept landed — no stream for nobody.
+    expect(calls("start_streaming")).toHaveLength(0);
+    expect(calls("list_monitors")).toHaveLength(0);
+  });
 });
