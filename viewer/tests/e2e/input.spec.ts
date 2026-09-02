@@ -272,13 +272,14 @@ test("viewer forwards pointer-move events to sharer over datachannel", async ({ 
   if (!box) throw new Error("video element has no bounding box");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 
-  // Poll until the mock-sharer logs a mouse-move event. The DataChannel is
-  // unreliable (maxRetransmits=0) so we move repeatedly if needed.
+  // Poll until the mock-sharer logs a mouse-move event. The input channel is
+  // ordered + reliable (protocol.md; data-channels.ts), so nothing is lost —
+  // the repeated moves only cover the rAF coalescing in InputCapture and the
+  // channel still settling after ICE, where a single move can land before
+  // the channel is open.
   await expect
     .poll(
       async () => {
-        // Re-trigger the pointer move so events keep flowing in case the first
-        // ones were dropped on the unreliable channel.
         await page.mouse.move(
           box.x + box.width / 2 + (Math.random() * 4 - 2),
           box.y + box.height / 2 + (Math.random() * 4 - 2),
