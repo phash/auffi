@@ -9,7 +9,6 @@ import {
   createSession,
   clearSessionCookie,
   readSessionCookie,
-  findSession,
   deleteSession,
   deleteAllSessionsForAccount,
 } from "./sessions.js";
@@ -236,11 +235,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       }
 
       const account = db
-        .prepare<
-          [string],
-          { id: number; password_hash: string; suspended_at: number | null }
-        >(
-          "SELECT id, password_hash, suspended_at FROM accounts WHERE email = ?",
+        .prepare<[string], { id: number; password_hash: string }>(
+          "SELECT id, password_hash FROM accounts WHERE email = ?",
         )
         .get(email);
 
@@ -264,11 +260,28 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       }
       recordAccountPwSuccess(db, account.id);
 
+      // The snapshot above predates the ~250 ms argon2 verify. An admin
+      // suspend or a password reset/change that landed meanwhile has
+      // already purged the account's sessions — deciding on the stale row
+      // would mint a fresh 30-day session right past that purge. Re-read
+      // and decide here, with no await between this read and createSession:
+      // better-sqlite3 is synchronous, so no other request can interleave.
+      const fresh = db
+        .prepare<[number], { password_hash: string; suspended_at: number | null }>(
+          "SELECT password_hash, suspended_at FROM accounts WHERE id = ?",
+        )
+        .get(account.id);
+      // The hash argon2 just verified is no longer the account's — the
+      // caller must log in with the new password. Not re-running argon2
+      // keeps the cost (and the timing profile) of a login constant.
+      if (!fresh || fresh.password_hash !== account.password_hash) {
+        return bad(reply, 401, "bad-credentials", "email or password incorrect");
+      }
       // Suspended accounts pass the password check but cannot proceed
       // (gh #41 acceptance criterion: suspended_at blocks login after
       // password verify). The response shape stays distinct from
       // bad-credentials so the UI can show a meaningful message.
-      if (account.suspended_at !== null) {
+      if (fresh.suspended_at !== null) {
         return bad(reply, 403, "account-suspended", "account is suspended");
       }
 
@@ -280,10 +293,10 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   // ── Logout ──────────────────────────────────────────────────────────
   app.post("/api/auth/logout", async (req: FastifyRequest, reply: FastifyReply) => {
     const cookie = readSessionCookie(req);
-    if (cookie) {
-      const sess = findSession(db, cookie);
-      if (sess) deleteSession(db, sess.tokenHash);
-    }
+    // Delete by hash directly rather than via findSession: that lookup
+    // refuses a suspended account's session, and logout must still drop
+    // the row (an unknown hash is a harmless no-op).
+    if (cookie) deleteSession(db, hashToken(cookie));
     clearSessionCookie(reply);
     return reply.status(200).send({ ok: true });
   });

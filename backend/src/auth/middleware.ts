@@ -24,7 +24,7 @@ declare module "fastify" {
  *
  *  - 401 if cookie missing
  *  - 401 if cookie value not in `sessions` or row is expired
- *  - 401 if the matching account is soft-deleted
+ *  - 401 if the owning account is suspended
  *  - otherwise: stamps `sessions.last_seen_at = now` and attaches
  *    `req.account = { id, tokenHash }`.
  */

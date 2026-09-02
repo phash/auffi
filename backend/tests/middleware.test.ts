@@ -121,6 +121,42 @@ describe("requireSession decorator", () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it("returns 401 while the owning account is suspended, and recovers on unsuspend", async () => {
+    // Suspension purges sessions once, but a session minted in the same
+    // instant (login racing the admin action) survives that purge — the
+    // per-request gate must refuse it, mirroring verifyBearerAuth (gh #47).
+    const c = await h.cookie();
+    h.db.prepare("UPDATE accounts SET suspended_at = ? WHERE id = 1").run(Date.now());
+    const suspended = await h.app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${c}` },
+    });
+    expect(suspended.statusCode).toBe(401);
+    expect(suspended.json().error).toBe("no-session");
+
+    h.db.prepare("UPDATE accounts SET suspended_at = NULL WHERE id = 1").run();
+    const restored = await h.app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${c}` },
+    });
+    expect(restored.statusCode).toBe(200);
+  });
+
+  it("logout deletes the session row even when the account is suspended", async () => {
+    const c = await h.cookie();
+    h.db.prepare("UPDATE accounts SET suspended_at = ? WHERE id = 1").run(Date.now());
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/logout",
+      headers: { cookie: `__Host-auffi_session=${c}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const rows = h.db.prepare("SELECT COUNT(*) AS c FROM sessions").get() as { c: number };
+    expect(rows.c).toBe(0);
+  });
+
   it("updates sessions.last_seen_at on every successful call", async () => {
     const c = await h.cookie();
     const before = h.db

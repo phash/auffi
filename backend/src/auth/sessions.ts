@@ -111,7 +111,8 @@ export function readSessionCookie(req: FastifyRequest): string | undefined {
 /**
  * Look up the session whose `token_hash` matches `sha256(cookieValue)`.
  * Returns `null` if the session is missing, expired, or the owning
- * account is soft-deleted.
+ * account is suspended. Account deletion needs no check here: accounts
+ * are hard-deleted and the FK cascade takes their sessions along.
  *
  * The returned `tokenHash` is the row's primary key — pass it to
  * [`deleteSession`] (e.g. on logout). The plaintext cookie value is
@@ -123,13 +124,16 @@ export function findSession(
 ): { tokenHash: string; accountId: number } | null {
   if (!cookieValue) return null;
   const tokenHash = hashToken(cookieValue);
-  // Kein Account-JOIN nötig: Konten werden hart gelöscht und der
-  // FK-Cascade nimmt die Sessions mit — eine gefundene Session gehört
-  // immer zu einem existierenden Konto.
+  // Suspension does NOT delete the account, and its one-shot session purge
+  // misses a session minted in the same instant (a login that entered
+  // argon2 just before the admin clicked). This JOIN is the persistent
+  // gate — the same one verifyBearerAuth applies to device tokens (gh #47).
   const row = db
     .prepare<[string, number], { account_id: number }>(
-      `SELECT account_id FROM sessions
-        WHERE token_hash = ? AND expires_at > ?`,
+      `SELECT s.account_id
+         FROM sessions s
+         JOIN accounts a ON a.id = s.account_id
+        WHERE s.token_hash = ? AND s.expires_at > ? AND a.suspended_at IS NULL`,
     )
     .get(tokenHash, Date.now());
   if (!row) return null;
