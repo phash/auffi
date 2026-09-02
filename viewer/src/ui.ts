@@ -894,8 +894,10 @@ export function bindUI(backendWsUrl: string): void {
         pwSubmit!.disabled = true;
         setStatus(t("status.checkingPassword"), "info");
         // Re-arm the backstop for the pw-check round-trip: a wrong-password /
-        // locked / confirmed response clears or replaces it.
-        armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
+        // locked / confirmed response clears or replaces it. The round-trip
+        // may include the remote user clicking Akzeptieren (autoAccept off),
+        // so it gets the confirm window, not the shorter media window.
+        armConnectTimeout(CONNECT_CONFIRM_TIMEOUT_MS);
         signaling?.sendPwAttempt(password);
         // Don't hide the toast yet — wrong-password may bring it
         // back. peer-confirmed (join resolves) will hide it.

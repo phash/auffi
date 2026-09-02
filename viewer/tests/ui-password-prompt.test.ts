@@ -42,6 +42,33 @@ describe("unattended password prompt", () => {
     expect(document.getElementById("pw-prompt-toast")!.classList.contains("active")).toBe(true);
   });
 
+  // With autoAccept=false the pw-check round-trip includes the remote user
+  // walking to the PC and clicking Akzeptieren — the same human step the
+  // ad-hoc path grants 60 s (the backend allows 2 min). Arming the 30 s media
+  // window here tore the viewer down while that click was still pending.
+  it("gives the pw-check round-trip the confirm window, not the media window", async () => {
+    vi.useFakeTimers();
+    try {
+      const { ws } = await startUiSession();
+      const { CONNECT_CONFIRM_TIMEOUT_MS, CONNECT_MEDIA_TIMEOUT_MS } = await import("../src/ui.js");
+      ws.fakeMessage({ type: "needs-password" });
+      const input = document.getElementById("pw-prompt-input") as HTMLInputElement;
+      input.value = "geheim";
+      pressEnter(input);
+      const status = document.getElementById("status")!;
+
+      vi.advanceTimersByTime(CONNECT_MEDIA_TIMEOUT_MS + 1);
+      expect(status.textContent).toContain("Passwort wird geprüft");
+      expect(document.getElementById("pw-prompt-toast")!.classList.contains("active")).toBe(true);
+
+      vi.advanceTimersByTime(CONNECT_CONFIRM_TIMEOUT_MS - CONNECT_MEDIA_TIMEOUT_MS);
+      expect(status.textContent?.toLowerCase()).toContain("bestätigt");
+      expect(document.getElementById("pw-prompt-toast")!.classList.contains("active")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("wrong-password re-opens the prompt and allows exactly one more attempt", async () => {
     const { ws } = await startUiSession();
     ws.fakeMessage({ type: "needs-password" });
