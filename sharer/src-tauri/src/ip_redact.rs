@@ -12,8 +12,10 @@
 //!
 //! `redact_ips_in_text` walks an arbitrary whitespace-tokenised string
 //! (e.g. an SDP ICE-candidate line) and rewrites any token that parses
-//! as `IpAddr`. mDNS `.local` hostnames don't parse as `IpAddr` so they
-//! pass through untouched — they're already anonymised by design.
+//! as `IpAddr`, or whose host does when the token is a URL / `ip:port`
+//! (`redact_ips_in_url` — TURN URLs like `turn:84.131.5.42:3478`). mDNS
+//! `.local` hostnames don't parse as `IpAddr` so they pass through
+//! untouched — they're already anonymised by design.
 
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -34,19 +36,62 @@ pub fn redact_ip_addr(ip: &IpAddr) -> String {
 
 /// Walk a whitespace-separated string (typical SDP / ICE candidate
 /// line) and redact every token that parses as an IPv4 or IPv6
-/// address. Non-IP tokens — including mDNS `.local` hostnames and bare
-/// port numbers — pass through unchanged.
+/// address, or that is a URL / `ip:port` with an IP-literal host.
+/// Other tokens — including mDNS `.local` hostnames and bare port
+/// numbers — pass through unchanged.
 pub fn redact_ips_in_text(text: &str) -> String {
     text.split(' ')
         .map(|token| {
             if let Ok(ip) = IpAddr::from_str(token) {
                 redact_ip_addr(&ip)
             } else {
-                token.to_string()
+                redact_ips_in_url(token)
             }
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Redact an IP-literal host inside a URL-shaped string: `scheme:host`,
+/// `scheme:host:port[?query]` (TURN/STUN URIs, RFC 7065), `scheme://host…`,
+/// or a bare `ip:port`. Bracketed IPv6 keeps its brackets. Anything whose
+/// host is not an IP literal — hostnames, plain words — is returned
+/// unchanged, so this is safe to run over every token of a log line.
+pub fn redact_ips_in_url(url: &str) -> String {
+    let Some((scheme, after_scheme)) = url.split_once(':') else {
+        return url.to_string();
+    };
+    // `1.2.3.4:5000` — no scheme, the "scheme" IS the host.
+    if let Ok(ip) = IpAddr::from_str(scheme) {
+        return format!("{}:{after_scheme}", redact_ip_addr(&ip));
+    }
+    let (authority_prefix, rest) = match after_scheme.strip_prefix("//") {
+        Some(r) => ("//", r),
+        None => ("", after_scheme),
+    };
+    let hostport_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (hostport, tail) = rest.split_at(hostport_end);
+    let (host, port_suffix) = if let Some(v6) = hostport.strip_prefix('[') {
+        match v6.split_once(']') {
+            Some((inner, after)) => (inner, after),
+            None => return url.to_string(),
+        }
+    } else {
+        match hostport.rsplit_once(':') {
+            Some((h, p)) => (h, &hostport[h.len()..h.len() + 1 + p.len()]),
+            None => (hostport, ""),
+        }
+    };
+    let Ok(ip) = IpAddr::from_str(host) else {
+        return url.to_string();
+    };
+    let redacted = redact_ip_addr(&ip);
+    let host_out = if hostport.starts_with('[') {
+        format!("[{redacted}]")
+    } else {
+        redacted
+    };
+    format!("{scheme}:{authority_prefix}{host_out}{port_suffix}{tail}")
 }
 
 #[cfg(test)]
@@ -115,6 +160,49 @@ mod tests {
     fn pure_text_passes_through_unchanged() {
         let s = "end-of-candidates";
         assert_eq!(redact_ips_in_text(s), s);
+    }
+
+    // turn_config.rs logs TURN URLs through the redactor and promises
+    // relay addresses never reach the diagnostic log — but a
+    // `scheme:host:port` token does not parse as an IpAddr, so an
+    // IP-literal TURN_HOSTS config (realistic for self-hosters) leaked
+    // the full relay address.
+    #[test]
+    fn turn_url_with_ipv4_literal_host_is_redacted() {
+        assert_eq!(
+            redact_ips_in_url("turn:84.131.5.42:3478?transport=udp"),
+            "turn:84.xxx:3478?transport=udp"
+        );
+        assert_eq!(redact_ips_in_url("stun:84.131.5.42"), "stun:84.xxx");
+    }
+
+    #[test]
+    fn turn_url_with_bracketed_ipv6_host_is_redacted() {
+        assert_eq!(
+            redact_ips_in_url("turns:[2a01:4f8:abcd:1234::1]:5349"),
+            "turns:[2a01:4f8:xxx]:5349"
+        );
+    }
+
+    #[test]
+    fn turn_url_with_hostname_passes_through_unchanged() {
+        assert_eq!(
+            redact_ips_in_url("turns:t.auffi.app:5349?transport=tcp"),
+            "turns:t.auffi.app:5349?transport=tcp"
+        );
+        assert_eq!(
+            redact_ips_in_url("https://auffi.app/signal"),
+            "https://auffi.app/signal"
+        );
+        assert_eq!(redact_ips_in_url("not a url"), "not a url");
+    }
+
+    #[test]
+    fn text_tokens_shaped_like_urls_or_ip_port_are_redacted_too() {
+        assert_eq!(
+            redact_ips_in_text("urls turn:84.131.5.42:3478 and 10.0.0.7:5000"),
+            "urls turn:84.xxx:3478 and 10.xxx:5000"
+        );
     }
 
     #[test]
