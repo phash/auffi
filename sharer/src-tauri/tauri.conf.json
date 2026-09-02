@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: https://auffi.app wss://auffi.app; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'; worker-src 'self'; media-src 'self'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'; worker-src 'self'; media-src 'self'"
     }
   },
   "bundle": {
