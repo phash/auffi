@@ -145,6 +145,39 @@ describe("runPurge", () => {
     expect(rest).toEqual(["c", "d"]);
   });
 
+  // SQLite's SQLITE_MAX_VARIABLE_NUMBER is 32766. The audit cascade bound
+  // one variable per purged feedback id, so once a backlog (scheduler
+  // outage, spam wave) crossed that, `prepare` threw before the feedback
+  // DELETE ran — nothing purged, onError every 6 h, the disclosed retention
+  // silently unenforced until someone intervened by hand.
+  it("purges a feedback backlog far beyond the SQL-variable limit in one pass, cascade included", () => {
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, created_at) VALUES (11, 'bulk@test', 'x', ?)",
+    ).run(now);
+    const insertFeedback = db.prepare(
+      `INSERT INTO feedback (id, account_id, source, category, rating, body, created_at, resolved_at)
+       VALUES (?, 11, 'dashboard', 'other', 3, 'stale', ?, ?)`,
+    );
+    const insertAudit = db.prepare(
+      "INSERT INTO audit_log (admin_id, action, target_type, target_id, created_at) VALUES (1, 'feedback.resolve', 'feedback', ?, ?)",
+    );
+    const N = 33_000;
+    db.transaction(() => {
+      for (let i = 1; i <= N; i++) {
+        insertFeedback.run(i, now - 400 * DAY, now - 400 * DAY);
+        if (i % 1000 === 0) insertAudit.run(String(i), now - 10 * DAY);
+      }
+    })();
+
+    const rep = runPurge(db, now);
+    expect(rep.feedback).toBe(N);
+    expect(rep.feedbackAuditCascade).toBe(N / 1000);
+    expect(db.prepare<[], { c: number }>("SELECT COUNT(*) AS c FROM feedback").get()!.c).toBe(0);
+    expect(
+      db.prepare<[], { c: number }>("SELECT COUNT(*) AS c FROM audit_log WHERE target_type = 'feedback'").get()!.c,
+    ).toBe(0);
+  });
+
   // Signup inserts the account row with email_verified_at = NULL and the
   // verify mail promises "ohne Bestätigung wird das Konto automatisch
   // gelöscht" — nothing implemented that, so a typo-signup (or a stranger

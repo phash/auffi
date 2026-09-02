@@ -165,39 +165,37 @@ export function runPurge(
   //     (these are stale-and-never-actioned; admin has had 2 years
   //     to look at them, time to let go).
   // Both predicates are OR'd so a single DELETE covers them.
-  // Capture the deleted IDs BEFORE the DELETE so the matching audit-log
-  // entries can be swept too — otherwise `feedback.resolve`/`feedback.
-  // reply`/`feedback.delete` rows would keep the full body snapshot in
-  // before_json/after_json for up to `auditLogMs` (1 y) AFTER the
-  // feedback row itself disappeared. That stretched effective retention
-  // past the disclosed feedback windows (DSGVO-M2, code-review
-  // 2026-05-17). Cascade-purge keeps the disclosed promise honest.
-  const feedbackToDelete = db
-    .prepare<[number, number], { id: number }>(
-      `SELECT id FROM feedback
-        WHERE (resolved_at IS NOT NULL AND resolved_at < ?)
-           OR (resolved_at IS NULL     AND created_at  < ?)`,
-    )
-    .all(now - retention.feedbackResolvedMs, now - retention.feedbackOpenMaxMs);
-  let feedbackAuditPurged = 0;
-  if (feedbackToDelete.length > 0) {
-    const placeholders = feedbackToDelete.map(() => "?").join(",");
-    const ids = feedbackToDelete.map((r) => String(r.id));
-    feedbackAuditPurged = db
-      .prepare(
-        `DELETE FROM audit_log
-          WHERE target_type = 'feedback'
-            AND target_id IN (${placeholders})`,
-      )
-      .run(...ids).changes;
-  }
-  const oldFeedback = db
-    .prepare(
-      `DELETE FROM feedback
-        WHERE (resolved_at IS NOT NULL AND resolved_at < ?)
-           OR (resolved_at IS NULL     AND created_at  < ?)`,
-    )
-    .run(now - retention.feedbackResolvedMs, now - retention.feedbackOpenMaxMs);
+  // Sweep the matching audit-log entries in the same transaction BEFORE
+  // the feedback DELETE — otherwise `feedback.resolve`/`feedback.reply`/
+  // `feedback.delete` rows would keep the full body snapshot in
+  // before_json/after_json for up to `auditLogMs` (1 y) AFTER the feedback
+  // row itself disappeared, stretching effective retention past the
+  // disclosed windows (DSGVO-M2, code-review 2026-05-17). The cascade
+  // selects the ids with a subquery rather than binding one variable per
+  // row: SQLITE_MAX_VARIABLE_NUMBER (32766) would otherwise make the
+  // prepare throw on a large backlog and wedge the purge permanently.
+  const stalePredicate = `
+        (resolved_at IS NOT NULL AND resolved_at < ?)
+     OR (resolved_at IS NULL     AND created_at  < ?)`;
+  const purgeFeedback = db.transaction(
+    (resolvedCutoff: number, openCutoff: number): { audit: number; feedback: number } => {
+      const audit = db
+        .prepare(
+          `DELETE FROM audit_log
+            WHERE target_type = 'feedback'
+              AND target_id IN (SELECT CAST(id AS TEXT) FROM feedback WHERE ${stalePredicate})`,
+        )
+        .run(resolvedCutoff, openCutoff).changes;
+      const feedback = db
+        .prepare(`DELETE FROM feedback WHERE ${stalePredicate}`)
+        .run(resolvedCutoff, openCutoff).changes;
+      return { audit, feedback };
+    },
+  );
+  const oldFeedback = purgeFeedback(
+    now - retention.feedbackResolvedMs,
+    now - retention.feedbackOpenMaxMs,
+  );
 
   // Abandoned signups (see PurgeRetention.unverifiedAccountsMs). The FK
   // cascade takes the account's token rows with it, but the account-lockout
@@ -228,8 +226,8 @@ export function runPurge(
     auditLog: oldAuditLog.changes,
     codeEvents: oldCodeEvents.changes,
     rateLimitBuckets: expiredBuckets.changes,
-    feedback: oldFeedback.changes,
-    feedbackAuditCascade: feedbackAuditPurged,
+    feedback: oldFeedback.feedback,
+    feedbackAuditCascade: oldFeedback.audit,
     unverifiedAccounts: staleUnverified,
   };
 }
