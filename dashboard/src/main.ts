@@ -6,13 +6,20 @@
 // below keeps nav, admin route-gate, and feedback FAB in sync.
 
 import {
+  isAdminGatedPath,
   updateActiveNav,
   visibleRoutes,
 } from "./admin-nav.js";
 import { BASE_PATH, createRouter, type Route } from "./router.js";
 import { installFeedbackFab } from "./components/feedback-fab.js";
 import { mountLogoutButton } from "./logout-button.js";
-import { isAdmin, onSessionChange, refreshSession } from "./session.js";
+import {
+  isAdmin,
+  isLoggedIn,
+  onSessionChange,
+  refreshSession,
+  sessionResolved,
+} from "./session.js";
 import { renderAccount } from "./views/account.js";
 import { renderAddDevice } from "./views/add-device.js";
 import { renderAdmin403 } from "./views/admin-403.js";
@@ -113,7 +120,8 @@ if (!root) {
 function bootstrap(rootEl: HTMLElement): void {
   // First render happens with the anonymous default (isAdmin=false) so
   // even a hanging backend never blocks the static /login//signup
-  // pages; the session probe below corrects the state when it lands.
+  // pages; admin routes show a placeholder until the session probe
+  // below lands and the onSessionChange handler re-renders them.
   const nav = buildNav(routes, isAdmin());
 
   // Mount "Abmelden" in the topbar-meta row (right side, next to the viewer
@@ -124,6 +132,8 @@ function bootstrap(rootEl: HTMLElement): void {
 
   const router = createRouter(rootEl, routes, undefined, undefined, {
     isAdmin,
+    isLoggedIn,
+    isSessionResolved: sessionResolved,
     renderAdminForbidden: renderAdmin403,
   });
   router.start();
@@ -139,14 +149,17 @@ function bootstrap(rootEl: HTMLElement): void {
   // Keep nav, admin route-gate, and feedback FAB in sync with the
   // session. Fires on every auth transition (boot probe landing,
   // login, logout, …) — the router re-renders only when the admin
-  // flag actually flipped (route gating depends on nothing else), so
-  // a plain logged-in probe doesn't double-fetch the current view.
+  // flag actually flipped or the current route is admin-gated (its
+  // placeholder / 403 / redirect depends on the probe), so a plain
+  // logged-in probe doesn't double-fetch a non-admin view.
   let wasAdmin = isAdmin();
   onSessionChange((session) => {
     buildNav(routes, session.admin);
     updateActiveNav(nav, window.location.pathname);
     installFeedbackFab(session.loggedIn);
-    if (session.admin !== wasAdmin) router.refresh();
+    if (session.admin !== wasAdmin || isAdminGatedPath(routes, window.location.pathname)) {
+      router.refresh();
+    }
     wasAdmin = session.admin;
   });
   void refreshSession();

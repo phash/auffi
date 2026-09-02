@@ -235,6 +235,102 @@ describe("admin-only route gating (gh #53)", () => {
     r.stop();
   });
 
+  // An expired admin session must land on /login, not on a 403 that tells
+  // the operator "melde dich beim Betreiber" — the operator IS the admin.
+  it("redirects a logged-out visitor of an adminOnly route to /login instead of the 403", () => {
+    let rendered = "";
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/admin/feedback",
+        adminOnly: true,
+        render: () => {
+          rendered = "feedback";
+        },
+      },
+      {
+        pattern: "/login",
+        render: () => {
+          rendered = "login";
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/admin/feedback");
+    const depth = window.history.length;
+    const r = createRouter(root, rs, undefined, undefined, {
+      isAdmin: () => false,
+      isLoggedIn: () => false,
+      isSessionResolved: () => true,
+      renderAdminForbidden: () => {
+        rendered = "forbidden";
+      },
+    });
+    r.start();
+    expect(rendered).toBe("login");
+    expect(window.location.pathname).toBe(BASE_PATH + "/login");
+    // replaceState, not pushState — Back must not bounce into the gate again.
+    expect(window.history.length).toBe(depth);
+    r.stop();
+  });
+
+  it("renders the 403 only for a logged-in non-admin", () => {
+    let rendered = "";
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/admin/feedback",
+        adminOnly: true,
+        render: () => {
+          rendered = "feedback";
+        },
+      },
+      { pattern: "/login", render: () => undefined },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/admin/feedback");
+    const r = createRouter(root, rs, undefined, undefined, {
+      isAdmin: () => false,
+      isLoggedIn: () => true,
+      isSessionResolved: () => true,
+      renderAdminForbidden: () => {
+        rendered = "forbidden";
+      },
+    });
+    r.start();
+    expect(rendered).toBe("forbidden");
+    expect(window.location.pathname).toBe(BASE_PATH + "/admin/feedback");
+    r.stop();
+  });
+
+  it("renders neither the view nor the 403 while the session probe is pending", () => {
+    let rendered = "";
+    const root = document.createElement("div");
+    const rs: Route[] = [
+      {
+        pattern: "/admin/feedback",
+        adminOnly: true,
+        render: () => {
+          rendered = "feedback";
+        },
+      },
+    ];
+    window.history.pushState({}, "", BASE_PATH + "/admin/feedback");
+    const r = createRouter(root, rs, undefined, undefined, {
+      isAdmin: () => false,
+      isLoggedIn: () => false,
+      isSessionResolved: () => false,
+      renderAdminForbidden: () => {
+        rendered = "forbidden";
+      },
+    });
+    r.start();
+    expect(rendered).toBe("");
+    expect(root.textContent).toContain("Lade");
+    // No heading in the placeholder — focusNewView must not grab focus for a
+    // page that is about to be replaced by the real view.
+    expect(root.querySelector("h1")).toBeNull();
+    r.stop();
+  });
+
   it("refresh() re-renders the current route without pushing history", () => {
     let renders = 0;
     const root = document.createElement("div");

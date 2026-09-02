@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { visibleRoutes, updateActiveNav } from "../src/admin-nav.js";
-import type { Route } from "../src/router.js";
+import { isAdminGatedPath, visibleRoutes, updateActiveNav } from "../src/admin-nav.js";
+import { BASE_PATH, type Route } from "../src/router.js";
 
 const noop = (): void => undefined;
 
@@ -29,6 +29,19 @@ describe("visibleRoutes", () => {
     const v = visibleRoutes(ROUTES, true);
     expect(v.find((r) => r.pattern === "/login")).toBeUndefined();
     expect(v.find((r) => r.pattern === "*")).toBeUndefined();
+  });
+});
+
+describe("isAdminGatedPath", () => {
+  it("is true for a pathname that resolves to an adminOnly route", () => {
+    expect(isAdminGatedPath(ROUTES, BASE_PATH + "/admin/feedback")).toBe(true);
+    expect(isAdminGatedPath(ROUTES, BASE_PATH + "/admin/stats/")).toBe(true);
+  });
+
+  it("is false for public routes, the fallback and paths outside the base", () => {
+    expect(isAdminGatedPath(ROUTES, BASE_PATH + "/devices")).toBe(false);
+    expect(isAdminGatedPath(ROUTES, BASE_PATH + "/nope")).toBe(false);
+    expect(isAdminGatedPath(ROUTES, "/")).toBe(false);
   });
 });
 

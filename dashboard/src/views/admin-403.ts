@@ -1,9 +1,10 @@
 // gh #53 — "Du bist kein Admin"-Seite.
 //
-// Wird vom Router substituiert, wenn eine `adminOnly: true`-Route
-// ohne aktive Admin-Session aufgerufen wird (direkt-navigiert via URL,
-// nicht via Nav-Link — die admin-Nav-Links werden für non-Admins
-// erst gar nicht aufgebaut). Backend bleibt die echte Grenze:
+// Wird vom Router substituiert, wenn eine `adminOnly: true`-Route mit
+// eingeloggter, aber nicht-Admin-Session aufgerufen wird (direkt-
+// navigiert via URL, nicht via Nav-Link — die admin-Nav-Links werden
+// für non-Admins erst gar nicht aufgebaut). Eine ausgeloggte Session
+// landet stattdessen auf /login. Backend bleibt die echte Grenze:
 // jedes /api/admin/*-Endpoint hat `requireAdmin` als preHandler.
 
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";

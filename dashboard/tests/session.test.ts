@@ -6,6 +6,7 @@ import {
   isLoggedIn,
   onSessionChange,
   refreshSession,
+  sessionResolved,
   type SessionState,
 } from "../src/session.js";
 
@@ -34,9 +35,29 @@ afterEach(() => {
 });
 
 describe("session", () => {
-  it("starts anonymous (logged-out, non-admin)", () => {
+  it("starts anonymous (logged-out, non-admin) and unresolved", () => {
     expect(isLoggedIn()).toBe(false);
     expect(isAdmin()).toBe(false);
+    expect(sessionResolved()).toBe(false);
+  });
+
+  it("notifies listeners on the first (resolving) probe even when the state stays anonymous", async () => {
+    // The router's admin gate renders a placeholder until the boot probe
+    // lands; a 401 boot probe changes nothing state-wise but must still
+    // wake the listeners so the gate can swap the placeholder for /login.
+    const seen: SessionState[] = [];
+    onSessionChange((s) => seen.push(s));
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ error: "unauthorized", message: "x" }, 401),
+      ) as unknown as typeof fetch,
+    });
+    await refreshSession();
+    expect(seen).toEqual([{ loggedIn: false, admin: false }]);
+    expect(sessionResolved()).toBe(true);
+    await refreshSession(); // resolved + unchanged: silent
+    expect(seen).toHaveLength(1);
   });
 
   it("refreshSession caches a logged-in admin probe", async () => {
@@ -76,16 +97,17 @@ describe("session", () => {
     expect(await refreshSession()).toEqual({ loggedIn: false, admin: false });
   });
 
-  it("notifies listeners only when the probed state actually changes", async () => {
-    const seen: SessionState[] = [];
-    onSessionChange((s) => seen.push(s));
-
+  it("after the first probe, notifies listeners only when the probed state actually changes", async () => {
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async () =>
         jsonResponse({ error: "unauthorized", message: "x" }, 401),
       ) as unknown as typeof fetch,
     });
+    await refreshSession(); // boot probe resolves anonymous
+
+    const seen: SessionState[] = [];
+    onSessionChange((s) => seen.push(s));
     await refreshSession(); // anonymous → anonymous: no event
     expect(seen).toEqual([]);
 

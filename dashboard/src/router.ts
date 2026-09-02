@@ -78,10 +78,11 @@ export interface Route {
   navLabel?: string;
   /**
    * Mark routes that require admin privileges. When set, the router
-   * substitutes the admin-403 view if `isAdmin()` returns false at
-   * render-time, and `buildNav` hides the link altogether. This is
-   * UX-only — the backend still enforces with `requireAdmin` on every
-   * admin endpoint (gh #53).
+   * gates the route at render-time (see `CreateRouterOptions`): a
+   * placeholder while the session probe is pending, /login for a
+   * logged-out visitor, the admin-403 view for a logged-in non-admin.
+   * `buildNav` hides the link altogether. This is UX-only — the backend
+   * still enforces with `requireAdmin` on every admin endpoint (gh #53).
    */
   adminOnly?: boolean;
   render: RouteRenderer;
@@ -175,13 +176,46 @@ export interface CreateRouterOptions {
    */
   isAdmin?: () => boolean;
   /**
+   * Provider for the login state. When given, an adminOnly route visited
+   * while logged out is redirected to /login (replaceState) instead of
+   * showing the 403 — an expired admin session is not a "kein Admin"
+   * case. When omitted, the gate is the plain `isAdmin()` boolean.
+   */
+  isLoggedIn?: () => boolean;
+  /**
+   * Whether the session probe has answered yet. While it returns false an
+   * adminOnly route renders a neutral placeholder — the anonymous default
+   * before the probe is not a verdict, and rendering the 403 on it flashes
+   * a wrong page at a real admin on every hard reload.
+   */
+  isSessionResolved?: () => boolean;
+  /**
    * Renderer for the 403 "kein Admin"-Seite. Substituted in place of
-   * the matched route's renderer when `adminOnly` AND `!isAdmin()`.
+   * the matched route's renderer when `adminOnly` AND `!isAdmin()`
+   * (and, when `isLoggedIn` is given, the visitor is logged in).
    * When omitted, the route renders normally and the backend's
    * `requireAdmin` is the only gate (returning a friendly inline 403
    * from the view itself).
    */
   renderAdminForbidden?: RouteRenderer;
+}
+
+type AdminGate = "allow" | "pending" | "login" | "forbidden";
+
+function evaluateAdminGate(route: Route, options: CreateRouterOptions): AdminGate {
+  if (route.adminOnly !== true || options.isAdmin === undefined) return "allow";
+  if (options.isSessionResolved !== undefined && !options.isSessionResolved()) return "pending";
+  if (options.isLoggedIn !== undefined && !options.isLoggedIn()) return "login";
+  return options.isAdmin() ? "allow" : "forbidden";
+}
+
+function renderPendingPlaceholder(container: HTMLElement): void {
+  // Deliberately no heading: focusNewView would move focus onto it and the
+  // real view (or /login) replaces this within one round-trip.
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = "Lade …";
+  container.appendChild(p);
 }
 
 export function createRouter(
@@ -225,6 +259,14 @@ export function createRouter(
     runActiveCleanup();
     const path = pathUnderBase(location.pathname);
     const match = matchRoute(routes, path);
+    const gate = match ? evaluateAdminGate(match.route, options) : "allow";
+    if (gate === "login") {
+      // replaceState, not pushState: Back must not land on the gated URL
+      // and bounce straight back here.
+      history.replaceState({}, "", BASE_PATH + "/login");
+      render();
+      return;
+    }
     // Each render gets its own container which we swap into `root`,
     // detaching the previous render's container. Views do async work
     // (fetch → replaceChildren(root, …)) AFTER their synchronous return;
@@ -248,19 +290,19 @@ export function createRouter(
       params: match.params,
       query: new URLSearchParams(location.search),
     };
-    // Admin-gate: when the matched route is admin-only and the
-    // current state isn't admin, render the friendly 403 view instead
-    // of the route's normal renderer. Backend still enforces with
-    // requireAdmin so this branch is purely UX.
-    const useForbidden =
-      match.route.adminOnly === true &&
-      options.isAdmin !== undefined &&
-      !options.isAdmin();
-    const cleanup =
-      useForbidden && options.renderAdminForbidden
-        ? options.renderAdminForbidden(container, ctx)
-        : match.route.render(container, ctx);
-    activeCleanup = typeof cleanup === "function" ? cleanup : null;
+    // Admin-gate: a pending probe gets a placeholder, a logged-in
+    // non-admin the friendly 403 view instead of the route's normal
+    // renderer (the logged-out case was redirected above). Backend still
+    // enforces with requireAdmin so this branch is purely UX.
+    if (gate === "pending") {
+      renderPendingPlaceholder(container);
+    } else {
+      const cleanup =
+        gate === "forbidden" && options.renderAdminForbidden
+          ? options.renderAdminForbidden(container, ctx)
+          : match.route.render(container, ctx);
+      activeCleanup = typeof cleanup === "function" ? cleanup : null;
+    }
     focusNewView();
     // Notify subscribers (e.g. nav active-state highlighter) that the
     // page just (re-)rendered. Custom event keeps the router decoupled

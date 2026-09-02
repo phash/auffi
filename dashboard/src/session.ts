@@ -22,6 +22,9 @@ export interface SessionState {
 const ANONYMOUS: SessionState = { loggedIn: false, admin: false };
 
 let current: SessionState = ANONYMOUS;
+// False until the first probe has answered. Before that, "anonymous" is a
+// placeholder, not a fact — the router's admin gate must not treat it as one.
+let resolved = false;
 
 type Listener = (state: SessionState) => void;
 const listeners = new Set<Listener>();
@@ -34,11 +37,18 @@ export function isAdmin(): boolean {
   return current.admin;
 }
 
+/** Whether at least one `refreshSession()` probe has answered yet. */
+export function sessionResolved(): boolean {
+  return resolved;
+}
+
 /**
- * Subscribe to session-state transitions. The callback fires only when
- * a `refreshSession()` probe actually changes the cached state (so a
- * re-probe confirming the status quo stays silent). Returns an
- * unsubscribe function.
+ * Subscribe to session-state transitions. The callback fires when a
+ * `refreshSession()` probe changes the cached state, plus once when the
+ * very first probe answers even if the state stays anonymous — a 401 boot
+ * probe changes nothing, but gates that waited for the probe (the admin
+ * route-gate's placeholder) still have to re-evaluate. A later re-probe
+ * confirming the status quo stays silent. Returns an unsubscribe function.
  */
 export function onSessionChange(listener: Listener): () => void {
   listeners.add(listener);
@@ -55,17 +65,19 @@ export async function refreshSession(): Promise<SessionState> {
   const next: SessionState = me.ok
     ? { loggedIn: true, admin: me.data.admin === true }
     : ANONYMOUS;
-  if (next.loggedIn !== current.loggedIn || next.admin !== current.admin) {
-    current = next;
+  const changed =
+    !resolved || next.loggedIn !== current.loggedIn || next.admin !== current.admin;
+  current = next;
+  resolved = true;
+  if (changed) {
     for (const listener of listeners) listener(next);
-  } else {
-    current = next;
   }
   return next;
 }
 
-/** Test seam — reset to the anonymous boot state and drop listeners. */
+/** Test seam — reset to the unresolved anonymous boot state and drop listeners. */
 export function _resetSessionForTests(): void {
   current = ANONYMOUS;
+  resolved = false;
   listeners.clear();
 }

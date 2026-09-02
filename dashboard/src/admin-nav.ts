@@ -1,17 +1,19 @@
 // gh #53 — Admin-Nav-Gate.
 //
-// Zwei kleine Pure-Helper, die main.ts orchestriert:
+// Drei kleine Pure-Helper, die main.ts orchestriert:
 //   - `visibleRoutes`: filtert Admin-Only-Routes raus wenn der User
 //     kein Admin ist. Backend gated ohnehin mit requireAdmin, das hier
 //     ist reines UX (Link gar nicht erst zeigen).
 //   - `updateActiveNav`: setzt `.active` + `aria-current="page"` auf
 //     den Nav-Link, dessen `href` der aktuellen URL entspricht.
+//   - `isAdminGatedPath`: ob die aktuelle URL auf eine adminOnly-Route
+//     zeigt — main.ts re-rendert nach dem Session-Probe nur dann.
 //
 // Backend-Enforcement (`requireAdmin` in den Routes) bleibt die echte
 // Sicherheitsgrenze — diese Helpers verhindern nur, dass ein
 // non-Admin nutzlose UI sieht.
 
-import type { Route } from "./router.js";
+import { matchRoute, pathUnderBase, type Route } from "./router.js";
 
 /**
  * Filter the route table down to nav-eligible routes for the given
@@ -25,6 +27,16 @@ export function visibleRoutes(routes: Route[], isAdmin: boolean): Route[] {
     if (r.adminOnly && !isAdmin) return false;
     return true;
   });
+}
+
+/**
+ * Whether `pathname` (full, incl. BASE_PATH) resolves to a route flagged
+ * `adminOnly`. The fallback route and paths outside the base are never
+ * gated.
+ */
+export function isAdminGatedPath(routes: Route[], pathname: string): boolean {
+  const match = matchRoute(routes, pathUnderBase(pathname));
+  return match?.route.adminOnly === true;
 }
 
 /**
