@@ -65,7 +65,7 @@ export function buildAuthMailer(cfg: MailerConfig): AuthMailer {
  * `AuthMailer` so a stub transport for one flow can be swapped without
  * touching the other.
  */
-export function buildAccountMailer(cfg: MailerConfig): AccountMailer {
+function buildAccountMailer(cfg: MailerConfig): AccountMailer {
   const base = cfg.dashboardUrl.replace(/\/+$/, "");
   return {
     async sendEmailChangeVerification(newEmail, token) {

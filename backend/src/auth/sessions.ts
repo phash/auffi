@@ -21,7 +21,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * over (e.g. a future static-assets host on `*.auffi.app` cannot
  * forge a session cookie that the dashboard will accept).
  */
-export const SESSION_COOKIE = "__Host-auffi_session";
+const SESSION_COOKIE = "__Host-auffi_session";
 
 /**
  * Insert a new session row for `account_id`, set the cookie on `reply`,

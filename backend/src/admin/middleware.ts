@@ -14,7 +14,7 @@ import { redactIp } from "../lib/redact-ip.js";
  * Use as `{ preHandler: [app.requireSession, app.requireAdmin] }` on every
  * /api/admin/* route.
  */
-export function makeRequireAdmin(db: Db) {
+function makeRequireAdmin(db: Db) {
   return async function requireAdmin(req: FastifyRequest, reply: FastifyReply) {
     if (!req.account) {
       return reply.status(401).send({ error: "no-session", message: "authentication required" });

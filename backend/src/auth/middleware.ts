@@ -28,7 +28,7 @@ declare module "fastify" {
  *  - otherwise: stamps `sessions.last_seen_at = now` and attaches
  *    `req.account = { id, tokenHash }`.
  */
-export function makeRequireSession(db: Db) {
+function makeRequireSession(db: Db) {
   return async function requireSession(req: FastifyRequest, reply: FastifyReply) {
     const cookie = readSessionCookie(req);
     if (!cookie) {
