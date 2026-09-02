@@ -48,10 +48,15 @@ the browser's `RTCIceCandidateInit`. Note the wire key is `sdpMLineIndex`
 (capital L); the sharer webview re-maps it to the Tauri invoke key
 `sdpMlineIndex` (see `sharer/src/signaling-buffer.ts`).
 
-**Hello (smoke-test / keepalive):**
+**Hello (opaque smoke-test probe — NOT a keepalive):**
 ```json
 { "type": "relay", "payload": { "kind": "hello", "ts": 1715000000000 } }
 ```
+`hello` is allow-listed by the backend's `RELAY_KINDS` and relayed like any
+other payload, but no production client emits it and both receivers ignore
+it — backend tests use it as the neutral relay payload. Nothing on the
+signaling WebSocket keeps a connection alive at the application layer; liveness
+comes from the WS close / ICE state, not from this frame.
 
 **Bye (courteous teardown):**
 ```json
