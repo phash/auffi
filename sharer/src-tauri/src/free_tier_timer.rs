@@ -74,15 +74,6 @@ where
     TimerHandles { warning, cutoff }
 }
 
-/// Pure helper: produce the durations that would be used for warning and cutoff.
-///
-/// Extracted so unit tests can verify the timing logic without spawning actual
-/// async tasks.
-#[cfg(test)]
-pub fn timer_durations(cfg: &TimerConfig) -> (Duration, Duration) {
-    (cfg.warning, cfg.cutoff)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,15 +90,56 @@ mod tests {
         assert_eq!(cfg.cutoff, Duration::from_secs(10 * 60));
     }
 
+    // The previous test here read `cfg.warning` back through a test-only
+    // getter — it pinned struct field assignment, not that a timer fires.
+    // These drive the real tasks on tauri's runtime with short durations
+    // and observe the callbacks through a std channel.
+
     #[test]
-    fn custom_config_overrides_durations() {
-        let cfg = TimerConfig {
-            warning: Duration::from_secs(30),
-            cutoff: Duration::from_secs(60),
-        };
-        let (w, c) = timer_durations(&cfg);
-        assert_eq!(w, Duration::from_secs(30));
-        assert_eq!(c, Duration::from_secs(60));
+    fn warning_fires_before_cutoff_and_both_fire() {
+        let (tx, rx) = std::sync::mpsc::channel::<&'static str>();
+        let tx_cutoff = tx.clone();
+        let handles = start(
+            TimerConfig {
+                warning: Duration::from_millis(20),
+                cutoff: Duration::from_millis(120),
+            },
+            move || {
+                let _ = tx.send("warning");
+            },
+            move || {
+                let _ = tx_cutoff.send("cutoff");
+            },
+        );
+        let deadline = Duration::from_secs(5);
+        assert_eq!(rx.recv_timeout(deadline).expect("warning fires"), "warning");
+        assert_eq!(rx.recv_timeout(deadline).expect("cutoff fires"), "cutoff");
+        handles.cancel();
+    }
+
+    #[test]
+    fn cancel_stops_both_timers_before_they_fire() {
+        // gh #63: a cutoff surviving the session end would kill the NEXT
+        // session's stream.
+        let (tx, rx) = std::sync::mpsc::channel::<&'static str>();
+        let tx_cutoff = tx.clone();
+        let handles = start(
+            TimerConfig {
+                warning: Duration::from_millis(40),
+                cutoff: Duration::from_millis(80),
+            },
+            move || {
+                let _ = tx.send("warning");
+            },
+            move || {
+                let _ = tx_cutoff.send("cutoff");
+            },
+        );
+        handles.cancel();
+        assert!(
+            rx.recv_timeout(Duration::from_millis(300)).is_err(),
+            "neither callback may fire after cancel()"
+        );
     }
 
     #[test]
