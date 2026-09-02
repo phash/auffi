@@ -78,18 +78,49 @@ pub(crate) fn dbg_log(msg: &str) {
         .unwrap_or(0);
     let mut opts = std::fs::OpenOptions::new();
     opts.create(true).append(true);
-    // The Unix temp dir (/tmp) is world-writable, so refuse to follow a symlink
-    // planted at the log path and keep the file owner-only — diagnostic lines
-    // can carry connection metadata (URLs, redacted ICE) that other local users
-    // must not read or redirect. Windows %TEMP% is already per-user.
+    harden_log_open(&mut opts);
+    if let Ok(mut f) = opts.open(dbg_log_path()) {
+        let _ = writeln!(f, "[{ts}] {msg}");
+        let _ = f.flush();
+    }
+}
+
+/// The Unix temp dir (/tmp) is world-writable, so refuse to follow a symlink
+/// planted at the log path and keep the file owner-only — diagnostic lines
+/// can carry connection metadata (URLs, redacted ICE) that other local users
+/// must not read or redirect. Windows %TEMP% is already per-user. Every open
+/// of the log file goes through here: `mode` only applies at creation, so
+/// whichever path creates the file decides its permissions for good.
+fn harden_log_open(opts: &mut std::fs::OpenOptions) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         opts.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     }
-    if let Ok(mut f) = opts.open(dbg_log_path()) {
-        let _ = writeln!(f, "[{ts}] {msg}");
-        let _ = f.flush();
+    #[cfg(not(unix))]
+    {
+        let _ = opts;
+    }
+}
+
+/// Make sure a regular, owner-only log file exists at `path` so "Log öffnen"
+/// never dead-ends on a machine where logging has not produced output yet.
+fn ensure_log_file(path: &std::path::Path) -> Result<(), String> {
+    // O_EXCL fails with EEXIST on a symlink even with O_NOFOLLOW, which
+    // would look like the normal already-exists case and hand the symlink's
+    // target to the opener — so a link at the path is refused outright.
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err("log path is a symlink — refusing to open it".to_string());
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    // create_new is atomic (no exists()-then-create TOCTOU). AlreadyExists is
+    // the normal case once logging has run.
+    opts.write(true).create_new(true);
+    harden_log_open(&mut opts);
+    match opts.open(path) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(format!("create log file: {e}")),
     }
 }
 
@@ -148,17 +179,7 @@ fn get_debug_logging() -> bool {
 fn open_debug_log(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     let path = dbg_log_path();
-    // create_new is atomic (no exists()-then-create TOCTOU). AlreadyExists is
-    // the normal case once logging has run.
-    if let Err(e) = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-    {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(format!("create log file: {e}"));
-        }
-    }
+    ensure_log_file(&path)?;
     let path_str = path.to_str().ok_or("log path is not valid UTF-8")?;
     app.opener()
         .open_path(path_str, None::<&str>)
@@ -1922,6 +1943,36 @@ mod tests {
             "dbg_log path must be inside std::env::temp_dir(): got {path:?}, temp_dir is {:?}",
             std::env::temp_dir()
         );
+    }
+
+    // "Log öffnen" created the file with the default umask (0644) and no
+    // NOFOLLOW while dbg_log deliberately opens it 0600 + O_NOFOLLOW. Release
+    // builds ship with logging off, so the realistic order is: click the
+    // button (world-readable file), then enable logging — mode(0o600) only
+    // applies at creation, so every connection-metadata line afterwards was
+    // readable by other local users. A pre-planted symlink at the path made
+    // create_new report AlreadyExists and the opener launched its target.
+    #[cfg(unix)]
+    #[test]
+    fn ensure_log_file_creates_the_file_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("auffi-debug.log");
+        super::ensure_log_file(&path).expect("create");
+        let mode = std::fs::metadata(&path).expect("metadata").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "log file must be owner-only, got {mode:o}");
+        super::ensure_log_file(&path).expect("an existing regular file is fine");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_log_file_refuses_a_symlink_at_the_log_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("victim");
+        std::fs::write(&target, b"secret").expect("target");
+        let path = dir.path().join("auffi-debug.log");
+        std::os::unix::fs::symlink(&target, &path).expect("symlink");
+        assert!(super::ensure_log_file(&path).is_err(), "must not open through a symlink");
     }
 
     #[test]
