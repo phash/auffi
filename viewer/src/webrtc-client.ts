@@ -1,7 +1,5 @@
 import { DataChannelHub } from "./data-channels.js";
 
-export type { DataChannelHub };
-
 export type IceServers = { urls: string | string[]; username?: string; credential?: string }[];
 
 export type ConnectionType = "p2p" | "relay";

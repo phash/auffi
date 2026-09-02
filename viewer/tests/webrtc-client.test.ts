@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { ViewerPeer } from "../src/webrtc-client.js";
+import { ViewerPeer, resolveConnectionType } from "../src/webrtc-client.js";
 
 type StatsEntry = {
   type: string;
@@ -43,6 +43,79 @@ class MockRTCPeerConnection {
     return map as unknown as RTCStatsReport;
   }
 }
+
+function statsReport(entries: StatsEntry[]): RTCStatsReport {
+  const map = new Map<string, StatsEntry>();
+  for (const entry of entries) map.set(entry.id, entry);
+  return map as unknown as RTCStatsReport;
+}
+
+// Pure twin of the sharer's connection-type resolution: the active pair is
+// the nominated + succeeded candidate-pair, and either side being a TURN
+// relay makes the whole connection "relay" (the free-tier timer keys off it).
+describe("resolveConnectionType", () => {
+  const pair = (local: string, remote: string, extra: Partial<StatsEntry> = {}): StatsEntry => ({
+    type: "candidate-pair",
+    id: "pair1",
+    state: "succeeded",
+    nominated: true,
+    localCandidateId: local,
+    remoteCandidateId: remote,
+    ...extra,
+  });
+
+  it("returns null while no candidate pair has been nominated", () => {
+    expect(resolveConnectionType(statsReport([]))).toBeNull();
+    expect(
+      resolveConnectionType(statsReport([pair("l", "r", { nominated: false })])),
+    ).toBeNull();
+    expect(
+      resolveConnectionType(statsReport([pair("l", "r", { state: "in-progress" })])),
+    ).toBeNull();
+  });
+
+  it("reports relay when the local candidate is a TURN relay", () => {
+    const report = statsReport([
+      pair("l", "r"),
+      { type: "local-candidate", id: "l", candidateType: "relay" },
+      { type: "remote-candidate", id: "r", candidateType: "srflx" },
+    ]);
+    expect(resolveConnectionType(report)).toBe("relay");
+  });
+
+  it("reports relay when only the remote candidate is a TURN relay", () => {
+    const report = statsReport([
+      pair("l", "r"),
+      { type: "local-candidate", id: "l", candidateType: "host" },
+      { type: "remote-candidate", id: "r", candidateType: "relay" },
+    ]);
+    expect(resolveConnectionType(report)).toBe("relay");
+  });
+
+  it("reports p2p for host/srflx pairs and when the candidate entries are missing", () => {
+    expect(
+      resolveConnectionType(
+        statsReport([
+          pair("l", "r"),
+          { type: "local-candidate", id: "l", candidateType: "host" },
+          { type: "remote-candidate", id: "r", candidateType: "srflx" },
+        ]),
+      ),
+    ).toBe("p2p");
+    expect(resolveConnectionType(statsReport([pair("l", "r")]))).toBe("p2p");
+  });
+
+  it("ignores a stale nominated pair that is no longer succeeded", () => {
+    const report = statsReport([
+      { ...pair("l1", "r1"), id: "old", state: "failed" },
+      { ...pair("l2", "r2"), id: "new" },
+      { type: "local-candidate", id: "l1", candidateType: "relay" },
+      { type: "local-candidate", id: "l2", candidateType: "host" },
+      { type: "remote-candidate", id: "r2", candidateType: "host" },
+    ]);
+    expect(resolveConnectionType(report)).toBe("p2p");
+  });
+});
 
 describe("ViewerPeer", () => {
   it("creates an SDP offer when started", async () => {
