@@ -266,3 +266,42 @@ describe("ViewerPeer", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 });
+
+describe("ViewerPeer: remote ICE candidates that overtake the answer", () => {
+  // The sharer relays candidates as soon as it gathers them, which can be
+  // before its SDP answer is on the wire. addIceCandidate() before
+  // setRemoteDescription() throws InvalidStateError in every browser, and the
+  // viewer turned that into a hard "ICE-Fehler" teardown of an otherwise
+  // healthy connect.
+  it("queues candidates until the answer is applied, then adds them in order", async () => {
+    const pc = new MockRTCPeerConnection();
+    const added: string[] = [];
+    let remoteSet = false;
+    pc.setRemoteDescription = async () => { remoteSet = true; };
+    pc.addIceCandidate = async (c: RTCIceCandidateInit) => {
+      if (!remoteSet) throw new DOMException("no remote description", "InvalidStateError");
+      added.push(c.candidate ?? "");
+    };
+    const peer = new ViewerPeer({ pcFactory: () => pc as unknown as RTCPeerConnection });
+    await peer.start();
+
+    await peer.addRemoteIceCandidate({ candidate: "candidate:1", sdpMid: "0" });
+    await peer.addRemoteIceCandidate({ candidate: "candidate:2", sdpMid: "0" });
+    expect(added).toEqual([]);
+
+    await peer.acceptAnswer({ type: "answer", sdp: "v=0" });
+    expect(added).toEqual(["candidate:1", "candidate:2"]);
+
+    await peer.addRemoteIceCandidate({ candidate: "candidate:3", sdpMid: "0" });
+    expect(added).toEqual(["candidate:1", "candidate:2", "candidate:3"]);
+  });
+
+  it("surfaces a failing queued candidate to the acceptAnswer caller", async () => {
+    const pc = new MockRTCPeerConnection();
+    pc.addIceCandidate = async () => { throw new Error("bad candidate"); };
+    const peer = new ViewerPeer({ pcFactory: () => pc as unknown as RTCPeerConnection });
+    await peer.start();
+    await peer.addRemoteIceCandidate({ candidate: "candidate:x", sdpMid: "0" });
+    await expect(peer.acceptAnswer({ type: "answer", sdp: "v=0" })).rejects.toThrow("bad candidate");
+  });
+});

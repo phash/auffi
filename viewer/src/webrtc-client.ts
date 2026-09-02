@@ -61,6 +61,14 @@ export class ViewerPeer {
   private stateHandlers: Array<(state: RTCIceConnectionState) => void> = [];
   private connectionTypeHandlers: Array<(type: ConnectionType) => void> = [];
   private lastConnectionType: ConnectionType | null = null;
+  /**
+   * The sharer relays ICE candidates the moment it gathers them, which can be
+   * before its answer arrives. addIceCandidate() without a remote description
+   * is an InvalidStateError in every browser, so candidates wait here until
+   * acceptAnswer() has applied the answer.
+   */
+  private remoteDescriptionApplied = false;
+  private queuedRemoteCandidates: RTCIceCandidateInit[] = [];
 
   constructor(private opts: ViewerPeerOpts = {}) {}
 
@@ -68,6 +76,8 @@ export class ViewerPeer {
     const factory = this.opts.pcFactory ?? ((c) => new RTCPeerConnection(c));
     const pc = factory({ iceServers: this.opts.iceServers ?? [] });
     this.pc = pc;
+    this.remoteDescriptionApplied = false;
+    this.queuedRemoteCandidates = [];
 
     pc.ontrack = (ev) => {
       const stream = ev.streams[0] ?? new MediaStream([ev.track]);
@@ -108,10 +118,20 @@ export class ViewerPeer {
   async acceptAnswer(sdp: RTCSessionDescriptionInit): Promise<void> {
     if (!this.pc) throw new Error("peer not started");
     await this.pc.setRemoteDescription(sdp);
+    this.remoteDescriptionApplied = true;
+    const queued = this.queuedRemoteCandidates;
+    this.queuedRemoteCandidates = [];
+    for (const candidate of queued) {
+      await this.pc.addIceCandidate(candidate);
+    }
   }
 
   async addRemoteIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
     if (!this.pc) throw new Error("peer not started");
+    if (!this.remoteDescriptionApplied) {
+      this.queuedRemoteCandidates.push(candidate);
+      return;
+    }
     await this.pc.addIceCandidate(candidate);
   }
 
