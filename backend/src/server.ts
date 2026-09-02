@@ -25,6 +25,7 @@ import { purgeReportTotal, startPurgeScheduler } from "./purge.js";
 import { matomoTrackerFromEnv } from "./tracking/matomo.js";
 import { recordCodeCreated } from "./tracking/code_events.js";
 import { openCountryDb } from "./geoip.js";
+import { redactEmail } from "./email/log_safe.js";
 
 export type ServerConfig = {
   port: number;
@@ -359,8 +360,9 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // Idempotent — if the account doesn't exist yet (first deploy), the
   // next signup will trigger the same check via `maybePromoteToAdmin`.
   const bootstrap = bootstrapInitialAdmin(db);
-  if (bootstrap.promoted) {
-    app.log.info({ email: bootstrap.email }, "promoted initial admin account");
+  if (bootstrap.promoted && bootstrap.email !== null) {
+    // The operator's own address, but still PII in a log stream.
+    app.log.info({ email: redactEmail(bootstrap.email) }, "promoted initial admin account");
   }
 
   // Periodic retention purge (gh #19), every 6 h — see `runPurge` for the
