@@ -12,6 +12,19 @@ permissions:
   contents: read
 
 jobs:
+  ops:
+    name: Ops scripts (bash)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # deploy.sh --rollback, the pre-flight guards, health-check.sh and the
+      # Caddyfile/workflow/image-pin guards run against stubs (harness.sh) —
+      # no host is contacted. rsync + python3 + ssh-keygen ship with the
+      # runner image.
+      - name: Syntax-check + run ops tests
+        run: ops/tests/run-all.sh
+
   backend:
     name: Backend (Node 22)
     runs-on: ubuntu-24.04
