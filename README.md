@@ -122,10 +122,16 @@ Die Referenzinstanz `auffi.app` läuft auf einem IONOS VPS via Docker Compose
 (Backend + coturn + Caddy als Reverse Proxy). Für eigene Instanzen:
 
 ```bash
-cp .env.example .env
-# .env anpassen (TURN_SECRET, DOMAIN, etc.)
+cp .env.prod.example .env.prod
+# .env.prod anpassen: TURN_SHARED_SECRET, TURN_REALM, TURN_HOSTS,
+# TURN_LISTENING_IP/TURN_EXTERNAL_IP (Cloud-VPS), ALLOWED_ORIGINS (Pflicht —
+# ohne den Wert startet das Backend in production nicht), SMTP_* fürs Konto-Mailing
 docker compose -f docker-compose.prod.yml up -d
 ```
+
+(`.env.example` ist die **Dev**-Datei für `docker compose up` / `npm run dev`;
+`docker-compose.prod.yml` liest ausschließlich `.env.prod`.) Schritt-für-Schritt
+inkl. Caddy, coturn und Backups: [ops/README.md](ops/README.md) § 2.
 
 ---
 
