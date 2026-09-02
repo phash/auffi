@@ -110,7 +110,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 ### Testing
 
 - **TDD is mandatory**: write failing test → see it fail → minimal implementation → see test pass → commit.
-- **Coverage target: ≥ 70 %** statement coverage per package. Verify with `npm test -- --coverage` (Vitest), `cargo tarpaulin` (Rust).
+- **Coverage target: ≥ 70 %** statement coverage per package. Verify with `npm test -- --coverage` (Vitest), `cargo tarpaulin` (Rust). Known gap (measured 2026-09-02): the sharer Rust crate sits at ~44 % line coverage (`cargo tarpaulin --lib`; gst_portal/hotkey/unattended_cmd/lib.rs are the deserts) — no CI gate yet, so a Rust change must bring its own tests rather than rely on the gate.
 - **No mocked databases** when integration-testing — use real services via Docker.
 - **E2E tests** for user-facing flows (Playwright for the viewer).
 
@@ -146,7 +146,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-08-31 (v0.6.9): backend 478, sharer-lib 256 (+ 9 `#[ignore]` Display-requiring), viewer 593, dashboard 174, sharer-js 83. `purge.test.ts` hält timing-sensitive Scheduler-Tests, die in Full-Suite-Läufen intermittierend failen können — re-run the flaked file ISOLATED before believing a red run; keine Regression. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-09-02 (v0.7.1): backend 530, sharer-lib 347 (+ 13 `#[ignore]` Display-/GPU-requiring), viewer 670, dashboard 214, sharer-js 131, ops shell tests 10 files via `bash ops/tests/run-all.sh`. Suites can timeout-flake under parallel load — re-run the flaked file ISOLATED before believing a red run. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy -- -D warnings`. (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
