@@ -95,7 +95,11 @@ describe("unattended.ts settings wiring", () => {
       .filter((c) => ["disconnect_streaming", "unattended_stop", "unattended_unpair"].includes(c));
     expect(order).toEqual(["disconnect_streaming", "unattended_stop", "unattended_unpair"]);
     // The heartbeat owns its OutboundSink — every unattended teardown keeps it.
-    expect(calls("disconnect_streaming")).toEqual([["disconnect_streaming", { keepSignaling: true }]]);
+    // The heartbeat WSS survives (keepSignaling) but the helper still gets the
+    // courteous bye — this is the sharer ending the session on purpose.
+    expect(calls("disconnect_streaming")).toEqual([
+      ["disconnect_streaming", { keepSignaling: true, sendBye: true }],
+    ]);
   });
 
   it("routes the user's answer to the confirmId the prompt carried", async () => {

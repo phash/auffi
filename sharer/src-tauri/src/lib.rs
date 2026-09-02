@@ -1000,10 +1000,17 @@ async fn switch_monitor(
 /// reach the new viewer instead of the prior one and tear THEIR session
 /// down before any offer is exchanged.
 ///
+/// The unattended path is the exception the default cannot express: its
+/// heartbeat WSS must always survive (`keep_signaling = true`), yet when
+/// the user ends the session on purpose (Deaktivieren, mode switch,
+/// Gerät entkoppeln) the helper deserves the bye — otherwise they only
+/// learn the session is over from the 10-s ICE grace. `send_bye` is that
+/// explicit override; `None` keeps the ad-hoc rule.
+///
 /// Pure helper so the policy is easy to unit-test; production passes the
-/// `keep_signaling` flag through verbatim.
-fn should_send_bye(keep_signaling: bool) -> bool {
-    !keep_signaling
+/// webview's flags through verbatim.
+fn should_send_bye(keep_signaling: bool, send_bye: Option<bool>) -> bool {
+    send_bye.unwrap_or(!keep_signaling)
 }
 
 /// Reentrancy guards for `start_signaling`. Each of the four sub-resources
@@ -1063,6 +1070,7 @@ async fn disconnect_streaming(
     outbound_state: State<'_, OutboundSinkState>,
     bytes_state: State<'_, SessionBytesState>,
     keep_signaling: Option<bool>,
+    send_bye: Option<bool>,
 ) -> Result<(), String> {
     let keep_signaling = keep_signaling.unwrap_or(false);
     // Tell the viewer we're ending the session, BEFORE we tear down the peer.
@@ -1070,9 +1078,10 @@ async fn disconnect_streaming(
     // network problem) and shows a "Verbindung verloren" error instead of
     // a friendly "Stream beendet" message.
     //
-    // CRITICAL: skip the bye when keep_signaling is true. See
-    // `should_send_bye` below for the full rationale.
-    let bye_sink = if should_send_bye(keep_signaling) {
+    // CRITICAL: by default skip the bye when keep_signaling is true; only
+    // the webview's explicit `sendBye` overrides that. See `should_send_bye`
+    // above for the full rationale.
+    let bye_sink = if should_send_bye(keep_signaling, send_bye) {
         outbound_state.0.lock().await.clone()
     } else {
         None
@@ -2234,8 +2243,13 @@ mod tests {
     /// recreating that bug; this test must fail when they do.
     #[test]
     fn should_send_bye_only_when_not_keeping_signaling() {
-        assert!(super::should_send_bye(false));
-        assert!(!super::should_send_bye(true));
+        assert!(super::should_send_bye(false, None));
+        assert!(!super::should_send_bye(true, None));
+        // The unattended path keeps its heartbeat WSS but still says goodbye
+        // when the user ends the session on purpose — and a caller can also
+        // silence the bye on a full teardown.
+        assert!(super::should_send_bye(true, Some(true)));
+        assert!(!super::should_send_bye(false, Some(false)));
     }
 
     /// Pinned regression for the monitor-switch ordering chain in

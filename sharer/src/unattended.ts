@@ -206,12 +206,14 @@ async function startUnattendedStream(): Promise<void> {
  * this the helper keeps screen and input after the user thought they cut it.
  * keepSignaling for the same reason every other unattended teardown passes it:
  * the heartbeat owns its OutboundSink and the full-teardown intent is shaped
- * for the ad-hoc lifecycle (docs/footguns.md § Sharer Teardown).
+ * for the ad-hoc lifecycle (docs/footguns.md § Sharer Teardown). sendBye
+ * because this is the sharer ending the session on purpose: without it the
+ * helper only learns from the 10-s ICE grace that the session is over.
  */
 async function endLiveUnattendedSession(): Promise<void> {
   if (!signalBuffer.hasActivity()) return;
   signalBuffer.reset();
-  await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+  await invoke("disconnect_streaming", { keepSignaling: true, sendBye: true }).catch(() => {});
 }
 
 function hide(el: HTMLElement | null): void {
