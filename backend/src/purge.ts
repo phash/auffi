@@ -63,6 +63,15 @@ export interface PurgeReport {
 }
 
 /**
+ * Rows deleted across every table in one pass. Summed generically so a
+ * field added to `PurgeReport` can never again be left out of the
+ * "did anything happen" gate the scheduler log uses.
+ */
+export function purgeReportTotal(report: PurgeReport): number {
+  return Object.values(report).reduce((sum, n) => sum + n, 0);
+}
+
+/**
  * Run one pass of the retention cleanup. Pure on (db, now, retention) —
  * no side effects beyond the DB writes it owns. Returns a per-table
  * count so callers can log "purged N sessions, M expired pairings, …".

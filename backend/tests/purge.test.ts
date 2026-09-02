@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import {
   DEFAULT_RETENTION,
+  purgeReportTotal,
   runPurge,
   startPurgeScheduler,
+  type PurgeReport,
 } from "../src/purge.js";
 
 const HOUR = 60 * 60 * 1000;
@@ -291,6 +293,36 @@ describe("runPurge", () => {
     expect(
       runPurge(db, now, { ...DEFAULT_RETENTION, codeEventsMs: 3 * DAY }).codeEvents,
     ).toBe(1);
+  });
+});
+
+// server.ts only logs a pass when the total is non-zero. A hand-written sum
+// silently dropped codeEvents + feedbackAuditCascade, so a 6-hour pass that
+// aged out only code_events — the common case in prod — never surfaced in
+// `docker logs`. The total must cover every field, present and future.
+describe("purgeReportTotal", () => {
+  const empty: PurgeReport = {
+    sessions: 0,
+    devicePairings: 0,
+    emailVerifications: 0,
+    passwordResets: 0,
+    pendingEmailChanges: 0,
+    connectionLog: 0,
+    auditLog: 0,
+    codeEvents: 0,
+    rateLimitBuckets: 0,
+    feedback: 0,
+    feedbackAuditCascade: 0,
+  };
+
+  it("is zero for an all-zero report", () => {
+    expect(purgeReportTotal(empty)).toBe(0);
+  });
+
+  it("counts codeEvents and feedbackAuditCascade like every other field", () => {
+    expect(purgeReportTotal({ ...empty, codeEvents: 3 })).toBe(3);
+    expect(purgeReportTotal({ ...empty, feedbackAuditCascade: 2 })).toBe(2);
+    expect(purgeReportTotal({ ...empty, sessions: 1, feedback: 4, codeEvents: 5 })).toBe(10);
   });
 });
 

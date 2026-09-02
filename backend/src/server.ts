@@ -21,7 +21,7 @@ import { registerDownloadRoutes } from "./downloads/handlers.js";
 import { bootstrapInitialAdmin } from "./admin/bootstrap.js";
 import { UnattendedRegistry } from "./unattended.js";
 import { UnattendedSessions } from "./unattended_sessions.js";
-import { startPurgeScheduler } from "./purge.js";
+import { purgeReportTotal, startPurgeScheduler } from "./purge.js";
 import { matomoTrackerFromEnv } from "./tracking/matomo.js";
 import { recordCodeCreated } from "./tracking/code_events.js";
 import { openCountryDb } from "./geoip.js";
@@ -365,9 +365,10 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     app.log.info({ email: bootstrap.email }, "promoted initial admin account");
   }
 
-  // Periodic retention purge (gh #19): every 6h drop expired
-  // sessions / pairings / verifications / resets, age-out connection
-  // and audit logs, hard-delete soft-deleted accounts past grace.
+  // Periodic retention purge (gh #19), every 6 h — see `runPurge` for the
+  // exact table list (expired sessions / pairings / mail tokens, aged
+  // connection_log / audit_log / code_events, recovered rate-limit
+  // buckets, feedback + its audit cascade).
   // Default: on for production (owns its own DB), off for tests
   // (injected handle), with an explicit `startPurgeScheduler` opt
   // for cases that need the other side (CQ M-31).
@@ -377,17 +378,9 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
       log: (report) => {
         // Don't log when nothing happened; once-per-six-hours of
         // "purge ran, deleted nothing" is just noise.
-        const total =
-          report.sessions +
-          report.devicePairings +
-          report.emailVerifications +
-          report.passwordResets +
-          report.pendingEmailChanges +
-          report.connectionLog +
-          report.auditLog +
-          report.rateLimitBuckets +
-          report.feedback;
-        if (total > 0) app.log.info({ purge: report }, "retention purge complete");
+        if (purgeReportTotal(report) > 0) {
+          app.log.info({ purge: report }, "retention purge complete");
+        }
       },
       onError: (err) => app.log.warn({ err }, "retention purge failed"),
     });
