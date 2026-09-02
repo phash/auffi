@@ -478,16 +478,45 @@ export function bindUI(backendWsUrl: string): void {
     onLeftRelay: () => hideFreeTierWarning(),
   });
 
-  let pendingOfferResolve: ((accepted: boolean) => void) | null = null;
+  // The sharer sends the next file-offer without waiting for our answer to
+  // the previous one, so offers are shown one at a time from a FIFO. A bare
+  // "current offer" slot would drop the earlier resolver (that offer is
+  // never answered) and leak its focus-trap's document keydown listener,
+  // which then hijacks Tab on the whole page.
+  const offerQueue: Array<{ offer: FileOffer; resolve: (accepted: boolean) => void }> = [];
   let fileOfferTrapRelease: (() => void) | null = null;
 
-  // Resolve the pending offer, release the focus-trap and hide the toast.
-  // Used by the accept/reject buttons, the Escape key, and teardown.
+  const showNextOffer = (): void => {
+    const next = offerQueue[0];
+    if (!next) {
+      fileOfferToast.classList.remove("active");
+      return;
+    }
+    const sizeMb = (next.offer.size / (1024 * 1024)).toFixed(2);
+    fileOfferBody.textContent = `"${next.offer.name}" (${sizeMb} MB)`;
+    fileOfferToast.classList.add("active");
+    // Confine Tab to the dialog (it declares aria-modal) and make Escape
+    // reject the offer. Focus the safe default (reject).
+    fileOfferTrapRelease = trapFocus(fileOfferToast, () => closeFileOffer(false));
+    fileOfferReject.focus();
+  };
+
+  // Answer the offer on screen, release its focus-trap and move on to the
+  // next queued one. Used by the accept/reject buttons and the Escape key.
+  // The old trap is released BEFORE the next one is installed so the next
+  // trap's "previously focused" element is the page, not a toast button.
   const closeFileOffer = (accepted: boolean): void => {
     fileOfferTrapRelease?.();
     fileOfferTrapRelease = null;
-    pendingOfferResolve?.(accepted);
-    pendingOfferResolve = null;
+    offerQueue.shift()?.resolve(accepted);
+    showNextOffer();
+  };
+
+  // Teardown: reject everything still queued, not just the visible offer.
+  const rejectAllOffers = (): void => {
+    fileOfferTrapRelease?.();
+    fileOfferTrapRelease = null;
+    for (const entry of offerQueue.splice(0)) entry.resolve(false);
     fileOfferToast.classList.remove("active");
   };
 
@@ -580,7 +609,7 @@ export function bindUI(backendWsUrl: string): void {
     capture = null;
     fileManager?.cancelAll();
     fileManager = null;
-    closeFileOffer(false);
+    rejectAllOffers();
     hidePwPrompt();
     setInputTogglePressed(inputToggleBtn, false);
     peer?.close();
@@ -797,14 +826,8 @@ export function bindUI(backendWsUrl: string): void {
 
           fileManager.onIncomingOffer((offer: FileOffer) => {
             return new Promise<boolean>((resolve) => {
-              pendingOfferResolve = resolve;
-              const sizeMb = (offer.size / (1024 * 1024)).toFixed(2);
-              fileOfferBody.textContent = `"${offer.name}" (${sizeMb} MB)`;
-              fileOfferToast.classList.add("active");
-              // Confine Tab to the dialog (it declares aria-modal) and make
-              // Escape reject the offer. Focus the safe default (reject).
-              fileOfferTrapRelease = trapFocus(fileOfferToast, () => closeFileOffer(false));
-              fileOfferReject.focus();
+              offerQueue.push({ offer, resolve });
+              if (offerQueue.length === 1) showNextOffer();
             });
           });
 
