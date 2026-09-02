@@ -3,6 +3,7 @@ import type { Db } from "../db.js";
 import type { FeedbackMailer } from "../email/mailer.js";
 import { mailErrorInfo } from "../email/log_safe.js";
 import { writeAudit } from "./middleware.js";
+import { clampLimit } from "./pagination.js";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -52,8 +53,7 @@ export function registerAdminFeedbackRoutes(
       if (status !== "open" && status !== "resolved" && status !== "all") {
         return bad(reply, 400, "bad-status", "status must be open, resolved, or all");
       }
-      const rawLimit = Number(q.limit ?? DEFAULT_LIMIT);
-      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, MAX_LIMIT)) : DEFAULT_LIMIT;
+      const limit = clampLimit(q.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
       const cursor = q.cursor ? Number(q.cursor) : undefined;
       const cursorOk =

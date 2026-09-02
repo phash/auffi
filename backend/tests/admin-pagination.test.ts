@@ -52,6 +52,11 @@ describe("clampLimit", () => {
     expect(clampLimit("-5", 25, 100)).toBe(25);
   });
 
+  it("rejects non-integers — SQLite refuses a REAL bound to LIMIT", () => {
+    expect(clampLimit("1.5", 25, 100)).toBe(25);
+    expect(clampLimit("1e-3", 25, 100)).toBe(25);
+  });
+
   it("caps at the maximum", () => {
     expect(clampLimit("500", 25, 100)).toBe(100);
   });

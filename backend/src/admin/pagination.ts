@@ -1,9 +1,9 @@
 /**
- * Shared keyset-pagination helpers for the admin list endpoints
- * (users, devices, audit-log). All three paginate on the composite
- * key (created_at DESC, id DESC) with an opaque base64url cursor and
- * the limit+1 trick — extracted here so cursor hardening happens in
- * one place.
+ * Shared pagination helpers for the admin list endpoints. The users
+ * list paginates on the composite key (created_at DESC, id DESC) with
+ * an opaque base64url cursor; the feedback list uses a plain id cursor
+ * and shares only `clampLimit`. Extracted here so cursor and limit
+ * hardening happens in one place.
  */
 
 export interface Cursor<Id extends string | number> {
@@ -37,7 +37,9 @@ export function decodeNumericCursor(raw: string): Cursor<number> | null {
 
 /**
  * Clamp a caller-supplied `?limit=` to [1, maxLimit], falling back to
- * `defaultLimit` for missing / non-numeric / non-positive input.
+ * `defaultLimit` for missing / non-numeric / non-positive / non-integer
+ * input. Integers only: better-sqlite3 binds `1.5` as REAL and SQLite
+ * answers `LIMIT ?` with "datatype mismatch" — a 500 from a query string.
  */
 export function clampLimit(
   raw: string | undefined,
@@ -45,7 +47,7 @@ export function clampLimit(
   maxLimit: number,
 ): number {
   const n = Number(raw ?? defaultLimit);
-  return Number.isFinite(n) && n > 0 ? Math.min(n, maxLimit) : defaultLimit;
+  return Number.isInteger(n) && n > 0 ? Math.min(n, maxLimit) : defaultLimit;
 }
 
 /**

@@ -423,6 +423,15 @@ describe("GET /api/admin/feedback", () => {
     expect(res.json().items.length).toBeLessThanOrEqual(200);
   });
 
+  it("falls back to the default page size for a non-integer limit instead of 500ing", async () => {
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/feedback?limit=1.5",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
   it("rejects invalid status with 400 bad-status", async () => {
     const res = await h.app.inject({
       method: "GET",
