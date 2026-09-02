@@ -19,10 +19,21 @@ auffi.app {
         # the per-tenant values below are silently ignored and the
         # live response carries the weaker shared defaults (security-
         # review SEC-M1, 2026-05-17).
-        >Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        #
+        # This block is the reference set: the hand-maintained auffi.app
+        # block in the cluster Caddyfile (/opt/caddyserver/Caddyfile) must
+        # carry exactly these values, and a standalone self-host ships
+        # this file as-is. Guard: ops/tests/caddyfile-headers.test.sh.
+        >Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
         >X-Frame-Options "DENY"
         >X-Content-Type-Options "nosniff"
+        # "0" disables the legacy XSS auditor in the browsers that still
+        # have one — its filtering introduced XS-leaks; CSP is the defence.
+        >X-XSS-Protection "0"
         >Referrer-Policy "no-referrer"
+        # The viewer never asks for location, microphone or camera —
+        # screen capture is the sharer's job, the browser only plays it.
+        >Permissions-Policy "geolocation=(), microphone=(), camera=()"
         # SHA-256 hashes whitelist EVERY inline <script type="application/
         # ld+json"> block across all 20 served marketing pages (de + en):
         # SoftwareApplication / FAQPage / BreadcrumbList / HowTo structured
