@@ -56,6 +56,8 @@ export function streamingFailedMessage(reason: string): string {
       return "Bildschirmaufnahme unterbrochen — die Übertragung wurde beendet.";
     case "track-write":
       return "Verbindung zum Helfer verloren — die Übertragung wurde beendet.";
+    case "encode":
+      return "Bildschirmbild konnte nicht mehr verarbeitet werden — die Übertragung wurde beendet. Bitte erneut freigeben.";
     default:
       return "Interner Fehler — die Übertragung wurde beendet.";
   }

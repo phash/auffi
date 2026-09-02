@@ -52,6 +52,11 @@ describe("streamingFailedMessage", () => {
     expect(streamingFailedMessage("internal")).toContain("Interner Fehler");
   });
 
+  it("names the encoder giving up so the user knows the picture, not the link, failed", () => {
+    expect(streamingFailedMessage("encode")).toMatch(/Übertragung wurde beendet/);
+    expect(streamingFailedMessage("encode")).not.toBe(streamingFailedMessage("unknown"));
+  });
+
   it("unknown reasons fall back to the internal-error copy instead of raw text", () => {
     expect(streamingFailedMessage("some-new-reason")).toContain("Interner Fehler");
   });

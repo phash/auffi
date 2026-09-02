@@ -1205,6 +1205,18 @@ fn emit_streaming_failed(app: &tauri::AppHandle, reason: &str) {
     let _ = app.emit("streaming-failed", serde_json::json!({ "reason": reason }));
 }
 
+/// Consecutive `encoder.encode` failures the loop tolerates before it ends
+/// the stream with `streaming-failed` (reason `encode`). Roughly one second
+/// at 30 fps, the same threshold the track-write arm uses. A persistent
+/// failure here is a frame/encoder geometry mismatch (a source that started
+/// delivering differently sized buffers); silently `continue`-ing left the
+/// helper with a frozen picture and the sharer saying "Streaming läuft."
+const MAX_CONSECUTIVE_ENCODE_FAILURES: u64 = 30;
+
+fn encode_failures_exceeded(consecutive: u64) -> bool {
+    consecutive > MAX_CONSECUTIVE_ENCODE_FAILURES
+}
+
 async fn streaming_loop(
     app: tauri::AppHandle,
     mut capturer: Option<capture::ScreenCapturer>,
@@ -1216,6 +1228,7 @@ async fn streaming_loop(
 ) {
     dbg_log("[streaming_loop] entered");
     let mut write_failures = 0u64;
+    let mut encode_failures = 0u64;
     let mut frame_count = 0u64;
     let mut sample_count = 0u64;
     let mut last_log_at = std::time::Instant::now();
@@ -1280,6 +1293,7 @@ async fn streaming_loop(
             match switch_rx.recv().await {
                 Some(msg) => {
                     handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc).await;
+                    encode_failures = 0;
                     continue;
                 }
                 None => {
@@ -1293,6 +1307,9 @@ async fn streaming_loop(
         match switch_rx.try_recv() {
             Ok(msg) => {
                 handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc).await;
+                // A fresh capturer + encoder must not inherit the old pair's
+                // failure streak.
+                encode_failures = 0;
                 continue;
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
@@ -1367,9 +1384,23 @@ async fn streaming_loop(
             }
         }
         let packets = match encoder.encode(&frame.data, frame.pts_us) {
-            Ok(p) => p,
+            Ok(p) => {
+                encode_failures = 0;
+                p
+            }
             Err(e) => {
-                log::warn!("[streaming_loop] vp8 encode error: {e}");
+                encode_failures += 1;
+                if encode_failures <= 3 || encode_failures.is_multiple_of(10) {
+                    dbg_log(&format!(
+                        "[streaming_loop] vp8 encode error #{encode_failures} (frame {} bytes): {e}",
+                        frame.data.len()
+                    ));
+                }
+                if encode_failures_exceeded(encode_failures) {
+                    dbg_log("[streaming_loop] encode failing repeatedly; exiting");
+                    emit_streaming_failed(&app, "encode");
+                    return;
+                }
                 continue;
             }
         };
@@ -1434,7 +1465,7 @@ async fn streaming_loop(
                 0.0
             };
             dbg_log(&format!(
-                "[streaming_loop] alive: frames={frame_count} samples={sample_count} write_failures={write_failures} fps={fps:.1} avg_encode_ms={avg_encode_ms:.1}"
+                "[streaming_loop] alive: frames={frame_count} samples={sample_count} write_failures={write_failures} encode_failures={encode_failures} fps={fps:.1} avg_encode_ms={avg_encode_ms:.1}"
             ));
             frames_since_log = 0;
             encode_us_since_log = 0;
@@ -2157,6 +2188,18 @@ mod tests {
         {
         }
         assert_returns_future(super::capture::ScreenCapturer::start);
+    }
+
+    // A persistent frame/encoder size mismatch (Wayland renegotiation, any
+    // producer handing over a wrongly sized buffer) used to make every encode
+    // fail while the loop kept spinning at frame rate: frozen picture for the
+    // helper, "Streaming läuft." on the sharer, and no event that would let
+    // the webview restart. The encode arm has to give up like the write arm.
+    #[test]
+    fn encode_failures_exceeded_only_after_thirty_consecutive() {
+        assert!(!super::encode_failures_exceeded(0));
+        assert!(!super::encode_failures_exceeded(30));
+        assert!(super::encode_failures_exceeded(31));
     }
 
     #[test]
