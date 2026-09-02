@@ -406,7 +406,10 @@ excess of a clamped burst instead of replaying it later.
 sharer types `key` when present and falls back to its `code` table for named
 keys (`Enter`, arrows, F-keys, modifiers) and for viewers that omit the field.
 Dead keys (`key: "Dead"`) are sent code-only and dropped by the sharer; the
-composed character arrives with the following key event. Held-key tracking on
+composed character arrives with the following key event. The sharer ignores
+`modifiers`: modifier state reaches it as the separate `ShiftLeft` /
+`ControlLeft` / … key events, and `key` already carries the resolved
+character. Held-key tracking on
 both sides is by `code`, so a release is matched to its press even when Shift
 was let go in between and `key` changed case.
 

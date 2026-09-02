@@ -27,7 +27,6 @@ pub enum InputEvent {
         #[serde(default)]
         key: Option<String>,
         pressed: bool,
-        modifiers: Modifiers,
     },
 }
 
@@ -37,14 +36,6 @@ pub enum Button {
     Left,
     Right,
     Middle,
-}
-
-#[derive(Deserialize, Debug, Default, Clone, Copy)]
-pub struct Modifiers {
-    pub shift: bool,
-    pub ctrl: bool,
-    pub alt: bool,
-    pub meta: bool,
 }
 
 pub struct InputController {
@@ -196,12 +187,7 @@ impl InputController {
                         .map_err(|e| e.to_string())?;
                 }
             }
-            InputEvent::Key {
-                code,
-                key,
-                pressed,
-                modifiers: _,
-            } => {
+            InputEvent::Key { code, key, pressed } => {
                 if pressed {
                     let resolved = resolve_key(&code, key.as_deref())
                         .ok_or_else(|| format!("unknown key: {code}"))?;
@@ -380,6 +366,9 @@ mod tests {
         }
     }
 
+    // The viewer still sends `modifiers`; the sharer never read it (modifier
+    // state arrives as its own ShiftLeft/ControlLeft/… key events), so the
+    // field is not modelled — serde must keep skipping it.
     #[test]
     fn deserialize_key_event() {
         let json = r#"{"kind":"key","code":"KeyA","pressed":true,"modifiers":{"shift":false,"ctrl":false,"alt":false,"meta":false}}"#;
@@ -436,7 +425,6 @@ mod tests {
             code: "KeyA".to_string(),
             key: Some("A".to_string()),
             pressed: true,
-            modifiers: Modifiers::default(),
         })
         .unwrap();
         assert_eq!(ctrl.held_keys_count(), 1);
@@ -444,7 +432,6 @@ mod tests {
             code: "KeyA".to_string(),
             key: Some("a".to_string()),
             pressed: false,
-            modifiers: Modifiers::default(),
         })
         .unwrap();
         assert_eq!(ctrl.held_keys_count(), 0, "release by code, whatever `key` says now");
@@ -688,7 +675,6 @@ mod tests {
             code: "ShiftLeft".to_string(),
             key: None,
             pressed: true,
-            modifiers: Modifiers::default(),
         })
         .unwrap();
         assert_eq!(ctrl.held_buttons_count(), 1);
@@ -717,7 +703,6 @@ mod tests {
             code: "ControlLeft".to_string(),
             key: None,
             pressed: true,
-            modifiers: Modifiers::default(),
         })
         .unwrap();
         assert_eq!(ctrl.held_keys_count(), 1);
@@ -725,7 +710,6 @@ mod tests {
             code: "ControlLeft".to_string(),
             key: None,
             pressed: false,
-            modifiers: Modifiers::default(),
         })
         .unwrap();
         assert_eq!(ctrl.held_keys_count(), 0);
