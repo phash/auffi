@@ -91,6 +91,26 @@ const DEFAULT_REGISTER_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 5 };
 /// blunt enumeration.
 const DEFAULT_BEARER_AUTH_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 10 };
 
+export type KeepaliveConfig = {
+  /** How often every open /signal socket is pinged. */
+  pingIntervalMs: number;
+  /** Silence (no pong) after which a socket is terminated. */
+  pongDeadlineMs: number;
+};
+
+/// Server-side liveness for /signal. A peer whose TCP path dies without a
+/// FIN (lid close, Wi-Fi → LTE, NAT mapping expiry) never fires `close` on
+/// its own; without this sweep its `session.viewer` slot stayed occupied and
+/// every rejoin of the still-displayed code answered "session full" until
+/// Caddy's TCP keepalive (~150 s) noticed. Mirrors the sharer's own client
+/// schedule (signaling.rs: 30 s ping / 90 s pong timeout) so both ends
+/// declare death on the same clock — the deadline must stay ≥ the sharer's
+/// PONG_TIMEOUT or a merely slow sharer gets killed.
+export const DEFAULT_KEEPALIVE: KeepaliveConfig = {
+  pingIntervalMs: 30_000,
+  pongDeadlineMs: 90_000,
+};
+
 export interface UnattendedDeps {
   db: Db;
   registry: UnattendedRegistry;
@@ -131,10 +151,38 @@ export function registerSignaling(
   bearerCfg: RateLimitConfig = DEFAULT_BEARER_AUTH_LIMIT,
   bearerCounts: Map<string, RateLimitEntry> = new Map(),
   countryLookup: CountryLookup | null = null,
+  keepalive: KeepaliveConfig = DEFAULT_KEEPALIVE,
 ): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
   }
+
+  // `terminate()` fires the socket's ordinary `close` handler, so the
+  // existing detachViewer / removeBySharer / unattended teardown runs
+  // unchanged — no second teardown path. Seeded at connect time so a fresh
+  // socket is never reaped before its first pong. WeakMap: entries die with
+  // the socket, nothing to clear in the close handler.
+  const lastPong = new WeakMap<WebSocket, number>();
+  const keepaliveTimer = setInterval(() => {
+    const now = Date.now();
+    for (const ws of app.websocketServer.clients) {
+      if (ws.readyState !== ws.OPEN) continue;
+      const seen = lastPong.get(ws) ?? now;
+      if (now - seen > keepalive.pongDeadlineMs) {
+        app.log.debug(
+          { silentMs: now - seen },
+          "signal socket terminated: no pong within the keepalive deadline",
+        );
+        ws.terminate();
+      } else {
+        ws.ping();
+      }
+    }
+  }, keepalive.pingIntervalMs);
+  if (typeof keepaliveTimer.unref === "function") keepaliveTimer.unref();
+  app.addHook("onClose", () => {
+    clearInterval(keepaliveTimer);
+  });
 
   function ipPrefix(req: FastifyRequest): string {
     const ip = stripIpv4Mapped(req.ip ?? "");
@@ -192,6 +240,8 @@ export function registerSignaling(
     const peer = socket;
     let role: "sharer" | "viewer" | "unattended-sharer" | null = null;
     const peerMsgEntry = newPerPeerEntry(perPeerCfg);
+    lastPong.set(peer, Date.now());
+    peer.on("pong", () => lastPong.set(peer, Date.now()));
 
     // ── Unattended bearer-auth path (gh #16) ──────────────────────
     // Runs BEFORE the message handler attaches so a wrong token never

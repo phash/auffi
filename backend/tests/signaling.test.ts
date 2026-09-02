@@ -953,3 +953,138 @@ describe("code-TTL expiry vs live sessions", () => {
   });
 });
 
+// A viewer whose TCP path dies without a FIN (laptop lid, Wi-Fi → LTE, NAT
+// mapping expiry) never fires `close` on its own, so `session.viewer` stays
+// set and every rejoin of the still-displayed code answers "session full" —
+// exactly the same-session reconnect product goal 2 promises. The backend
+// must therefore ping and reap silent sockets itself; the sharer already
+// does the same in the other direction (signaling.rs, 30 s / 90 s).
+describe("server-side WS keepalive reaps silent sockets", () => {
+  const PING_MS = 50;
+  const DEADLINE_MS = 120;
+  let kaApp: ReturnType<typeof Fastify>;
+  let kaUrl: string;
+  let kaStore: SessionStore;
+
+  beforeAll(async () => {
+    kaApp = Fastify({ logger: false });
+    await kaApp.register(websocketPlugin, {
+      options: {
+        maxPayload: 65_536,
+        verifyClient(_info: unknown, cb: (result: boolean) => void) {
+          cb(true);
+        },
+      },
+    });
+    kaStore = new SessionStore({ ttlMs: 60_000 });
+    registerSignaling(
+      kaApp,
+      kaStore,
+      { windowMs: 60_000, max: 100 },
+      new Map(),
+      undefined,
+      { windowMs: 60_000, max: 100 },
+      new Map(),
+      undefined,
+      undefined,
+      undefined,
+      null,
+      { pingIntervalMs: PING_MS, pongDeadlineMs: DEADLINE_MS },
+    );
+    await kaApp.listen({ port: 0, host: "127.0.0.1" });
+    const addr = kaApp.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    kaUrl = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await kaApp.close();
+  });
+
+  function connect(opts: { autoPong: boolean }): WebSocket {
+    return new WebSocket(kaUrl, { autoPong: opts.autoPong });
+  }
+
+  function closed(ws: WebSocket, withinMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (ws.readyState === WebSocket.CLOSED) return resolve(true);
+      const timer = setTimeout(() => resolve(false), withinMs);
+      ws.once("close", () => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+  }
+
+  it("terminates a confirmed viewer that stops answering pings and frees the slot for a rejoin", async () => {
+    const sharer = connect({ autoPong: true });
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const zombie = connect({ autoPong: false });
+    await new Promise((r) => zombie.once("open", r));
+    zombie.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await recv(zombie); // peer-confirmed
+
+    expect(await closed(zombie, DEADLINE_MS * 4)).toBe(true);
+
+    const helper = connect({ autoPong: true });
+    await new Promise((r) => helper.once("open", r));
+    const helperInbox: Array<Record<string, unknown>> = [];
+    helper.on("message", (d) => helperInbox.push(JSON.parse(d.toString())));
+    helper.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    const rejoined = await recv(sharer);
+    expect(rejoined.type).toBe("peer-joined");
+    // The reaped viewer's accept must not carry over — the sharer confirms
+    // afresh, so the helper sees no peer-confirmed until it does.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(helperInbox).toEqual([]);
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(helperInbox).toEqual([{ type: "peer-confirmed" }]);
+
+    sharer.close();
+    helper.close();
+  });
+
+  it("leaves a viewer that answers pings connected across several deadlines", async () => {
+    const sharer = connect({ autoPong: true });
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+    const viewer = connect({ autoPong: true });
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer);
+
+    expect(await closed(viewer, DEADLINE_MS * 4)).toBe(false);
+    expect(viewer.readyState).toBe(WebSocket.OPEN);
+    expect(sharer.readyState).toBe(WebSocket.OPEN);
+    sharer.close();
+    viewer.close();
+  });
+
+  it("terminates a silent sharer so its code is released", async () => {
+    const sharer = connect({ autoPong: false });
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    expect(await closed(sharer, DEADLINE_MS * 4)).toBe(true);
+    // The client observes the FIN a tick before the server's own close
+    // handler (removeBySharer) has run.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(kaStore.getSession(code)).toBeNull();
+
+    const late = connect({ autoPong: true });
+    await new Promise((r) => late.once("open", r));
+    late.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    const err = await recv(late);
+    expect(err).toMatchObject({ type: "error", code: "invalid-code" });
+    late.close();
+  });
+});
+

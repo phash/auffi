@@ -170,6 +170,18 @@ a Wi-Fi blip keeps the sharer's ICE grace / reconnect window alive. The
 sharer's `keep_signaling` teardown intent (`docs/footguns.md` § Sharer
 Teardown) relies on this back-edge.
 
+## Transport Liveness
+
+The backend pings every open `/signal` socket every **30 s** and terminates
+one that has not answered with a pong for **90 s** (`backend/src/signaling.ts`,
+`DEFAULT_KEEPALIVE`). A terminated socket runs the ordinary `close` teardown,
+so a viewer whose network died silently (lid close, Wi-Fi → LTE, NAT expiry)
+frees its `session.viewer` slot and a rejoin of the same code succeeds — the
+sharer confirms the returning helper afresh. Clients need no application-level
+code for this: browsers, `ws` and tungstenite answer protocol pings
+automatically. The sharer pings the backend on the same 30 s / 90 s schedule
+in the other direction (`sharer/src-tauri/src/signaling.rs`).
+
 ---
 
 ## Unattended-Access Extensions (gh #16 / #17 / #25)
