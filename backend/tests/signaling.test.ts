@@ -17,6 +17,9 @@ beforeAll(async () => {
   // builds its own Fastify instance with a tight cap so the gate
   // is still exercised end-to-end.
   process.env.REGISTER_RATE_LIMIT_MAX = "1000";
+  // Same for the join cap: every join (hits included) costs one unit of the
+  // 5/min budget, and this suite joins far more often than that.
+  process.env.RATE_LIMIT_MAX = "1000";
   app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
@@ -26,6 +29,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+  delete process.env.RATE_LIMIT_MAX;
 });
 
 function openWs(target: string): WebSocket {

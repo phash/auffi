@@ -224,6 +224,8 @@ describe("/signal unattended connect flow (gh #17)", () => {
 
     process.env.REGISTER_RATE_LIMIT_MAX = "1000";
     process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
+    // Every viewer join costs one unit of the 5/min per-IP budget.
+    process.env.RATE_LIMIT_MAX = "1000";
     app = await createServer({ port: 0, host: "127.0.0.1", db });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
@@ -234,6 +236,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
   afterAll(async () => {
     await app.close();
     db.close();
+    delete process.env.RATE_LIMIT_MAX;
   });
 
   beforeEach(() => {

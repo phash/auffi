@@ -487,6 +487,16 @@ export function registerSignaling(
           peer.close();
           return;
         }
+        // Every well-formed attempt — hit, miss, full or busy — costs one unit
+        // BEFORE any lookup. Consulting the budget only on a miss would let an
+        // IP that already burned it keep guessing at full speed and still get
+        // attached on the first correct code; the documented 5/min guessing
+        // bound (CLAUDE.md § Product Goals) only exists if it gates hits too.
+        if (!checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg)) {
+          send(peer, { type: "error", code: "rate-limit", message: "too many attempts" });
+          peer.close();
+          return;
+        }
         const session = store.getJoinableSession(normalized);
         if (!session) {
           // gh #17: ad-hoc lookup miss → try registered unattended
@@ -509,7 +519,6 @@ export function registerSignaling(
                 ipPrefix(req),
               );
               if (begin === "busy") {
-                checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg);
                 send(peer, { type: "error", code: "invalid-code", message: "session full" });
                 peer.close();
                 return;
@@ -519,22 +528,11 @@ export function registerSignaling(
               return;
             }
           }
-          if (!checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg)) {
-            send(peer, { type: "error", code: "rate-limit", message: "too many attempts" });
-            peer.close();
-            return;
-          }
           send(peer, { type: "error", code: "invalid-code", message: "no such session" });
           peer.close();
           return;
         }
         if (session.viewer) {
-          // Count this attempt in the IP limiter even though the code
-          // *was* valid — otherwise an attacker can probe which 9-digit
-          // codes resolve to a live-but-full session without budget
-          // pressure. The same code from a legitimate retry-burst will
-          // be back below the limit by the next window.
-          checkRateLimit(req.ip ?? "unknown", attemptCounts, rateLimitCfg);
           send(peer, { type: "error", code: "invalid-code", message: "session full" });
           peer.close();
           return;
