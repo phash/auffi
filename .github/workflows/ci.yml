@@ -171,7 +171,7 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-24.04
-    needs: [backend, viewer]
+    needs: [backend, viewer, dashboard]
     steps:
       - uses: actions/checkout@v4
 
@@ -180,7 +180,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: viewer/package-lock.json
+          cache-dependency-path: |
+            viewer/package-lock.json
+            dashboard/package-lock.json
 
       - name: Install backend dependencies
         working-directory: backend
@@ -188,6 +190,10 @@ jobs:
 
       - name: Install viewer dependencies
         working-directory: viewer
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
         run: npm ci
 
       - name: Install Playwright browsers
@@ -254,9 +260,37 @@ jobs:
           cat /tmp/viewer-dev.log || true
           exit 1
 
+      # unattended.spec.ts tier 1 drives the dashboard's signup/login/forgot
+      # forms. Without this server the spec used to skip all three tests
+      # silently and the job stayed green on the 3 DOM-only review-fixes
+      # tests; the spec now fails hard under CI when the dashboard is down.
+      - name: Start dashboard dev server
+        working-directory: dashboard
+        run: npm run dev > /tmp/dashboard-dev.log 2>&1 &
+        env:
+          # Cross-origin dev layout: dashboard on :5174, backend on :8080
+          # (dashboard/src/api.ts). :5174 is already in ALLOWED_ORIGINS above.
+          VITE_API_BASE: http://127.0.0.1:8080
+
+      - name: Wait for dashboard dev server to be ready
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:5174/dashboard/ > /dev/null 2>&1; then
+              echo "Dashboard ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Dashboard dev server did not become ready within 30s"
+          cat /tmp/dashboard-dev.log || true
+          exit 1
+
       - name: Run Playwright E2E tests
         working-directory: viewer
-        # CI runs the specs that are reliable headless: signaling/UI flows.
+        # CI runs the specs that are reliable headless: review-fixes (DOM
+        # only) + unattended tier 1 (dashboard signup/login/forgot against
+        # the real backend). unattended tiers 2/3 stay skipped per the
+        # spec header (pending test hooks / mock unattended sharer).
         # Excluded from the PR gate (run manually / locally):
         #  - connect.spec.ts + input.spec.ts drive a live WebRTC media+
         #    datachannel handshake (headless Chrome ↔ node-webrtc mock sharer)
@@ -267,6 +301,8 @@ jobs:
         run: npx playwright test unattended.spec.ts review-fixes.spec.ts
         env:
           VIEWER_URL: http://localhost:5173
+          BACKEND_HTTP_URL: http://127.0.0.1:8080
+          DASHBOARD_URL: http://localhost:5174
 
       - name: Upload Playwright traces on failure
         if: failure()

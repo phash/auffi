@@ -4,10 +4,11 @@
  *
  * Three tiers of coverage land in this file:
  *
- *   1. Dashboard auth surface — signup form posts to backend,
- *      success banner appears; login form shows friendly
- *      bad-credentials on a wrong password. This tier needs only
- *      the backend + dashboard up; no mock sharer.
+ *   1. Dashboard auth surface — signup form posts to backend and
+ *      hands over to the landing page with the toast flag; login
+ *      form shows friendly bad-credentials on a wrong password.
+ *      This tier needs only the backend + dashboard up; no mock
+ *      sharer. Runs in CI (ci.yml e2e job starts both).
  *
  *   2. Pairing-code roundtrip — signup → verify (via backend test
  *      hook) → mint code → dashboard shows the code. Needs a
@@ -78,6 +79,16 @@ test.describe("dashboard auth surface (tier 1)", () => {
   test.beforeEach(async ({ page }, info) => {
     const back = await backendUp();
     const dash = await dashboardUp();
+    // Locally a missing service is a skip. In CI it must be a failure:
+    // the e2e job claims to cover this tier, and a silent skip turned the
+    // gate hollow for months (backend + viewer were started, the
+    // dashboard never was — every tier-1 test skipped, job green).
+    if (process.env.CI && (!back || !dash)) {
+      throw new Error(
+        `CI must bring up backend + dashboard before this spec ` +
+          `(backend=${back} dashboard=${dash}, ${BACKEND_HTTP_URL} / ${DASHBOARD_URL})`,
+      );
+    }
     test.skip(
       !back || !dash,
       `Skipping: backend up=${back} dashboard up=${dash}. Bring both ` +
@@ -86,19 +97,22 @@ test.describe("dashboard auth surface (tier 1)", () => {
     info.annotations.push({ type: "stack", description: `${BACKEND_HTTP_URL} + ${DASHBOARD_URL}` });
   });
 
-  test("signup form POSTs and shows the success banner", async ({ page }) => {
+  test("signup form POSTs, then hands over to the landing page with the toast flag", async ({ page }) => {
     const email = uniqueEmail();
     await page.goto(DASHBOARD_URL + "/dashboard/signup");
     await page.locator("#signup-email").fill(email);
     await page.locator("#signup-password").fill("e2e-pw-12345");
-    await page.locator("button[type=submit]").click();
-    // The success banner is the only [role=status] under the form.
-    await expect(page.locator('[role="status"]')).toContainText(
-      "Bestätigungs-Mail unterwegs",
-      { timeout: 10_000 },
+    const signupResponse = page.waitForResponse(
+      (res) => res.url().endsWith("/api/auth/signup") && res.request().method() === "POST",
     );
-    // Form locks after success.
-    await expect(page.locator("#signup-email")).toBeDisabled();
+    await page.locator("button[type=submit]").click();
+    expect((await signupResponse).status()).toBe(202);
+    // On success the view leaves the dashboard SPA for the viewer's landing
+    // page ("/") and sets the one-shot flag signup-toast.ts renders there
+    // (dashboard/src/views/signup.ts). Same origin, so the flag is readable
+    // from wherever "/" lands in the dev layout.
+    await page.waitForURL((url) => !url.pathname.endsWith("/signup"), { timeout: 10_000 });
+    expect(await page.evaluate(() => window.sessionStorage.getItem("auffi:signup-toast"))).toBe("1");
   });
 
   test("login shows friendly bad-credentials on wrong password", async ({ page }) => {
