@@ -570,9 +570,9 @@ describe("DELETE /api/devices/:id", () => {
     expect(buckets.c, "self-revoke must sweep the device's buckets").toBe(0);
   });
 
-  it("clears the device's rate-limit buckets on delete (parity with the admin route)", async () => {
-    // A re-paired device must not inherit a pwfail lockout; the admin
-    // delete already sweeps these — the owner delete has to match.
+  it("clears the device's rate-limit buckets on delete (parity with the self-revoke path)", async () => {
+    // A re-paired device must not inherit a pwfail lockout; the sharer's
+    // Bearer self-revoke sweeps these — the owner delete has to match.
     h.db
       .prepare("INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES (?, 3, NULL)")
       .run(`device:${deviceId}:pwfail`);
