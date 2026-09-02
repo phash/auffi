@@ -863,6 +863,58 @@ describe("country lookup in ad-hoc peer-joined", () => {
   });
 });
 
+// signaling.ts kept its own ipPrefix() next to lib/redact-ip.ts — the
+// DSGVO-relevant transform existed twice and the copies already disagreed
+// on unparseable input ("garbage:xxx" vs "unknown"). Trusting the proxy and
+// forwarding a bogus address is the one way to make req.ip unparseable
+// through a real socket.
+describe("viewer ipPrefix uses the shared redactIp", () => {
+  let rdApp: ReturnType<typeof Fastify>;
+  let rdUrl: string;
+
+  beforeAll(async () => {
+    rdApp = Fastify({ logger: false, trustProxy: true });
+    await rdApp.register(websocketPlugin, {
+      options: {
+        maxPayload: 65_536,
+        verifyClient(_info: unknown, cb: (result: boolean) => void) {
+          cb(true);
+        },
+      },
+    });
+    registerSignaling(rdApp, new SessionStore({ ttlMs: 60_000 }), { windowMs: 60_000, max: 100 });
+    await rdApp.listen({ port: 0, host: "127.0.0.1" });
+    const addr = rdApp.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    rdUrl = `ws://127.0.0.1:${addr.port}/signal`;
+  });
+
+  afterAll(async () => {
+    await rdApp.close();
+  });
+
+  it.each([
+    ["not-an-ip", "unknown"],
+    ["84.12.99.7", "84.xxx"],
+    ["::ffff:84.12.99.7", "84.xxx"],
+    ["2001:db8:1:2::3", "2001:db8:xxx"],
+  ])("peer-joined ipPrefix for forwarded %s is %s", async (forwarded, expected) => {
+    const sharer = new WebSocket(rdUrl);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer = new WebSocket(rdUrl, { headers: { "x-forwarded-for": forwarded } });
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    const joined = await recv(sharer);
+    expect(joined.type).toBe("peer-joined");
+    expect(joined.viewerInfo.ipPrefix).toBe(expected);
+    sharer.close();
+    viewer.close();
+  });
+});
+
 describe("code-TTL expiry vs live sessions", () => {
   // Short TTL + a handle on the store so tests can drive the sweep
   // directly instead of waiting for server.ts's 60 s interval.

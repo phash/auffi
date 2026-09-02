@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import type { SessionStore, Peer } from "./codes.js";
 import { normalizeCode } from "./codes.js";
@@ -23,6 +23,7 @@ import {
   UnattendedSessions,
 } from "./unattended_sessions.js";
 import { startConnectionLog, endConnectionLog } from "./connection_log.js";
+import { redactIp } from "./lib/redact-ip.js";
 import {
   checkIpRateLimit as checkRateLimit,
   stripIpv4Mapped,
@@ -152,13 +153,6 @@ export function registerSignaling(
 ): Map<string, RateLimitEntry> {
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
-  }
-
-  function ipPrefix(req: FastifyRequest): string {
-    const ip = stripIpv4Mapped(req.ip ?? "");
-    const parts = ip.split(".");
-    if (parts.length === 4) return `${parts[0]}.xxx`;
-    return ip.split(":").slice(0, 2).join(":") + ":xxx";
   }
 
   // `terminate()` fires the socket's ordinary `close` handler, so the
@@ -563,7 +557,7 @@ export function registerSignaling(
                 normalized,
                 peer,
                 live,
-                ipPrefix(req),
+                redactIp(req.ip),
               );
               if (begin === "busy") {
                 send(peer, { type: "error", code: "invalid-code", message: "session full" });
@@ -589,7 +583,7 @@ export function registerSignaling(
         send(session.sharer as WebSocket, {
           type: "peer-joined",
           viewerInfo: {
-            ipPrefix: ipPrefix(req),
+            ipPrefix: redactIp(req.ip),
             country: lookupCountry(countryLookup, stripIpv4Mapped(req.ip ?? "")),
           },
         });
