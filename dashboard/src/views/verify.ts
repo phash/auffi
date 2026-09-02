@@ -1,7 +1,7 @@
 // /dashboard/verify/:token — fires GET /api/auth/verify/:token on
-// mount, shows status. Backend auto-issues the session cookie on
-// success so the user is logged in by the time they reach this
-// view.
+// mount, shows status. Success marks the account verified but issues
+// NO session (Sec H-2): the user is still anonymous here and the view
+// links them to /login.
 
 import { verifyEmail } from "../api.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
