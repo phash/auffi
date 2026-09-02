@@ -502,9 +502,17 @@ reconnectBtn.addEventListener("click", () => {
 
 // ── Accept / Decline ─────────────────────────────────────────────────────────
 
-document.getElementById("accept")!.addEventListener("click", () => {
+const acceptBtn = document.getElementById("accept")! as HTMLButtonElement;
+
+acceptBtn.addEventListener("click", () => {
   const ip = currentIpPrefix ?? "";
   const rememberIt = rememberPeerCheckbox.checked;
+  // One answer per request: a second click inside the confirm_peer round
+  // trip would run the start chain twice — two start_streaming calls, two
+  // portal dialogs, which Plasma refuses to surface. Re-armed on failure
+  // (retry) and by the next peer-joined.
+  acceptBtn.disabled = true;
+  declineBtn.disabled = true;
 
   invoke("confirm_peer", { accepted: true })
     .then(async () => {
@@ -549,6 +557,8 @@ document.getElementById("accept")!.addEventListener("click", () => {
     })
     .catch((err: unknown) => {
       showFriendlyError("Verbindung konnte nicht akzeptiert werden. Bitte erneut versuchen.", err);
+      acceptBtn.disabled = false;
+      declineBtn.disabled = false;
     });
 });
 
@@ -868,6 +878,8 @@ listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) =>
     trusted,
   });
   rememberPeerCheckbox.checked = trusted;
+  acceptBtn.disabled = false;
+  declineBtn.disabled = false;
   confirmEl.classList.add("visible");
   // This dialog gates screen access — give it initial keyboard focus like
   // every other dialog, on the safer choice (matching stop/remove-confirm).
