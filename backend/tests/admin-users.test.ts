@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Fastify, { FastifyInstance } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
@@ -148,13 +148,26 @@ describe("GET /api/admin/users", () => {
          VALUES (?, ?, 'D', 'dummy', ?)`,
       ).run(`99${i}-99${i}-99${i}`, target, Date.now());
     }
+    const prepared: string[] = [];
+    const origPrepare = h.db.prepare.bind(h.db);
+    const spy = vi.spyOn(h.db, "prepare").mockImplementation((sql: string) => {
+      prepared.push(sql);
+      return origPrepare(sql);
+    });
     const res = await h.app.inject({
       method: "GET",
       url: "/api/admin/users",
       headers: { cookie: `__Host-auffi_session=${cookie}` },
     });
+    spy.mockRestore();
     const u1 = res.json().items.find((x: { email: string }) => x.email === "user1@example.com");
     expect(u1.device_count).toBe(2);
+    // Query shape: exactly one statement touches `devices`, and it is the
+    // list SELECT itself (correlated subquery) — a per-row COUNT(*) loop
+    // would show up as one extra prepare per user.
+    const touchingDevices = prepared.filter((sql) => /\bdevices\b/.test(sql));
+    expect(touchingDevices).toHaveLength(1);
+    expect(touchingDevices[0]).toMatch(/FROM accounts a/);
   });
 
   it("rejects bad status with 400", async () => {
