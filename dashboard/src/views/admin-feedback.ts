@@ -76,6 +76,7 @@ export const renderAdminFeedback: RouteRenderer = (
   // response is discarded unless it still carries the latest generation
   // — fast tab switches would otherwise interleave rows of two tabs.
   let generation = 0;
+  let unmounted = false;
 
   function buildTab(label: string, key: Tab): HTMLButtonElement {
     const btn = document.createElement("button");
@@ -105,6 +106,9 @@ export const renderAdminFeedback: RouteRenderer = (
   }
 
   async function reload(): Promise<void> {
+    // The reply panel schedules a delayed reload; if the admin left the
+    // page meanwhile it must not fetch against the detached view.
+    if (unmounted) return;
     const myGeneration = ++generation;
     status.textContent = "Lade …";
     status.className = "loading";
@@ -144,7 +148,7 @@ export const renderAdminFeedback: RouteRenderer = (
   }
 
   async function loadMore(): Promise<void> {
-    if (nextCursor === null) return;
+    if (unmounted || nextCursor === null) return;
     const myGeneration = ++generation;
     more.disabled = true;
     more.textContent = "Lädt …";
@@ -172,6 +176,13 @@ export const renderAdminFeedback: RouteRenderer = (
 
   more.addEventListener("click", () => void loadMore());
   void reload();
+
+  // Router-invoked cleanup: bumping the generation discards in-flight
+  // responses, the flag stops the reply panel's delayed reload.
+  return () => {
+    unmounted = true;
+    generation += 1;
+  };
 };
 
 function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
@@ -237,16 +248,33 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "feedback-admin-actions";
 
+  // Inline error surface for the card's actions — the same on-brand,
+  // non-blocking pattern every other view uses instead of window.alert().
+  const actionError = document.createElement("p");
+  actionError.setAttribute("role", "alert");
+  actionError.hidden = true;
+  const showActionError = (message: string): void => {
+    actionError.className = "error";
+    actionError.textContent = `Fehler: ${message}`;
+    actionError.hidden = false;
+  };
+  const clearActionError = (): void => {
+    actionError.className = "";
+    actionError.textContent = "";
+    actionError.hidden = true;
+  };
+
   const toggleBtn = document.createElement("button");
   toggleBtn.type = "button";
   toggleBtn.className = "feedback-btn";
   toggleBtn.textContent = item.resolvedAt ? "Wieder öffnen" : "Erledigen";
   toggleBtn.addEventListener("click", async () => {
     toggleBtn.disabled = true;
+    clearActionError();
     const res = await patchAdminFeedback(item.id, !item.resolvedAt);
     toggleBtn.disabled = false;
     if (!res.ok) {
-      alert(`Fehler: ${res.message}`);
+      showActionError(res.message);
       return;
     }
     onChange();
@@ -281,10 +309,11 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
     });
     if (!ok) return;
     deleteBtn.disabled = true;
+    clearActionError();
     const res = await deleteAdminFeedback(item.id);
     deleteBtn.disabled = false;
     if (!res.ok) {
-      alert(`Fehler: ${res.message}`);
+      showActionError(res.message);
       return;
     }
     onChange();
@@ -292,6 +321,7 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
   actions.appendChild(deleteBtn);
 
   card.appendChild(actions);
+  card.appendChild(actionError);
   return card;
 }
 

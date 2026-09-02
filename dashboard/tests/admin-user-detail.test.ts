@@ -68,6 +68,34 @@ describe("renderAdminUserDetail", () => {
     expect((root.querySelector(".error") as HTMLElement).textContent).toContain("Ungültige");
   });
 
+  it("surfaces a failed action inline instead of via window.alert", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return jsonResponse({ error: "last-admin", message: "cannot demote the last admin" }, 409);
+        }
+        return jsonResponse(USER);
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAdminUserDetail(root, ctx);
+    await flush();
+    Array.from(root.querySelectorAll("button")).find((b) => b.textContent === "Suspendieren")!.click();
+    const textarea = document.querySelector(".admin-modal-reason") as HTMLTextAreaElement;
+    textarea.value = "Grund lang genug für den Test";
+    textarea.dispatchEvent(new Event("input"));
+    (document.querySelector("#admin-modal-backdrop .btn.danger") as HTMLButtonElement).click();
+    await flush();
+    await flush();
+    expect(alertSpy).not.toHaveBeenCalled();
+    const err = root.querySelector('[role="alert"]') as HTMLElement;
+    expect(err).not.toBeNull();
+    expect(err.textContent).toContain("cannot demote the last admin");
+    alertSpy.mockRestore();
+  });
+
   it("does not navigate away after unmount when an in-flight request 401s", async () => {
     let release: null | (() => void) = null;
     _setApiClientForTests({

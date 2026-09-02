@@ -139,6 +139,63 @@ describe("renderAdminFeedback — cursor pagination", () => {
   });
 });
 
+describe("renderAdminFeedback — lifecycle + error surfaces", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("does not reload the list after unmount when a failed-mail reply armed the delayed refresh", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (input: unknown) => {
+        calls += 1;
+        if (String(input).includes("/reply")) {
+          return jsonResponse({ ok: true, replyAt: 1, sentAt: null, sendError: "smtp down" });
+        }
+        return jsonResponse({ items: [feedbackItem(1)], nextCursor: null });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    const cleanup = renderAdminFeedback(root, ctx());
+    await vi.advanceTimersByTimeAsync(0);
+    findButton(root, "Antworten").click();
+    (root.querySelector("textarea") as HTMLTextAreaElement).value = "Danke!";
+    findButton(root, "Senden").click();
+    await vi.advanceTimersByTimeAsync(0);
+    const afterReply = calls;
+    expect(root.textContent).toContain("Mail-Versand fehlgeschlagen");
+
+    expect(typeof cleanup, "renderer must return a cleanup for the router").toBe("function");
+    (cleanup as () => void)();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(calls, "no list reload may fire after unmount").toBe(afterReply);
+  });
+
+  it("surfaces a failed 'Erledigen' inline instead of via window.alert", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return jsonResponse({ error: "internal", message: "kaputt" }, 500);
+        }
+        return jsonResponse({ items: [feedbackItem(1)], nextCursor: null });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAdminFeedback(root, ctx());
+    await flush();
+    findButton(root, "Erledigen").click();
+    await flush();
+    expect(alertSpy).not.toHaveBeenCalled();
+    const card = root.querySelector(".feedback-admin-card") as HTMLElement;
+    const err = card.querySelector('[role="alert"]') as HTMLElement;
+    expect(err).not.toBeNull();
+    expect(err.textContent).toContain("kaputt");
+    alertSpy.mockRestore();
+  });
+});
+
 describe("renderAdminFeedback — tab-race guard", () => {
   it("resets the 'Mehr laden' button when a tab switch supersedes an in-flight load-more", async () => {
     const resolvers: Array<(r: Response) => void> = [];

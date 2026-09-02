@@ -180,6 +180,14 @@ export const renderAdminUserDetail: RouteRenderer = (
     bar.appendChild(deleteBtn);
 
     actions.appendChild(bar);
+
+    // Inline error surface for the action bar — the backend's codes
+    // ("last-admin" etc.) are diagnostic enough, but a blocking native
+    // alert() swallows focus and sits outside the design system.
+    const actionError = document.createElement("p");
+    actionError.setAttribute("role", "alert");
+    actionError.hidden = true;
+    actions.appendChild(actionError);
     root.appendChild(actions);
 
     // ─ Devices ─
@@ -306,10 +314,7 @@ export const renderAdminUserDetail: RouteRenderer = (
       const res = await patchAdminUser(user.id, action, reason);
       setBarDisabled(false);
       if (!res.ok) {
-        // simple alert is OK — admins are technical users, and the
-        // server-error-codes ("last-admin" etc.) are diagnostic enough.
-        // eslint-disable-next-line no-alert
-        alert(`Fehler: ${res.message}`);
+        showActionError(res.message);
         return;
       }
       void load(); // refetch
@@ -322,14 +327,24 @@ export const renderAdminUserDetail: RouteRenderer = (
       const res = await deleteAdminUser(user.id, reason);
       setBarDisabled(false);
       if (!res.ok) {
-        // eslint-disable-next-line no-alert
-        alert(`Fehler: ${res.message}`);
+        showActionError(res.message);
         return;
       }
       navigate("/admin/users");
     }
 
+    function showActionError(message: string): void {
+      actionError.className = "error";
+      actionError.textContent = `Fehler: ${message}`;
+      actionError.hidden = false;
+    }
+
     function setBarDisabled(disabled: boolean): void {
+      if (disabled) {
+        actionError.className = "";
+        actionError.textContent = "";
+        actionError.hidden = true;
+      }
       for (const btn of [suspendBtn, promoteBtn, deleteBtn]) {
         btn.disabled = disabled;
       }
