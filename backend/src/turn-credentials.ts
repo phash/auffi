@@ -5,7 +5,6 @@ import { normalizeCode } from "./codes.js";
 
 export type TurnConfig = {
   sharedSecret: string;
-  realm: string;
   urls: string[];
   ttlSec: number;
   allowedOrigins: string[];

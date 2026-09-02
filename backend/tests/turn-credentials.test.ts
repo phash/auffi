@@ -8,7 +8,6 @@ import { SessionStore } from "../src/codes.js";
 
 function setTurnEnv(): void {
   process.env.TURN_SHARED_SECRET = "test-secret-32-chars-minimum";
-  process.env.TURN_REALM = "turn.auffi.local";
   process.env.TURN_HOSTS =
     "turn:turn.auffi.local:3478,turns:turn.auffi.local:5349";
   process.env.ALLOWED_ORIGINS = "http://localhost:5173";
@@ -16,7 +15,6 @@ function setTurnEnv(): void {
 
 function clearTurnEnv(): void {
   delete process.env.TURN_SHARED_SECRET;
-  delete process.env.TURN_REALM;
   delete process.env.TURN_HOSTS;
   delete process.env.ALLOWED_ORIGINS;
 }
@@ -241,7 +239,6 @@ describe("POST /turn-credentials — unattended session gate", () => {
     await app.register(rateLimitPlugin, { global: true, max: 100, timeWindow: "1 minute" });
     registerTurnEndpoint(app, {
       sharedSecret: "test-secret-32-chars-minimum",
-      realm: "turn.auffi.local",
       urls: ["turn:turn.auffi.local:3478"],
       ttlSec: 3600,
       allowedOrigins: ["http://localhost:5173"],
@@ -298,7 +295,6 @@ describe("POST /turn-credentials — unattended registry gate (pre-join fetch)",
     await app.register(rateLimitPlugin, { global: true, max: 100, timeWindow: "1 minute" });
     registerTurnEndpoint(app, {
       sharedSecret: "test-secret-32-chars-minimum",
-      realm: "turn.auffi.local",
       urls: ["turn:turn.auffi.local:3478"],
       ttlSec: 3600,
       allowedOrigins: ["http://localhost:5173"],

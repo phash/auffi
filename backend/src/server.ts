@@ -154,7 +154,6 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   // CODE_TTL_HARD_CAP_MS). The browser-session TTL is separate (sessions.ts).
   const codeTtlMs = Math.min(env.sessionTtlMs, CODE_TTL_HARD_CAP_MS);
   const turnSharedSecret = process.env.TURN_SHARED_SECRET ?? "";
-  const turnRealm = process.env.TURN_REALM ?? "localhost";
   const turnHosts = envList("TURN_HOSTS", []);
   const turnTtlSec = envNumber("TURN_TTL_SEC", 3600);
   const app = Fastify({
@@ -256,7 +255,6 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   const turnCfg: TurnConfig | null = turnSharedSecret
     ? {
         sharedSecret: turnSharedSecret,
-        realm: turnRealm,
         urls: turnHosts,
         ttlSec: turnTtlSec,
         allowedOrigins: env.allowedOrigins,
