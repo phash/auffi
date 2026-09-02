@@ -2,9 +2,11 @@ import type { WebSocket } from "ws";
 import type { Db } from "./db.js";
 
 /**
- * Per-device lockout: 5 wrong password attempts inside the window →
- * the bucket locks for `lockoutMs`. Counter resets on the first
- * successful pw-ok. Spec section 6.
+ * Per-device lockout: 5 cumulative wrong password attempts → the bucket
+ * locks for `lockoutMs`. There is NO time window — `fail_count` only
+ * resets on a successful pw-ok or on the first failure after an expired
+ * lock (same semantics as auth/account_lockout.ts), so four stray typos
+ * in January and one in June lock the device. Spec section 6.
  */
 export const PW_FAIL_THRESHOLD = 5;
 export const PW_LOCKOUT_MS = 15 * 60 * 1000;
@@ -250,11 +252,14 @@ export class UnattendedSessions {
 
   /**
    * Reap sessions stuck before "confirmed" for longer than
-   * [`PW_ENTRY_TIMEOUT_MS`] and return them so the caller (the 60 s
-   * sweep in server.ts) can close the abandoned viewer sockets.
-   * Confirmed sessions are exempt — they live until a peer
-   * disconnects. A pw-check-result landing after the reap is silently
-   * dropped by `findBySharer` returning null (TC C-2 contract).
+   * [`PW_ENTRY_TIMEOUT_MS`]. Closing the abandoned viewer socket and
+   * handing the sharer its synthesized bye is the `setOnStaleReap`
+   * callback's job (registered by signaling.ts) — callers MUST NOT close
+   * the sockets themselves. The reaped list is returned for tests only;
+   * the 60 s sweep in server.ts ignores it. Confirmed sessions are
+   * exempt — they live until a peer disconnects. A pw-check-result
+   * landing after the reap is silently dropped by `findBySharer`
+   * returning null (TC C-2 contract).
    */
   sweepStale(now: number = Date.now()): UnattendedSession[] {
     const stale: UnattendedSession[] = [];

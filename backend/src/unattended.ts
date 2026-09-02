@@ -139,13 +139,6 @@ function pickString(v: string | string[] | undefined): string | undefined {
 }
 
 /**
- * Verify a parsed bearer auth against the devices table. Returns
- * `true` iff the device exists and the presented token argon2-verifies
- * against the stored token_hash.
- *
- * Updates last_seen_at = now on success.
- */
-/**
  * Read the device's `auto_accept` flag fresh from the DB. Used by
  * signaling.ts when forwarding a viewer's `pw-attempt` as `pw-check`
  * so the value reflects the latest dashboard toggle (gh #25).
@@ -174,6 +167,13 @@ export interface VerifyBearerOptions {
   touchLastSeen?: boolean;
 }
 
+/**
+ * Verify a parsed bearer auth against the devices table. Returns
+ * `true` iff the device exists, its owner is not suspended and the
+ * presented token argon2-verifies against the stored token_hash.
+ *
+ * Updates last_seen_at = now on success unless `touchLastSeen: false`.
+ */
 export async function verifyBearerAuth(
   db: Db,
   auth: BearerAuth,
