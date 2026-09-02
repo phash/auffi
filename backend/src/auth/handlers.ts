@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Db } from "../db.js";
 import { hashPassword, verifyPasswordTimingSafe } from "./argon.js";
 import { newToken, hashToken } from "./tokens.js";
+import { reserveAccountPwAttempt, recordAccountPwSuccess } from "./account_lockout.js";
 import { mailErrorInfo } from "../email/log_safe.js";
 import { maybePromoteToAdmin } from "../admin/bootstrap.js";
 import {
@@ -243,10 +244,25 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
         )
         .get(email);
 
+      // Per-account lockout, the same one /api/me applies (CLAUDE.md: the
+      // 5-attempt lockout covers the password surfaces). The per-IP limiter
+      // alone is spread over addresses trivially. The response for a locked
+      // account is the plain 401 — a distinct status would let anyone probe
+      // which addresses have an account — and the argon2 cost is still paid
+      // so timing does not tell either.
+      if (account) {
+        const attempt = reserveAccountPwAttempt(db, account.id);
+        if (!attempt.allowed) {
+          await verifyPasswordTimingSafe(null, password);
+          return bad(reply, 401, "bad-credentials", "email or password incorrect");
+        }
+      }
+
       const ok = await verifyPasswordTimingSafe(account?.password_hash, password);
       if (!ok || !account) {
         return bad(reply, 401, "bad-credentials", "email or password incorrect");
       }
+      recordAccountPwSuccess(db, account.id);
 
       // Suspended accounts pass the password check but cannot proceed
       // (gh #41 acceptance criterion: suspended_at blocks login after

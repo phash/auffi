@@ -7,10 +7,10 @@ import {
   deleteAllSessionsForAccount,
 } from "../auth/sessions.js";
 import {
-  checkAccountLockout,
-  recordAccountPwFail,
+  reserveAccountPwAttempt,
   recordAccountPwSuccess,
 } from "../auth/account_lockout.js";
+import { countActiveAdmins } from "../admin/active_admins.js";
 import { mailErrorInfo } from "../email/log_safe.js";
 import {
   evictAccountDevices,
@@ -141,15 +141,15 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
 
       // Sec H-3 (review 2026-05-13): per-account lockout. An attacker
       // who steals one session cookie should NOT be able to brute the
-      // current_password gate through the per-IP limit alone. Check
-      // BEFORE running argon2 so a locked account also short-circuits
-      // the CPU cost.
-      const lock = checkAccountLockout(db, account.id);
-      if (lock.locked) {
+      // current_password gate through the per-IP limit alone. The attempt
+      // is counted BEFORE argon2 runs (and forgiven on success) so a
+      // parallel burst cannot verify more guesses than the threshold.
+      const attempt = reserveAccountPwAttempt(db, account.id);
+      if (!attempt.allowed) {
         return reply.status(423).send({
           error: "locked",
           message: "account temporarily locked",
-          retryAfterSec: lock.retryAfterSec,
+          retryAfterSec: attempt.retryAfterSec,
         });
       }
 
@@ -157,7 +157,6 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
       // timing-safe variant) — the account is known to exist.
       const ok = await verifyPassword(account.password_hash, currentPassword);
       if (!ok) {
-        recordAccountPwFail(db, account.id);
         return bad(reply, 403, "bad-credentials", "current password incorrect");
       }
       recordAccountPwSuccess(db, account.id);
@@ -229,8 +228,8 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
       }
 
       const account = db
-        .prepare<[number], { id: number; password_hash: string }>(
-          "SELECT id, password_hash FROM accounts WHERE id = ?",
+        .prepare<[number], { id: number; password_hash: string; admin: number }>(
+          "SELECT id, password_hash, admin FROM accounts WHERE id = ?",
         )
         .get(req.account!.id);
       if (!account) return bad(reply, 404, "not-found", "account gone");
@@ -238,22 +237,34 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
       // Sec H-3: share the lockout with PATCH /api/me. Account
       // deletion is a one-shot but the cost of a delete-then-undo on
       // a wrong-password attacker is the same as a PATCH: 250 ms of
-      // argon2 + a state-changing op. Lock check before verify.
-      const lock = checkAccountLockout(db, account.id);
-      if (lock.locked) {
+      // argon2 + a state-changing op. The attempt is reserved before verify.
+      const attempt = reserveAccountPwAttempt(db, account.id);
+      if (!attempt.allowed) {
         return reply.status(423).send({
           error: "locked",
           message: "account temporarily locked",
-          retryAfterSec: lock.retryAfterSec,
+          retryAfterSec: attempt.retryAfterSec,
         });
       }
 
       const ok = await verifyPassword(account.password_hash, currentPassword);
       if (!ok) {
-        recordAccountPwFail(db, account.id);
         return bad(reply, 403, "bad-credentials", "current password incorrect");
       }
       recordAccountPwSuccess(db, account.id);
+
+      // The admin actions refuse to demote or suspend the last active admin
+      // for the same reason: without one, nobody can reach the admin surface
+      // again short of the INITIAL_ADMIN_EMAIL bootstrap. Self-delete was
+      // the one door left open.
+      if (account.admin === 1 && countActiveAdmins(db) <= 1) {
+        return bad(
+          reply,
+          409,
+          "last-admin",
+          "the last active admin cannot delete their own account — promote another admin first",
+        );
+      }
 
       // Force-close any live unattended sharers BEFORE the cascade removes
       // their device rows — otherwise a deleted account's sharers keep

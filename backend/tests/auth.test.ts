@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Fastify, { FastifyInstance } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
@@ -558,5 +558,85 @@ describe("SIGNUP_DISABLED gate (gh #39)", () => {
       payload: { email: "y@example.com", password: "correct-horse-battery" },
     });
     expect(res.statusCode).toBe(202);
+  });
+});
+
+describe("POST /api/auth/login — per-account lockout", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  beforeEach(async () => {
+    vi.useRealTimers();
+    h = await build();
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "eve@example.com", password: "the-real-password" },
+    });
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    await h.app.close();
+    h.db.close();
+  });
+
+  // Every attempt comes from a different address: the per-IP limiter is the
+  // brake being bypassed here, so the test must not trip it.
+  let nextIp = 1;
+  async function login(password: string): Promise<{ status: number; cookie: string | undefined }> {
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      remoteAddress: `10.0.${Math.floor(nextIp / 250)}.${(nextIp++ % 250) + 1}`,
+      payload: { email: "eve@example.com", password },
+    });
+    return { status: res.statusCode, cookie: cookieValue(res.headers) };
+  }
+
+  // The per-IP limiter is the only brake on login guesses, and it is trivially
+  // spread over many addresses. /api/me already locks the account after five
+  // wrong passwords (CLAUDE.md: the lockout applies to the password surfaces);
+  // login is the primary password surface and had none.
+  it("after five wrong passwords the right one is refused too", async () => {
+    for (let i = 0; i < 5; i++) {
+      expect((await login(`wrong-${i}`)).status).toBe(401);
+    }
+    const locked = await login("the-real-password");
+    expect(locked.status).toBe(401);
+    expect(locked.cookie).toBeUndefined();
+    expect(h.db.prepare("SELECT COUNT(*) AS c FROM sessions").get()).toEqual({ c: 0 });
+  });
+
+  it("the lock answers exactly like a wrong password — no account enumeration", async () => {
+    for (let i = 0; i < 5; i++) await login(`wrong-${i}`);
+    const locked = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "eve@example.com", password: "the-real-password" },
+    });
+    const unknown = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "nobody@example.com", password: "the-real-password" },
+    });
+    expect(locked.statusCode).toBe(unknown.statusCode);
+    expect(locked.json()).toEqual(unknown.json());
+  });
+
+  it("the lock lifts after fifteen minutes", async () => {
+    for (let i = 0; i < 5; i++) await login(`wrong-${i}`);
+    expect((await login("the-real-password")).status).toBe(401);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 16 * 60 * 1000);
+    const after = await login("the-real-password");
+    expect(after.status).toBe(200);
+    expect(after.cookie).toBeDefined();
+  });
+
+  it("a successful login forgives earlier wrong attempts", async () => {
+    await login("wrong-1");
+    await login("wrong-2");
+    expect((await login("the-real-password")).status).toBe(200);
+    for (let i = 0; i < 4; i++) await login(`wrong-again-${i}`);
+    // Four wrong since the reset — still one short of the lock.
+    expect((await login("the-real-password")).status).toBe(200);
   });
 });

@@ -113,6 +113,39 @@ export function recordAccountPwFail(
   };
 }
 
+export interface AccountAttemptReservation {
+  /** False while the account is locked, or once this attempt is past the fifth. */
+  allowed: boolean;
+  /** Seconds remaining on the lock (rounded up). 0 when allowed. */
+  retryAfterSec: number;
+}
+
+/**
+ * Count an attempt when it STARTS, before argon2 runs — the caller forgives
+ * it with [`recordAccountPwSuccess`] once the password verified.
+ *
+ * Checking the lock first and recording the failure afterwards left the
+ * argon2 window open: a burst of parallel wrong passwords all passed the
+ * check while the first verify was still running, so an attacker could test
+ * far more than five guesses per lockout period. Reserving up front bounds a
+ * burst to exactly the threshold; the attempt that reaches it is still
+ * verified (it is the fifth guess, not the sixth), everything reserved past
+ * it is refused without touching argon2.
+ */
+export function reserveAccountPwAttempt(
+  db: Db,
+  accountId: number,
+  now: number = Date.now(),
+): AccountAttemptReservation {
+  const lock = checkAccountLockout(db, accountId, now);
+  if (lock.locked) return { allowed: false, retryAfterSec: lock.retryAfterSec };
+  const outcome = recordAccountPwFail(db, accountId, now);
+  if (outcome.failCount <= ACCOUNT_PW_FAIL_THRESHOLD) {
+    return { allowed: true, retryAfterSec: 0 };
+  }
+  return { allowed: false, retryAfterSec: outcome.retryAfterSec };
+}
+
 /**
  * Successful current_password verify — reset the fail counter so a
  * legitimate user typing a typo earlier in the session isn't punished

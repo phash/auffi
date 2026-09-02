@@ -491,3 +491,90 @@ describe("PATCH /api/me — per-account lockout (Sec H-3)", () => {
     expect(del.json().error).toBe("locked");
   });
 });
+
+describe("PATCH /api/me — the lock counts attempts as they start", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  beforeEach(async () => {
+    h = await build();
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  // Checking the lock before argon2 and recording the failure after it left
+  // a window: a burst of parallel wrong passwords all passed the check while
+  // the first argon2 was still running, so an attacker could verify far more
+  // than five guesses per lockout period.
+  it("a burst of ten parallel wrong passwords verifies at most five of them", async () => {
+    const cookie = await h.cookie();
+    const statuses = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        h.app
+          .inject({
+            method: "PATCH",
+            url: "/api/me",
+            headers: { cookie: `__Host-auffi_session=${cookie}` },
+            payload: { current_password: `wrong-${i}`, new_email: "burst@example.com" },
+          })
+          .then((r) => r.statusCode),
+      ),
+    );
+    expect(statuses.filter((s) => s === 403)).toHaveLength(5);
+    expect(statuses.filter((s) => s === 423)).toHaveLength(5);
+  });
+});
+
+describe("DELETE /api/me — the last admin cannot delete themselves", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  beforeEach(async () => {
+    h = await build();
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  async function del(cookie: string): Promise<{ status: number; body: Record<string, unknown> }> {
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
+    });
+    return { status: res.statusCode, body: res.statusCode === 204 ? {} : res.json() };
+  }
+
+  it("refuses with 409 while no other active admin exists", async () => {
+    const cookie = await h.cookie();
+    h.db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run("henry@example.com");
+    const { status, body } = await del(cookie);
+    expect(status).toBe(409);
+    expect(body.error).toBe("last-admin");
+    expect(h.db.prepare("SELECT COUNT(*) AS c FROM accounts").get()).toEqual({ c: 1 });
+  });
+
+  it("proceeds once another active admin exists", async () => {
+    const cookie = await h.cookie();
+    h.db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run("henry@example.com");
+    h.db
+      .prepare(
+        "INSERT INTO accounts (email, password_hash, admin, email_verified_at, created_at) VALUES (?, ?, 1, ?, ?)",
+      )
+      .run("other-admin@example.com", "$argon2id$unused", Date.now(), Date.now());
+    const { status } = await del(cookie);
+    expect(status).toBe(204);
+  });
+
+  it("a suspended second admin does not count", async () => {
+    const cookie = await h.cookie();
+    h.db.prepare("UPDATE accounts SET admin = 1 WHERE email = ?").run("henry@example.com");
+    h.db
+      .prepare(
+        "INSERT INTO accounts (email, password_hash, admin, email_verified_at, created_at, suspended_at) VALUES (?, ?, 1, ?, ?, ?)",
+      )
+      .run("benched@example.com", "$argon2id$unused", Date.now(), Date.now(), Date.now());
+    const { status } = await del(cookie);
+    expect(status).toBe(409);
+  });
+});

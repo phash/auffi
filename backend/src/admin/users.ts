@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db.js";
 import { writeAudit } from "./middleware.js";
 import { deleteAllSessionsForAccount } from "../auth/sessions.js";
+import { countActiveAdmins } from "./active_admins.js";
 import { encodeCursor, decodeNumericCursor, clampLimit, paginate } from "./pagination.js";
 import {
   evictAccountDevices,
@@ -23,20 +24,6 @@ function escapeLike(s: string): string {
 
 function bad(reply: FastifyReply, status: number, code: string, message: string) {
   return reply.status(status).send({ error: code, message });
-}
-
-/**
- * Admins who can actually reach the admin surface: suspended admins are
- * blocked at login, so they don't count when deciding whether an action
- * would leave the deployment without a working admin.
- */
-function countActiveAdmins(db: Db): number {
-  const row = db
-    .prepare<[], { c: number }>(
-      "SELECT COUNT(*) AS c FROM accounts WHERE admin = 1 AND suspended_at IS NULL",
-    )
-    .get();
-  return row?.c ?? 0;
 }
 
 interface ListItem {
