@@ -42,7 +42,9 @@ rsvg-convert -w 1200 -h 630 ops/og-image.svg -o viewer/public/og-image.png
 - **Kein macOS:** der Sharer hat keinen macOS-Capture/-Input-Backend (`capture/mod.rs` nur Linux/Windows). Ein macOS-Build kompiliert nicht.
 
 ```bash
-# 1) Bump version in sharer/src-tauri/{tauri.conf.json,Cargo.toml,package.json}
+# 1) Bump version in all THREE files: sharer/package.json,
+#    sharer/src-tauri/tauri.conf.json, sharer/src-tauri/Cargo.toml
+#    (Cargo.lock follows on the next cargo build — commit it too)
 # 2) Build .deb + .rpm + .AppImage (AppImage needs the wrapper for the
 #    DT_RELR + icon-path workarounds — see docs/footguns.md § AppImage-Build Footguns)
 ./ops/build-sharer-appimage.sh
