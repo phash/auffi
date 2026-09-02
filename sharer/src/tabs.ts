@@ -13,9 +13,7 @@ export interface SetupTabsOptions {
   onActivate?: (panelKey: string) => void;
 }
 
-export function setupTabs({ tabs, onActivate }: SetupTabsOptions): {
-  activate: (target: HTMLButtonElement, focus: boolean) => void;
-} {
+export function setupTabs({ tabs, onActivate }: SetupTabsOptions): void {
   function activate(target: HTMLButtonElement, focus: boolean): void {
     for (const b of tabs) {
       const isActive = b === target;
@@ -58,6 +56,4 @@ export function setupTabs({ tabs, onActivate }: SetupTabsOptions): {
       activate(tabs[nextIndex]!, true);
     });
   }
-
-  return { activate };
 }

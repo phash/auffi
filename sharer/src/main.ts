@@ -329,7 +329,6 @@ function setStatus(text: string, kind: "idle" | "waiting" | "success" | "error")
  * adds noise.
  */
 function showFriendlyError(message: string, err: unknown): void {
-  // eslint-disable-next-line no-console
   console.warn(`${message} — detail:`, err);
   setStatus(message, "error");
 }
