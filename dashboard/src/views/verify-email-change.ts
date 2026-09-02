@@ -5,6 +5,7 @@
 
 import { confirmEmailChange } from "../api.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { refreshSession } from "../session.js";
 import { friendlyAuthError } from "./login.js";
 
 export const renderVerifyEmailChange: RouteRenderer = (
@@ -52,6 +53,10 @@ export const renderVerifyEmailChange: RouteRenderer = (
       status.textContent =
         "E-Mail-Adresse geändert. Melde dich mit der neuen Adresse an.";
       loginLink();
+      // The backend revoked every session of the account — re-probe so
+      // nav/admin-gate/FAB drop the logged-in state instead of waiting
+      // for the next 401.
+      void refreshSession();
       return;
     }
     status.className = "error";

@@ -5,6 +5,7 @@ import { renderSignup } from "../src/views/signup.js";
 import { renderVerify } from "../src/views/verify.js";
 import { renderVerifyEmailChange } from "../src/views/verify-email-change.js";
 import { renderAdminFeedback } from "../src/views/admin-feedback.js";
+import { _resetSessionForTests, isLoggedIn, refreshSession } from "../src/session.js";
 
 function makeRoot(): HTMLElement {
   while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
@@ -415,7 +416,10 @@ describe("renderAdminFeedback — inline reply UI", () => {
 // page and the address swap never completed. Mirrors renderVerify, against
 // GET /api/me/email-change/:token.
 describe("renderVerifyEmailChange", () => {
-  afterEach(() => _setApiClientForTests(null));
+  afterEach(() => {
+    _setApiClientForTests(null);
+    _resetSessionForTests();
+  });
 
   const ctx = (token: string) => ({
     path: `/verify-email-change/${token}`,
@@ -424,12 +428,42 @@ describe("renderVerifyEmailChange", () => {
     query: new URLSearchParams(),
   });
 
+  it("re-probes the session after a successful confirm (backend revoked all sessions)", async () => {
+    // Seed a logged-in session, then let the confirm succeed while /api/me
+    // starts answering 401 — nav/FAB must not keep the logged-in state.
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ id: 1, email: "a@a.test", emailVerifiedAt: 1, createdAt: 1, admin: false, pendingEmail: null, pendingEmailExpiresAt: null }),
+      ) as unknown as typeof fetch,
+    });
+    await refreshSession();
+    expect(isLoggedIn()).toBe(true);
+
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (input) =>
+        input.toString().includes("/email-change/")
+          ? jsonResponse({ ok: true })
+          : jsonResponse({ error: "unauthorized", message: "x" }, 401),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderVerifyEmailChange(root, ctx("tok789"));
+    await flush();
+    await flush();
+    expect(root.querySelector('[role="status"]')!.textContent).toContain("geändert");
+    expect(isLoggedIn()).toBe(false);
+  });
+
   it("fires GET against the account endpoint on mount and reports success", async () => {
-    let seen = "";
+    // Collect ALL requests: a successful confirm fires a follow-up
+    // GET /api/me (session re-probe) after the confirm GET.
+    const seen: string[] = [];
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async (input, init) => {
-        seen = input.toString();
+        seen.push(input.toString());
         expect((init as RequestInit).method).toBe("GET");
         return jsonResponse({ ok: true });
       }) as unknown as typeof fetch,
@@ -437,7 +471,7 @@ describe("renderVerifyEmailChange", () => {
     const root = makeRoot();
     renderVerifyEmailChange(root, ctx("tok789"));
     await flush();
-    expect(seen).toBe("/api/me/email-change/tok789");
+    expect(seen[0]).toBe("/api/me/email-change/tok789");
     const status = root.querySelector('[role="status"]') as HTMLElement;
     expect(status.textContent).toContain("geändert");
     // The backend clears the session cookie on success, so the only sensible
