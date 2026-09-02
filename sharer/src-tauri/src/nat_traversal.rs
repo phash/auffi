@@ -55,10 +55,27 @@ fn is_plausible_external_ip(ip: &IpAddr) -> bool {
                 && !v4.is_documentation()
                 && !v4.is_multicast()
         }
-        IpAddr::V6(v6) => {
-            !v6.is_loopback() && !v6.is_unspecified() && !v6.is_multicast() && !v6.is_unique_local()
-        }
+        // An IPv4-mapped address is an IPv4 answer in disguise and gets the
+        // V4 rules; `igd-next` hands back whatever the SOAP body said.
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => is_plausible_external_ip(&IpAddr::V4(v4)),
+            None => {
+                !v6.is_loopback()
+                    && !v6.is_unspecified()
+                    && !v6.is_multicast()
+                    && !v6.is_unique_local()
+                    && !v6.is_unicast_link_local()
+                    && !is_documentation_v6(v6)
+            }
+        },
     }
+}
+
+/// `Ipv6Addr::is_documentation` is still nightly-only: 2001:db8::/32
+/// (RFC 3849) and 3fff::/20 (RFC 9637).
+fn is_documentation_v6(v6: &std::net::Ipv6Addr) -> bool {
+    let s = v6.segments();
+    (s[0] == 0x2001 && s[1] == 0x0db8) || (s[0] == 0x3fff && (s[1] & 0xf000) == 0)
 }
 
 /// Process-wide cache. First caller pays the discovery cost; the rest
@@ -166,6 +183,30 @@ mod tests {
                 "should reject bogus public ipv6 {addr}"
             );
         }
+    }
+
+    // AUF-M-01 guard, V6 arm: a LAN host winning the SSDP race could return
+    // an IPv4-mapped private address, a link-local or a documentation prefix
+    // and the sharer would advertise it as its public srflx candidate for the
+    // whole process lifetime. The V4 arm already rejects the equivalents.
+    #[test]
+    fn rejects_mapped_private_link_local_and_documentation_v6() {
+        use std::net::Ipv6Addr;
+        for addr in [
+            "::ffff:192.168.1.1".parse::<Ipv6Addr>().unwrap(), // IPv4-mapped RFC1918
+            "::ffff:127.0.0.1".parse::<Ipv6Addr>().unwrap(),   // IPv4-mapped loopback
+            Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),          // link-local
+            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),      // documentation (RFC 3849)
+            Ipv6Addr::new(0x3fff, 0x0abc, 0, 0, 0, 0, 0, 1),     // documentation (RFC 9637)
+        ] {
+            assert!(
+                !is_plausible_external_ip(&IpAddr::V6(addr)),
+                "should reject bogus public ipv6 {addr}"
+            );
+        }
+        // A mapped PUBLIC v4 is still a usable answer.
+        let mapped_public = "::ffff:84.131.5.42".parse::<Ipv6Addr>().unwrap();
+        assert!(is_plausible_external_ip(&IpAddr::V6(mapped_public)));
     }
 
     #[test]
