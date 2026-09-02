@@ -36,7 +36,6 @@ export function openCountryDb(path: string | undefined): CountryLookup | null {
   try {
     return new Reader<CountryResponse>(readFileSync(path));
   } catch {
-    // eslint-disable-next-line no-console -- one-shot startup degradation notice
     console.warn(`[geoip] country DB not loaded from ${path}; country disabled`);
     return null;
   }
