@@ -424,10 +424,16 @@ pub fn fnv1a32(s: &str) -> u32 {
 /// - Strips path-traversal components (`..` and `.`).
 /// - Joins the remaining path components with `_` so that
 ///   `../etc/passwd` → `etc_passwd` and `/absolute/path` → `absolute_path`.
-/// - Replaces control characters (U+0000–U+001F, U+007F) with `_`.
-/// - Strips a leading dot (hidden-file convention on Unix).
+/// - Replaces control characters (U+0000–U+001F, U+007F) and the Windows
+///   specials `: < > " | ? *` with `_` — `:` in particular would open an
+///   NTFS alternate data stream instead of a visible file.
+/// - Strips a leading dot (hidden-file convention on Unix) and trailing
+///   dots/spaces (silently dropped by Win32, which would defeat dedupe).
 /// - Falls back to `"untitled"` if the result would be empty.
 /// - Truncates to 255 bytes (the POSIX filename limit).
+///
+/// Platform-independent on purpose so a given offer lands under the same
+/// name on every sharer OS.
 pub fn sanitize_filename(input: &str) -> String {
     // Split on both Unix and Windows path separators, collect non-traversal
     // components (drop empty strings, `.`, and `..`).
@@ -439,11 +445,11 @@ pub fn sanitize_filename(input: &str) -> String {
     // Join surviving components with `_`.
     let joined = parts.join("_");
 
-    // Replace control characters (0x00–0x1F, 0x7F).
     let cleaned: String = joined
         .chars()
         .map(|c| {
-            if (c as u32) < 0x20 || c == '\x7f' {
+            if (c as u32) < 0x20 || c == '\x7f' || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*')
+            {
                 '_'
             } else {
                 c
@@ -451,8 +457,9 @@ pub fn sanitize_filename(input: &str) -> String {
         })
         .collect();
 
-    // Strip leading dot (hidden-file convention on Unix).
-    let stripped = cleaned.trim_start_matches('.');
+    let stripped = cleaned
+        .trim_start_matches('.')
+        .trim_end_matches(['.', ' ']);
 
     let base = if stripped.is_empty() {
         "untitled".to_string()
@@ -651,6 +658,26 @@ mod tests {
     #[test]
     fn sanitize_strips_leading_dot() {
         assert_eq!(sanitize_filename(".hidden"), "hidden");
+    }
+
+    // On NTFS `report.pdf:payload` opens an alternate data stream attached
+    // to report.pdf — a viewer-chosen name would write hidden data the user
+    // cannot see in Explorer. Trailing dots/spaces are silently stripped by
+    // Win32 and would defeat the dedupe (`a.` and `a` are the same file).
+    #[test]
+    fn sanitize_neutralises_ntfs_stream_separator_and_windows_specials() {
+        assert_eq!(
+            sanitize_filename("report.pdf:Zone.Identifier"),
+            "report.pdf_Zone.Identifier"
+        );
+        assert_eq!(sanitize_filename("a<b>c|d?e*f\"g"), "a_b_c_d_e_f_g");
+    }
+
+    #[test]
+    fn sanitize_trims_trailing_dots_and_spaces() {
+        assert_eq!(sanitize_filename("trailing. "), "trailing");
+        assert_eq!(sanitize_filename("CON."), "_CON");
+        assert_eq!(sanitize_filename("..."), "untitled");
     }
 
     #[test]
