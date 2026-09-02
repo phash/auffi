@@ -52,10 +52,19 @@ export function smtpTransport(cfg: SmtpConfig): MailTransport {
       try {
         await transporter.sendMail({ from: cfg.from, to, subject, text });
       } catch (e) {
-        // Re-throw but strip the recipient out of the error message —
-        // it shouldn't end up in upstream logs (#11 acceptance criterion).
-        const msg = (e as Error).message;
-        throw new Error(`smtp send failed: ${msg.replaceAll(to, "<redacted>")}`);
+        // Re-throw with the recipient stripped from the message — it must
+        // not end up in upstream logs (#11 acceptance criterion). Servers
+        // echo the address lowercased, hence the case-insensitive match.
+        // nodemailer's `code` (EENVELOPE, EAUTH, ECONNECTION, ...) is the
+        // one thing mailErrorInfo logs, so it has to survive the wrapper.
+        const cause = e as Error & { code?: unknown };
+        const recipient = new RegExp(to.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        const wrapped: Error & { code?: unknown } = new Error(
+          `smtp send failed: ${cause.message.replace(recipient, "<redacted>")}`,
+          { cause },
+        );
+        wrapped.code = cause.code;
+        throw wrapped;
       }
     },
   };
