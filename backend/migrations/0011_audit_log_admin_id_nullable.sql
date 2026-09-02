@@ -13,6 +13,11 @@
 -- query in the app layer if needed.
 --
 -- Code-review DSGVO-M3 (2026-05-17).
+--
+-- NB: dieses PRAGMA war beim Ausrollen wirkungslos (SQLite ignoriert es
+-- in einer offenen Transaktion, db.ts wickelt jede Datei in eine) —
+-- harmlos, weil audit_log nur Kind-Tabelle ist. Seit 2026-09-02 wendet
+-- applyMigrations das PRAGMA real an; siehe 0009 und docs/footguns.md.
 
 PRAGMA foreign_keys = OFF;
 

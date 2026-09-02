@@ -9,6 +9,13 @@
 -- die ON-DELETE-CASCADE-Constraint beim DROP), neue Tabelle anlegen,
 -- Daten kopieren, alte droppen, umbenennen, Indizes neu, foreign_keys
 -- wieder an.
+--
+-- NB: SQLite ignoriert PRAGMA foreign_keys innerhalb einer Transaktion,
+-- und db.ts fuehrt jede Datei in einer aus — die beiden PRAGMA-Zeilen
+-- hier waren beim Ausrollen wirkungslos (harmlos, weil feedback eine
+-- Kind-Tabelle ist: das DROP kaskadiert nirgends hin). Seit 2026-09-02
+-- erkennt applyMigrations das PRAGMA und schaltet FKs AUSSERHALB der
+-- Transaktion ab, mit foreign_key_check vor dem Commit.
 
 PRAGMA foreign_keys = OFF;
 

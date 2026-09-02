@@ -127,6 +127,61 @@ describe("applyMigrations", () => {
     expect(ok?.name).toBe("good");
   });
 
+  // SQLite ignores `PRAGMA foreign_keys` while a transaction is open, and
+  // the runner wraps every file in one. Migrations 0009/0011 rebuilt child
+  // tables under a PRAGMA OFF that was silently inert — harmless there, but
+  // the same template applied to a PARENT table (accounts, devices) would
+  // cascade-delete every child row on deploy. Files that toggle the pragma
+  // have to get it applied for real, outside the transaction.
+  it("honours PRAGMA foreign_keys = OFF in a migration that rebuilds a parent table", () => {
+    writeFileSync(
+      join(migrationsDir, "0001_init.sql"),
+      `CREATE TABLE parent (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+       CREATE TABLE child (id INTEGER PRIMARY KEY,
+         parent_id INTEGER NOT NULL REFERENCES parent(id) ON DELETE CASCADE);
+       INSERT INTO parent (id, name) VALUES (1, 'p');
+       INSERT INTO child (id, parent_id) VALUES (1, 1);`,
+    );
+    writeFileSync(
+      join(migrationsDir, "0002_rebuild_parent.sql"),
+      `PRAGMA foreign_keys = OFF;
+       CREATE TABLE parent_new (id INTEGER PRIMARY KEY, name TEXT NOT NULL, extra TEXT);
+       INSERT INTO parent_new (id, name) SELECT id, name FROM parent;
+       DROP TABLE parent;
+       ALTER TABLE parent_new RENAME TO parent;
+       PRAGMA foreign_keys = ON;`,
+    );
+
+    const { applied } = applyMigrations(db, migrationsDir);
+    expect(applied).toEqual(["0001_init.sql", "0002_rebuild_parent.sql"]);
+    expect(db.prepare<[], { c: number }>("SELECT COUNT(*) AS c FROM child").get()!.c).toBe(1);
+    // Enforcement is back on for the connection afterwards.
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+    expect(() => db.prepare("INSERT INTO child (id, parent_id) VALUES (2, 99)").run()).toThrow(
+      /FOREIGN KEY/,
+    );
+  });
+
+  it("rejects a pragma-toggling migration that leaves a dangling reference", () => {
+    writeFileSync(
+      join(migrationsDir, "0001_init.sql"),
+      `CREATE TABLE parent (id INTEGER PRIMARY KEY);
+       CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id));
+       INSERT INTO parent (id) VALUES (1);
+       INSERT INTO child (id, parent_id) VALUES (1, 1);`,
+    );
+    writeFileSync(
+      join(migrationsDir, "0002_break.sql"),
+      `PRAGMA foreign_keys = OFF;
+       DELETE FROM parent WHERE id = 1;
+       PRAGMA foreign_keys = ON;`,
+    );
+
+    expect(() => applyMigrations(db, migrationsDir)).toThrow(/foreign key/i);
+    expect(db.prepare<[], { c: number }>("SELECT COUNT(*) AS c FROM parent").get()!.c).toBe(1);
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+  });
+
   it("ignores files without the NNNN_*.sql prefix", () => {
     writeFileSync(join(migrationsDir, "0001_init.sql"), "CREATE TABLE foo (id INTEGER);");
     writeFileSync(join(migrationsDir, "README.md"), "# not a migration");
