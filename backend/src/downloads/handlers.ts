@@ -14,6 +14,17 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.7.1 — released 2026-09-02. Maintenance release from a full review of the
+  // code: file transfers wait for Annehmen, ICE candidates that overtake the
+  // answer no longer abort a connect, held keys are released on window blur,
+  // the unattended heartbeat comes up at launch, and a long tail of smaller
+  // fixes down to low severity.
+  "Auffi_0.7.1_amd64.deb",
+  "Auffi-0.7.1-1.x86_64.rpm",
+  "Auffi_0.7.1_amd64.AppImage",
+  "Auffi_0.7.1_x64-setup.exe",
+  "Auffi_0.7.1_x64_en-US.msi",
+  "Auffi_0.7.1_x64_portable.exe",
   // 0.7.0 — released 2026-08-31. Congestion control: the encoder bitrate now
   // follows what the link actually carries (gh #120) instead of pushing a
   // fixed 2 Mbps into it.

@@ -5,6 +5,96 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.7.1] — 2026-09-02
+
+Wartungs-Release nach einer vollständigen Durchsicht des Codes (Review mit
+neun parallelen Lanes, 259 Befunde verifiziert, davon 5 hoch, 45 mittel und
+der Rest niedrig). Keine neuen Funktionen; Bedienung und Wire-Format bleiben
+kompatibel zu 0.7.0.
+
+### Sicherheit
+
+- **Dateiempfang wartet auf „Annehmen“.** Der Viewer legte den Empfang schon
+  beim Angebot an; ein Sharer, der ohne `file-accept` sendete, bekam seine
+  Datei gespeichert, während der Dialog noch offen war. Daten vor der
+  Zustimmung verwerfen den Transfer jetzt.
+- **Login-Lockout wie bei `/api/me`:** fünf Fehlversuche sperren das Konto
+  15 Minuten; die Antwort bleibt das generische 401 (keine
+  Konto-Enumeration). Versuche werden vor argon2 gezählt und bei Erfolg
+  vergeben — ein paralleler Burst kann nicht mehr Rateversuche als die
+  Schwelle verifizieren. Der letzte aktive Admin kann sich nicht selbst
+  löschen (409).
+- Sitzungen prüfen bei jedem Request die Sperre des Kontos; ein Login, der
+  mit einem Reset oder einer Sperre rennt, wird nach argon2 erneut geprüft.
+  Passwort-Reset-Token werden atomar in der Transaktion verbraucht.
+- Nie bestätigte, nie genutzte Konten werden nach 7 Tagen gelöscht
+  (Retention-Lücke; Datenschutzerklärung aktualisiert). SMTP auf 587/25
+  verlangt STARTTLS.
+- Join-Versuche verbrauchen das per-IP-Budget vor dem Code-Lookup — ein
+  erschöpftes Budget lässt auch einen Treffer nicht mehr durch. Rate-limitierte
+  Bearer-Upgrades schließen mit 4429 statt 4401, damit ein Gerät hinter einem
+  vollen NAT nicht dauerhaft als „widerrufen“ offline geht.
+- Sharer: der Zugriffsdialog fokussiert „Ablehnen“; „Gerät entkoppeln“ beendet
+  eine laufende Sitzung sofort und schickt dem Helfer ein `bye`; das
+  Geräte-Token erscheint nicht mehr in `Debug`-Ausgaben; `pw-check-result`
+  trägt eine `attemptId`, damit eine späte Antwort nicht dem nächsten Helfer
+  zugeordnet wird.
+
+### Behoben
+
+- **Viewer:** ICE-Kandidaten, die vor der SDP-Antwort eintreffen, werden
+  gepuffert statt mit „ICE-Fehler“ abzubrechen; gehaltene Tasten und
+  Maustasten werden beim Fokusverlust des Fensters losgelassen; `f` schaltet
+  bei aktiver Steuerung nicht mehr den lokalen Vollbild-Modus; „Steuerung
+  aktivieren“ wartet auf die Datenkanäle; ein `peer-rejected`/`error` nach der
+  Bestätigung wird sofort angezeigt statt nach 30 s als Firewall-Hinweis;
+  Enter im Passwort-Prompt sendet keinen zweiten Versuch; parallele
+  Datei-Angebote überschreiben einander nicht mehr.
+- **Sharer (App):** „Neu verbinden“ war per CSS unsichtbar; der Heartbeat für
+  den unbeaufsichtigten Modus startet beim App-Start; der Pause-Hotkey wird
+  beim Sitzungsende wieder freigegeben; ein `bye` vor der Bestätigung schließt
+  den Dialog und behält den Code; Signaling-Abbruch und ICE-Verlust räumen die
+  Streaming-Buttons ab; Doppelklick auf Akzeptieren startet keinen zweiten
+  Stream; Modus „unbeaufsichtigt“ lässt sich nicht ohne Pairing + Passwort
+  wählen.
+- **Sharer (Rust):** RTP-Zeitstempel folgen der Capture-Zeit (kein
+  Bitraten-Einbruch auf statischen Bildschirmen unter REMB); der
+  Datei-Kanal unterscheidet Text- und Binärframes statt am ersten Byte zu
+  raten; anhaltende Encoder-Fehler beenden den Stream sichtbar; Frames mit
+  abweichender Größe werden verworfen; Wayland gibt PipeWire-FD und
+  Portal-Session frei; Tastatureingaben nutzen den vom Viewer gesendeten
+  Layout-`key` (QWERTZ, Umlaute); Capture und Encode laufen nicht mehr auf
+  tokio-Workern; UPnP-Adresse wird nicht mehr prozesslebenslang gecacht;
+  Debug-Log mit 0600 und ohne Symlink-Verfolgung.
+- **Backend:** Server-seitige WS-Pings räumen stille Viewer-Sockets auf
+  („session full“-Sackgasse); Frames vor `unattended-hello` werden gepuffert
+  statt fatal beantwortet; SIGTERM/SIGINT beenden sauber; Download-Proxy
+  antwortet 502 mit Timeout; Purge-Log zählt alle Tabellen; Migrations-
+  `PRAGMA foreign_keys` wirkt wieder; `?limit=1.5` und doppelte `q`-Parameter
+  liefern 400 statt 500; Feedback-Mutation und Audit in einer Transaktion.
+- **Dashboard:** Fokus kehrt nach Modals zum Auslöser zurück; 401 aus späten
+  Antworten navigiert nicht mehr aus einer anderen View; Admin-Routen ohne
+  Sitzung führen zum Login statt zur 403-Seite; 423/429 werden deutsch
+  angezeigt; Intervall- und Timer-Leaks behoben.
+- **Website/CSP:** Inline-`<style>` der Vergleichsseiten und der 404-Seite
+  lagen unter `style-src 'self'` — die Tabellen erschienen live unformatiert.
+  Stile liegen jetzt in `/compare.css` und `/404.css`; Guard-Test.
+- **Ops:** `deploy.sh` taggte das neue Image unter dem laufenden SHA um, sodass
+  `--rollback` das neue Image startete; Rollback sichert jetzt auch
+  viewer-/dashboard-dist; Actions per SHA gepinnt; SSH-Host-Key gepinnt;
+  `busybox` gepinnt; Ops-Shell-Tests in CI; Windows-Emulator-Smoke ist pro
+  Release in vier Minuten wiederholbar (`.win-test/run.sh`).
+
+### Geändert
+
+- Dokumentation: `docs/protocol.md` (Transport-Liveness, Close-Codes,
+  `attemptId`, `key`, REST-Verträge), `docs/footguns.md`, `INSTALL*.md`,
+  `README.md`, `docs/encryption-architecture.md` (DTLS 1.2, TTLs) und dieses
+  Changelog (0.6.5–0.7.0 nachgetragen) gegen den Code abgeglichen.
+- Toter Code entfernt (u. a. `TurnConfig.realm`, die `url`-Abhängigkeit,
+  Legacy-CSS-Tokens, stale `eslint-disable`); Backend-Tests
+  werden in CI typgeprüft; Backend-Image ohne devDependencies.
+
 ## [0.7.0] — 2026-08-31
 
 ### Hinzugefügt
@@ -333,6 +423,7 @@ Bündelt die Ergebnisse eines Security- und UX-Reviews.
   Per-Account-Lockout, HMAC-ephemerale TURN-Credentials. Vollständiger
   Audit: [docs/security-review-2026-05.md](docs/security-review-2026-05.md).
 
+[0.7.1]: https://github.com/phash/auffi/releases/tag/v0.7.1
 [0.7.0]: https://github.com/phash/auffi/releases/tag/v0.7.0
 [0.6.9]: https://github.com/phash/auffi/releases/tag/v0.6.9
 [0.6.8]: https://github.com/phash/auffi/releases/tag/v0.6.8
