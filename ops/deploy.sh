@@ -8,7 +8,8 @@
 #   ./ops/deploy.sh --help
 #
 # Default-Flow:
-#   1) Pre-flight (lock, ssh, docker, nginx -t, caddy validate)
+#   1) Pre-flight (lock, clean git tree, ssh, docker, .env.prod on the host,
+#      nginx -t, caddy validate)
 #   2) Tests (viewer + backend + dashboard) — skip mit --skip-tests
 #   3) Diff-Preview (git log seit dem zuletzt deployten SHA) + Confirm
 #   4) Build backend image — skip wenn :${APP_VERSION} schon remote
@@ -53,6 +54,7 @@ YES=false
 VERSION=""
 SKIP_TESTS=false
 SKIP_IMAGE_PRUNE=false
+ALLOW_DIRTY=false
 ROLLBACK=false
 NOTES=""
 
@@ -72,6 +74,10 @@ Options:
                         The sharer's cargo tests are never part of a deploy — the
                         sharer is not deployed to the server (separate release flow).
   --skip-image-prune    Don't prune old backend images on prod after deploy.
+  --allow-dirty         Deploy from a working tree with uncommitted changes. Off by
+                        default: the image tag is the git SHA, and Step 5 skips the
+                        backend build when that tag already exists on prod — a dirty
+                        tree would ship edited frontends next to a stale backend.
   --notes "<text>"      Note appended to the deploy-log entry.
   --rollback            Roll back to the previous SHA from /opt/screenie/.deploy-log:
                         backend image + viewer-dist/dashboard-dist/nginx/coturn
@@ -88,6 +94,7 @@ while [[ $# -gt 0 ]]; do
     --version)            VERSION="$2"; shift ;;
     --skip-tests)         SKIP_TESTS=true ;;
     --skip-image-prune)   SKIP_IMAGE_PRUNE=true ;;
+    --allow-dirty)        ALLOW_DIRTY=true ;;
     --notes)              NOTES="$2"; shift ;;
     --rollback)           ROLLBACK=true ;;
     --help)               print_help; exit 0 ;;
@@ -239,6 +246,23 @@ if [[ -z "${VERSION}" ]]; then
 fi
 export APP_VERSION="${VERSION}"
 
+# Ein Deploy ist nur reproduzierbar, wenn der Tag den Tree beschreibt: bei
+# uncommitteten Änderungen findet Step 5 evtl. auffi-backend:<sha> schon auf
+# prod (skip build) während Step 6 die Frontends aus dem dirty Tree baut —
+# neue Frontends, altes Backend, geloggt unter einem SHA, der zu keinem von
+# beiden passt. Untracked Files zählen mit: sie landen genauso im Build.
+DIRTY_TREE="$(git -C "${REPO_ROOT}" status --porcelain 2>/dev/null || true)"
+if [[ -n "${DIRTY_TREE}" ]]; then
+  if [[ "${ALLOW_DIRTY}" == "true" ]]; then
+    log_warn "working tree not clean — deploying anyway (--allow-dirty):"
+    printf '%s\n' "${DIRTY_TREE}" >&2
+  else
+    log_error "working tree not clean — commit or stash first, or pass --allow-dirty:"
+    printf '%s\n' "${DIRTY_TREE}" >&2
+    exit 1
+  fi
+fi
+
 log_step "Deploying auffi ${APP_VERSION} → ${DEPLOY_SSH}:${DEPLOY_PATH}"
 
 # ---------------------------------------------------------------------------
@@ -262,6 +286,25 @@ maybe_run "Verify Docker local" \
   log_error "Local Docker not running"
   exit 1
 }
+
+# .env.prod muss VOR allem anderen da sein. Die frühere Fassung legte in
+# Step 12 die .env.prod.example als .env.prod ab und fuhr fort: leeres
+# TURN_SHARED_SECRET → coturn crash-loopt (entrypoint verlangt es), Backend
+# ohne /turn-credentials, kein SMTP — aber /healthz und alle Smoke-URLs
+# liefern 200, der Run endet mit "fertig". Jetzt: Beispiel ablegen, sagen
+# was zu tun ist, Abbruch — bevor Build-Zeit oder rsync anfallen.
+if [[ "${DRY_RUN}" == "false" ]]; then
+  if ! remote "test -f '${DEPLOY_PATH}/.env.prod'"; then
+    remote "mkdir -p '${DEPLOY_PATH}'"
+    rsync_to "${REPO_ROOT}/.env.prod.example" "${DEPLOY_PATH}/"
+    remote "cp -n '${DEPLOY_PATH}/.env.prod.example' '${DEPLOY_PATH}/.env.prod'"
+    log_error "${DEPLOY_SSH}:${DEPLOY_PATH}/.env.prod fehlte — .env.prod.example wurde dort als .env.prod abgelegt."
+    log_error "Bitte ausfüllen (mindestens TURN_SHARED_SECRET = openssl rand -hex 32, ALLOWED_ORIGINS, SMTP_*) und den Deploy erneut starten. Siehe ops/README.md § 2."
+    exit 1
+  fi
+else
+  log_dry "skip .env.prod pre-flight in dry-run"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 2: Pre-flight config validation (catches typos before they reach prod)
@@ -538,12 +581,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 12: Ensure .env.prod exists on remote (never overwrite if present)
+# Step 12: Pin APP_VERSION in .env.prod (its existence was verified in Step 1)
 # ---------------------------------------------------------------------------
-log_step "Ensure .env.prod on remote"
-
-maybe_run "Place .env.prod.example if .env.prod absent" \
-  remote "test -f '${DEPLOY_PATH}/.env.prod' || { echo '[deploy] .env.prod missing — placing .env.prod.example as .env.prod; EDIT before restarting'; cp '${DEPLOY_PATH}/.env.prod.example' '${DEPLOY_PATH}/.env.prod'; }"
+log_step "Sync APP_VERSION in .env.prod"
 
 # Pin APP_VERSION in .env.prod to the SHA we just deployed, so compose runs
 # the freshly-loaded auffi-backend:${APP_VERSION} image AND /healthz reports

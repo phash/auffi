@@ -45,8 +45,9 @@ cp ops/.env.deploy.example ops/.env.deploy
 # Edit ops/.env.deploy — set DEPLOY_SSH, DEPLOY_PATH, DEPLOY_DOMAIN, etc.
 $EDITOR ops/.env.deploy
 
-# Copy production env template to the VPS (deploy.sh does this, but do it now
-# so you can set secrets before the first deploy)
+# Copy production env template to the VPS and fill it in. deploy.sh refuses
+# to bring the stack up while .env.prod is missing (it places the example
+# file for you and stops), so do this before the first deploy.
 scp .env.prod.example musikersuche@musikersuche.org:/opt/screenie/.env.prod
 ssh musikersuche@musikersuche.org
   $EDITOR /opt/screenie/.env.prod   # fill in TURN_SHARED_SECRET, APP_VERSION, etc.
@@ -214,7 +215,13 @@ the Caddy stop/start entirely.
 ```
 
 `deploy.sh` will:
-1. Verify SSH and Docker are reachable on the VPS.
+1. Verify the working tree is clean (`--allow-dirty` to override — the
+   image tag is the git SHA), SSH and Docker are reachable on the VPS, and
+   `.env.prod` exists there. **If `.env.prod` is missing the deploy stops
+   here**: it places `.env.prod.example` as `.env.prod` on the VPS and tells
+   you to fill in `TURN_SHARED_SECRET`, `ALLOWED_ORIGINS` and `SMTP_*`
+   before re-running (an unconfigured stack would come up "healthy" with a
+   restart-looping coturn and no mail).
 2. Build `auffi-backend:<git-sha>` locally.
 3. Build `viewer/dist/` AND `dashboard/dist/` locally (gh #38).
 4. rsync compose files, nginx + coturn config, viewer dist, and the
@@ -223,7 +230,7 @@ the Caddy stop/start entirely.
    `CLUSTER_PROXY` set) `/opt/caddyserver/Caddyfile` is hand-maintained,
    see the snippet below and `docs/footguns.md` § Cluster-Ops.
 5. Load the backend image on the VPS.
-6. Place `.env.prod.example` on the VPS if `.env.prod` is absent.
+6. Pin `APP_VERSION` in `.env.prod` to the deployed SHA.
 7. Run `docker compose up -d`.
 8. Wait up to 90 seconds for `/healthz` to return 200.
 9. Print `docker compose ps`.

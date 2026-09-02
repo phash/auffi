@@ -62,6 +62,29 @@ stage_ops() {
   cp "${OPS_DIR}"/*.sh "${dest}/ops/"
 }
 
+# stage_fake_repo <dir> — a committed git checkout with everything deploy.sh
+# touches (pre-built dists, configs, compose files) so the full deploy path
+# can run against the stubs. Build output and node_modules are ignored the
+# way the real repo ignores them, so the tree is clean after a run.
+stage_fake_repo() {
+  local dest="$1"
+  local repo_root="${OPS_DIR}/.."
+  stage_ops "${dest}"
+  mkdir -p "${dest}/viewer/dist" "${dest}/viewer/node_modules" \
+    "${dest}/dashboard/dist" "${dest}/dashboard/node_modules" "${dest}/backend"
+  printf 'viewer build' > "${dest}/viewer/dist/index.html"
+  printf 'dashboard build' > "${dest}/dashboard/dist/index.html"
+  printf '{}' > "${dest}/viewer/package-lock.json"
+  printf '{}' > "${dest}/dashboard/package-lock.json"
+  printf 'FROM scratch\n' > "${dest}/backend/Dockerfile"
+  cp -r "${repo_root}/nginx" "${repo_root}/coturn" "${repo_root}/caddy" "${dest}/"
+  cp "${repo_root}/docker-compose.prod.yml" "${repo_root}/docker-compose.cluster.yml" "${repo_root}/.env.prod.example" "${dest}/"
+  printf 'node_modules/\ndist/\n' > "${dest}/.gitignore"
+  git -C "${dest}" init -q
+  git -C "${dest}" -c user.name=test -c user.email=test@example.invalid add -A
+  git -C "${dest}" -c user.name=test -c user.email=test@example.invalid commit -q -m "fixture"
+}
+
 install_stubs() {
   local bin="$1"
   mkdir -p "${bin}"
@@ -110,6 +133,13 @@ printf 'docker %s\n' "$*" >> "${STUB_LOG}"
 exit 0
 STUB
 
+  # npm: the fixture repo ships pre-built dists, so install/build are no-ops.
+  cat > "${bin}/npm" <<'STUB'
+#!/usr/bin/env bash
+printf 'npm %s\n' "$*" >> "${STUB_LOG}"
+exit 0
+STUB
+
   # curl: every URL is healthy. The deploy's random-path probe answers
   # STUB_SMOKETEST_STATUS (default 200 = standalone SPA fallback; a cluster
   # test sets 404).
@@ -125,5 +155,5 @@ fi
 exit 0
 STUB
 
-  chmod +x "${bin}"/ssh "${bin}"/rsync "${bin}"/docker "${bin}"/curl
+  chmod +x "${bin}"/ssh "${bin}"/rsync "${bin}"/docker "${bin}"/npm "${bin}"/curl
 }
