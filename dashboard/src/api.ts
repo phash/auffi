@@ -209,8 +209,9 @@ export interface PairingCodeResponse {
 
 /**
  * Mint a fresh single-use pairing code for the signed-in account.
- * The user types the code into the sharer's Settings → "Mit Account
- * verbinden" prompt; the sharer then POSTs /api/devices/redeem to
+ * The user types the code into the sharer's Einstellungen →
+ * "Unattended-Modus" → "Pairing-Code vom Dashboard" field (the label
+ * add-device.ts quotes); the sharer then POSTs /api/devices/redeem to
  * trade it for a permanent token (spec §5.1 + §5.2).
  */
 export function mintPairingCode(): Promise<ApiResult<PairingCodeResponse>> {
@@ -255,11 +256,6 @@ export interface ConnectionLogPage {
   maxLimit: number;
 }
 
-/**
- * Cursor-paginated connection log for a device. Pass `cursor` as the
- * `nextCursor` of the previous page; omit for page 1. `limit`
- * defaults to the backend's 20 and is clamped at `maxLimit`.
- */
 export interface Me {
   id: number;
   email: string;
@@ -307,6 +303,11 @@ export function deleteMe(body: DeleteMeBody): Promise<ApiResult<void>> {
   });
 }
 
+/**
+ * Cursor-paginated connection log for a device. Pass `cursor` as the
+ * `nextCursor` of the previous page; omit for page 1. `limit`
+ * defaults to the backend's 20 and is clamped at `maxLimit`.
+ */
 export function listConnectionLog(
   deviceId: string,
   cursor?: number,

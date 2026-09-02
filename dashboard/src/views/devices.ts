@@ -1,10 +1,11 @@
 // /dashboard/devices — default post-login view (spec §8.3).
 //
-// GETs /api/devices and renders one card per registered device.
-// Empty state nudges the user toward the (not-yet-built) add-device
-// modal (gh #32). A 401 redirects the user to /login so the typical
-// "I opened the dashboard tab from yesterday and the cookie expired"
-// case lands them on the right page.
+// GETs /api/devices and renders one card per registered device. The
+// header row carries the "+ Neues Gerät" link to /devices/new
+// (add-device.ts, gh #32) in both the list and the empty state. A 401
+// redirects the user to /login so the typical "I opened the dashboard
+// tab from yesterday and the cookie expired" case lands them on the
+// right page.
 
 import { listDevices, type Device } from "../api.js";
 import { formatRelative } from "../format.js";
