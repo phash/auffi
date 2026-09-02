@@ -6,6 +6,7 @@ import { renderVerify } from "../src/views/verify.js";
 import { renderVerifyEmailChange } from "../src/views/verify-email-change.js";
 import { renderAdminFeedback } from "../src/views/admin-feedback.js";
 import { _resetSessionForTests, isLoggedIn, refreshSession } from "../src/session.js";
+import { BASE_PATH } from "../src/router.js";
 
 function makeRoot(): HTMLElement {
   while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
@@ -57,7 +58,7 @@ describe("renderLogin", () => {
 
   it("POSTs the credentials on submit + navigates to / on success", async () => {
     const root = makeRoot();
-    const initialPath = window.location.pathname;
+    window.history.pushState({}, "", BASE_PATH + "/login");
     renderLogin(root, { path: "/login", segments: ["login"], params: {}, query: new URLSearchParams() });
     const emailEl = root.querySelector("#login-email") as HTMLInputElement;
     const pwEl = root.querySelector("#login-password") as HTMLInputElement;
@@ -72,8 +73,8 @@ describe("renderLogin", () => {
       email: "user@example.test",
       password: "verysecret1",
     });
-    // Navigated away from /login.
-    expect(window.location.pathname).not.toBe(initialPath + "_unchanged");
+    // Landed on the post-login default (device list at BASE_PATH + "/").
+    expect(window.location.pathname).toBe(BASE_PATH + "/");
   });
 
   it("shows a friendly message on bad-credentials", async () => {
