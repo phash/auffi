@@ -17,7 +17,7 @@ import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-bann
 import { formatConnectionRequest } from "./connect-format.js";
 import { formatExpiry } from "./code-expiry.js";
 import { planIceState, ICE_DISCONNECTED_GRACE_MS, type IceState } from "./ice-teardown-policy.js";
-import { friendlyDisconnectReason } from "./disconnect-reason.js";
+import { planSignalingLost } from "./signaling-lost-policy.js";
 
 interface FileOfferPayload {
   id: string;
@@ -858,11 +858,21 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
 });
 
 listen<{ reason: string }>("disconnected", (e) => {
-  showFriendlyError(friendlyDisconnectReason(e.payload.reason), e.payload.reason);
+  // Read before hideStreamingActions() — it resets the buffer this keys on.
+  const streamActive = signalBuffer.hasActivity();
+  const plan = planSignalingLost(streamActive, e.payload.reason);
   confirmEl.classList.remove("visible");
+  currentIpPrefix = null;
   closeMonitorPicker();
-  hideStreamingActions();
-  showReconnect();
+  // The WS task has exited, so the backend released the code either way.
+  resetCode();
+  if (!plan.keepStreamingActions) hideStreamingActions();
+  if (plan.showReconnect) {
+    showReconnect();
+  } else {
+    hideReconnect();
+  }
+  showFriendlyError(plan.status, e.payload.reason);
 });
 
 listen<{ paused: boolean }>("input-paused-changed", (e) => {
