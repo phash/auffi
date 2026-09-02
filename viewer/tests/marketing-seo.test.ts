@@ -170,6 +170,22 @@ describe("comparison cluster — hub/spoke keyword targeting", () => {
           expect(up.length, `${spoke.path} → ${hub.path}`).toBeGreaterThan(0);
         });
       }
+
+      // Search engines render breadcrumbs from this markup; a middle crumb
+      // that points at the spoke itself loses the hub link exactly where it
+      // matters most.
+      for (const spoke of spokes.filter((s) => s.path.startsWith(hub.path))) {
+        it(`${spoke.path} BreadcrumbList routes the middle crumb to the hub`, () => {
+          const crumbs = Array.from(targetDoc(spoke).querySelectorAll('script[type="application/ld+json"]'))
+            .map((s) => JSON.parse(s.textContent ?? "{}"))
+            .find((j) => j["@type"] === "BreadcrumbList");
+          expect(crumbs, "BreadcrumbList schema present").toBeTruthy();
+          const items = crumbs.itemListElement as Array<{ position: number; item: string }>;
+          expect(items).toHaveLength(3);
+          expect(items[1].item).toBe(`${BASE}${hub.path}`);
+          expect(items[2].item).toBe(`${BASE}${spoke.path}`);
+        });
+      }
     });
   }
 });
