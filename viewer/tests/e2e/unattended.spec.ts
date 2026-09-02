@@ -1,29 +1,14 @@
 /**
- * E2E (gh #40): unattended-mode roundtrip across dashboard + backend
- * + viewer + a mock unattended sharer.
+ * E2E (gh #40): the dashboard auth surface of the unattended-access mode —
+ * signup form posts to the backend and shows the success banner; login
+ * shows friendly bad-credentials on a wrong password; forgot-password
+ * always answers with the generic banner. Needs only the backend +
+ * dashboard up; no mock sharer.
  *
- * Three tiers of coverage land in this file:
- *
- *   1. Dashboard auth surface — signup form posts to backend and
- *      hands over to the landing page with the toast flag; login
- *      form shows friendly bad-credentials on a wrong password.
- *      This tier needs only the backend + dashboard up; no mock
- *      sharer. Runs in CI (ci.yml e2e job starts both).
- *
- *   2. Pairing-code roundtrip — signup → verify (via backend test
- *      hook) → mint code → dashboard shows the code. Needs a
- *      backend test-mode hook to retrieve the captureTransport's
- *      last verify-email token, since intercepting real SMTP from
- *      Playwright is brittle. **Currently SKIPPED** — the backend
- *      test hook isn't wired (a future ticket: expose
- *      `GET /api/_test/last-mail` behind NODE_ENV=test).
- *
- *   3. Full sharer-paired roundtrip — boots a mock unattended
- *      sharer (`scripts/mock-unattended-sharer.mjs`, not yet
- *      written), pairs it, viewer hits ?code=… with the pairing
- *      code → password prompt → pw-ok → SDP/ICE exchange → stream
- *      stub. **Currently SKIPPED** — depends on (2) being wired
- *      AND on a mock sharer that speaks the gh #16-#18 protocol.
+ * Not covered here (see tests/e2e/README.md § Known gaps): the pairing-code
+ * roundtrip (needs a NODE_ENV=test-only hook that exposes the captured
+ * verify-mail token) and the full sharer-paired roundtrip (needs a mock
+ * unattended sharer that speaks the pw-check protocol).
  *
  * Env vars:
  *   BACKEND_HTTP_URL  default http://localhost:8080
@@ -38,7 +23,7 @@
  *   cd viewer && npx playwright test unattended.spec.ts
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 const BACKEND_HTTP_URL = process.env.BACKEND_HTTP_URL ?? "http://localhost:8080";
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "http://localhost:5174";
@@ -134,50 +119,5 @@ test.describe("dashboard auth surface (tier 1)", () => {
       "Mail mit einem Reset-Link unterwegs",
       { timeout: 10_000 },
     );
-  });
-});
-
-test.describe("unattended pairing-code roundtrip (tier 2)", () => {
-  test.beforeEach(() => {
-    // Wire requires a backend-side test hook to read the captured
-    // verify-email token — not landed yet. See file-level comment.
-    test.skip(true, "Pending: backend GET /api/_test/last-mail hook");
-  });
-
-  test("signup → verify → mint pairing code → dashboard renders it", async (_p: { page: Page }) => {
-    // Outline (once the test hook lands):
-    //   const email = uniqueEmail();
-    //   await signup(page, email, "e2e-pw-12345");
-    //   const token = await fetch(`${BACKEND_HTTP_URL}/api/_test/last-mail`).then(r => r.json());
-    //   await page.goto(`${DASHBOARD_URL}/dashboard/verify/${token}`);
-    //   await expect(page.locator('[role="status"]')).toContainText("bestätigt");
-    //   await page.goto(`${DASHBOARD_URL}/dashboard/devices/new`);
-    //   await expect(page.locator('[aria-label="Pairing-Code"]')).toMatchText(/[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{2}/);
-  });
-});
-
-test.describe("full sharer-paired roundtrip (tier 3)", () => {
-  test.beforeEach(() => {
-    test.skip(
-      true,
-      "Pending: scripts/mock-unattended-sharer.mjs (gh #16-#18 protocol).",
-    );
-  });
-
-  test("mock sharer pairs → viewer connects with ?code=… → password prompt → stream", async (_p: { page: Page }) => {
-    // Outline (once the mock sharer ships):
-    //   1. Same signup + verify as tier 2.
-    //   2. mint pairing code from dashboard.
-    //   3. spawn(`node scripts/mock-unattended-sharer.mjs --code <code> --pw e2e-device-pw-1`)
-    //      → waits for { device_id, token } from /api/devices/redeem, then
-    //      opens WSS with Bearer auth, handles pw-check by replying pw-ok
-    //      to anything matching --pw, otherwise pw-fail.
-    //   4. await wait_for_line(mock, /unattended-hello/, 5_000).
-    //   5. await page.goto(`${VIEWER_URL}/?code=${device_id}`);
-    //   6. Code prefilled — click Verbinden.
-    //   7. password prompt appears; fill e2e-device-pw-1; submit.
-    //   8. await wait_for_line(mock, /pw-check-result.+ok/, 5_000).
-    //   9. peer-confirmed → SDP/ICE → first frame of the mock track.
-    //  10. cleanup: kill mock sharer.
   });
 });
