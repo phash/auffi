@@ -77,6 +77,43 @@ describe("SignalingClient", () => {
     expect(disconnectFn).not.toHaveBeenCalled();
   });
 
+  // The backend emits `peer-rejected: sharer-gone` (and closes the viewer WS)
+  // when the sharer's socket drops — also for confirmed sessions, whose
+  // join promise is long settled. That frame is the only signal the viewer
+  // gets that the session is already deleted server-side; swallowing it
+  // leaves the helper in "Verbunden — empfange Stream…" until the media
+  // backstop misdiagnoses a firewall problem.
+  it("peer-rejected after peer-confirmed reaches onDisconnect exactly once", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const disconnectFn = vi.fn();
+    client.onDisconnect(disconnectFn);
+    const p = client.join("284-915-073");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+    mock.fakeMessage({ type: "peer-rejected", reason: "sharer-gone" });
+    // The backend closes the socket right after the frame — the close must
+    // not produce a second disconnect (the bare-close case stays silent).
+    mock.onclose?.({});
+    expect(disconnectFn).toHaveBeenCalledTimes(1);
+    expect(disconnectFn).toHaveBeenCalledWith("peer-rejected: sharer-gone");
+  });
+
+  it("error frame after peer-confirmed reaches onDisconnect with code and message", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const disconnectFn = vi.fn();
+    client.onDisconnect(disconnectFn);
+    const p = client.join("284-915-073");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+    mock.fakeMessage({ type: "error", code: "bad-message", message: "unexpected frame" });
+    expect(disconnectFn).toHaveBeenCalledTimes(1);
+    expect(disconnectFn).toHaveBeenCalledWith("bad-message: unexpected frame");
+  });
+
   it("user-initiated close does not fire rejection listeners", async () => {
     const mock = new MockWS();
     const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });

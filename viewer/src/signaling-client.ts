@@ -44,15 +44,27 @@ export class SignalingClient {
         } catch {
           return;
         }
+        // A terminal frame settles the join promise while it is pending. After
+        // peer-confirmed the promise is already resolved and `reject` would be
+        // a silent no-op — but the backend still sends `peer-rejected:
+        // sharer-gone` / `error` on a live session (sharer WS dropped, session
+        // already deleted server-side), so those must reach the disconnect
+        // listeners instead of vanishing.
+        const fail = (raw: string): void => {
+          if (this.settled) {
+            for (const l of this.rejectionListeners) l(raw);
+            return;
+          }
+          this.settled = true;
+          reject(new Error(raw));
+        };
         if (msg.type === "peer-confirmed") {
           this.settled = true;
           resolve();
         } else if (msg.type === "peer-rejected") {
-          this.settled = true;
-          reject(new Error(`peer-rejected: ${msg.reason}`));
+          fail(`peer-rejected: ${msg.reason}`);
         } else if (msg.type === "error") {
-          this.settled = true;
-          reject(new Error(`${msg.code}: ${msg.message}`));
+          fail(`${msg.code}: ${msg.message}`);
         } else if (msg.type === "relay") {
           for (const l of this.relayListeners) l(msg.payload);
         } else if (msg.type === "needs-password") {
@@ -67,13 +79,9 @@ export class SignalingClient {
           // can try again until backend lockout fires.
           for (const l of this.wrongPasswordListeners) l(msg.attemptsLeft);
         } else if (msg.type === "locked") {
-          this.settled = true;
-          reject(
-            new Error(`locked:${msg.retryAfterSec}`),
-          );
+          fail(`locked:${msg.retryAfterSec}`);
         } else if (msg.type === "rejected-by-user") {
-          this.settled = true;
-          reject(new Error("rejected-by-user"));
+          fail("rejected-by-user");
         }
       };
       ws.onclose = () => {

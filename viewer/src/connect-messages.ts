@@ -6,7 +6,9 @@
 //   - join() rejects with `peer-rejected: <reason>`, `<code>: <message>`,
 //     `locked:<secs>`, or `rejected-by-user`
 //   - onDisconnect() reports `closed` when the socket drops before the
-//     session is confirmed.
+//     session is confirmed, and the same raw strings as join() when a
+//     terminal frame (`peer-rejected: sharer-gone`, `<code>: <message>`)
+//     arrives after the session was already confirmed.
 //
 // The actual text lives in the i18n catalog (i18n.ts); these functions only
 // decide WHICH message + status-kind applies. Language defaults to the page
