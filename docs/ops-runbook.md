@@ -45,6 +45,10 @@ rsvg-convert -w 1200 -h 630 ops/og-image.svg -o viewer/public/og-image.png
 # 1) Bump version in all THREE files: sharer/package.json,
 #    sharer/src-tauri/tauri.conf.json, sharer/src-tauri/Cargo.toml
 #    (Cargo.lock follows on the next cargo build — commit it too)
+# 1b) CHANGELOG.md: add `## [X.Y.Z] — YYYY-MM-DD` + the link ref at the bottom,
+#    same content as the release notes on viewer/public/download/index.html
+#    (README advertises CHANGELOG.md as the per-version history — 0.6.5…0.7.0
+#    had to be backfilled once because this step was missing)
 # 2) Build .deb + .rpm + .AppImage (AppImage needs the wrapper for the
 #    DT_RELR + icon-path workarounds — see docs/footguns.md § AppImage-Build Footguns)
 ./ops/build-sharer-appimage.sh

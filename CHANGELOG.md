@@ -5,6 +5,115 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.7.0] — 2026-08-31
+
+### Hinzugefügt
+
+- **Die Bildqualität passt sich der Leitung an.** Der Encoder lief seit jeher
+  mit festen 2000 kbps, egal was die Verbindung hergab — auf einem
+  Handy-Hotspot oder einem dünnen DSL-Upload hieß das dauerhaft zerrissenes
+  oder einfrierendes Bild ohne Weg zurück (gh #120). Der Sharer liest jetzt die
+  Receiver-Reports des Helfers (RFC 3550) und regelt die Bitrate nach dem
+  verlustbasierten GCC-Controller in beide Richtungen: runter, wenn Pakete
+  verloren gehen, wieder hoch, sobald die Leitung es trägt; REMB wird als
+  Obergrenze berücksichtigt. `bitrate_controller.rs` ist pur und trägt eine
+  Closed-Loop-Simulation gegen einen Engpass-Link als Test.
+
+### Behoben
+
+- Die geregelte Bitrate startet mit jeder Sitzung wieder beim Ausgangswert
+  statt beim Endwert der vorigen.
+- Download-Seite: die Installationsbefehle im Text werden mit dem Release
+  mitgebumpt (bisher nannten sie nach dem Bump die Vorversion); Guard in
+  `viewer/tests/marketing-pages.test.ts`. Windows-Smoke-Harness repariert.
+
+## [0.6.9] — 2026-08-31
+
+Ersetzt das zurückgezogene 0.6.8 (s. u.) — gleicher Inhalt plus zwei Fixes,
+die dort fehlten.
+
+### Behoben
+
+- **Kein schwarzes Bild mehr bei ruhendem Bildschirm.** Der einzige Keyframe
+  wurde vor ICE-`connected` encodiert und verpuffte; ein statischer Bildschirm
+  löst keinen weiteren aus, und die Picture-Loss-Indication des Helfers wurde
+  nie gelesen. Der Sharer sendet jetzt beim Verbinden einen Keyframe und
+  beantwortet PLI.
+- **Keyframe-Anfragen sind gedrosselt** (max. eine pro Sekunde für
+  Viewer-getriebene Anfragen) — ohne Throttle beantwortete 0.6.8 Paketverlust
+  mit noch mehr Bytes, was auf verlustreichen Leitungen einen Keyframe pro
+  Frame erzwang.
+- **Teilen endet, wenn die Gegenseite weg ist.** ICE `disconnected` (10 s
+  Karenz für WLAN-Aussetzer), `failed` und `closed` wurden im Sharer
+  verworfen; Aufnahme, Encoder und Relay liefen unbemerkt weiter. Die
+  Viewer-Policy (`ice-state-handler.ts`) ist jetzt auf den Sharer gespiegelt.
+
+## [0.6.8] — 2026-08-31 [YANKED]
+
+Zurückgezogen (`gh release edit v0.6.8 --prerelease`): der Build enthielt die
+PLI-Antwort, aber weder den Keyframe-Throttle noch den ICE-Teardown — auf
+verlustreichen Leitungen entstand eine Rückkopplungsschleife. Die Live-Seite
+war nie betroffen (Buttons sind seit 0.6.6 auf `?tag=` gepinnt). Nutze 0.6.9.
+
+## [0.6.7] — 2026-08-29
+
+### Hinzugefügt
+
+- **Verbindungs-Statistik für gepairte Geräte** (gh #109): Dauer und Art
+  (direkt/Relay) jeder Verbindung landen im Geräte-Protokoll des Dashboards.
+
+### Behoben
+
+- **Die Geräte-ID steht wieder in der Statuszeile** — im unbeaufsichtigten
+  Modus zeigte die App nur „Verbunden", ohne die Nummer, die der Helfer
+  eintippen muss.
+- **Entkoppeln wirkt jetzt auch serverseitig** und räumt die
+  Rate-Limit-Buckets des Geräts mit ab (bisher blieb eine Zeile zu einem
+  gelöschten Gerät dauerhaft stehen).
+- Admin-Nutzersuche: der Debounce überlebte den Seitenwechsel nicht mehr und
+  konnte den Admin nicht mehr auf `/login` werfen.
+
+### Sicherheit
+
+- Dateitransfer: `image/svg+xml` fällt nicht mehr durch die MIME-Allow-List
+  (SVG kann Script tragen).
+
+## [0.6.6] — 2026-08-28
+
+### Behoben
+
+- **Verbindet sich auch auf frisch installiertem Windows.** rustls vertraute
+  nur dem OS-Zertifikatsspeicher, den Windows erst lazy befüllt — auf einem
+  frischen Windows 11 scheiterte jede Verbindung mit `UnknownIssuer`, obwohl
+  Edge dieselbe Seite lud (ISRG Root X2). Beide Signaling-WebSockets nutzen
+  jetzt OS-Store **plus** Mozilla-Bundle als Untergrenze; private CAs für
+  Self-Hoster funktionieren weiter.
+
+## [0.6.5] — 2026-08-28
+
+### Sicherheit
+
+- **Ein einzelnes fehlerhaftes Datenpaket konnte den Signaling-Server
+  beenden** und alle laufenden Sitzungen trennen (nicht-Objekt-JSON-Frame).
+  Wird jetzt mit `bad-message` abgewiesen.
+- **Account-Sperre kappt den unbeaufsichtigten Zugriff tatsächlich** — ein
+  suspendierter Account konnte sich bisher weiter über gepairte Geräte
+  verbinden.
+
+### Behoben
+
+- **Zugriff entziehen beendet die Sitzung sofort** — Gerät im Dashboard
+  löschen oder den unbeaufsichtigten Modus abschalten trennt eine gerade
+  laufende Fernsteuerung.
+- **Pause-Taste gibt gedrückte Tasten frei** — pausierte man mitten im
+  Ziehen, blieb die Maustaste am System gedrückt.
+- Der Sharer schließt den Peer, wenn `start_streaming` nach dem Aufbau
+  fehlschlägt (kein hängender Peer mehr).
+- „Beenden" bleibt sichtbar, während auf das erste Bild gewartet wird.
+- Dashboard: fehlende Route für die E-Mail-Änderungs-Bestätigung ergänzt.
+- Download-Seite: alle Buttons sind auf `?tag=vX.Y.Z` gepinnt, damit ein
+  laufender Release-Vorgang keine 404/502 auf der Live-Seite erzeugt.
+
 ## [0.6.4] — 2026-07-02
 
 ### Behoben
@@ -224,6 +333,17 @@ Bündelt die Ergebnisse eines Security- und UX-Reviews.
   Per-Account-Lockout, HMAC-ephemerale TURN-Credentials. Vollständiger
   Audit: [docs/security-review-2026-05.md](docs/security-review-2026-05.md).
 
+[0.7.0]: https://github.com/phash/auffi/releases/tag/v0.7.0
+[0.6.9]: https://github.com/phash/auffi/releases/tag/v0.6.9
+[0.6.8]: https://github.com/phash/auffi/releases/tag/v0.6.8
+[0.6.7]: https://github.com/phash/auffi/releases/tag/v0.6.7
+[0.6.6]: https://github.com/phash/auffi/releases/tag/v0.6.6
+[0.6.5]: https://github.com/phash/auffi/releases/tag/v0.6.5
+[0.6.4]: https://github.com/phash/auffi/releases/tag/v0.6.4
+[0.6.3]: https://github.com/phash/auffi/releases/tag/v0.6.3
+[0.6.2]: https://github.com/phash/auffi/releases/tag/v0.6.2
+[0.6.0]: https://github.com/phash/auffi/releases/tag/v0.6.0
+[0.5.0]: https://github.com/phash/auffi/releases/tag/v0.5.0
 [0.4.5]: https://github.com/phash/auffi/releases/tag/v0.4.5
 [0.4.4]: https://github.com/phash/auffi/releases/tag/v0.4.4
 [0.4.3]: https://github.com/phash/auffi/releases/tag/v0.4.3
