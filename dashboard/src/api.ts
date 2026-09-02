@@ -232,7 +232,8 @@ export function patchDevice(
   });
 }
 
-export function deleteDevice(id: string): Promise<ApiResult<{ ok: true }>> {
+/** Backend answers 204 with no body — there is no `data` to read. */
+export function deleteDevice(id: string): Promise<ApiResult<void>> {
   return request(`/api/devices/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
@@ -298,7 +299,8 @@ export interface DeleteMeBody {
   confirm: string;
 }
 
-export function deleteMe(body: DeleteMeBody): Promise<ApiResult<{ ok: true }>> {
+/** Backend answers 204 with no body. */
+export function deleteMe(body: DeleteMeBody): Promise<ApiResult<void>> {
   return request("/api/me", {
     method: "DELETE",
     body: JSON.stringify(body),
@@ -386,7 +388,8 @@ export function patchAdminFeedback(
   });
 }
 
-export function deleteAdminFeedback(id: number): Promise<ApiResult<{ ok: true }>> {
+/** Backend answers 204 with no body. */
+export function deleteAdminFeedback(id: number): Promise<ApiResult<void>> {
   return request(`/api/admin/feedback/${id}`, { method: "DELETE" });
 }
 
@@ -552,10 +555,11 @@ export function patchAdminUser(
   });
 }
 
+/** Backend answers 204 with no body. */
 export function deleteAdminUser(
   id: number,
   reason: string,
-): Promise<ApiResult<{ ok: true }>> {
+): Promise<ApiResult<void>> {
   return request(`/api/admin/users/${id}`, {
     method: "DELETE",
     body: JSON.stringify({ reason }),

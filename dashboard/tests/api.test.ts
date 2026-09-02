@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   _setApiClientForTests,
+  deleteDevice,
   login,
   logout,
   signup,
@@ -177,6 +178,20 @@ describe("api response handling", () => {
     expect(res.status).toBe(500);
     expect(res.code).toBe("http-error");
     expect(res.message).toBe("HTTP 500");
+  });
+
+  it("types the 204 DELETE helpers as bodiless — data is undefined, not {ok:true}", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () => new Response(null, { status: 204 })) as unknown as typeof fetch,
+    });
+    const res = await deleteDevice("111-222-333");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // With the corrected signature `res.data` is `void`; reading a property
+    // off it must not type-check, so this is the only thing a caller may do.
+    const body: void = res.data;
+    expect(body).toBeUndefined();
   });
 
   it("handles an empty 2xx body as ok:true (logout returns 204)", async () => {
