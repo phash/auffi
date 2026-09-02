@@ -110,8 +110,10 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
       // operator who forgot to configure SMTP on prod still has a
       // grep-able path to extract the verify-link plaintext from
       // `docker logs`, and an obvious red signal (`[mailer:no-smtp]`)
-      // that mail delivery is broken. Logs are stderr, redacted by
-      // the Fastify pino setup, and not world-readable on the host.
+      // that mail delivery is broken. This writes to stderr DIRECTLY —
+      // pino's redact paths never see it — so everything emitted here
+      // MUST already be redacted (recipient via redactEmail; the body
+      // only behind the explicit opt-in below).
       const inner = captureTransport();
       return {
         async send(opts) {
@@ -123,7 +125,7 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): {
           const header =
             `[mailer:no-smtp] to=${redactEmail(opts.to)} subject=${JSON.stringify(opts.subject)}\n`;
           const body =
-            process.env.AUFFI_LOG_MAIL_BODIES === "1"
+            env.AUFFI_LOG_MAIL_BODIES === "1"
               ? `[mailer:no-smtp] body=\n${opts.text}\n`
               : "";
           process.stderr.write(header + body);

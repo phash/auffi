@@ -177,7 +177,7 @@ describe("mailerFromEnv — no-SMTP fallback token-leak fix", () => {
     expect(combined).not.toContain("secret-token-abc");
   });
 
-  it("logs the full body including the token when AUFFI_LOG_MAIL_BODIES=1", async () => {
+  it("logs the full body including the token when the injected env sets AUFFI_LOG_MAIL_BODIES=1", async () => {
     const stderrLines: string[] = [];
     const origWrite = process.stderr.write.bind(process.stderr);
     (process.stderr as { write: (s: string) => boolean }).write = (s: string) => {
@@ -185,12 +185,13 @@ describe("mailerFromEnv — no-SMTP fallback token-leak fix", () => {
       return true;
     };
     try {
-      process.env.AUFFI_LOG_MAIL_BODIES = "1";
-      const out = mailerFromEnv({ NODE_ENV: "production" });
+      // The flag must come from the env object mailerFromEnv was given, not
+      // from process.env — the injection exists so tests never touch it.
+      delete process.env.AUFFI_LOG_MAIL_BODIES;
+      const out = mailerFromEnv({ NODE_ENV: "production", AUFFI_LOG_MAIL_BODIES: "1" });
       await out.mailer.sendVerifyEmail("dev@example.com", "dev-token-xyz");
     } finally {
       (process.stderr as { write: (s: string) => boolean }).write = origWrite;
-      delete process.env.AUFFI_LOG_MAIL_BODIES;
     }
     const combined = stderrLines.join("");
     // Recipient stays redacted even with body-dump on.
