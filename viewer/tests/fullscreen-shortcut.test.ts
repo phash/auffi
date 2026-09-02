@@ -175,6 +175,44 @@ describe("Fullscreen 'f' shortcut (gh #75)", () => {
     expect(requestFullscreen).not.toHaveBeenCalled();
   });
 
+  it("'f' on the focused video (no control) still enters fullscreen", () => {
+    const wrapper = document.getElementById("video-wrapper") as HTMLElement;
+    wrapper.classList.add("active");
+    const video = document.getElementById("remote-video") as HTMLVideoElement;
+    video.focus();
+    dispatchKey("f", video);
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  // While Steuerung is active every key typed on the video is forwarded to
+  // the remote machine (InputCapture binds on the video and lets the event
+  // bubble). Typing "firefox" over there must not flip the local viewer in
+  // and out of fullscreen on each 'f'.
+  it("'f' while Steuerung is active is forwarded, not a local fullscreen toggle", () => {
+    const wrapper = document.getElementById("video-wrapper") as HTMLElement;
+    wrapper.classList.add("active");
+    const toggle = document.getElementById("input-toggle") as HTMLButtonElement;
+    toggle.click();
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    const video = document.getElementById("remote-video") as HTMLVideoElement;
+    dispatchKey("f", video);
+    dispatchKey("F", video);
+    expect(requestFullscreen).not.toHaveBeenCalled();
+    toggle.click();
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("a keydown another handler already claimed (defaultPrevented) is left alone", () => {
+    const wrapper = document.getElementById("video-wrapper") as HTMLElement;
+    wrapper.classList.add("active");
+    const video = document.getElementById("remote-video") as HTMLVideoElement;
+    const claim = (e: Event): void => e.preventDefault();
+    video.addEventListener("keydown", claim);
+    dispatchKey("f", video);
+    video.removeEventListener("keydown", claim);
+    expect(requestFullscreen).not.toHaveBeenCalled();
+  });
+
   it("Ctrl+f / Cmd+f does NOT trigger fullscreen (preserves browser find)", () => {
     const wrapper = document.getElementById("video-wrapper") as HTMLElement;
     wrapper.classList.add("active");

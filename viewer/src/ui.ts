@@ -318,10 +318,16 @@ export function bindUI(backendWsUrl: string): void {
   });
 
   // gh #75: 'f' toggles fullscreen while a stream is active. Ignored when
-  // the user is typing in a text field so it doesn't hijack the code input.
+  // the user is typing in a text field so it doesn't hijack the code input,
+  // and while Steuerung is active: InputCapture binds on the video, forwards
+  // every key to the remote machine and lets the event bubble here, so an
+  // 'f' typed over there would also flip the local viewer's fullscreen. The
+  // toolbar button stays available for fullscreen while controlling.
   document.addEventListener("keydown", (e) => {
     if (e.key !== "f" && e.key !== "F") return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.defaultPrevented) return;
+    if (inputToggleBtn.getAttribute("aria-pressed") === "true") return;
     const target = e.target as HTMLElement | null;
     if (target) {
       const tag = target.tagName;
