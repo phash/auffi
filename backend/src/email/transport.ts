@@ -36,15 +36,21 @@ export function smtpConfigFromEnv(env: NodeJS.ProcessEnv = process.env): SmtpCon
 
 /**
  * Real SMTP transport via nodemailer. `secure` is true on the canonical
- * implicit-TLS port (465); STARTTLS / opportunistic encryption on 587 /
- * 25 is left to nodemailer's defaults.
+ * implicit-TLS port (465). Every other port REQUIRES STARTTLS: nodemailer's
+ * default there is opportunistic — upgrade if the relay advertises it,
+ * otherwise carry on in plaintext — which would put SMTP_USER/SMTP_PASS
+ * and the verify/reset links on the wire after a relay misconfiguration
+ * or an active downgrade. A relay that cannot do TLS fails the send
+ * instead (CLAUDE.md: TLS everywhere).
  */
 export function smtpTransport(cfg: SmtpConfig): MailTransport {
   const auth = cfg.user && cfg.pass ? { user: cfg.user, pass: cfg.pass } : undefined;
+  const implicitTls = cfg.port === 465;
   const transporter: Transporter = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
-    secure: cfg.port === 465,
+    secure: implicitTls,
+    requireTLS: !implicitTls,
     auth,
   });
   return {

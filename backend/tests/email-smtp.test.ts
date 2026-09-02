@@ -35,6 +35,27 @@ describe("smtpTransport", () => {
     expect((thrown as Error).cause).toBeInstanceOf(Error);
   });
 
+  it("requires STARTTLS on 587/25 and implicit TLS on 465 — never opportunistic plaintext", () => {
+    // nodemailer's default on 587 upgrades only if the relay advertises
+    // STARTTLS and otherwise continues in the clear: SMTP_USER/SMTP_PASS
+    // and the verify/reset links would cross the hop unencrypted after a
+    // relay misconfiguration or an active downgrade. CLAUDE.md: TLS
+    // everywhere.
+    transportRejectingWith(new Error("unused"));
+    smtpTransport({ host: "mail", port: 587, from: "noreply@example.test" });
+    expect(createTransport).toHaveBeenLastCalledWith(
+      expect.objectContaining({ port: 587, secure: false, requireTLS: true }),
+    );
+    smtpTransport({ host: "mail", port: 25, from: "noreply@example.test" });
+    expect(createTransport).toHaveBeenLastCalledWith(
+      expect.objectContaining({ port: 25, secure: false, requireTLS: true }),
+    );
+    smtpTransport({ host: "mail", port: 465, from: "noreply@example.test" });
+    expect(createTransport).toHaveBeenLastCalledWith(
+      expect.objectContaining({ port: 465, secure: true }),
+    );
+  });
+
   it("redacts the recipient case-insensitively — SMTP servers echo it lowercased", async () => {
     transportRejectingWith(new Error("550 <maria.mueller@example.com> unknown"));
     const t = smtpTransport({ host: "mail", port: 587, from: "noreply@example.test" });
