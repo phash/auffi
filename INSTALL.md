@@ -138,20 +138,27 @@ sudo rpm -i src-tauri/target/release/bundle/rpm/Auffi-*.x86_64.rpm
 ## Variante 4 — AppImage (jede Distro, kein Install)
 
 Wenn dir System-Install zu invasiv ist, oder du kein Root hast.
-Tauris AppImage-Bundling ist standardmäßig aktiv.
+Tauris AppImage-Bundling ist zwar standardmäßig aktiv (`"targets":
+"all"`), scheitert aber auf modernen Rolling-Release-Distros (Arch,
+CachyOS, Fedora Rawhide …) zuverlässig — `linuxdeploy`s mitgeliefertes
+`strip` kennt DT_RELR nicht, und `appimagetool` sucht das Icon an einer
+anderen Stelle als Tauri es ablegt. Ein nacktes `npm run tauri:build`
+liefert dann `.deb` + `.rpm`, aber **kein** AppImage. Der Wrapper
+`ops/build-sharer-appimage.sh` umschifft beide Probleme (Details:
+`docs/footguns.md` § AppImage-Build Footguns):
 
 ```bash
 git clone https://github.com/phash/auffi.git
-cd auffi/sharer
-npm ci
-npm run tauri:build
-chmod +x src-tauri/target/release/bundle/appimage/Auffi_*.AppImage
-src-tauri/target/release/bundle/appimage/Auffi_*.AppImage
+cd auffi/sharer && npm ci && cd ..
+./ops/build-sharer-appimage.sh
+chmod +x sharer/src-tauri/target/release/bundle/appimage/Auffi_*.AppImage
+sharer/src-tauri/target/release/bundle/appimage/Auffi_*.AppImage
 ```
 
-Die AppImage trägt alle GStreamer- und Webview-Dependencies bei
-sich; nur PipeWire muss auf dem Host laufen (was es auf modernen
-Distros eh tut).
+Zum Ausführen braucht das AppImage FUSE 2 (`libfuse2` auf Debian/Ubuntu,
+`fuse-libs` auf Fedora, `fuse2` auf Arch). Es trägt alle GStreamer- und
+Webview-Dependencies bei sich; nur PipeWire muss auf dem Host laufen
+(was es auf modernen Distros eh tut).
 
 ---
 
