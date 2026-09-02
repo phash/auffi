@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(path.join(here, "..", "index.html"), "utf8");
+import html from "../index.html?raw";
 
 /**
  * main.ts shows the "Neu verbinden" button by toggling the WRAPPER's inline
