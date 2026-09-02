@@ -26,7 +26,6 @@ rustls-native-certs = "=0.8.4"
 webpki-roots = "=1.0.9"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-url = "=2.5.8"
 futures-util = "=0.3.34"
 # Held on the 0.17 line: 0.20 is the sans-io full rewrite (no 0.18/0.19
 # exist) that rearchitects the load-bearing connectivity settings from
@@ -91,7 +90,7 @@ getrandom = "=0.4.3"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-x11rb = { version = "=0.14.0", features = ["randr", "render", "shm", "image"] }
+x11rb = { version = "=0.14.0", features = ["randr"] }
 # Held at 0.10: ashpd 0.13 splits every portal into its own feature and
 # moves the screencast API to options-structs — needs a gst_portal.rs
 # port that can only be compile-verified in a Linux build session.
@@ -103,7 +102,6 @@ ashpd = { version = "=0.10.2", default-features = false, features = ["tokio"] }
 # Windows host — do it in a Linux build session together with ashpd.
 gstreamer = "=0.24.0"
 gstreamer-app = "=0.24.0"
-gstreamer-video = "=0.24.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 xcap = { version = "=0.9.8", features = ["wgc"] }
@@ -124,9 +122,6 @@ vcpkg = "=0.2.15"
 
 [dev-dependencies]
 tempfile = "=3.27.0"
-uuid = { version = "=1.26.0", features = ["v4"] }
-tauri-plugin-store = "=2.4.4"
-tauri-plugin-shell = "=2.3.5"
 # In-process HTTP server for testing reqwest-based clients without
 # spinning up the real backend. Used by account.rs tests for the
 # pair/unpair flow against the mock /api/devices/redeem.
