@@ -862,9 +862,12 @@ export function bindUI(backendWsUrl: string): void {
 
       signaling.onRelay((payload) => {
         if (payload.kind === "sdp") {
-          peer?.acceptAnswer(payload.sdp).catch((e: unknown) =>
-            teardown(t("teardown.sdpError", { msg: e instanceof Error ? e.message : String(e) }), "err"),
-          );
+          peer?.acceptAnswer(payload.sdp).catch((e: unknown) => {
+            // The browser's DOMException text is English protocol jargon;
+            // keep it in the console for diagnosis, not in the status line.
+            console.error("setRemoteDescription failed", e);
+            teardown(t("join.generic"), "err", true);
+          });
         } else if (payload.kind === "ice") {
           peer?.addRemoteIceCandidate(payload.candidate).catch(() => {
             teardown(t("teardown.iceError"), "err");
