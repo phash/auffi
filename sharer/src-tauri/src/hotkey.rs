@@ -74,3 +74,16 @@ pub fn register_pause_hotkey<R: Runtime>(
     register_one(app, p_shortcut, controller, "Ctrl+Alt+P")?;
     Ok(())
 }
+
+/// Gives the chords back to the desktop when the session ends. The hotkey
+/// only means something while an `InputController` exists; left registered
+/// it kept swallowing Ctrl+Alt+P / Ctrl+Alt+Pause system-wide for the rest
+/// of the process, doing nothing. Errors are ignored: not-registered is the
+/// normal case when streaming was stopped before a controller existed.
+pub fn unregister_pause_hotkey<R: Runtime>(app: &AppHandle<R>) {
+    let ctrl_alt = Modifiers::CONTROL | Modifiers::ALT;
+    for code in [Code::Pause, Code::KeyP] {
+        let shortcut = tauri_plugin_global_shortcut::Shortcut::new(Some(ctrl_alt), code);
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}

@@ -1138,11 +1138,13 @@ async fn disconnect_streaming(
         }
     }
 
-    // Drop the input controller.
+    // Drop the input controller — and the global pause chords with it, which
+    // are only meaningful while a controller exists.
     {
         let mut guard = input_state.0.lock().await;
         *guard = None;
     }
+    hotkey::unregister_pause_hotkey(&app);
 
     // Drop the file transfer manager.
     {
