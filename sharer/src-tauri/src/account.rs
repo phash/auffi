@@ -8,12 +8,15 @@
 //!
 //! The token MUST NEVER touch the plain filesystem — anyone who can
 //! read it can impersonate the device against the backend WSS endpoint.
-//! Keyring backends: Secret Service on Linux, Keychain on macOS,
-//! Credential Manager on Windows.
+//! Keyring backends: Secret Service on Linux, Credential Manager on
+//! Windows (the sharer has no macOS target).
 //!
-//! `unpair` is best-effort against the backend (DELETE may be rejected
-//! if the backend hasn't yet wired Bearer-auth DELETE — gh #16 / #17)
-//! but the local wipe is unconditional and idempotent. The user can
+//! `unpair` is best-effort against the backend — `DELETE /api/devices/:id`
+//! with `Authorization: Bearer` + `X-Auffi-Device-Id` is the supported
+//! self-revoke, so only a transport failure or a rejected token is
+//! tolerated there — but the local wipe is unconditional and idempotent:
+//! every step is attempted even when an earlier one (a locked keyring,
+//! say) fails, and the first error is reported afterwards. The user can
 //! always re-pair with a fresh code.
 
 use std::fs;
@@ -376,14 +379,26 @@ pub async fn pair<S: TokenStore>(
 /// Best-effort unpair: try to revoke the token at the backend, then
 /// wipe local secrets unconditionally. Idempotent — calling on an
 /// already-unpaired install returns `Ok(())`.
+///
+/// Both local halves are always attempted; a keyring that cannot be
+/// read or cleared (Secret Service locked on a headless box — the
+/// unattended target) must not leave `device_id.txt` behind, or the
+/// install stays "paired" with no way to re-pair short of deleting the
+/// file by hand. The error is still returned once both were tried.
 pub async fn unpair<S: TokenStore>(
     http: &reqwest::Client,
     store: &S,
     backend_base: &str,
     config_dir: &Path,
 ) -> Result<(), AccountError> {
-    let token = store.read()?;
-    let device_id = read_device_id(config_dir)?;
+    let token = store.read().unwrap_or_else(|e| {
+        log::warn!("[unpair] keyring read failed, skipping backend revoke: {e}");
+        None
+    });
+    let device_id = read_device_id(config_dir).unwrap_or_else(|e| {
+        log::warn!("[unpair] device_id read failed, skipping backend revoke: {e}");
+        None
+    });
 
     if let (Some(token), Some(device_id)) = (token.as_ref(), device_id.as_ref()) {
         let url = format!(
@@ -391,10 +406,10 @@ pub async fn unpair<S: TokenStore>(
             backend_base.trim_end_matches('/'),
             device_id
         );
-        // Best-effort: failure to contact the backend (or the backend
-        // not yet supporting Bearer-DELETE) is NOT a hard error — the
-        // user's intent is "stop being paired", and wiping local state
-        // accomplishes that even if the server-side token outlives it.
+        // Best-effort: failure to contact the backend (or a token it
+        // already revoked) is NOT a hard error — the user's intent is
+        // "stop being paired", and wiping local state accomplishes that
+        // even if the server-side token outlives it.
         // X-Auffi-Device-Id is REQUIRED: parseBearerAuth returns "malformed"
         // when the Authorization header arrives without it, the route then
         // falls through to requireSession, and the sharer has no session
@@ -409,9 +424,9 @@ pub async fn unpair<S: TokenStore>(
             .await;
     }
 
-    store.delete()?;
-    delete_device_id(config_dir)?;
-    Ok(())
+    let keyring = store.delete();
+    let device_file = delete_device_id(config_dir).map_err(AccountError::Io);
+    keyring.and(device_file)
 }
 
 #[cfg(test)]
@@ -786,9 +801,9 @@ mod tests {
 
     #[tokio::test]
     async fn unpair_wipes_local_state_even_when_backend_rejects_delete() {
-        // Backend might not yet support Bearer-DELETE (gh #16/#17 not
-        // wired). The user's intent is "stop being paired"; honour it
-        // locally regardless of what the server says.
+        // A revoked or otherwise rejected token 401s the self-revoke.
+        // The user's intent is "stop being paired"; honour it locally
+        // regardless of what the server says.
         let mut server = mockito::Server::new_async().await;
         server
             .mock("DELETE", "/api/devices/123-456-789")
@@ -811,6 +826,42 @@ mod tests {
         assert!(
             read_device_id(dir.path()).unwrap().is_none(),
             "device_id must still be wiped locally"
+        );
+    }
+
+    /// A keyring that is locked or unavailable — Secret Service on a
+    /// headless box, the very target of unattended mode.
+    struct LockedKeyring;
+
+    impl TokenStore for LockedKeyring {
+        fn write(&self, _token: &str) -> Result<(), AccountError> {
+            Err(AccountError::Keyring("locked".to_string()))
+        }
+        fn read(&self) -> Result<Option<String>, AccountError> {
+            Err(AccountError::Keyring("locked".to_string()))
+        }
+        fn delete(&self) -> Result<(), AccountError> {
+            Err(AccountError::Keyring("locked".to_string()))
+        }
+    }
+
+    // The doc promised an unconditional local wipe, but `store.read()?`
+    // returned before anything was wiped, so the install stayed "paired"
+    // (device_id.txt intact) with no path to re-pair short of deleting
+    // the file by hand.
+    #[tokio::test]
+    async fn unpair_wipes_the_device_id_even_when_the_keyring_is_locked() {
+        let dir = tempdir().unwrap();
+        write_device_id(dir.path(), "123-456-789").unwrap();
+
+        let result = unpair(&http(), &LockedKeyring, "http://127.0.0.1:1", dir.path()).await;
+        assert!(
+            read_device_id(dir.path()).unwrap().is_none(),
+            "device_id must be wiped regardless of the keyring"
+        );
+        assert!(
+            matches!(result, Err(AccountError::Keyring(_))),
+            "the keyring failure is still reported after the wipe: {result:?}"
         );
     }
 
