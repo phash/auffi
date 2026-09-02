@@ -56,14 +56,11 @@
   --text: var(--ink);
   --card-bg: var(--surface);
   --accent: var(--brand-strong);
-  --amber: var(--brand-strong);
-  --cyan: var(--brand-strong);
 
   /* kept for components that reference them directly */
   --ink-soft: var(--muted);
   --edge: var(--line);
   --accent-hover: var(--brand);
-  --amber-ink: var(--ink-on-brand);
   --border: var(--line);
   --text-secondary: var(--muted);
   --error: #a83b3b;

@@ -54,30 +54,10 @@
   --shadow-sm: 0 1px 2px rgba(15, 31, 26, 0.05), 0 2px 8px rgba(16, 185, 129, 0.06);
   --shadow-lift: 0 4px 12px rgba(15, 31, 26, 0.08), 0 8px 24px rgba(16, 185, 129, 0.10);
 
-  /* Legacy bridges — keep old class users working */
-  --bg: var(--paper);
-  --text: var(--ink);
-  --card-bg: var(--surface);
-  --accent: var(--brand-strong);
-  --amber: var(--brand-strong);
+  /* Semantic tokens referenced by components */
   --cyan: var(--brand-strong);
-
-  /* Extra legacy bridges for component styles not yet recasted */
-  --text-primary: var(--ink);
-  --text-secondary: var(--muted);
-  --border: var(--line);
-  --accent-hover: var(--brand-strong);
-  --accent-active: var(--brand-strong);
-  --shadow: var(--shadow-sm);
-  --success: var(--brand);
-
-  /* Semantic tokens still referenced by components */
-  --paper-edge: var(--surface);
   --ink-soft: var(--muted);
-  --rule: var(--line);
   --edge: var(--line);
-  --amber-deep: var(--brand-strong);
-  --amber-ink: #0f1f1a;
   --error: #a83b3b;
   /* Status/"live" indicator green — intentionally deeper than --brand for a
      distinct connected-state signal; keep separate from the brand accent. */
@@ -85,7 +65,6 @@
 
   --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --font: var(--font-sans);
   --topbar-height: 56px;
   --footer-height: 48px;
 }
@@ -105,14 +84,8 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-lift: 0 6px 20px rgba(0, 0, 0, 0.5);
 
-    /* Derived legacy bridges updated for dark mode */
-    --paper-edge: var(--surface);
     --ink-soft: var(--muted);
-    --rule: var(--line);
     --edge: var(--line);
-    --amber: var(--brand-strong);
-    --amber-deep: var(--brand-strong);
-    --amber-ink: #0c1714;
     --error: #d65a5a;
     --signal-on: #71c285;
   }
