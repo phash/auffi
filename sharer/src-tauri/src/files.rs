@@ -384,7 +384,10 @@ impl FileTransferManager {
 /// differs from `filename` when a collision forced deduplication. The
 /// caller must track the returned name so success events point at the
 /// file that was written, not at a pre-existing one.
-fn open_output_file(dir: &std::path::Path, filename: &str) -> std::io::Result<(std::fs::File, String)> {
+fn open_output_file(
+    dir: &std::path::Path,
+    filename: &str,
+) -> std::io::Result<(std::fs::File, String)> {
     std::fs::create_dir_all(dir)?;
     // De-duplicate instead of truncating: a viewer-chosen name must never
     // silently overwrite an existing file in ~/Downloads/Auffi/. `create_new`
@@ -509,7 +512,9 @@ pub fn sanitize_filename(input: &str) -> String {
     let cleaned: String = joined
         .chars()
         .map(|c| {
-            if (c as u32) < 0x20 || c == '\x7f' || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*')
+            if (c as u32) < 0x20
+                || c == '\x7f'
+                || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*')
             {
                 '_'
             } else {
@@ -518,9 +523,7 @@ pub fn sanitize_filename(input: &str) -> String {
         })
         .collect();
 
-    let stripped = cleaned
-        .trim_start_matches('.')
-        .trim_end_matches(['.', ' ']);
+    let stripped = cleaned.trim_start_matches('.').trim_end_matches(['.', ' ']);
 
     let base = if stripped.is_empty() {
         "untitled".to_string()
@@ -922,7 +925,10 @@ mod tests {
         let oversized = vec![0u8; (SIZE_OVERRUN_TOLERANCE_BYTES + 8) as usize];
         let result = mgr.handle_chunk(&build_chunk_frame("ov-id", 0, &oversized));
         assert!(result.is_err());
-        assert!(!path.exists(), "aborted transfer must not leave part.bin behind");
+        assert!(
+            !path.exists(),
+            "aborted transfer must not leave part.bin behind"
+        );
     }
 
     #[test]
@@ -939,7 +945,10 @@ mod tests {
 
         mgr.drop_transfer("err-id");
         assert!(!mgr.active.contains_key("err-id"));
-        assert!(!path.exists(), "dropped transfer must not leave err.bin behind");
+        assert!(
+            !path.exists(),
+            "dropped transfer must not leave err.bin behind"
+        );
     }
 
     #[test]
@@ -957,7 +966,10 @@ mod tests {
         let failure = outcome.expect_err("40 of 100 bytes is not complete");
         assert_eq!(failure.name, "report.pdf");
         assert!(failure.reason.contains("40"), "reason: {}", failure.reason);
-        assert!(!path.exists(), "truncated report.pdf must not be left behind");
+        assert!(
+            !path.exists(),
+            "truncated report.pdf must not be left behind"
+        );
         assert!(mgr.complete("trunc-id").is_none(), "id is gone after done");
     }
 
