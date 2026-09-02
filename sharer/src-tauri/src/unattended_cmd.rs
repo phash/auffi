@@ -98,24 +98,35 @@ fn mode_path(app: &AppHandle) -> CmdResult<PathBuf> {
     Ok(app_data_dir(app)?.join(MODE_FILE))
 }
 
-/// Validate that a backend URL uses a TLS scheme (`wss://` or `https://`).
+/// Validate that a backend URL is a WebSocket URL the sharer may send a
+/// Bearer token to: `wss://` always, `ws://` only with the development
+/// escape hatch `AUFFI_ALLOW_INSECURE=1`.
 ///
-/// Returns `Ok(())` when the URL is secure, or `Ok(())` when the insecure
-/// escape hatch `AUFFI_ALLOW_INSECURE=1` is set (development only). Returns
-/// `Err(String)` when the URL is `ws://`/`http://` **and** the flag is absent.
+/// An allow-list, not a deny-list: anything else (`https://`, a bare
+/// host, `WSS://`) used to pass and then fell into
+/// `backend_urls::http_base_from_ws`'s dev fallback, so the pairing code
+/// and token went to `http://localhost:8080` in cleartext while the
+/// heartbeat reconnected forever.
 ///
 /// Pure (takes a `&str` and an explicit `allow_insecure` flag) so it is
 /// unit-testable without touching process-wide env vars (CQ M-20: parallel
 /// tests racing on env vars flaked CI).
 pub(crate) fn validate_backend_url(url: &str, allow_insecure: bool) -> Result<(), String> {
-    let is_insecure = url.starts_with("ws://") || url.starts_with("http://");
-    if is_insecure && !allow_insecure {
+    if url.starts_with("wss://") {
+        return Ok(());
+    }
+    if url.starts_with("ws://") {
+        if allow_insecure {
+            return Ok(());
+        }
         return Err(format!(
             "Unsicheres Backend-URL abgelehnt: {url:?}. \
              Setze AUFFI_ALLOW_INSECURE=1 für lokale Entwicklungsumgebungen."
         ));
     }
-    Ok(())
+    Err(format!(
+        "Ungültige Backend-URL {url:?}: erwartet wird eine WebSocket-URL (wss://…)."
+    ))
 }
 
 fn backend_ws_url() -> String {
@@ -1295,12 +1306,31 @@ mod tests {
         );
     }
 
+    // F055: the gate used to be a deny-list (only ws:// and http://
+    // rejected). Anything else — https:// pasted from the site, a
+    // scheme-less host, upper-case WSS:// — passed, and
+    // backend_urls::http_base_from_ws then mapped it to the dev
+    // fallback http://localhost:8080, where pair/unpair/feedback
+    // POSTed the pairing code and Bearer token in cleartext while the
+    // heartbeat failed to connect forever.
     #[test]
-    fn validate_backend_url_accepts_https_scheme() {
-        assert!(
-            validate_backend_url("https://auffi.app/api", false).is_ok(),
-            "https:// must be accepted without the insecure flag"
-        );
+    fn validate_backend_url_rejects_https_it_is_not_a_websocket_url() {
+        let err = validate_backend_url("https://auffi.app/signal", false)
+            .expect_err("https:// is not a WebSocket URL");
+        assert!(err.contains("wss://"), "error must name the expected scheme: {err}");
+    }
+
+    #[test]
+    fn validate_backend_url_rejects_scheme_less_and_upper_case_urls() {
+        assert!(validate_backend_url("auffi.app/signal", false).is_err());
+        assert!(validate_backend_url("WSS://auffi.app/signal", false).is_err());
+        assert!(validate_backend_url("", false).is_err());
+    }
+
+    #[test]
+    fn validate_backend_url_rejects_http_even_with_insecure_flag() {
+        // The escape hatch widens the scheme to cleartext, not to non-WS.
+        assert!(validate_backend_url("http://localhost:8080", true).is_err());
     }
 
     #[test]
@@ -1335,11 +1365,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn validate_backend_url_permits_http_with_insecure_flag() {
-        assert!(
-            validate_backend_url("http://localhost:8080", true).is_ok(),
-            "http:// with allow_insecure=true must be accepted for local dev"
-        );
-    }
 }
