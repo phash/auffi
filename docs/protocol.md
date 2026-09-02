@@ -208,6 +208,14 @@ success the backend replies:
 
 The sharer then idles, waiting for `pw-check` frames.
 
+**Ordering rule.** Until `unattended-hello` has been sent, the backend answers
+*any* frame from the sharer with `{ "type": "error", "code": "bad-message" }`
+(the verify is still running and a wrong token must not observe protocol
+behaviour). The sharer treats `error` as a fatal disconnect, so it MUST NOT
+send before hello: `heartbeat.rs` holds frames queued during the handshake
+(a `pw-check-result` from a confirm waiter, a `bye`, ICE candidates,
+`turn-credentials-request`) and flushes them in order right after hello.
+
 #### WebSocket close codes on the bearer path
 
 The backend closes a bearer-authenticated `/signal` socket with one of three

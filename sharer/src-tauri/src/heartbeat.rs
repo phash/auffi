@@ -16,6 +16,10 @@
 //! Anything else (transient network drop, server restart, viewer
 //! peer gone) just triggers a reconnect.
 //!
+//! Outbound frames queued before `unattended-hello` arrives are held and
+//! flushed in order right after it: the backend answers any earlier frame
+//! with a fatal `error bad-message` (docs/protocol.md § Sharer connect).
+//!
 //! The module exposes a command/event channel pair so the Tauri app
 //! can: (a) receive incoming `pw-check` frames and route them to
 //! `device_password::verify` + the manual-confirm UI, (b) send the
@@ -403,8 +407,10 @@ async fn run_loop(
                     // fleet) and never restart the ladder here — a session
                     // that reached hello and then got capped on the way
                     // back would otherwise come back at 1 s.
-                    attempt = attempt
-                        .max(attempts_to_reach_max(config.backoff_initial, config.backoff_max));
+                    attempt = attempt.max(attempts_to_reach_max(
+                        config.backoff_initial,
+                        config.backoff_max,
+                    ));
                     log::warn!("[heartbeat] backend rate-limited the bearer upgrade — retrying at max backoff");
                 } else if hello_seen {
                     // A session that reached unattended-hello was a real
@@ -521,6 +527,11 @@ async fn connect_and_run(
         }
     };
     let mut hello_seen = false;
+    // Frames the app hands us while the backend's argon2 verify is still
+    // running. Bounded so a proxy that keeps a never-verified socket open
+    // cannot grow it; whatever is left when this function returns is
+    // undeliverable and dropped, like Sends during the backoff sleep.
+    let mut pre_hello: Vec<SharerFrame> = Vec::new();
     let (mut write, mut read) = ws.split();
     let mut ping_timer = tokio::time::interval(config.ping_interval);
     ping_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -535,21 +546,21 @@ async fn connect_and_run(
             cmd = cmd_rx.recv() => {
                 match cmd {
                     Some(HeartbeatCommand::Send(frame)) => {
-                        let json = match serde_json::to_string(&frame) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                return ConnectOutcome::Disconnected {
-                                    reason: format!("serialise outgoing: {e}"),
-                                    hello_seen,
-                                    rate_limited: false,
-                                };
+                        if !hello_seen {
+                            if pre_hello.len() >= PRE_HELLO_BUFFER_MAX {
+                                log::warn!(
+                                    "[heartbeat] pre-hello buffer full — dropping the oldest outbound frame"
+                                );
+                                pre_hello.remove(0);
                             }
-                        };
-                        if write.send(Message::Text(json.into())).await.is_err() {
+                            pre_hello.push(frame);
+                            continue;
+                        }
+                        if let Err(reason) = write_frame(&mut write, &frame).await {
                             return ConnectOutcome::Disconnected {
-                                reason: "write half closed".to_string(),
+                                reason,
                                 hello_seen,
-                                    rate_limited: false,
+                                rate_limited: false,
                             };
                         }
                     }
@@ -573,7 +584,7 @@ async fn connect_and_run(
                         return ConnectOutcome::Disconnected {
                             reason: "socket EOF".to_string(),
                             hello_seen,
-                                rate_limited: false,
+                            rate_limited: false,
                         };
                     }
                 };
@@ -597,6 +608,15 @@ async fn connect_and_run(
                         match frame {
                             BackendFrame::UnattendedHello { device_id } => {
                                     hello_seen = true;
+                                    for frame in pre_hello.drain(..) {
+                                        if let Err(reason) = write_frame(&mut write, &frame).await {
+                                            return ConnectOutcome::Disconnected {
+                                                reason,
+                                                hello_seen,
+                                                rate_limited: false,
+                                            };
+                                        }
+                                    }
                                     let _ = evt_tx
                                         .send(HeartbeatEvent::Connected { device_id })
                                         .await;
@@ -694,12 +714,28 @@ async fn connect_and_run(
                     return ConnectOutcome::Disconnected {
                         reason: "write half closed during ping".to_string(),
                         hello_seen,
-                            rate_limited: false,
+                        rate_limited: false,
                     };
                 }
             }
         }
     }
+}
+
+/// Cap on frames held back before `unattended-hello`. A healthy verify
+/// takes ~250 ms; nothing legitimate queues dozens of frames in that
+/// window, so the bound only matters for a socket that never gets hello.
+const PRE_HELLO_BUFFER_MAX: usize = 32;
+
+async fn write_frame<S>(write: &mut S, frame: &SharerFrame) -> Result<(), String>
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    let json = serde_json::to_string(frame).map_err(|e| format!("serialise outgoing: {e}"))?;
+    write
+        .send(Message::Text(json.into()))
+        .await
+        .map_err(|_| "write half closed".to_string())
 }
 
 fn close_reason(frame: Option<&CloseFrame>) -> String {
@@ -773,14 +809,26 @@ mod tests {
 
     #[test]
     fn rate_limited_close_is_recognised_by_code_or_legacy_reason() {
-        assert!(is_rate_limited_close(Some(WS_CLOSE_RATE_LIMITED), "rate limit"));
+        assert!(is_rate_limited_close(
+            Some(WS_CLOSE_RATE_LIMITED),
+            "rate limit"
+        ));
         assert!(is_rate_limited_close(Some(WS_CLOSE_RATE_LIMITED), ""));
         // Backends ≤ 0.7.0 sent the cap as 4401 + "rate limit".
         assert!(is_rate_limited_close(Some(WS_CLOSE_REVOKED), "rate limit"));
         // A real revocation keeps its terminal meaning.
-        assert!(!is_rate_limited_close(Some(WS_CLOSE_REVOKED), "invalid device token"));
-        assert!(!is_rate_limited_close(Some(WS_CLOSE_REVOKED), "device revoked"));
-        assert!(!is_rate_limited_close(Some(WS_CLOSE_SUPERSEDED), "rate limit"));
+        assert!(!is_rate_limited_close(
+            Some(WS_CLOSE_REVOKED),
+            "invalid device token"
+        ));
+        assert!(!is_rate_limited_close(
+            Some(WS_CLOSE_REVOKED),
+            "device revoked"
+        ));
+        assert!(!is_rate_limited_close(
+            Some(WS_CLOSE_SUPERSEDED),
+            "rate limit"
+        ));
         assert!(!is_rate_limited_close(Some(1000), "rate limit"));
         assert!(!is_rate_limited_close(None, "rate limit"));
     }
@@ -1139,6 +1187,101 @@ mod tests {
     #[tokio::test]
     async fn legacy_4401_rate_limit_reason_is_not_treated_as_revoked() {
         rate_limited_close_reconnects_at_max_backoff(WS_CLOSE_REVOKED).await;
+    }
+
+    /// The backend answers ANY frame on the bearer path with a fatal
+    /// `error bad-message` until its argon2 verify has promoted the socket
+    /// and `unattended-hello` went out. The biased select drains queued
+    /// Sends the instant the WS opens, so a confirm-waiter's
+    /// pw-check-result, a bye from disconnect_streaming or a late ICE
+    /// candidate queued during the handshake was written pre-hello, killed
+    /// the connection ("backend error bad-message: wait for unattended-hello
+    /// before sending" shown verbatim), advanced the backoff ladder and
+    /// lost the frame. Outbound frames must wait for hello and flush after.
+    #[tokio::test]
+    async fn outbound_frames_wait_for_unattended_hello() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (verdict_tx, verdict_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+
+        tokio::spawn(async move {
+            let (sock, _) = listener.accept().await.expect("accept");
+            let mut ws = tokio_tungstenite::accept_async(sock).await.expect("ws");
+            // Mirror prod: anything before hello is a fatal protocol error.
+            if let Ok(Some(Ok(Message::Text(early)))) =
+                tokio::time::timeout(Duration::from_millis(200), ws.next()).await
+            {
+                let _ = ws
+                    .send(Message::Text(
+                        r#"{"type":"error","code":"bad-message","message":"wait for unattended-hello before sending"}"#
+                            .to_string()
+                            .into(),
+                    ))
+                    .await;
+                let _ = verdict_tx.send(Err(format!("frame before hello: {early}")));
+                return;
+            }
+            ws.send(Message::Text(
+                r#"{"type":"unattended-hello","deviceId":"111-111-111"}"#
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .expect("send hello");
+            let verdict = match tokio::time::timeout(Duration::from_secs(2), ws.next()).await {
+                Ok(Some(Ok(Message::Text(txt)))) => Ok(txt.to_string()),
+                other => Err(format!("no text frame after hello: {other:?}")),
+            };
+            let _ = verdict_tx.send(verdict);
+            // Keep the socket open so the client sees no disconnect.
+            while let Some(Ok(_)) = ws.next().await {}
+        });
+
+        let config = HeartbeatConfig {
+            backend_ws_url: format!("ws://{addr}/signal"),
+            device_id: "111-111-111".to_string(),
+            token: "test-token".to_string(),
+            origin: format!("http://{addr}"),
+            ping_interval: Duration::from_secs(30),
+            pong_timeout: Duration::from_secs(90),
+            backoff_initial: Duration::from_millis(20),
+            backoff_max: Duration::from_millis(80),
+        };
+        let (cmd_tx, cmd_rx) = mpsc::channel::<HeartbeatCommand>(16);
+        let (evt_tx, mut evt_rx) = mpsc::channel::<HeartbeatEvent>(64);
+        // Queued BEFORE the loop even starts connecting — the shape of a
+        // confirm-waiter answering while the socket is mid-handshake.
+        cmd_tx
+            .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
+                result: PwResult::Ok,
+            }))
+            .await
+            .expect("queue send");
+        tokio::spawn(run_loop(config, cmd_rx, evt_tx));
+
+        let verdict = tokio::time::timeout(Duration::from_secs(5), verdict_rx)
+            .await
+            .expect("server verdict within 5 s")
+            .expect("verdict channel");
+        let delivered = verdict.expect("frame must be held until hello, then delivered");
+        assert_eq!(delivered, r#"{"type":"pw-check-result","result":"ok"}"#);
+
+        let first = tokio::time::timeout(Duration::from_secs(5), evt_rx.recv())
+            .await
+            .expect("heartbeat event within 5 s")
+            .expect("event channel open");
+        assert!(
+            matches!(first, HeartbeatEvent::Connected { .. }),
+            "expected Connected, got {first:?}"
+        );
+        let quiet = tokio::time::timeout(Duration::from_millis(300), evt_rx.recv()).await;
+        assert!(
+            quiet.is_err(),
+            "no Disconnected/Reconnecting may follow a held-then-flushed frame, got {:?}",
+            quiet.expect("timeout already checked")
+        );
     }
 
     // ── Wire-shape round-trips ───────────────────────────────────────
