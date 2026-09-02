@@ -150,10 +150,23 @@ export function getAutoAccept(db: Db, deviceId: string): boolean {
   return row !== undefined && row.auto_accept === 1;
 }
 
+export interface VerifyBearerOptions {
+  /**
+   * Stamp `devices.last_seen_at` on success (default). Only the signaling
+   * upgrade is a presence signal — the dashboard's "Online" badge and the
+   * admin online_now count read this column. REST callers such as
+   * POST /api/feedback pass `false`: the sharer FAB also works in ad-hoc
+   * mode with no heartbeat running, and a feedback POST must not make an
+   * unreachable device look connectable.
+   */
+  touchLastSeen?: boolean;
+}
+
 export async function verifyBearerAuth(
   db: Db,
   auth: BearerAuth,
   now: number = Date.now(),
+  opts: VerifyBearerOptions = {},
 ): Promise<boolean> {
   // Join to the owner: a suspended account must not keep unattended access.
   // Without this the device row alone was enough, so a suspended owner's
@@ -171,9 +184,11 @@ export async function verifyBearerAuth(
   if (row.suspended_at !== null) return false;
   const ok = await verifyPassword(row.token_hash, auth.token);
   if (!ok) return false;
-  db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(
-    now,
-    auth.deviceId,
-  );
+  if (opts.touchLastSeen ?? true) {
+    db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(
+      now,
+      auth.deviceId,
+    );
+  }
   return true;
 }

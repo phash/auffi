@@ -241,6 +241,28 @@ describe("POST /api/feedback (sharer / device-bearer path)", () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it("does not touch devices.last_seen_at — feedback is not a heartbeat", async () => {
+    // last_seen_at drives the dashboard's "Online" badge (90 s window). The
+    // sharer FAB works in ad-hoc mode too, where no heartbeat runs, so a
+    // feedback POST must not make an unreachable device look connectable.
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/feedback",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-auffi-device-id": deviceId,
+      },
+      payload: { source: "sharer", category: "other", rating: 5, body: "läuft" },
+    });
+    expect(res.statusCode).toBe(202);
+    const row = h.db
+      .prepare<[string], { last_seen_at: number | null }>(
+        "SELECT last_seen_at FROM devices WHERE id = ?",
+      )
+      .get(deviceId)!;
+    expect(row.last_seen_at).toBeNull();
+  });
 });
 
 describe("GET /api/admin/feedback", () => {

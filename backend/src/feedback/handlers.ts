@@ -192,7 +192,7 @@ async function resolveAccountId(
   if (!checkIpRateLimit(req.ip ?? "unknown", bearerCounts, bearerCfg)) {
     return { ok: false, status: 429, error: "rate-limited", message: "too many auth attempts, slow down" };
   }
-  const ok = await verifyBearerAuth(db, auth);
+  const ok = await verifyBearerAuth(db, auth, Date.now(), { touchLastSeen: false });
   if (!ok) return NO_AUTH;
   const dev = db
     .prepare<[string], { owner_account_id: number }>(
