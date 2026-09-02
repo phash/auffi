@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { JSDOM } from "jsdom";
 import {
@@ -296,6 +296,32 @@ describe("marketing pages — on-page SEO invariants", () => {
           }
         });
       }
+    });
+  }
+});
+
+// --- CSP style-src parity -----------------------------------------------------
+// The Caddyfile sends `style-src 'self'` for every page, so an inline <style>
+// block is silently dropped in production (the comparison tables shipped
+// unstyled for weeks that way). Styles belong in a file the page links.
+describe("static pages — CSP style-src 'self'", () => {
+  const caddy = readFileSync(f(CADDYFILE_REL), "utf8");
+  it("the Caddyfile still forbids inline styles (or this guard is moot)", () => {
+    expect(caddy).toMatch(/style-src 'self'[;"]/);
+  });
+
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = resolve(dir, e.name);
+      return e.isDirectory() ? walk(p) : p.endsWith(".html") ? [p] : [];
+    });
+  const pages = [f("viewer/index.html"), f("viewer/en/index.html"), ...walk(f("viewer/public"))];
+  it("covers the marketing surface", () => {
+    expect(pages.length).toBeGreaterThan(20);
+  });
+  for (const page of pages) {
+    it(`${page.slice(REPO.length + 1)} has no inline <style> block`, () => {
+      expect(readFileSync(page, "utf8")).not.toMatch(/<style[\s>]/);
     });
   }
 });
