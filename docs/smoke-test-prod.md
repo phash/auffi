@@ -12,9 +12,9 @@ Validates the full `docker-compose.prod.yml` stack locally before deploying to t
 | Caddy HTTPS reachable | `curl -sk https://localhost:8443/healthz` |
 | `GET /healthz` through Caddy | Response body contains `"status":"ok"` |
 | `GET /readyz` through Caddy | Response body contains `"status":"ok"` |
-| `POST /turn-credentials` through Caddy | Response JSON contains `username` + `credential` |
+| `POST /turn-credentials` through Caddy, no Origin | HTTP 403 `origin not allowed` (the route issues only for an allowed Origin + live session code, gh #60) |
 | Viewer SPA served at `/` | HTTP 200, index.html |
-| WebSocket signaling round-trip | register → code-assigned → join → peer-joined → confirm → peer-confirmed |
+| WebSocket signaling round-trip + TURN issuance | register → code-assigned → join → peer-joined → confirm → peer-confirmed → `POST /turn-credentials` with Origin + live code → `username` + `credential` |
 | coturn container running | `docker inspect` status = running |
 | coturn port 3478 reachable (TCP) | `nc` probe (skipped if `nc` not installed) |
 | TURN relay allocation | `turnutils_uclient` (skipped if not installed) |
@@ -81,7 +81,7 @@ ports:
 
 ## TLS During Smoke Test
 
-Caddy's `tls internal` directive makes Caddy issue a certificate from its own local CA. The certificate is self-signed and the browser will warn about it. All `curl` calls use `-sk` to skip certificate verification. Node's WebSocket smoke test (`scripts/smoke-ws.mjs`) connects directly to the backend on port 8081 (plain WS) to avoid the TLS verification issue.
+Caddy's `tls internal` directive makes Caddy issue a certificate from its own local CA. The certificate is self-signed and the browser will warn about it. All `curl` calls use `-sk` to skip certificate verification. Node's WebSocket smoke test (`scripts/smoke-ws.mjs`) connects directly to the backend on port 8081 (plain WS, plain HTTP for the `/turn-credentials` POST) to avoid the TLS verification issue.
 
 For the production deployment, Caddy obtains a real Let's Encrypt certificate via HTTP-01 challenge automatically on first startup.
 
@@ -117,9 +117,9 @@ PASS  backend container healthy
 PASS  Caddy HTTPS reachable (port 8443)
 PASS  /healthz → {status:ok}
 PASS  /readyz → {status:ok}
-PASS  POST /turn-credentials → valid JSON with username+credential
+PASS  POST /turn-credentials without Origin → 403 origin not allowed
 PASS  Viewer index.html served (HTTP 200)
-PASS  WebSocket signaling (register → code-assigned → join → peer-confirmed)
+PASS  WebSocket signaling (register → code-assigned → join → peer-confirmed → TURN credentials issued)
 PASS  coturn container running
 SKIP  coturn port 3478 reachable (TCP)  (nc not found on dev box)
 SKIP  TURN relay allocation via turnutils_uclient  (install: pacman -S coturn)

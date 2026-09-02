@@ -33,6 +33,7 @@ SMOKE_HTTPS_PORT=8443
 SMOKE_BASE_URL="https://localhost:${SMOKE_HTTPS_PORT}"
 # Backend is exposed on 8081 in the smoke overlay (8080 may conflict with other services).
 BACKEND_WS_URL="ws://localhost:8081/signal"   # direct to backend (bypasses Caddy)
+BACKEND_TURN_URL="http://localhost:8081/turn-credentials"
 
 NO_BUILD=false
 for arg in "$@"; do
@@ -265,12 +266,18 @@ else
   fail "/readyz → {status:ok}" "got: ${READY_RESP}"
 fi
 
-# /turn-credentials
-TURN_RESP="$(curl -sk -X POST "${SMOKE_BASE_URL}/turn-credentials" 2>/dev/null || true)"
-if echo "${TURN_RESP}" | grep -q '"username"' && echo "${TURN_RESP}" | grep -q '"credential"'; then
-  pass "POST /turn-credentials → valid JSON with username+credential"
+# /turn-credentials — only the negative contract is testable here: the route
+# issues credentials solely for an allowed Origin AND a live session code
+# (gh #60), and curl sends no Origin. The positive contract runs inside the
+# WebSocket smoke test below, where a live code exists. This check still
+# proves Caddy proxies the route to the backend.
+TURN_OUT="$(curl -sk -w '\n%{http_code}' -X POST "${SMOKE_BASE_URL}/turn-credentials" 2>/dev/null || true)"
+TURN_CODE="${TURN_OUT##*$'\n'}"
+TURN_RESP="${TURN_OUT%$'\n'*}"
+if [[ "${TURN_CODE}" == "403" ]] && echo "${TURN_RESP}" | grep -q 'origin not allowed'; then
+  pass "POST /turn-credentials without Origin → 403 origin not allowed"
 else
-  fail "POST /turn-credentials → valid JSON with username+credential" "got: ${TURN_RESP}"
+  fail "POST /turn-credentials without Origin → 403 origin not allowed" "got HTTP ${TURN_CODE}: ${TURN_RESP}"
 fi
 
 # Viewer SPA index.html
@@ -296,10 +303,10 @@ if [[ "${WS_DEPS_OK}" == "true" ]]; then
   # The smoke WS test goes directly to the backend (bypassing Caddy's WSS) because
   # the self-signed cert would cause Node's HTTPS/WSS client to reject it without
   # --insecure flags.  We verify Caddy WS proxy separately in the curl tests above.
-  if node "${REPO_ROOT}/scripts/smoke-ws.mjs" "${BACKEND_WS_URL}" 2>&1; then
-    pass "WebSocket signaling (register → code-assigned → join → peer-confirmed)"
+  if node "${REPO_ROOT}/scripts/smoke-ws.mjs" "${BACKEND_WS_URL}" "${BACKEND_TURN_URL}" 2>&1; then
+    pass "WebSocket signaling (register → code-assigned → join → peer-confirmed → TURN credentials issued)"
   else
-    fail "WebSocket signaling (register → code-assigned → join → peer-confirmed)"
+    fail "WebSocket signaling (register → code-assigned → join → peer-confirmed → TURN credentials issued)"
   fi
 else
   skip "WebSocket signaling" "ws npm package not available"

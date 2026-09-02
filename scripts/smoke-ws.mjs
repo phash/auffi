@@ -2,14 +2,20 @@
  * Minimal WebSocket smoke test for the auffi signaling backend.
  *
  * Usage:
- *   node scripts/smoke-ws.mjs [ws-url]
+ *   node scripts/smoke-ws.mjs [ws-url] [turn-url]
  *
  * Default ws-url: ws://localhost:8080/signal
+ * turn-url (optional): POST /turn-credentials endpoint of the same backend,
+ *   e.g. http://localhost:8080/turn-credentials
  *
  * Test sequence:
  *   1. Connect as sharer (register + receive code-assigned)
  *   2. Connect as viewer with that code (join + receive join-ack or equivalent)
- *   3. Close both sockets cleanly
+ *   3. With turn-url: POST the live code to /turn-credentials while the
+ *      session is still open and expect issued credentials. The route only
+ *      issues for an allowed Origin AND a live session code, so this is the
+ *      one place in the smoke run where the positive contract is testable.
+ *   4. Close both sockets cleanly
  *
  * Exit 0 = PASS, exit 1 = FAIL
  */
@@ -17,6 +23,7 @@
 import { WebSocket } from "ws";
 
 const SIGNAL_URL = process.argv[2] ?? "ws://localhost:8080/signal";
+const TURN_URL = process.argv[3];
 const TIMEOUT_MS = 10_000;
 
 /** Promisified timeout helper */
@@ -64,6 +71,34 @@ function nextMessage(ws) {
       reject(err);
     });
   });
+}
+
+/**
+ * POST the live session code to /turn-credentials and require issued
+ * credentials. Must run while the sharer socket is still open — the
+ * session is torn down on sharer close and the route then answers
+ * 403 "no active session".
+ */
+async function assertTurnCredentialsIssued(turnUrl, code, origin) {
+  const res = await fetch(turnUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: origin },
+    body: JSON.stringify({ code }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  const text = await res.text();
+  if (res.status !== 200) {
+    throw new Error(
+      `Expected 200 from ${turnUrl}, got ${res.status}: ${text}`
+    );
+  }
+  const body = JSON.parse(text);
+  if (typeof body.username !== "string" || typeof body.credential !== "string") {
+    throw new Error(
+      `Expected username+credential in TURN response, got: ${text}`
+    );
+  }
+  console.log(`[smoke-ws] TURN credentials issued (ttl=${body.ttl})`);
 }
 
 async function run() {
@@ -116,7 +151,12 @@ async function run() {
     );
   }
 
-  // ---------- Step 3: clean up ----------
+  // ---------- Step 3: TURN credentials for the live session ----------
+  if (TURN_URL) {
+    await assertTurnCredentialsIssued(TURN_URL, code, origin);
+  }
+
+  // ---------- Step 4: clean up ----------
   sharer.close(1000);
   viewer.close(1000);
 
