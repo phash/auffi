@@ -38,6 +38,77 @@ pub enum Button {
     Middle,
 }
 
+/// Something the viewer pressed that has not been released yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Held {
+    Button(Button),
+    Key(Key),
+}
+
+/// Pause flag plus everything the viewer is currently holding — the
+/// display-free half of [`InputController`], so the gh #97 invariants (what
+/// pausing and teardown must release) are unit-tested without enigo.
+#[derive(Debug, Default)]
+struct HeldState {
+    paused: bool,
+    /// Buttons we've sent a Press for but no matching Release yet. If the
+    /// viewer disconnects mid-click (or the user closes their tab while
+    /// holding a button), the OS otherwise thinks the button is still
+    /// down — the sharer's own clicks then misfire (gh #97).
+    buttons: HashSet<Button>,
+    /// Same idea for held keys — viewer Press without matching Release.
+    /// Keyed by the wire `code` (e.g. "ShiftLeft"), storing the enigo `Key`
+    /// that was actually pressed: the release event may carry a different
+    /// layout-resolved `key` (Shift let go first turns "A" into "a"), and
+    /// releasing a different keysym than was pressed leaves the pressed one
+    /// stuck on X11.
+    keys: HashMap<String, Key>,
+}
+
+impl HeldState {
+    fn button(&mut self, button: Button, pressed: bool) {
+        if pressed {
+            self.buttons.insert(button);
+        } else {
+            self.buttons.remove(&button);
+        }
+    }
+
+    fn key_pressed(&mut self, code: String, key: Key) {
+        self.keys.insert(code, key);
+    }
+
+    /// The Key pressed under `code`, if any — forgotten on the way out.
+    fn key_released(&mut self, code: &str) -> Option<Key> {
+        self.keys.remove(code)
+    }
+
+    /// Flip the pause flag. Returns the new state and, when pausing, what has
+    /// to be released: while paused `apply` drops every event, including the
+    /// Release that would have ended a drag, so without this the OS keeps
+    /// the button down and the sharer's own clicks read as drag
+    /// continuations (gh #97). `Drop` cannot cover it — the controller
+    /// outlives the pause.
+    fn toggle_paused(&mut self) -> (bool, Vec<Held>) {
+        self.paused = !self.paused;
+        let release = if self.paused {
+            self.drain()
+        } else {
+            Vec::new()
+        };
+        (self.paused, release)
+    }
+
+    /// Everything still held, leaving both sets empty.
+    fn drain(&mut self) -> Vec<Held> {
+        self.buttons
+            .drain()
+            .map(Held::Button)
+            .chain(self.keys.drain().map(|(_, key)| Held::Key(key)))
+            .collect()
+    }
+}
+
 pub struct InputController {
     enigo: Enigo,
     /// Top-left of the captured monitor in the OS virtual-desktop coordinate
@@ -49,20 +120,7 @@ pub struct InputController {
     y_offset: i32,
     width: u32,
     height: u32,
-    paused: bool,
-    /// Buttons we've sent a Press for but no matching Release yet. If the
-    /// viewer disconnects mid-click (or the user closes their tab while
-    /// holding a button), the OS otherwise thinks the button is still
-    /// down — the sharer's own clicks then misfire (gh #97). On Drop we
-    /// release everything still tracked here.
-    held_buttons: HashSet<Button>,
-    /// Same idea for held keys — viewer Press without matching Release.
-    /// Keyed by the wire `code` (e.g. "ShiftLeft"), storing the enigo `Key`
-    /// that was actually pressed: the release event may carry a different
-    /// layout-resolved `key` (Shift let go first turns "A" into "a"), and
-    /// releasing a different keysym than was pressed leaves the pressed one
-    /// stuck on X11.
-    held_keys: HashMap<String, Key>,
+    held: HeldState,
 }
 
 impl InputController {
@@ -74,9 +132,7 @@ impl InputController {
             y_offset,
             width,
             height,
-            paused: false,
-            held_buttons: HashSet::new(),
-            held_keys: HashMap::new(),
+            held: HeldState::default(),
         })
     }
 
@@ -85,13 +141,13 @@ impl InputController {
     /// without depending on a real OS-level cursor state.
     #[cfg(test)]
     pub fn held_buttons_count(&self) -> usize {
-        self.held_buttons.len()
+        self.held.buttons.len()
     }
 
     /// Test/debug introspection — number of keys currently tracked.
     #[cfg(test)]
     pub fn held_keys_count(&self) -> usize {
-        self.held_keys.len()
+        self.held.keys.len()
     }
 
     /// Test-only direct setter — production pause-toggling goes through
@@ -99,38 +155,37 @@ impl InputController {
     /// so it cannot ship as dead code in release builds.
     #[cfg(test)]
     pub fn set_paused(&mut self, paused: bool) {
-        self.paused = paused;
+        self.held.paused = paused;
     }
 
-    /// Toggles the paused state and returns the new value.
-    ///
-    /// Pausing releases whatever the viewer is currently holding. While
-    /// paused `apply` drops every event, including the Release that would
-    /// have ended a drag — so without this the OS keeps the button down and
-    /// the sharer's own clicks read as drag-continuations (gh #97). `Drop`
-    /// cannot cover it: the controller outlives the pause.
+    /// Toggles the paused state and returns the new value, releasing
+    /// whatever the viewer holds when pausing (see [`HeldState::toggle_paused`]).
     pub fn toggle_paused(&mut self) -> bool {
-        self.paused = !self.paused;
-        if self.paused {
-            self.release_held();
-        }
-        self.paused
+        let (paused, release) = self.held.toggle_paused();
+        self.release(release);
+        paused
     }
 
     /// Release every mouse-button and key we sent a Press for without a
     /// matching Release, and forget them. Shared by the pause hotkey and
-    /// `Drop`; enigo errors are swallowed because neither caller can act on
-    /// them and both are giving up control anyway.
+    /// `Drop`.
     fn release_held(&mut self) {
-        // Snapshot first — iterating while mutating would not borrow-check,
-        // and the sets should end up empty either way.
-        let buttons: Vec<Button> = self.held_buttons.drain().collect();
-        let keys: Vec<Key> = self.held_keys.drain().map(|(_, key)| key).collect();
-        for button in buttons {
-            let _ = self.enigo.button(map_button(button), Direction::Release);
-        }
-        for key in keys {
-            let _ = self.enigo.key(key, Direction::Release);
+        let release = self.held.drain();
+        self.release(release);
+    }
+
+    /// Neither caller of this can act on an enigo failure — both are giving
+    /// up control — but a release that did not go through is exactly the
+    /// gh #97 symptom, so it is at least written to the debug log.
+    fn release(&mut self, held: Vec<Held>) {
+        for item in held {
+            let result = match item {
+                Held::Button(button) => self.enigo.button(map_button(button), Direction::Release),
+                Held::Key(key) => self.enigo.key(key, Direction::Release),
+            };
+            if let Err(e) = result {
+                crate::dbg_log(&format!("[input] release of {item:?} failed: {e}"));
+            }
         }
     }
 
@@ -138,11 +193,11 @@ impl InputController {
     /// use the return value of [`Self::toggle_paused`] instead.
     #[cfg(test)]
     pub fn is_paused(&self) -> bool {
-        self.paused
+        self.held.paused
     }
 
     pub fn apply(&mut self, event: InputEvent) -> Result<(), String> {
-        if self.paused {
+        if self.held.paused {
             return Ok(());
         }
         match event {
@@ -165,11 +220,7 @@ impl InputController {
                 // fails the OS doesn't think the button is pressed, so we
                 // mustn't queue a release on Drop for something that never
                 // got pressed.
-                if pressed {
-                    self.held_buttons.insert(button);
-                } else {
-                    self.held_buttons.remove(&button);
-                }
+                self.held.button(button, pressed);
             }
             InputEvent::Scroll { dx, dy } => {
                 let v_lines = clamp_scroll_lines(dy);
@@ -194,13 +245,13 @@ impl InputController {
                     self.enigo
                         .key(resolved, Direction::Press)
                         .map_err(|e| e.to_string())?;
-                    self.held_keys.insert(code, resolved);
+                    self.held.key_pressed(code, resolved);
                 } else {
                     // Release what was pressed under this code; a release for
                     // a key we never saw pressed still goes out best-effort.
                     let resolved = self
-                        .held_keys
-                        .remove(&code)
+                        .held
+                        .key_released(&code)
                         .or_else(|| resolve_key(&code, key.as_deref()))
                         .ok_or_else(|| format!("unknown key: {code}"))?;
                     self.enigo
@@ -221,10 +272,8 @@ impl Drop for InputController {
     /// nothing else can be clicked, only killing the sharer process
     /// resets the cursor (gh #97).
     ///
-    /// Errors from enigo are intentionally swallowed — Drop can't
-    /// propagate, and we're tearing down anyway. dbg_log would be
-    /// ideal here but creating a circular dependency on lib.rs for a
-    /// tear-down path is overkill; the eprintln stays best-effort.
+    /// Drop cannot propagate an enigo error; a failed release is written to
+    /// the debug log and otherwise ignored.
     fn drop(&mut self) {
         self.release_held();
     }
@@ -540,25 +589,50 @@ mod tests {
         assert!(matches!(parse_key("End"), Some(Key::End)));
     }
 
+    // The pause/held bookkeeping is display-free so the gh #97 invariants
+    // run in CI, not only in the `#[ignore]` real-enigo suite: pausing hands
+    // back everything the viewer holds, the sets end up empty, and a release
+    // by `code` returns the Key that was actually pressed.
     #[test]
-    fn toggle_paused_flips_state() {
-        // `InputController::new` requires a display; test the logic with direct struct manipulation.
-        // We test via serde round-trip + paused field only — construction is guarded by `#[ignore]`.
-        // Use a minimal hand-constructed instance by abusing Default on Enigo is not possible,
-        // so we verify the pure logic path: starts false, first toggle → true, second → false.
-        // Since Enigo::new needs X11, guard with `#[ignore]` for the same reason.
-        //
-        // Instead: test toggle logic via a minimal wrapper that bypasses Enigo construction.
-        struct PausedState(bool);
-        impl PausedState {
-            fn toggle(&mut self) -> bool {
-                self.0 = !self.0;
-                self.0
-            }
-        }
-        let mut state = PausedState(false);
-        assert!(state.toggle(), "first toggle should be true");
-        assert!(!state.toggle(), "second toggle should be false");
+    fn toggle_paused_flips_state_and_hands_back_what_was_held() {
+        let mut held = HeldState::default();
+        held.button(Button::Left, true);
+        held.key_pressed("ShiftLeft".to_string(), Key::Shift);
+        assert_eq!(held.buttons.len(), 1);
+        assert_eq!(held.keys.len(), 1);
+
+        let (paused, release) = held.toggle_paused();
+        assert!(paused, "first toggle pauses");
+        assert_eq!(release.len(), 2, "pausing must release the held button and key");
+        assert!(release.contains(&Held::Button(Button::Left)));
+        assert!(release.contains(&Held::Key(Key::Shift)));
+        assert!(held.buttons.is_empty() && held.keys.is_empty());
+
+        let (paused, release) = held.toggle_paused();
+        assert!(!paused, "second toggle resumes");
+        assert!(release.is_empty(), "nothing was held while paused");
+    }
+
+    #[test]
+    fn key_released_returns_the_key_stored_under_that_code() {
+        let mut held = HeldState::default();
+        held.key_pressed("KeyA".to_string(), Key::Unicode('A'));
+        assert_eq!(held.key_released("KeyA"), Some(Key::Unicode('A')));
+        assert_eq!(held.key_released("KeyA"), None, "released once, forgotten");
+    }
+
+    #[test]
+    fn button_release_untracks_and_drain_empties_everything() {
+        let mut held = HeldState::default();
+        held.button(Button::Left, true);
+        held.button(Button::Right, true);
+        held.button(Button::Left, false);
+        held.key_pressed("ControlLeft".to_string(), Key::Control);
+        let drained = held.drain();
+        assert_eq!(drained.len(), 2);
+        assert!(drained.contains(&Held::Button(Button::Right)));
+        assert!(drained.contains(&Held::Key(Key::Control)));
+        assert!(held.buttons.is_empty() && held.keys.is_empty());
     }
 
     // The pause hotkey swallowed every subsequent event, including the
@@ -661,10 +735,9 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn drop_releases_held_buttons_with_real_enigo() {
-        // Smoke test for the Drop fix to gh #97 — we can't observe the
-        // OS-level button state from a unit test, but we can at least
-        // verify Drop runs without panicking when there's stuff to clean.
+    fn release_held_empties_both_sets_with_real_enigo() {
+        // gh #97: `Drop` delegates to `release_held`; the OS-level button
+        // state cannot be observed from here, but the bookkeeping can.
         let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
         ctrl.apply(InputEvent::MouseButton {
             button: Button::Left,
@@ -679,7 +752,10 @@ mod tests {
         .unwrap();
         assert_eq!(ctrl.held_buttons_count(), 1);
         assert_eq!(ctrl.held_keys_count(), 1);
-        // Drop runs at end of scope — must not panic.
+        ctrl.release_held();
+        assert_eq!(ctrl.held_buttons_count(), 0, "button must be released and forgotten");
+        assert_eq!(ctrl.held_keys_count(), 0, "key must be released and forgotten");
+        // Drop with nothing left to release must be a no-op, not a panic.
         drop(ctrl);
     }
 
