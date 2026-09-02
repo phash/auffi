@@ -197,11 +197,14 @@ async function startUnattendedStream(): Promise<void> {
 }
 
 /**
- * Deactivating unattended mode must also end a session that is already
+ * Every user-driven exit from unattended mode (Deaktivieren, switching back
+ * to Ad-hoc, Gerät entkoppeln) must also end a session that is already
  * running. `unattended_stop` only clears the heartbeat's command slot and
  * OutboundSink; an established peer-to-peer session survives it, so without
- * this the helper keeps screen and input after the user pressed Deaktivieren.
- * keepSignaling for the same reason every other unattended teardown passes it.
+ * this the helper keeps screen and input after the user thought they cut it.
+ * keepSignaling for the same reason every other unattended teardown passes it:
+ * the heartbeat owns its OutboundSink and the full-teardown intent is shaped
+ * for the ad-hoc lifecycle (docs/footguns.md § Sharer Teardown).
  */
 async function endLiveUnattendedSession(): Promise<void> {
   if (!signalBuffer.hasActivity()) return;
@@ -372,10 +375,13 @@ unpairBtn?.addEventListener("click", async () => {
   if (!ok) return;
   unpairBtn.disabled = true;
   try {
-    if (active) {
-      await invoke("unattended_stop").catch(() => {});
-      active = false;
-    }
+    // Not gated on `active`: a heartbeat that died earlier leaves a live
+    // P2P session with active === false, and the dashboard-side revoke path
+    // (backend closes the WSS → `revoked` → teardown) cannot fire once the
+    // heartbeat below is shut down by us first.
+    await endLiveUnattendedSession();
+    await invoke("unattended_stop").catch(() => {});
+    active = false;
     await invoke("unattended_unpair");
     await refresh();
   } catch (e) {
