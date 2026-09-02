@@ -107,8 +107,12 @@ Three things that took today's (2026-05-17) Matomo + Feedback deploys to find. T
 Module: `backend/src/geoip.ts`. The MMDB (DB-IP IP-to-Country Lite, CC-BY-4.0) is baked into the
 Docker image at build time via the `geoip` stage in `backend/Dockerfile`. The destination path is
 `/app/data/dbip-country-lite.mmdb`, exposed to the app through the `GEOIP_DB_PATH` env var. The
-`DBIP_MONTH` build ARG (default: pinned per-month, e.g. `2026-06`) controls which monthly snapshot
-is downloaded; bump it monthly (see `docs/ops-runbook.md` § GeoIP MMDB monthly bump).
+`DBIP_MONTH` build ARG defaults to `auto`: the stage tries the current month and walks back up to
+three more months, failing the build only if none is downloadable. There is **no monthly chore** —
+a fixed month pin hard-blocked every build (incl. hotfix deploys) once DB-IP rolled it off
+(2026-08 incident). The trade-off is that the default build is not reproducible (the snapshot
+depends on the build date); pass `--build-arg DBIP_MONTH=YYYY-MM` for a pinned build, which fails
+loudly on a 404 (see `docs/ops-runbook.md` § GeoIP MMDB Snapshot).
 
 **Graceful degradation.** `openCountryDb()` returns `null` if `GEOIP_DB_PATH` is unset or the file
 is absent (e.g. local `npm run dev` without Docker). `lookupCountry(null, ip)` returns `null`

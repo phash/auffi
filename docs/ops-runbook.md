@@ -204,16 +204,19 @@ rm -rf /tmp/caddy-restore
 
 Optionaler off-site Sync via `BACKUP_REMOTE_TARGET=user@host:/backups/auffi/` env-var (rsync, im Script bereits eingebaut, aktuell nicht gesetzt). User stellt den SSH-Key out-of-band bereit — kein Key im Repo.
 
-## GeoIP MMDB Monthly Bump
+## GeoIP MMDB Snapshot
 
-The `geoip` build stage in `backend/Dockerfile` pins `DBIP_MONTH` (e.g. `2026-06`) to a specific
-DB-IP monthly snapshot. DB-IP rolls old monthly files after a few months, so the build fails loudly
-with a `wget` 404 if the pinned month is no longer available — this is intentional: a failed
-download is noticed at deploy time, not silently at lookup time.
+The `geoip` build stage in `backend/Dockerfile` downloads a DB-IP IP-to-Country Lite monthly
+snapshot (CC-BY-4.0, https://db-ip.com). The `DBIP_MONTH` build ARG defaults to `auto`: the stage
+tries the current month and walks back up to three more months, so a normal build needs no
+maintenance. It fails loudly only when none of the four candidate months is downloadable — a
+failed download is noticed at deploy time, not silently at lookup time.
 
-**To bump:** edit the `ARG DBIP_MONTH=` line in `backend/Dockerfile` to the current month
-(`YYYY-MM`), commit, and redeploy. Source: DB-IP IP-to-Country Lite (CC-BY-4.0,
-https://db-ip.com).
+**Do not re-pin a fixed month in the Dockerfile.** DB-IP hosts only recent months; a pinned
+`ARG DBIP_MONTH=2026-06` hard-blocked every build including hotfix deploys once that month rolled
+off (2026-08 incident). If you need a reproducible image (audit, bisect), pass the month at build
+time instead: `docker build --build-arg DBIP_MONTH=YYYY-MM …` — a pinned month that 404s fails
+the build immediately (no walk-back).
 
 ## Deploy-Skript-Robustheit
 
