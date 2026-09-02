@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import {
   DEFAULT_RETENTION,
@@ -380,8 +380,21 @@ describe("purgeReportTotal", () => {
   });
 });
 
+// Fake timers, not a wall-clock window: Node re-arms setInterval relative to
+// when the previous callback actually RAN, so under a loaded full-suite run
+// (argon2id in sibling workers) a real 20 ms interval fired once inside a
+// 55 ms sleep and the ">= 2 ticks" assertion flaked — the documented
+// "re-run purge.test.ts isolated" ritual. The scheduler was never wrong.
 describe("startPurgeScheduler", () => {
-  it("fires runPurge on the configured interval", async () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("fires runPurge on every interval tick and stops on the returned handle", () => {
     const db = openDb(":memory:");
     applyMigrations(db, defaultMigrationsDir());
     db.prepare(
@@ -397,19 +410,17 @@ describe("startPurgeScheduler", () => {
       log: (r) => reports.push(r.sessions),
     });
 
-    await new Promise((r) => setTimeout(r, 55));
-    stop();
-    db.close();
+    vi.advanceTimersByTime(60);
+    // First tick cleans the expired session, the following ones find nothing.
+    expect(reports).toEqual([1, 0, 0]);
 
-    // Should have fired at least twice within the 55 ms window.
-    expect(reports.length).toBeGreaterThanOrEqual(2);
-    // First run cleans the expired session.
-    expect(reports[0]).toBe(1);
-    // Subsequent runs find nothing.
-    expect(reports.slice(1).every((n) => n === 0)).toBe(true);
+    stop();
+    vi.advanceTimersByTime(100);
+    expect(reports).toEqual([1, 0, 0]);
+    db.close();
   });
 
-  it("survives runPurge throwing — onError fires, timer keeps going", async () => {
+  it("survives runPurge throwing — onError fires, timer keeps going", () => {
     const db = openDb(":memory:");
     applyMigrations(db, defaultMigrationsDir());
     db.close(); // force a clear error path
@@ -420,9 +431,10 @@ describe("startPurgeScheduler", () => {
       onError: (e) => errors.push(e),
     });
 
-    await new Promise((r) => setTimeout(r, 55));
+    vi.advanceTimersByTime(60);
     stop();
 
-    expect(errors.length).toBeGreaterThanOrEqual(2);
+    expect(errors).toHaveLength(3);
+    for (const e of errors) expect(e).toBeInstanceOf(Error);
   });
 });
