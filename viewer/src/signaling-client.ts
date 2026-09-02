@@ -15,6 +15,7 @@ export class SignalingClient {
   private needsPasswordListeners: Array<() => void> = [];
   private wrongPasswordListeners: Array<(attemptsLeft: number) => void> = [];
   private settled = false;
+  private pwAttemptInFlight = false;
   private _closed = false;
 
   constructor(
@@ -27,6 +28,7 @@ export class SignalingClient {
     const ws = factory(this.url);
     this.ws = ws;
     this.settled = false;
+    this.pwAttemptInFlight = false;
 
     return new Promise((resolve, reject) => {
       ws.onopen = () => {
@@ -77,6 +79,7 @@ export class SignalingClient {
         } else if (msg.type === "wrong-password") {
           // Stay unsettled — the UI re-shows the prompt and the user
           // can try again until backend lockout fires.
+          this.pwAttemptInFlight = false;
           for (const l of this.wrongPasswordListeners) l(msg.attemptsLeft);
         } else if (msg.type === "locked") {
           fail(`locked:${msg.retryAfterSec}`);
@@ -102,8 +105,15 @@ export class SignalingClient {
    * routes it to the sharer via pw-check; the response arrives as
    * `wrong-password`, `locked`, `rejected-by-user`, or `peer-confirmed`
    * on the same WS.
+   *
+   * At most one attempt is outstanding per prompt: the backend answers a
+   * second pw-attempt while the first is in flight with a fatal
+   * `bad-message`, which would tear down a session the user just
+   * authenticated. Only `wrong-password` re-opens the gate.
    */
   sendPwAttempt(password: string): void {
+    if (this.pwAttemptInFlight) return;
+    this.pwAttemptInFlight = true;
     this.ws?.send(JSON.stringify({ type: "pw-attempt", password } satisfies PwAttempt));
   }
 

@@ -163,6 +163,29 @@ describe("SignalingClient", () => {
     await p;
   });
 
+  // The backend answers a second pw-attempt during pw-in-flight with a fatal
+  // `bad-message` error, which tears the whole (just authenticated) session
+  // down. Enter key-repeat / a double-tap must therefore never produce two
+  // frames per prompt; wrong-password is the only reply that re-opens it.
+  it("sends only one pw-attempt while a check is in flight, re-allows after wrong-password", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const p = client.join("123-456-789");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "needs-password" });
+    const pwAttempts = (): PwAttempt[] =>
+      mock.sent.map((s) => JSON.parse(s) as { type: string }).filter((m) => m.type === "pw-attempt") as PwAttempt[];
+    client.sendPwAttempt("a");
+    client.sendPwAttempt("a");
+    expect(pwAttempts()).toHaveLength(1);
+    mock.fakeMessage({ type: "wrong-password", attemptsLeft: 4 });
+    client.sendPwAttempt("b");
+    expect(pwAttempts()).toHaveLength(2);
+    expect(pwAttempts()[1].password).toBe("b");
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+  });
+
   it("wrong-password fires onWrongPassword with attemptsLeft, no settle", async () => {
     const mock = new MockWS();
     const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });

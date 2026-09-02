@@ -847,6 +847,11 @@ export function bindUI(backendWsUrl: string): void {
       // this connect's backstop.
       const submitPw = (): void => {
         if (!havePwPrompt) return;
+        // The button is disabled while an attempt is in flight; Enter shares
+        // that gate so key-repeat can neither re-arm the backstop nor send a
+        // duplicate pw-attempt (the backend answers that with a fatal
+        // bad-message). showPwPrompt re-enables it on wrong-password.
+        if (pwSubmit!.disabled) return;
         const password = pwInput!.value;
         if (password.length === 0) return;
         pwSubmit!.disabled = true;
