@@ -154,6 +154,13 @@ export function registerSignaling(
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
   }
 
+  function ipPrefix(req: FastifyRequest): string {
+    const ip = stripIpv4Mapped(req.ip ?? "");
+    const parts = ip.split(".");
+    if (parts.length === 4) return `${parts[0]}.xxx`;
+    return ip.split(":").slice(0, 2).join(":") + ":xxx";
+  }
+
   // `terminate()` fires the socket's ordinary `close` handler, so the
   // existing detachViewer / removeBySharer / unattended teardown runs
   // unchanged — no second teardown path. Seeded at connect time so a fresh
@@ -180,13 +187,6 @@ export function registerSignaling(
   app.addHook("onClose", () => {
     clearInterval(keepaliveTimer);
   });
-
-  function ipPrefix(req: FastifyRequest): string {
-    const ip = stripIpv4Mapped(req.ip ?? "");
-    const parts = ip.split(".");
-    if (parts.length === 4) return `${parts[0]}.xxx`;
-    return ip.split(":").slice(0, 2).join(":") + ":xxx";
-  }
 
   // A code expiring out from under a waiting viewer must not be a
   // silent dead-end: tell the viewer the code expired (the protocol
@@ -600,14 +600,19 @@ export function registerSignaling(
         const found = store.findByPeer(peer as Peer);
         if (!found) return;
         if (msg.accepted) {
-          // Accept is only meaningful while a viewer is attached. If
-          // the viewer bailed while the dialog was up, leave the
+          // Accept is only meaningful while a viewer is attached AND still
+          // open. If the viewer bailed while the dialog was up, leave the
           // session unconfirmed — otherwise the relay gate would stand
-          // pre-opened for whichever viewer joins next (sharer
-          // confirmation is mandatory).
-          if (found.viewer) {
+          // pre-opened for whichever viewer joins next (sharer confirmation
+          // is mandatory). A viewer whose close frame has arrived but whose
+          // `close` event is still pending (Abbrechen racing Akzeptieren by
+          // ~1 RTT) counts as gone too: confirming it would swallow the
+          // synthesized bye that pending close is about to deliver, and the
+          // sharer would open the portal and stream to nobody.
+          const viewer = found.viewer as WebSocket | null;
+          if (viewer && viewer.readyState === viewer.OPEN) {
             store.markConfirmed(found.code);
-            send(found.viewer as WebSocket, { type: "peer-confirmed" });
+            send(viewer, { type: "peer-confirmed" });
           }
         } else {
           // Ignore a `confirm:false` against a live confirmed session:

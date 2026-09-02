@@ -327,6 +327,45 @@ describe("signaling handshake", () => {
     viewer2.close();
   });
 
+  // Abbrechen sends a courteous bye (dropped pre-confirm) and closes. For
+  // ~1 RTT the server-side socket sits in CLOSING with its `close` event
+  // still pending. An Akzeptieren landing in that window used to mark the
+  // session confirmed: `peer-confirmed` went nowhere (send() skips a
+  // non-OPEN socket) and the later close saw wasConfirmed=true, so the
+  // sharer got NO synthesized bye — it opened the portal and streamed to
+  // nobody. Pausing the client after close() holds the server in CLOSING.
+  it("accept against a viewer that is already closing leaves the session unconfirmed and still yields the bye", async () => {
+    const sharer = openWs(url);
+    await new Promise((r) => sharer.once("open", r));
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+
+    const viewer = openWs(url);
+    await new Promise((r) => viewer.once("open", r));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    await recv(sharer); // peer-joined — confirm dialog is up
+
+    viewer.send(JSON.stringify({ type: "relay", payload: { kind: "bye" } }));
+    viewer.close();
+    viewer.pause();
+    await new Promise((r) => setTimeout(r, 50));
+
+    const sharerInbox: unknown[] = [];
+    sharer.on("message", (d) => sharerInbox.push(JSON.parse(d.toString())));
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sharerInbox).toEqual([]);
+
+    viewer.resume();
+    await new Promise<void>((r) => {
+      if (viewer.readyState === WebSocket.CLOSED) return r();
+      viewer.once("close", () => r());
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sharerInbox).toEqual([{ type: "relay", payload: { kind: "bye" } }]);
+    sharer.close();
+  });
+
   it("invalid JSON → receives bad-message error and connection stays open", async () => {
     const ws = openWs(url);
     await new Promise((r) => ws.once("open", r));
