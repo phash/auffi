@@ -86,7 +86,7 @@ Sobald ein Paar einen ICE-Pfad gefunden hat, **läuft DTLS direkt auf diesem Pfa
               │                                          │
               ▼                                          ▼
         ┌─────────────────────────────────────────────────┐
-        │     DTLS 1.3 Handshake (RFC 5764 SRTP-Profile)  │
+        │ DTLS 1.2 Handshake (RFC 6347) + SRTP (RFC 5764) │
         │  ─────────────────────────────────────────────  │
         │  1. ClientHello  + ephemeral ECDHE-pubkey       │
         │  2. ServerHello  + ephemeral ECDHE-pubkey       │
@@ -97,6 +97,11 @@ Sobald ein Paar einen ICE-Pfad gefunden hat, **läuft DTLS direkt auf diesem Pfa
         │  6. SRTP-Keys + Salts aus master_secret ableiten│
         └─────────────────────────────────────────────────┘
 ```
+
+Ausgehandelt wird **DTLS 1.2** (RFC 6347) — das Minimum, das RFC 8827 für
+WebRTC vorschreibt. Weder webrtc-rs (`webrtc-dtls`) noch die Browser sprechen
+im WebRTC-Pfad DTLS 1.3 (RFC 9147); dieselbe Einschränkung steht als Kommentar
+in `coturn/turnserver.conf.tmpl`, weshalb TURNS dort TLS 1.2 zulässt.
 
 Drei Eigenschaften, die alles zusammenhalten:
 
