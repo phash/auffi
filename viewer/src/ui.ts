@@ -672,8 +672,12 @@ export function bindUI(backendWsUrl: string): void {
   });
 
   cancelConnectBtn?.addEventListener("click", () => {
-    // Let the sharer know we gave up so its confirm dialog can dismiss,
-    // best-effort. Then return to the entry screen with reconnect offered.
+    // Abbrechen is visible until the first frame. Before the sharer
+    // confirmed, the backend drops viewer relays, so this bye never reaches
+    // it — what dismisses the sharer's confirm dialog is the WS close in
+    // teardown(), which makes the backend synthesise a bye. After confirm
+    // (waiting for media) the relay does get through and the sharer shows
+    // "Helfer hat die Verbindung beendet" instead of an ICE timeout.
     try {
       signaling?.sendRelay({ kind: "bye" } satisfies RelayBye);
     } catch {
