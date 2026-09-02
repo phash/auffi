@@ -11,6 +11,7 @@ TURN domain: `turn.auffi.app`
 
 ### On your local machine
 - **SSH access**: `ssh musikersuche@musikersuche.org` works without password prompts (key in `~/.ssh/config` or `~/.ssh/authorized_keys` on the VPS).
+- **Pinned host key**: every ops script connects with `StrictHostKeyChecking=yes` against the committed `ops/known_hosts` (never trust-on-first-use — a fresh workstation or CI runner under a DNS hijack would otherwise ship the image and `.env.prod` edits to the attacker). The file holds the `musikersuche.org` keys (ED25519 `SHA256:n/+JFpPKyxpCVthkkccPgPAyblkG8qMn6E1XvjcMBdY`). **Self-hosters**: replace it with `ssh-keyscan -t ed25519,rsa,ecdsa <your-host> > ops/known_hosts` and compare the fingerprint (`ssh-keygen -l -f ops/known_hosts`) against what your provider's console shows — or set `DEPLOY_KNOWN_HOSTS=/path/to/file` in `ops/.env.deploy`. **Key rotation on the VPS**: regenerate the file the same way and commit it; until then every script fails fast with `Host key verification failed`, which is the intended behaviour.
 - **Docker Desktop or Docker Engine** installed and running.
 - **Node.js 22** for building the viewer locally.
 - **openssl** (present on every macOS/Linux machine by default).

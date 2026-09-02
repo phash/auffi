@@ -38,12 +38,27 @@ load_deploy_env() {
   DEPLOY_PATH="${DEPLOY_PATH:-/opt/screenie}"
   DEPLOY_DOMAIN="${DEPLOY_DOMAIN:-auffi.app}"
   DEPLOY_TURN_DOMAIN="${DEPLOY_TURN_DOMAIN:-turn.auffi.app}"
+  build_ssh_opts
 }
 
 # ---------------------------------------------------------------------------
 # SSH / remote execution
 # ---------------------------------------------------------------------------
-SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes)
+# Host key pinned to ops/known_hosts (committed; self-hosters replace it with
+# `ssh-keyscan <host>` after checking the fingerprint out-of-band, or point
+# DEPLOY_KNOWN_HOSTS elsewhere). `accept-new` would trust whatever key the
+# first connection from a fresh workstation or CI runner presents — under a
+# DNS hijack that is the attacker's host receiving the image tarball, the
+# .env.prod edits and the rsync payloads without a single prompt.
+_OPS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+build_ssh_opts() {
+  # Re-run by load_deploy_env: ops/.env.deploy may set DEPLOY_KNOWN_HOSTS,
+  # and it is sourced after this file.
+  DEPLOY_KNOWN_HOSTS="${DEPLOY_KNOWN_HOSTS:-${_OPS_LIB_DIR}/known_hosts}"
+  SSH_OPTS=(-o "UserKnownHostsFile=${DEPLOY_KNOWN_HOSTS}" -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o BatchMode=yes)
+}
+build_ssh_opts
 
 ssh_check() {
   # Returns 0 if the SSH target is reachable, 1 otherwise.
