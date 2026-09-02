@@ -20,6 +20,14 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+# The runtime image gets node_modules from here, not from `deps`: the
+# container only ever runs `node dist/index.js`, so typescript, vitest,
+# tsx, pino-pretty (NODE_ENV=production selects the plain logger) and the
+# `ws` test client are attack surface and transfer weight for nothing.
+# `prune` keeps the better-sqlite3 binding `deps` already materialised.
+FROM deps AS prod-deps
+RUN npm prune --omit=dev --ignore-scripts
+
 # DB-IP IP-to-Country Lite (CC-BY-4.0). Default "auto" tries the current
 # month and walks back up to 3 months — upstream hosts only recent months,
 # and a fixed month pin hard-blocked every build (incl. hotfix deploys)
@@ -56,7 +64,7 @@ RUN set -eu; \
 FROM node:22.22.2-alpine3.23 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=geoip /geoip/dbip.mmdb /app/data/dbip-country-lite.mmdb
 ENV GEOIP_DB_PATH=/app/data/dbip-country-lite.mmdb
