@@ -167,7 +167,7 @@ Eigenschaften aus der Auffi-Konfiguration ([`viewer/src/data-channels.ts`](../vi
 
 | Channel | Direction | Ordered | Reliability | Encryption |
 |---|---|---|---|---|
-| `input` | Viewer → Sharer | nein | unreliable für mouse-move; reliable für buttons/keys | DTLS (gleicher Tunnel wie SRTP) |
+| `input` | Viewer → Sharer | ja | reliable (bewusst — ein verlorenes key-up/button-up hinterließe eine hängende Taste, gh #97); Bandbreite bleibt klein, weil der Viewer pointermoves per rAF auf ~60 Hz koalesziert | DTLS (gleicher Tunnel wie SRTP) |
 | `files` | bi-direktional | ja | reliable ordered | DTLS |
 
 DTLS-Encryption bei SCTP ist record-basiert: jeder SCTP-Chunk wird mit demselben Master-Secret verschlüsselt, das auch für SRTP-Schlüssel verwendet wurde. Same crypto, anderes Framing.
