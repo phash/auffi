@@ -197,8 +197,11 @@ Caddy 2 stores ACME certs in the `caddy-data` volume under `/data/caddy/certific
 1. Verify SSH and Docker are reachable on the VPS.
 2. Build `auffi-backend:<git-sha>` locally.
 3. Build `viewer/dist/` AND `dashboard/dist/` locally (gh #38).
-4. rsync compose files, Caddyfile, coturn config, viewer dist, and
-   the dashboard dist into `dashboard-dist/` on the VPS.
+4. rsync compose files, nginx + coturn config, viewer dist, and the
+   dashboard dist into `dashboard-dist/` on the VPS. The Caddyfile is
+   shipped **only in standalone mode** — on the cluster host (current prod,
+   `CLUSTER_PROXY` set) `/opt/caddyserver/Caddyfile` is hand-maintained,
+   see the snippet below and `docs/footguns.md` § Cluster-Ops.
 5. Load the backend image on the VPS.
 6. Place `.env.prod.example` on the VPS if `.env.prod` is absent.
 7. Run `docker compose up -d`.
@@ -212,7 +215,14 @@ When running behind a shared cluster Caddy at
 the same `/dashboard/*` + `/api/*` routes that our standalone
 `caddy/Caddyfile` ships. Copy-paste the new `handle /api/* { ... }`
 and `handle_path /dashboard/* { ... }` blocks into the cluster
-Caddyfile, then `caddy reload --config /opt/caddyserver/Caddyfile`.
+Caddyfile, then validate and **restart** the proxy — the cluster Caddyfile
+runs with `admin off`, so `caddy reload` fails with `connection refused` on
+the admin port 2019 and leaves the old config live:
+
+```sh
+docker exec caddy-proxy caddy validate --config /etc/caddy/Caddyfile \
+  && docker restart caddy-proxy   # ~3 s connection blip for all tenants
+```
 
 Preview without executing anything:
 ```sh
