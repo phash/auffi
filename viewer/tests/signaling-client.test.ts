@@ -128,6 +128,52 @@ describe("SignalingClient", () => {
     expect(disconnectFn).not.toHaveBeenCalled();
   });
 
+  // ── malformed frames ────────────────────────────────────────────────
+  // The parse guard promises that a bad frame never throws out of
+  // onmessage. That has to cover well-formed JSON that is not a frame too:
+  // `null`, a number, an object without a string `type`, or a typed frame
+  // missing the field the UI interpolates ("Noch undefined Versuche").
+
+  it("ignores JSON that is not an object frame without throwing", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const relay = vi.fn();
+    client.onRelay(relay);
+    const p = client.join("284-915-073");
+    mock.fakeOpen();
+    expect(() => mock.fakeMessage(null)).not.toThrow();
+    expect(() => mock.onmessage?.({ data: "42" })).not.toThrow();
+    expect(() => mock.onmessage?.({ data: '"peer-confirmed"' })).not.toThrow();
+    expect(() => mock.fakeMessage({ typ: "peer-confirmed" })).not.toThrow();
+    expect(() => mock.fakeMessage({ type: 7 })).not.toThrow();
+    expect(() => mock.onmessage?.({ data: 12 })).not.toThrow();
+    expect(relay).not.toHaveBeenCalled();
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+  });
+
+  it("drops a relay frame without an object payload and a wrong-password frame without a count", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const relay = vi.fn();
+    const wrongPw = vi.fn();
+    client.onRelay(relay);
+    client.onWrongPassword(wrongPw);
+    const p = client.join("284-915-073");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "needs-password" });
+    expect(() => mock.fakeMessage({ type: "relay" })).not.toThrow();
+    expect(() => mock.fakeMessage({ type: "relay", payload: "sdp" })).not.toThrow();
+    expect(() => mock.fakeMessage({ type: "wrong-password" })).not.toThrow();
+    expect(() => mock.fakeMessage({ type: "wrong-password", attemptsLeft: "3" })).not.toThrow();
+    expect(relay).not.toHaveBeenCalled();
+    expect(wrongPw).not.toHaveBeenCalled();
+    mock.fakeMessage({ type: "wrong-password", attemptsLeft: 3 });
+    expect(wrongPw).toHaveBeenCalledWith(3);
+    mock.fakeMessage({ type: "peer-confirmed" });
+    await p;
+  });
+
   // ── gh #36: unattended-mode flow ────────────────────────────────────
 
   it("needs-password fires onNeedsPassword and keeps the promise unsettled", async () => {

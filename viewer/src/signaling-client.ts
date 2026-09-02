@@ -8,6 +8,29 @@ import type {
 
 export type WSFactory = (url: string) => WebSocket;
 
+/**
+ * Parse one incoming WS frame or return null. The signaling channel is
+ * TLS-protected, so a bad frame means a server bug or a hostile proxy —
+ * neither may throw out of onmessage (the join promise would hang forever)
+ * or leak `undefined` into UI copy ("Noch undefined Versuche"). Only the
+ * fields the client dereferences or interpolates are checked here.
+ */
+function parseFrame(data: unknown): OutgoingMessage | null {
+  if (typeof data !== "string") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const frame = parsed as Record<string, unknown>;
+  if (typeof frame.type !== "string") return null;
+  if (frame.type === "relay" && (typeof frame.payload !== "object" || frame.payload === null)) return null;
+  if (frame.type === "wrong-password" && typeof frame.attemptsLeft !== "number") return null;
+  return parsed as OutgoingMessage;
+}
+
 export class SignalingClient {
   private ws: WebSocket | null = null;
   private relayListeners: Array<(payload: RelayPayload) => void> = [];
@@ -35,17 +58,8 @@ export class SignalingClient {
         ws.send(JSON.stringify({ type: "join", role: "viewer", code } satisfies ViewerJoin));
       };
       ws.onmessage = (ev: MessageEvent) => {
-        // Don't let a malformed frame throw out of the handler — that
-        // leaves the promise unsettled and the UI hangs forever. The
-        // signaling channel is TLS-protected so this would have to be a
-        // server bug or a hostile reverse-proxy mid-path, but neither
-        // case should silently brick the viewer.
-        let msg: OutgoingMessage;
-        try {
-          msg = JSON.parse(ev.data as string) as OutgoingMessage;
-        } catch {
-          return;
-        }
+        const msg = parseFrame(ev.data);
+        if (msg === null) return;
         // A terminal frame settles the join promise while it is pending. After
         // peer-confirmed the promise is already resolved and `reject` would be
         // a silent no-op — but the backend still sends `peer-rejected:
