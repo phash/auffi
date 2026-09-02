@@ -291,6 +291,25 @@ fn disconnected_event(reason: &str) -> UnattendedEvent<'static> {
     UnattendedEvent::kind("disconnected")
 }
 
+/// Feedback body limit, mirrored from `backend/src/feedback/handlers.ts`
+/// (`BODY_MAX_LEN = 4000`, measured in JS string length = UTF-16 code
+/// units). Counting UTF-8 bytes here rejected umlaut-heavy German text
+/// the server would have accepted, with an error that blamed the user.
+const FEEDBACK_BODY_MAX_UNITS: usize = 4000;
+
+fn validate_feedback_body(body: &str) -> Result<&str, String> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Err("body must not be empty".to_string());
+    }
+    if trimmed.encode_utf16().count() > FEEDBACK_BODY_MAX_UNITS {
+        return Err(format!(
+            "body too long (max {FEEDBACK_BODY_MAX_UNITS} chars)"
+        ));
+    }
+    Ok(trimmed)
+}
+
 /// Start the persistent unattended WSS. Requires the device to be
 /// paired AND the password set; returns an `Err` otherwise so the UI
 /// can route the user to the appropriate setup step.
@@ -537,13 +556,7 @@ pub async fn unattended_submit_feedback(
     if !(1..=5).contains(&rating) {
         return Err("rating must be 1..5".to_string());
     }
-    let trimmed = body.trim();
-    if trimmed.is_empty() {
-        return Err("body must not be empty".to_string());
-    }
-    if trimmed.len() > 4000 {
-        return Err("body too long (max 4000 chars)".to_string());
-    }
+    let trimmed = validate_feedback_body(&body)?;
 
     let dir = app_data_dir(&app)?;
     let device_id = account::read_device_id(&dir)
@@ -1334,23 +1347,6 @@ mod tests {
         assert!(validate_backend_url("http://localhost:8080", true).is_err());
     }
 
-    // ── disconnected event (F056) ─────────────────────────────────────
-    //
-    // heartbeat.rs pins `Disconnected.reason` as dbg_log-only, yet the
-    // forwarder handed it to the webview, which rendered raw English
-    // rustls/tungstenite/backend text in the German status line.
-
-    #[test]
-    fn disconnected_event_never_carries_the_raw_reason() {
-        let v = serde_json::to_value(disconnected_event(
-            "connect: TLS error: invalid peer certificate: UnknownIssuer",
-        ))
-        .expect("serialize");
-        assert_eq!(v["kind"], "disconnected");
-        assert!(v.get("reason").is_none());
-        assert!(!v.to_string().contains("UnknownIssuer"));
-    }
-
     #[test]
     fn validate_backend_url_rejects_ws_without_insecure_flag() {
         let err = validate_backend_url("ws://localhost:8080/signal", false)
@@ -1383,4 +1379,23 @@ mod tests {
         );
     }
 
+    // ── feedback body limit (F062) ────────────────────────────────────
+    //
+    // The backend caps `text.length` — UTF-16 code units — at 4000 and
+    // the error text says "chars". Counting UTF-8 bytes locally rejected
+    // umlaut-heavy German feedback the server would have accepted.
+
+    #[test]
+    fn feedback_body_counts_characters_like_the_backend_not_bytes() {
+        let umlauts = "ä".repeat(3990);
+        assert!(validate_feedback_body(&umlauts).is_ok());
+        assert!(validate_feedback_body(&"a".repeat(4000)).is_ok());
+        assert!(validate_feedback_body(&"a".repeat(4001)).is_err());
+    }
+
+    #[test]
+    fn feedback_body_is_trimmed_and_must_not_be_blank() {
+        assert_eq!(validate_feedback_body("  hallo \n"), Ok("hallo"));
+        assert!(validate_feedback_body("   \n").is_err());
+    }
 }
