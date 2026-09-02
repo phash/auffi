@@ -10,8 +10,10 @@
 //! an attacker who can stuff arbitrary `pw-check` frames into the
 //! sharer's WSS (e.g. compromised backend) hits a second wall.
 //!
-//! Pure logic, no IO — wired into the heartbeat event-loop via
-//! `pw_check::handle_pw_check`.
+//! Pure logic, no IO — wired into the heartbeat event-loop by
+//! `unattended_cmd::forwarder_loop` through `pw_check::check_locked`
+//! (gate, before the argon2 verify) and `pw_check::outcome_from_verify`
+//! (bookkeeping, after it).
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -175,7 +177,11 @@ mod tests {
         for i in 0..MAX_FAILS_IN_WINDOW {
             l.record_fail(at(now, i as u64));
         }
-        // Right at the boundary: still locked (now < until).
+        // The 10th fail landed at +9 s, so the lock runs until +3609 s.
+        // One second before that: still locked (now < until).
+        let just_before = at(now, 60 * 60 + MAX_FAILS_IN_WINDOW as u64 - 2);
+        assert!(matches!(l.check(just_before), LockoutState::Locked { .. }));
+        // One second past it: the lock has lapsed.
         let one_h_later = at(now, 60 * 60 + MAX_FAILS_IN_WINDOW as u64);
         assert!(matches!(l.check(one_h_later), LockoutState::Free));
     }
