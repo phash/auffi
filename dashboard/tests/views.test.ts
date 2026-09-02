@@ -93,6 +93,26 @@ describe("renderLogin", () => {
     const err = root.querySelector(".error") as HTMLElement;
     expect(err.textContent).toBe("E-Mail oder Passwort falsch.");
   });
+
+  it("shows the German rate-limit copy on the real 429 wire shape", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse(
+          { statusCode: 429, error: "Too Many Requests", message: "Rate limit exceeded, retry in 1 minute" },
+          429,
+        ),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderLogin(root, { path: "/login", segments: ["login"], params: {}, query: new URLSearchParams() });
+    (root.querySelector("#login-email") as HTMLInputElement).value = "a@b.test";
+    (root.querySelector("#login-password") as HTMLInputElement).value = "wrongpassword";
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush();
+    const err = root.querySelector(".error") as HTMLElement;
+    expect(err.textContent).toBe("Zu viele Versuche. Bitte später erneut versuchen.");
+  });
 });
 
 describe("renderSignup", () => {
@@ -164,6 +184,29 @@ describe("renderSignup", () => {
     await flush();
     const err = root.querySelector(".error") as HTMLElement;
     expect(err.textContent).toContain("bereits registriert");
+  });
+
+  it("explains a disabled registration in German (403 signup-disabled)", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ error: "signup-disabled", message: "registration is disabled" }, 403),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderSignup(root, {
+      path: "/signup",
+      segments: ["signup"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    (root.querySelector("#signup-email") as HTMLInputElement).value = "new@a.test";
+    (root.querySelector("#signup-password") as HTMLInputElement).value = "verysecret1";
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush();
+    const err = root.querySelector(".error") as HTMLElement;
+    expect(err.textContent).toContain("Registrierung");
+    expect(err.textContent).not.toContain("registration is disabled");
   });
 });
 

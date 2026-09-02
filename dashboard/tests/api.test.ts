@@ -119,6 +119,48 @@ describe("api response handling", () => {
     expect(res.message).not.toContain("ECONNREFUSED");
   });
 
+  it("normalises @fastify/rate-limit's 429 into code rate-limit with German copy", async () => {
+    // The backend registers the plugin with its default errorResponseBuilder,
+    // so the wire body is { statusCode, error: "Too Many Requests", message:
+    // "Rate limit exceeded, retry in 1 minute" } — never error:"rate-limit".
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse(
+          {
+            statusCode: 429,
+            error: "Too Many Requests",
+            message: "Rate limit exceeded, retry in 1 minute",
+          },
+          { status: 429 },
+        ),
+      ) as unknown as typeof fetch,
+    });
+    const res = await login("a@a.test", "verysecret1");
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.status).toBe(429);
+    expect(res.code).toBe("rate-limit");
+    expect(res.message).toBe("Zu viele Versuche. Bitte später erneut versuchen.");
+  });
+
+  it("carries retryAfterSec from a 423 locked body", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse(
+          { error: "locked", message: "account temporarily locked", retryAfterSec: 840 },
+          { status: 423 },
+        ),
+      ) as unknown as typeof fetch,
+    });
+    const res = await login("a@a.test", "verysecret1");
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.code).toBe("locked");
+    expect(res.retryAfterSec).toBe(840);
+  });
+
   it("falls back to http-error when the body isn't JSON-shaped", async () => {
     _setApiClientForTests({
       base: "",

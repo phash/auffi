@@ -135,7 +135,7 @@ describe("renderAddDevice", () => {
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async () =>
-        jsonResponse({ error: "rate-limit", message: "too many" }, 429),
+        jsonResponse({ error: "internal", message: "kaputt" }, 500),
       ) as unknown as typeof fetch,
     });
     const root = makeRoot();
@@ -146,7 +146,30 @@ describe("renderAddDevice", () => {
       query: new URLSearchParams(),
     });
     await flush();
-    expect((root.querySelector(".error") as HTMLElement).textContent).toContain("too many");
+    expect((root.querySelector(".error") as HTMLElement).textContent).toContain("kaputt");
+  });
+
+  it("shows German copy when the 5/h pairing-code cap answers with Fastify's 429", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse(
+          { statusCode: 429, error: "Too Many Requests", message: "Rate limit exceeded, retry in 1 hour" },
+          429,
+        ),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAddDevice(root, {
+      path: "/devices/new",
+      segments: ["devices", "new"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    await flush();
+    const err = (root.querySelector(".error") as HTMLElement).textContent ?? "";
+    expect(err).toContain("Zu viele Versuche");
+    expect(err).not.toContain("Rate limit exceeded");
   });
 
   it("renders the expired state immediately when the code is already expired on mount", async () => {

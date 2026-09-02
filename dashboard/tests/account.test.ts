@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { _setApiClientForTests } from "../src/api.js";
-import { renderAccount } from "../src/views/account.js";
+import { friendlyAccountError, renderAccount } from "../src/views/account.js";
 
 function makeRoot(): HTMLElement {
   while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
@@ -35,6 +35,22 @@ const CTX = {
   params: {},
   query: new URLSearchParams(),
 };
+
+describe("friendlyAccountError", () => {
+  it("rounds the lockout up to whole minutes and copes with a missing retryAfterSec", () => {
+    const base = { ok: false as const, status: 423, code: "locked", message: "account temporarily locked" };
+    expect(friendlyAccountError({ ...base, retryAfterSec: 30 })).toBe(
+      "Zu viele Fehlversuche. Bitte in 1 Min erneut versuchen.",
+    );
+    expect(friendlyAccountError(base)).toBe("Zu viele Fehlversuche. Bitte später erneut versuchen.");
+  });
+
+  it("falls back to the backend message for unknown codes", () => {
+    expect(
+      friendlyAccountError({ ok: false, status: 500, code: "internal", message: "kaputt" }),
+    ).toBe("Fehler: kaputt");
+  });
+});
 
 describe("renderAccount", () => {
   afterEach(() => _setApiClientForTests(null));
@@ -115,6 +131,42 @@ describe("renderAccount", () => {
     await flush();
     expect(patchCount).toBe(1);
     expect(root.textContent).toContain("Aktuelles Passwort falsch.");
+  });
+
+  it("explains a 423 lockout in German with the remaining minutes (all three forms)", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (_input, init) => {
+        const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
+        if (method === "GET") return jsonResponse(ME);
+        return jsonResponse(
+          { error: "locked", message: "account temporarily locked", retryAfterSec: 840 },
+          423,
+        );
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAccount(root, CTX);
+    await flush();
+    const forms = root.querySelectorAll("form");
+
+    (root.querySelector("#acc-new-email") as HTMLInputElement).value = "next@a.test";
+    (root.querySelector("#acc-email-current-pw") as HTMLInputElement).value = "wrongPw01";
+    forms[0].dispatchEvent(new Event("submit", { cancelable: true }));
+    (root.querySelector("#acc-current-pw") as HTMLInputElement).value = "wrongPw01";
+    (root.querySelector("#acc-new-pw") as HTMLInputElement).value = "newpassword2";
+    forms[1].dispatchEvent(new Event("submit", { cancelable: true }));
+    (root.querySelector("#acc-confirm") as HTMLInputElement).value = "LÖSCHEN";
+    (root.querySelector("#acc-delete-pw") as HTMLInputElement).value = "wrongPw01";
+    forms[2].dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush();
+
+    const statuses = Array.from(root.querySelectorAll('[role="status"]')).map(
+      (el) => el.textContent ?? "",
+    );
+    const lockMessages = statuses.filter((t) => t.includes("14 Min"));
+    expect(lockMessages, "every form must show the German lockout copy").toHaveLength(3);
+    expect(root.textContent).not.toContain("account temporarily locked");
   });
 
   it("password change navigates to /login on success (sessions revoked)", async () => {

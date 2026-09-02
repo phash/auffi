@@ -16,12 +16,26 @@ export type ApiOk<T> = { ok: true; data: T };
 export type ApiErr = {
   ok: false;
   status: number;
-  /** Machine-readable error code from the backend (e.g. "email-taken"). */
+  /**
+   * Machine-readable error code from the backend (e.g. "email-taken").
+   * This is what the UI maps to German copy; a 429 from @fastify/rate-limit
+   * is normalised to "rate-limit" here because the plugin's default body
+   * carries error:"Too Many Requests".
+   */
   code: string;
-  /** Human-readable message — backend supplies German strings already. */
+  /**
+   * Human-readable message. Backend `bad()` messages are English
+   * diagnostics — views map `code` to German copy and only fall back to
+   * this for codes they do not know. Network errors and 429s already carry
+   * German copy from `request()`.
+   */
   message: string;
+  /** Seconds until a 423 "locked" gate opens again (Sec H-3). */
+  retryAfterSec?: number;
 };
 export type ApiResult<T> = ApiOk<T> | ApiErr;
+
+const RATE_LIMIT_MESSAGE = "Zu viele Versuche. Bitte später erneut versuchen.";
 
 export interface ApiClient {
   base: string;
@@ -89,8 +103,14 @@ async function request<T>(
   if (res.ok) {
     return { ok: true, data: (body as T) ?? (undefined as unknown as T) };
   }
-  // Backend error shape: { error: "code", message: "..." }
-  const err = (body ?? {}) as { error?: unknown; message?: unknown };
+  // Every per-route cap uses @fastify/rate-limit's default response, whose
+  // body is { error: "Too Many Requests", message: "Rate limit exceeded,
+  // retry in …" } — normalise by status so views see one code and German copy.
+  if (res.status === 429) {
+    return { ok: false, status: 429, code: "rate-limit", message: RATE_LIMIT_MESSAGE };
+  }
+  // Backend error shape: { error: "code", message: "...", retryAfterSec? }
+  const err = (body ?? {}) as { error?: unknown; message?: unknown; retryAfterSec?: unknown };
   return {
     ok: false,
     status: res.status,
@@ -99,6 +119,7 @@ async function request<T>(
       typeof err.message === "string" && err.message.length > 0
         ? err.message
         : `HTTP ${res.status}`,
+    ...(typeof err.retryAfterSec === "number" ? { retryAfterSec: err.retryAfterSec } : {}),
   };
 }
 

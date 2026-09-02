@@ -10,11 +10,37 @@
 //                          → confirmation string is intentionally
 //                          high-friction; we route to /login on success.
 
-import { deleteMe, getMe, patchMe, type Me } from "../api.js";
+import { deleteMe, getMe, patchMe, type ApiErr, type Me } from "../api.js";
 import { wrapPasswordField } from "../components/password-field.js";
 import { formatAbsolute } from "../format.js";
 import { navigate, type RouteContext, type RouteRenderer } from "../router.js";
 import { refreshSession } from "../session.js";
+
+/**
+ * German copy for the current_password-gated forms. PATCH/DELETE /api/me
+ * share one per-account lockout (Sec H-3): after 5 wrong passwords the
+ * backend answers 423 `locked` with `retryAfterSec`, which every form
+ * surfaces the same way.
+ */
+export function friendlyAccountError(res: ApiErr): string {
+  switch (res.code) {
+    case "bad-credentials":
+      return "Aktuelles Passwort falsch.";
+    case "email-taken":
+      return "Diese E-Mail ist bereits registriert.";
+    case "bad-email":
+      return "E-Mail-Format ungültig.";
+    case "locked": {
+      if (res.retryAfterSec === undefined) {
+        return "Zu viele Fehlversuche. Bitte später erneut versuchen.";
+      }
+      const minutes = Math.ceil(res.retryAfterSec / 60);
+      return `Zu viele Fehlversuche. Bitte in ${minutes} Min erneut versuchen.`;
+    }
+    default:
+      return `Fehler: ${res.message}`;
+  }
+}
 
 export const renderAccount: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -153,15 +179,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
       return;
     }
     emailStatus.style.color = "var(--error)";
-    if (res.code === "bad-credentials") {
-      emailStatus.textContent = "Aktuelles Passwort falsch.";
-    } else if (res.code === "email-taken") {
-      emailStatus.textContent = "Diese E-Mail ist bereits registriert.";
-    } else if (res.code === "bad-email") {
-      emailStatus.textContent = "E-Mail-Format ungültig.";
-    } else {
-      emailStatus.textContent = `Fehler: ${res.message}`;
-    }
+    emailStatus.textContent = friendlyAccountError(res);
   });
 
   idCard.appendChild(emailForm);
@@ -250,9 +268,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
     pwSubmit.disabled = false;
     pwSubmit.textContent = "Passwort ändern";
     pwStatus.style.color = "var(--error)";
-    pwStatus.textContent = res.code === "bad-credentials"
-      ? "Aktuelles Passwort falsch."
-      : `Fehler: ${res.message}`;
+    pwStatus.textContent = friendlyAccountError(res);
   });
 
   pwCard.appendChild(pwForm);
@@ -347,9 +363,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
     dSubmit.disabled = false;
     dSubmit.textContent = "Account unwiderruflich löschen";
     dStatus.style.color = "var(--error)";
-    dStatus.textContent = res.code === "bad-credentials"
-      ? "Aktuelles Passwort falsch."
-      : `Fehler: ${res.message}`;
+    dStatus.textContent = friendlyAccountError(res);
   });
 
   danger.appendChild(dForm);

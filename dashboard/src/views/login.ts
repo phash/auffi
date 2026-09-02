@@ -103,6 +103,8 @@ export function friendlyAuthError(code: string, fallback: string): string {
       return "Passwort muss 8-256 Zeichen lang sein.";
     case "account-suspended":
       return "Dieser Account ist gesperrt. Wende dich an den Support.";
+    case "signup-disabled":
+      return "Die Registrierung ist derzeit deaktiviert.";
     case "rate-limit":
       return "Zu viele Versuche. Bitte später erneut versuchen.";
     case "network-error":
