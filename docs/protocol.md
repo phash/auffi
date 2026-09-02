@@ -5,7 +5,11 @@ All messages are JSON. Each message has a `type` field.
 
 ## Roles
 
-A client identifies as either `sharer` or `viewer` in its first message.
+An ad-hoc client identifies as either `sharer` or `viewer` in its first
+message (`register` / `join`). An **unattended** sharer never sends a first
+message: it is identified during the WebSocket upgrade by
+`Authorization: Bearer <device-token>` + `X-Auffi-Device-Id` headers and is
+greeted with `unattended-hello` (see § Unattended-Access Extensions).
 
 ## Sharer-Initiated Messages
 
@@ -134,13 +138,25 @@ Forwarded `relay` message from the other peer.
 [no session]
    ↓ sharer connects + register
 [code-assigned, waiting]   ── 10 min TTL → [expired]
-   ↓ viewer connects + join (code matches)
-[matched, awaiting-confirm]
-   ↓ sharer sends confirm:accepted
-[active]   ←→ relay messages flow
-   ↓ either side disconnects
+   ↓ viewer connects + join (code matches)        ▲
+[matched, awaiting-confirm]                       │ viewer disconnects
+   ↓ sharer sends confirm:accepted                │ (same code, confirmed
+[active]   ←→ relay messages flow  ───────────────┘  reset → re-confirm)
+   ↓ sharer disconnects
 [ended]
 ```
+
+Only the **sharer** ends a session (`removeBySharer`; the viewer gets
+`peer-rejected` / `sharer-gone`). A viewer disconnect runs `detachViewer`: the
+viewer slot is cleared, `confirmed` is reset and the code stays joinable until
+its TTL. This is what lets the same helper reconnect within the 30-s grace (or
+a replacement helper attach) — and why every returning viewer has to be
+confirmed by the sharer again. If the viewer vanished **before** confirmation,
+the backend synthesizes a `bye` to the sharer so its confirm dialog does not
+point at a gone peer; a confirmed viewer's drop deliberately sends nothing, so
+a Wi-Fi blip keeps the sharer's ICE grace / reconnect window alive. The
+sharer's `keep_signaling` teardown intent (`docs/footguns.md` § Sharer
+Teardown) relies on this back-edge.
 
 ---
 
