@@ -27,3 +27,12 @@ export function formatExpiry(remainingSec: number): ExpiryView {
   const seconds = remaining % 60;
   return { expired: false, label: `Gültig noch ${minutes}:${String(seconds).padStart(2, "0")}` };
 }
+
+/**
+ * Seconds left until `deadlineMs`, for resuming a countdown that was paused
+ * while a helper was connected. Rounded up so the label never shows less time
+ * than the backend still grants; never negative.
+ */
+export function remainingSeconds(deadlineMs: number, nowMs: number): number {
+  return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
+}

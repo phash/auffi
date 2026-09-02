@@ -28,8 +28,8 @@ export type IceState =
 export type IceAction =
   /** Nothing to do. */
   | { kind: "ignore" }
-  /** Stop the stream now. */
-  | { kind: "teardown"; status: string }
+  /** Stop the stream now — the follow-up copy comes from `iceLossFollowUp`. */
+  | { kind: "teardown" }
   /** Start (or keep) the grace timer; tear down when it expires. */
   | { kind: "arm-grace"; status: string }
   /** The blip recovered — cancel a pending grace timer. */
@@ -40,7 +40,7 @@ export const ICE_DISCONNECTED_GRACE_MS = 10_000;
 
 export function planIceState(state: IceState, gracePending: boolean): IceAction {
   if (state === "failed" || state === "closed") {
-    return { kind: "teardown", status: "Verbindung verloren." };
+    return { kind: "teardown" };
   }
   if (state === "disconnected") {
     // Re-entering disconnected while already waiting must not restart the
@@ -54,4 +54,28 @@ export function planIceState(state: IceState, gracePending: boolean): IceAction 
       : { kind: "ignore" };
   }
   return { kind: "ignore" };
+}
+
+export interface IceLossFollowUp {
+  /** German status line with the next step. */
+  status: string;
+  /** Re-offer "Neuer Code" — only on the ad-hoc surface with a code on screen. */
+  showNewCode: boolean;
+}
+
+/**
+ * What the UI says after the teardown. The teardown keeps the signaling
+ * channel (`keepSignaling: true`), so the ad-hoc code stays redeemable until
+ * its TTL — the backend's `detachViewer` keeps the session — and the status
+ * must say so rather than leave the user staring at "Verbindung verloren."
+ * with the refresh button hidden. In unattended mode there is no code.
+ */
+export function iceLossFollowUp(adhocSurfaceActive: boolean, codeShown: boolean): IceLossFollowUp {
+  const showNewCode = adhocSurfaceActive && codeShown;
+  return {
+    showNewCode,
+    status: showNewCode
+      ? "Verbindung verloren — der Code bleibt gültig, warte auf neue Verbindung…"
+      : "Verbindung verloren — warte auf neue Verbindung…",
+  };
 }

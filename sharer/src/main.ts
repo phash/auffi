@@ -15,8 +15,14 @@ import { SignalingBuffer } from "./signaling-buffer.js";
 import { setupTabs } from "./tabs.js";
 import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-banner.js";
 import { formatConnectionRequest } from "./connect-format.js";
-import { formatExpiry } from "./code-expiry.js";
-import { planIceState, ICE_DISCONNECTED_GRACE_MS, type IceState } from "./ice-teardown-policy.js";
+import { formatExpiry, remainingSeconds } from "./code-expiry.js";
+import {
+  planIceState,
+  iceLossFollowUp,
+  ICE_DISCONNECTED_GRACE_MS,
+  type IceState,
+} from "./ice-teardown-policy.js";
+import { resetSessionIndicators } from "./session-indicators.js";
 import { planSignalingLost } from "./signaling-lost-policy.js";
 
 interface FileOfferPayload {
@@ -330,6 +336,10 @@ function showFriendlyError(message: string, err: unknown): void {
 // Sharer-User nicht stumm einen toten Code vorliest.
 let expiryTimer: ReturnType<typeof setInterval> | null = null;
 let expiryRemaining = 0;
+// Absolute deadline of the current code. peer-joined pauses the countdown for
+// the handshake; when that helper leaves again the code is still valid and the
+// countdown resumes from here instead of restarting.
+let codeDeadlineMs: number | null = null;
 
 function renderExpiry(): void {
   const view = formatExpiry(expiryRemaining);
@@ -361,6 +371,20 @@ function startExpiryCountdown(expiresInSec: number): void {
   }, 1000);
 }
 
+/**
+ * Resume the countdown paused by peer-joined. Ends the same way the running
+ * countdown does when the deadline already passed, so the user is told the
+ * code is dead rather than shown a stale "Gültig noch".
+ */
+function resumeExpiryCountdown(): void {
+  if (codeDeadlineMs === null) return;
+  const remaining = remainingSeconds(codeDeadlineMs, Date.now());
+  startExpiryCountdown(remaining);
+  if (remaining <= 0) {
+    setStatus("Code abgelaufen — bitte einen neuen Code erzeugen.", "error");
+  }
+}
+
 function showCode(code: string, expiresInSec?: number): void {
   codeEl.textContent = code;
   codeEl.classList.remove("placeholder");
@@ -371,8 +395,10 @@ function showCode(code: string, expiresInSec?: number): void {
   // seemed to exist on the website").
   newCodeBtn.classList.add("visible");
   if (typeof expiresInSec === "number") {
+    codeDeadlineMs = Date.now() + expiresInSec * 1000;
     startExpiryCountdown(expiresInSec);
   } else {
+    codeDeadlineMs = null;
     stopExpiryCountdown();
     codeExpiryEl.textContent = "";
     codeExpiryEl.classList.remove("expired", "expiring");
@@ -384,6 +410,7 @@ function resetCode(): void {
   codeEl.classList.add("placeholder");
   codeEl.classList.remove("expired");
   currentCode = null;
+  codeDeadlineMs = null;
   newCodeBtn.classList.remove("visible");
   stopExpiryCountdown();
   codeExpiryEl.textContent = "";
@@ -404,9 +431,16 @@ function showStreamingActions(): void {
   howtoCardEl.classList.add("hidden");
 }
 
+const sessionIndicatorEls = {
+  streamingActions: streamingActionsEl,
+  howtoCard: howtoCardEl,
+  pauseBanner: pauseBannerEl,
+  freeTierBanner: freeTierBannerEl,
+  connTypeInfo: connTypeInfoEl,
+};
+
 function hideStreamingActions(): void {
-  streamingActionsEl.classList.remove("visible");
-  howtoCardEl.classList.remove("hidden");
+  resetSessionIndicators(sessionIndicatorEls);
   // Clear buffered SDP/ICE — the next session starts fresh
   signalBuffer.reset();
 }
@@ -792,15 +826,11 @@ listen<{ ipPrefix: string; country: string | null }>("peer-joined", async (e) =>
     // kept-alive WS may already start delivering relay frames from the
     // new viewer while we await — with ready still set, the relay
     // handler would call receive_offer against the just-cleared
-    // rtc_state and lose the offer.
+    // rtc_state and lose the offer. The streaming-stopped listener
+    // deliberately ignores keepSignaling events (they may arrive after
+    // the new-peer state below is set and would clobber it), so the
+    // per-session indicators are cleared here.
     hideStreamingActions();
-    // The streaming-stopped listener deliberately ignores keepSignaling
-    // events (they may arrive after the new-peer state below is set and
-    // would clobber it) — so clear the per-session indicators here.
-    pauseBannerEl.classList.remove("visible");
-    freeTierBannerEl.classList.remove("visible");
-    connTypeInfoEl.textContent = "";
-    connTypeInfoEl.className = "";
     await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
   }
   currentIpPrefix = e.payload.ipPrefix;
@@ -900,11 +930,7 @@ listen<{ keepSignaling: boolean }>("streaming-stopped", (e) => {
     setStatus("Stream beendet.", "idle");
   }
   streamBtn.disabled = false;
-  pauseBannerEl.classList.remove("visible");
-  freeTierBannerEl.classList.remove("visible");
   currentIpPrefix = null;
-  connTypeInfoEl.textContent = "";
-  connTypeInfoEl.className = "";
   hideStreamingActions();
   // Full teardown drops the signaling WS, so the ad-hoc code is released
   // server-side — clear it instead of leaving a dead code on screen.
@@ -951,9 +977,20 @@ function clearIceGrace(): void {
   }
 }
 
-async function endStreamAfterIceLoss(status: string): Promise<void> {
+async function endStreamAfterIceLoss(): Promise<void> {
   clearIceGrace();
-  setStatus(status, "error");
+  // Reset BEFORE awaiting, as the viewer-swap path does: the kept-alive WS
+  // may deliver a next viewer's relay frames during the await, and the
+  // streaming-stopped event for a keepSignaling teardown is ignored.
+  hideStreamingActions();
+  closeMonitorPicker();
+  streamBtn.disabled = false;
+  const followUp = iceLossFollowUp(adhocSurfaceActive, currentCode !== null);
+  setStatus(followUp.status, "error");
+  if (followUp.showNewCode) {
+    newCodeBtn.classList.add("visible");
+    resumeExpiryCountdown();
+  }
   // keepSignaling: the peer is gone, but this sharer stays available for the
   // next viewer — dropping the signaling channel would release the code (or,
   // in unattended mode, the heartbeat's OutboundSink).
@@ -964,13 +1001,13 @@ listen<string>("ice-state", (e) => {
   const plan = planIceState(e.payload as IceState, iceGraceTimer !== null);
   switch (plan.kind) {
     case "teardown":
-      void endStreamAfterIceLoss(plan.status);
+      void endStreamAfterIceLoss();
       break;
     case "arm-grace":
       setStatus(plan.status, "waiting");
       iceGraceTimer = setTimeout(() => {
         iceGraceTimer = null;
-        void endStreamAfterIceLoss("Verbindung verloren.");
+        void endStreamAfterIceLoss();
       }, ICE_DISCONNECTED_GRACE_MS);
       break;
     case "recovered":

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   planIceState,
+  iceLossFollowUp,
   ICE_DISCONNECTED_GRACE_MS,
   type IceState,
 } from "../src/ice-teardown-policy.js";
@@ -51,5 +52,29 @@ describe("planIceState", () => {
     // Asymmetric windows would mean one side gives up while the other is
     // still waiting for the very same link to recover.
     expect(ICE_DISCONNECTED_GRACE_MS).toBe(10_000);
+  });
+});
+
+// The teardown keeps the signaling channel (the code is still redeemable —
+// codes.ts detachViewer keeps the session), so the status must say that and
+// the "Neuer Code" button must come back; a bare "Verbindung verloren." next
+// to a hidden refresh button was a dead end.
+describe("iceLossFollowUp", () => {
+  it("tells the ad-hoc user the code is still valid and re-offers Neuer Code", () => {
+    const f = iceLossFollowUp(true, true);
+    expect(f.showNewCode).toBe(true);
+    expect(f.status).toMatch(/Code bleibt gültig/);
+    expect(f.status).toMatch(/Verbindung verloren/);
+  });
+
+  it("never mentions a code in unattended mode (there is none to refresh)", () => {
+    const f = iceLossFollowUp(false, false);
+    expect(f.showNewCode).toBe(false);
+    expect(f.status).not.toMatch(/Code/);
+    expect(f.status).toMatch(/Verbindung verloren/);
+  });
+
+  it("does not offer Neuer Code when no code is on screen", () => {
+    expect(iceLossFollowUp(true, false).showNewCode).toBe(false);
   });
 });
