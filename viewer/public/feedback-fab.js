@@ -1,8 +1,11 @@
 /* Auffi — Floating Feedback Action Button.
  *
- * Loaded on the 4 marketing pages (index, impressum, datenschutz,
- * download). Only renders when /api/me returns 200 (= logged-in user
- * with a __Host-auffi_session cookie). Anonymous visitors see nothing.
+ * Loaded on /, /en/, /download/ and /en/download/. Deliberately NOT on
+ * /impressum/ and /datenschutz/ — the Datenschutzerklärung (§9b)
+ * promises those pages never send the session cookie, so do not "fix"
+ * the missing include there. Only renders when /api/me returns 200
+ * (= logged-in user with a __Host-auffi_session cookie). Anonymous
+ * visitors see nothing.
  *
  * Click → modal with a single textarea + send/cancel. Submit hits
  * POST /api/feedback with source="viewer", category="other", rating=5.
