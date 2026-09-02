@@ -712,15 +712,19 @@ export function bindUI(backendWsUrl: string): void {
     }
   });
 
+  const enableControl = (): void => {
+    const videoEl = document.getElementById("remote-video") as HTMLVideoElement;
+    capture?.enable();
+    setInputTogglePressed(inputToggleBtn, true);
+    videoEl.focus();
+  };
+
   inputToggleBtn.addEventListener("click", () => {
     if (inputToggleBtn.getAttribute("aria-pressed") === "true") {
       capture?.disable();
       setInputTogglePressed(inputToggleBtn, false);
     } else {
-      const videoEl = document.getElementById("remote-video") as HTMLVideoElement;
-      capture?.enable();
-      setInputTogglePressed(inputToggleBtn, true);
-      videoEl.focus();
+      enableControl();
     }
   });
 
@@ -779,6 +783,10 @@ export function bindUI(backendWsUrl: string): void {
           // these new objects would become ghost listeners on a closed hub.
           if (hubGen !== connectGeneration || peer === null || signaling === null) return;
           capture = new InputCapture(videoEl, (ev) => hub.sendInput(ev));
+          // The toolbar is reachable from the track event on — seconds
+          // before the channels open, longer over TURN — so the helper may
+          // already have asked for control; the toggle state is the intent.
+          if (inputToggleBtn.getAttribute("aria-pressed") === "true") enableControl();
 
           fileManager = new FileTransferManager(
             (ev) => hub.sendFile(ev),
