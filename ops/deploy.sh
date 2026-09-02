@@ -68,7 +68,9 @@ Options:
   --dry-run             Print what would happen without executing remote commands.
   --version <tag>       Image tag to build and deploy (default: git short SHA).
   --yes                 Skip interactive confirmation prompts.
-  --skip-tests          Skip the pre-deploy npm/cargo test runs.
+  --skip-tests          Skip the pre-deploy npm test runs (viewer, backend, dashboard).
+                        The sharer's cargo tests are never part of a deploy — the
+                        sharer is not deployed to the server (separate release flow).
   --skip-image-prune    Don't prune old backend images on prod after deploy.
   --notes "<text>"      Note appended to the deploy-log entry.
   --rollback            Roll back to the previous SHA from /opt/screenie/.deploy-log:
