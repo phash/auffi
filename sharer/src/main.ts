@@ -17,6 +17,7 @@ import { attachBannerHandlers, showBanner, type UpdateInfo } from "./update-bann
 import { formatConnectionRequest } from "./connect-format.js";
 import { formatExpiry } from "./code-expiry.js";
 import { planIceState, ICE_DISCONNECTED_GRACE_MS, type IceState } from "./ice-teardown-policy.js";
+import { friendlyDisconnectReason } from "./disconnect-reason.js";
 
 interface FileOfferPayload {
   id: string;
@@ -857,7 +858,7 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
 });
 
 listen<{ reason: string }>("disconnected", (e) => {
-  setStatus("Getrennt: " + e.payload.reason, "error");
+  showFriendlyError(friendlyDisconnectReason(e.payload.reason), e.payload.reason);
   confirmEl.classList.remove("visible");
   closeMonitorPicker();
   hideStreamingActions();
@@ -1006,7 +1007,7 @@ let pendingFileOfferId: string | null = null;
 function showFileOfferDialog(id: string, name: string, size: number): void {
   pendingFileOfferId = id;
   const human = formatBytes(size);
-  fileOfferText.textContent = `Der Helfer möchte dir „${name}" (${human}) senden.`;
+  fileOfferText.textContent = `Der Helfer möchte dir „${name}“ (${human}) senden.`;
   fileOfferDialog.classList.add("visible");
   fileOfferAcceptBtn.focus();
 }
@@ -1136,7 +1137,10 @@ renderTrustedPeers().catch(() => {});
   }
   await restartSignaling();
 })().catch((e: unknown) => {
-  setStatus(`Backend nicht erreichbar: ${String(e)}`, "error");
+  showFriendlyError(
+    "Server nicht erreichbar — bitte Internetverbindung prüfen und „Neu verbinden“ klicken.",
+    e,
+  );
   showReconnect();
 });
 

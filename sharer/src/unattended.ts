@@ -85,6 +85,7 @@ import { listen } from "@tauri-apps/api/event";
 import { confirmDialog, dismissConfirmDialog } from "./confirm-dialog.js";
 import { UNATTENDED_CONFIRM_OPTIONS } from "./unattended-confirm.js";
 import { planUnattendedTerminal } from "./unattended-terminal-policy.js";
+import { friendlyDisconnectReason } from "./disconnect-reason.js";
 import { SignalingBuffer, type WireIceCandidate } from "./signaling-buffer.js";
 import { wireAutostartToggle } from "./autostart-toggle.js";
 
@@ -364,7 +365,7 @@ stopBtn?.addEventListener("click", async () => {
 unpairBtn?.addEventListener("click", async () => {
   const ok = await confirmDialog({
     title: "Gerät entkoppeln",
-    message: "Gerät wirklich entkoppeln? Du musst dann erneut pairen.",
+    message: "Gerät wirklich entkoppeln? Du musst es dann erneut koppeln.",
     confirmLabel: "Entkoppeln",
     danger: true,
   });
@@ -393,11 +394,12 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       void refresh();
       break;
     case "disconnected":
-      setStatusText(`Getrennt — ${ev.reason ?? ""}`);
+      console.warn("[unattended] heartbeat disconnected:", ev.reason);
+      setStatusText(friendlyDisconnectReason(ev.reason ?? ""));
       break;
     case "reconnecting":
       setStatusText(
-        `Reconnect in ${Math.round((ev.after_ms ?? 0) / 1000)}s (Versuch ${ev.attempt ?? "?"})`,
+        `Neuer Verbindungsversuch in ${Math.round((ev.after_ms ?? 0) / 1000)} s (Versuch ${ev.attempt ?? "?"})`,
       );
       break;
     case "needs-confirm": {
@@ -457,7 +459,7 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       break;
     }
     case "locked-out":
-      setStatusText("Lokales Lockout aktiv (10+ Fehlversuche). 1 h Sperre.");
+      setStatusText("Zu viele Fehlversuche — Zugriff für 1 Stunde gesperrt.");
       break;
     case "relay": {
       // SDP/ICE forwarding through the shared buffer — same

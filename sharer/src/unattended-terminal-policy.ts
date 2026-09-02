@@ -37,11 +37,11 @@ export function planUnattendedTerminal(
 ): UnattendedTerminalPlan {
   const base =
     kind === "revoked"
-      ? "Token widerrufen — bitte erneut pairen."
+      ? "Zugriff widerrufen — bitte Gerät erneut koppeln."
       : "Eine andere Instanz hat übernommen.";
   const ended =
     kind === "revoked"
-      ? "Token widerrufen — Sitzung beendet, bitte erneut pairen."
+      ? "Zugriff widerrufen — Sitzung beendet, bitte Gerät erneut koppeln."
       : "Eine andere Instanz hat übernommen — Sitzung beendet.";
 
   return {
