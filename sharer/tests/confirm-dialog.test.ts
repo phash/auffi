@@ -67,4 +67,27 @@ describe("confirmDialog (sharer)", () => {
   it("dismissConfirmDialog without an open dialog is a no-op", () => {
     expect(() => dismissConfirmDialog()).not.toThrow();
   });
+
+  // Both callers gate something irreversible: the unattended prompt grants
+  // screen + input to whoever typed the device password, the unpair dialog
+  // wipes the pairing. Rust surfaces and focuses the window right before the
+  // prompt appears, so a keystroke the user was already typing lands on
+  // whichever button holds focus — it must be the declining one, matching the
+  // ad-hoc peer-confirm (main.ts) and the stop/remove confirms.
+  it("gives initial keyboard focus to the safer choice", () => {
+    void confirmDialog({
+      title: "Fernzugriff erlauben?",
+      message: "m",
+      confirmLabel: "Erlauben",
+      cancelLabel: "Ablehnen",
+    });
+    expect(document.activeElement?.textContent).toBe("Ablehnen");
+  });
+
+  it("focuses the safer choice for danger dialogs too", async () => {
+    const p = confirmDialog({ title: "T", message: "m", confirmLabel: "Entkoppeln", danger: true });
+    expect(document.activeElement?.textContent).toBe("Abbrechen");
+    (document.activeElement as HTMLButtonElement).click();
+    expect(await p).toBe(false);
+  });
 });

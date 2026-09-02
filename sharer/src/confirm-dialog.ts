@@ -81,7 +81,10 @@ export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
     modal.append(h, p, row);
     backdrop.append(modal);
     document.body.append(backdrop);
-    confirm.focus();
+    // Every caller gates access or destroys state, and Rust focuses the
+    // window right before the unattended prompt — a keystroke already in
+    // flight must land on the declining choice, like the ad-hoc peer-confirm.
+    cancel.focus();
 
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
