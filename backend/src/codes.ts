@@ -142,21 +142,15 @@ export class SessionStore {
     const session = this.findByPeer(viewer);
     if (!session || session.viewer !== viewer) return;
     session.viewer = null;
-    // The accept belonged to THIS viewer. Whoever attaches next must be
-    // confirmed afresh — otherwise the sharer's decline would be a
-    // silent no-op and the pre-confirm relay gate would already stand
-    // open for the newcomer (gh review: sharer confirmation is
-    // mandatory). This also makes the session expirable again.
-    session.confirmed = false;
     this.byPeer.delete(viewer);
-    // Reset the confirmation so a replacement viewer redeeming the same
-    // still-valid code must be re-confirmed by the sharer. Without this,
-    // `confirmed` stays latched `true` after the first viewer leaves: the
-    // relay gate (`signaling.ts` "if (!found.confirmed) return") would open
-    // for the new viewer before any human clicked Akzeptieren, and the
-    // sharer's decline (`confirm:false`, guarded by "if (found.confirmed)
-    // return") would be silently swallowed. Both break the invariant that
-    // the sharer confirms every incoming peer.
+    // The accept belonged to THIS viewer. Without the reset `confirmed`
+    // stays latched `true` after the first viewer leaves: the relay gate
+    // (`signaling.ts` "if (!found.confirmed) return") would stand open for
+    // whoever redeems the still-valid code next before any human clicked
+    // Akzeptieren, and the sharer's decline (`confirm:false`, guarded by
+    // "if (found.confirmed) return") would be silently swallowed — both
+    // break "the sharer confirms every incoming peer". It also makes the
+    // session expirable again.
     session.confirmed = false;
   }
 
