@@ -468,6 +468,51 @@ describe("POST /api/auth/forgot + /api/auth/reset", () => {
     expect(unused.c).toBe(0);
   });
 
+  it("honours a reset token exactly once when two resets race on it", async () => {
+    // The used_at pre-check and the transaction straddle the argon2 hash,
+    // so two concurrent POSTs with the same token both pass the pre-check.
+    // The claim inside the transaction must decide: one 200, one 410.
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/forgot",
+      payload: { email: "grace@example.com" },
+    });
+    const token = h.mailer.sent[0].token;
+
+    const [first, second] = await Promise.all([
+      h.app.inject({
+        method: "POST",
+        url: `/api/auth/reset/${token}`,
+        payload: { password: "first-racer-password" },
+      }),
+      h.app.inject({
+        method: "POST",
+        url: `/api/auth/reset/${token}`,
+        payload: { password: "second-racer-password" },
+      }),
+    ]);
+    const statuses = [first.statusCode, second.statusCode].sort();
+    expect(statuses).toEqual([200, 410]);
+    const loser = first.statusCode === 410 ? first : second;
+    expect(loser.json().error).toBe("token-used");
+
+    // Only the winner's password verifies.
+    const winnerPw = first.statusCode === 200 ? "first-racer-password" : "second-racer-password";
+    const loserPw = first.statusCode === 200 ? "second-racer-password" : "first-racer-password";
+    const okLogin = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "grace@example.com", password: winnerPw },
+    });
+    expect(okLogin.statusCode).toBe(200);
+    const badLogin = await h.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "grace@example.com", password: loserPw },
+    });
+    expect(badLogin.statusCode).toBe(401);
+  });
+
   it("reset rejects an expired token with 410", async () => {
     await h.app.inject({
       method: "POST",

@@ -368,11 +368,15 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
 
     const newHash = await hashPassword(password);
     const now = Date.now();
-    const tx = db.transaction(() => {
-      db.prepare("UPDATE password_resets SET used_at = ? WHERE token_hash = ?").run(
-        now,
-        hashToken(token),
-      );
+    const tx = db.transaction((): boolean => {
+      // The used_at pre-check above and this write straddle the ~250 ms
+      // argon2 hash, so two requests with the same token can both pass
+      // it. The guarded UPDATE is the real one-shot claim: the loser sees
+      // zero changed rows and gets the same 410 the pre-check produces.
+      const claim = db
+        .prepare("UPDATE password_resets SET used_at = ? WHERE token_hash = ? AND used_at IS NULL")
+        .run(now, hashToken(token));
+      if (claim.changes === 0) return false;
       // A stashed unused reset link (e.g. from an attacker with transient
       // mailbox access) must not survive the victim's own successful
       // reset — drop every other outstanding token, mirroring the
@@ -384,8 +388,9 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       // Spec §4.5 step 3: a successful reset invalidates every other
       // session of the account — log everyone else out.
       deleteAllSessionsForAccount(db, row.account_id);
+      return true;
     });
-    tx();
+    if (!tx()) return bad(reply, 410, "token-used", "reset link already used");
 
     return reply.status(200).send({ ok: true });
   },
