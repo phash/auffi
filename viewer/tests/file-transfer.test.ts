@@ -615,3 +615,66 @@ describe("FileTransferManager — receive", () => {
     expect(Array.from(bytes)).toEqual([9, 9]);
   });
 });
+
+describe("FileTransferManager — nothing lands before the helper accepts", () => {
+  let sentEvents: FileEvent[];
+  let manager: FileTransferManager;
+  let completedFiles: File[];
+
+  beforeEach(() => {
+    sentEvents = [];
+    completedFiles = [];
+    manager = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      () => {},
+      () => 0,
+      () => Promise.resolve(),
+    );
+    manager.onIncomingComplete((f) => completedFiles.push(f));
+  });
+
+  it("a sharer that streams before file-accept gets rejected and nothing is saved", async () => {
+    // The offer dialog is still open: the handler never resolves during the test.
+    manager.onIncomingOffer(() => new Promise<boolean>(() => {}));
+    const fileId = "pushy-sharer";
+    manager.handle({ kind: "file-offer", id: fileId, name: "evil.exe", size: 3, mime: "application/octet-stream" });
+
+    manager.handleChunk(makeChunkBuffer(fileId, 0, new Uint8Array([1, 2, 3])));
+    manager.handle({ kind: "file-done", id: fileId });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(completedFiles).toHaveLength(0);
+    expect(sentEvents.some((e) => e.kind === "file-accept")).toBe(false);
+    const reject = sentEvents.find((e) => e.kind === "file-reject");
+    expect(reject && reject.kind === "file-reject" ? reject.id : null).toBe(fileId);
+  });
+
+  it("a late Annehmen on a transfer the sharer already forced is a no-op (no second answer)", async () => {
+    let resolveOffer: ((v: boolean) => void) | null = null;
+    manager.onIncomingOffer(() => new Promise<boolean>((r) => { resolveOffer = r; }));
+    const fileId = "forced-then-accepted";
+    manager.handle({ kind: "file-offer", id: fileId, name: "x.bin", size: 2, mime: "application/octet-stream" });
+    manager.handleChunk(makeChunkBuffer(fileId, 0, new Uint8Array([7, 7])));
+
+    resolveOffer!(true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sentEvents.filter((e) => e.kind === "file-accept")).toHaveLength(0);
+    expect(sentEvents.filter((e) => e.kind === "file-reject")).toHaveLength(1);
+    expect(completedFiles).toHaveLength(0);
+  });
+
+  it("chunks that arrive after Annehmen still reassemble normally", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    const fileId = "polite-sharer";
+    manager.handle({ kind: "file-offer", id: fileId, name: "ok.bin", size: 2, mime: "application/octet-stream" });
+    await vi.waitFor(() => {
+      expect(sentEvents.some((e) => e.kind === "file-accept")).toBe(true);
+    });
+    manager.handleChunk(makeChunkBuffer(fileId, 0, new Uint8Array([4, 2])));
+    manager.handle({ kind: "file-done", id: fileId });
+    await vi.waitFor(() => {
+      expect(completedFiles).toHaveLength(1);
+    });
+    expect(completedFiles[0].name).toBe("ok.bin");
+  });
+});

@@ -122,6 +122,12 @@ type IncomingReceive = {
   chunks: Map<number, Uint8Array>;
   /** Bytes accepted so far — abort if this ever exceeds `offer.size`. */
   receivedBytes: number;
+  /**
+   * Set once the helper clicked Annehmen and `file-accept` went out. A
+   * sharer that streams before that is not waiting for consent — its
+   * transfer is rejected and nothing it sent is kept.
+   */
+  accepted: boolean;
 };
 
 export class FileTransferManager {
@@ -251,6 +257,12 @@ export class FileTransferManager {
     if (payload.byteLength === 0) return; // honest senders never emit empty chunks
     for (const [id, state] of this.pendingReceive) {
       if (fnv1a32(id) === idHash) {
+        if (!state.accepted) {
+          // Data before Annehmen: the sharer is not waiting for consent, so
+          // the helper's decision would be moot — refuse instead of buffering.
+          this.rejectReceive(id);
+          return;
+        }
         // Ignore duplicate seqs (must not double-count bytes) and cap the
         // distinct-chunk count so sparse-seq fan-out can't bloat the Map.
         if (state.chunks.has(seq) || state.chunks.size >= MAX_CHUNKS) return;
@@ -314,28 +326,43 @@ export class FileTransferManager {
       return;
     }
 
-    this.pendingReceive.set(offer.id, {
+    const state: IncomingReceive = {
       offer: fileOffer,
       chunks: new Map(),
       receivedBytes: 0,
-    });
+      accepted: false,
+    };
+    this.pendingReceive.set(offer.id, state);
 
     handler(fileOffer).then((accepted) => {
+      // The transfer may already be gone: force-rejected because the sharer
+      // streamed early, or swept by cancelAll(). Then the dialog's answer has
+      // nothing left to apply to, and a second reply would confuse the peer.
+      if (this.pendingReceive.get(offer.id) !== state) return;
       if (accepted) {
+        state.accepted = true;
         this.sendEvent({ kind: "file-accept", id: offer.id });
       } else {
-        this.pendingReceive.delete(offer.id);
-        this.sendEvent({ kind: "file-reject", id: offer.id });
+        this.rejectReceive(offer.id);
       }
     }).catch(() => {
-      this.pendingReceive.delete(offer.id);
-      this.sendEvent({ kind: "file-reject", id: offer.id });
+      if (this.pendingReceive.get(offer.id) !== state) return;
+      this.rejectReceive(offer.id);
     });
+  }
+
+  private rejectReceive(id: string): void {
+    this.pendingReceive.delete(id);
+    this.sendEvent({ kind: "file-reject", id });
   }
 
   private finalizeReceive(id: string): void {
     const state = this.pendingReceive.get(id);
     if (!state) return;
+    if (!state.accepted) {
+      this.rejectReceive(id);
+      return;
+    }
     this.pendingReceive.delete(id);
 
     const seqNums = Array.from(state.chunks.keys()).sort((a, b) => a - b);
