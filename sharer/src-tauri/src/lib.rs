@@ -902,9 +902,8 @@ async fn start_streaming(
 ///
 /// The WebRTC track and peer connection are preserved — only the
 /// upstream capturer + encoder are replaced, plus the InputController so
-/// remote pointer coords map to the new resolution. On Wayland the
-/// cached portal restore_token is dropped first so the portal dialog
-/// re-prompts the user for a fresh source.
+/// remote pointer coords map to the new resolution. On Wayland the portal
+/// dialog prompts for the new source (no restore token is ever kept).
 ///
 /// `monitor_id` is the X11 / Windows monitor index. Ignored on Wayland
 /// (the portal owns selection there) — the UI should pass 0 in that
@@ -952,13 +951,6 @@ async fn switch_monitor(
     // the old one is still alive — Plasma routes the new session's media
     // unpredictably when two ScreenCast sources overlap.
     send_stop_and_wait_ack(&tx).await?;
-
-    // Wayland: drop the cached restore_token so the portal re-prompts.
-    // X11 / Windows: no-op.
-    #[cfg(target_os = "linux")]
-    if matches!(capture::select_backend(), capture::Backend::Portal) {
-        capture::delete_restore_token();
-    }
 
     // Phase 2: now that the old pipeline is gone, open the portal dialog
     // / pick the next monitor and build the fresh capturer + encoder.

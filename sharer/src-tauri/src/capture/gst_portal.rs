@@ -23,7 +23,6 @@
 //! than queued.
 
 use std::os::fd::{AsRawFd, OwnedFd};
-use std::path::PathBuf;
 use std::sync::mpsc;
 
 use gstreamer as gst;
@@ -77,63 +76,15 @@ struct PortalStreams {
     height: u32,
 }
 
-/// Path where the restore_token returned by the portal is cached so the
-/// dialog does not re-prompt on subsequent shares (modeled on hoptodesk's
-/// `wayland-restore-token` config key).
-fn restore_token_path() -> Option<PathBuf> {
-    let base = dirs::data_local_dir()?.join("auffi");
-    Some(base.join("portal-restore-token"))
-}
-
-fn read_restore_token() -> Option<String> {
-    // Always-prompt policy: until unattended-access (gh #20-#27) lands and
-    // gives us a code path that explicitly wants to pre-grant a source,
-    // we always show the portal dialog so the user picks the monitor each
-    // session. The on-disk token is still written by write_restore_token
-    // (cheap and forward-compatible) but never read here.
-    //
-    // Only treat the env var as enable when set to "1" or "true". Setting
-    // it to the empty string (a common "disable" pattern) must NOT re-
-    // enable token restore.
-    let flag = std::env::var_os("AUFFI_ENABLE_RESTORE_TOKEN")?;
-    if !matches!(flag.to_str(), Some("1") | Some("true")) {
-        return None;
-    }
-    let p = restore_token_path()?;
-    let t = std::fs::read_to_string(p).ok()?;
-    let t = t.trim();
-    if t.is_empty() {
-        None
-    } else {
-        Some(t.to_string())
-    }
-}
-
-fn write_restore_token(token: &str) {
-    let Some(p) = restore_token_path() else {
-        return;
-    };
-    if let Some(dir) = p.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = std::fs::write(&p, token);
-    dbg_log(&format!("[gst-portal] saved restore_token to {p:?}"));
-}
-
-/// Delete the cached restore_token. Used by the runtime monitor-switch
-/// command so the next `open_portal()` re-prompts the user for a source
-/// instead of silently restoring the previously-selected monitor.
-pub fn delete_restore_token() {
-    let Some(p) = restore_token_path() else {
-        return;
-    };
-    let _ = std::fs::remove_file(&p);
-    dbg_log(&format!("[gst-portal] deleted restore_token {p:?}"));
-}
-
-/// Run the ashpd ScreenCast handshake.  Blocks until the user clicks "Teilen"
-/// in the compositor dialog the first time; on subsequent runs the saved
-/// restore_token lets the portal grant the same source without prompting.
+/// Run the ashpd ScreenCast handshake. Blocks until the user clicks "Teilen"
+/// in the compositor dialog.
+///
+/// Always-prompt policy: the user picks the monitor every session, so no
+/// restore token is requested or kept. Until 2026-09 the portal was asked to
+/// persist a grant that was written to disk and never read back (only an
+/// undocumented env flag enabled the read), i.e. persisted state with no
+/// retention policy. Unattended access (gh #85, #86) may re-introduce a
+/// pre-grant deliberately.
 async fn open_portal() -> Result<PortalStreams, String> {
     dbg_log("[gst-portal] open_portal start");
     let proxy = Screencast::new()
@@ -175,12 +126,6 @@ async fn negotiate(
     proxy: &Screencast<'static>,
     session: &Session<'static, Screencast<'static>>,
 ) -> Result<(OwnedFd, u32, u32, u32), String> {
-    let saved_token = read_restore_token();
-    dbg_log(&format!(
-        "[gst-portal] restore_token present={}",
-        saved_token.is_some()
-    ));
-
     proxy
         .select_sources(
             session,
@@ -189,8 +134,8 @@ async fn negotiate(
             // single monitor only: open_portal uses just the first stream, so
             // letting the dialog multi-select would silently discard the rest
             false,
-            saved_token.as_deref(), // re-attach previously-granted source
-            PersistMode::ExplicitlyRevoked, // keep until user revokes in settings
+            None,
+            PersistMode::DoNot,
         )
         .await
         .map_err(|e| format!("select_sources failed: {e}"))?;
@@ -203,11 +148,6 @@ async fn negotiate(
         .response()
         .map_err(|e| format!("portal dialog cancelled or rejected: {e}"))?;
     dbg_log("[gst-portal] start() returned");
-
-    // Persist the restore_token so the next launch skips the dialog.
-    if let Some(token) = response.restore_token() {
-        write_restore_token(token);
-    }
 
     let stream = response
         .streams()
