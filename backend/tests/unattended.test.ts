@@ -351,7 +351,11 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     ws.close();
   });
 
-  it("closes WSS with 4401 once bearer-auth attempts exceed the per-IP cap (Sec H-1)", async () => {
+  // The heartbeat treats 4401 as "token revoked" and stops for good, so a
+  // rate-limited upgrade MUST NOT share that code: an office with >10 devices
+  // behind one NAT reconnecting after a deploy would otherwise see the 11th+
+  // device park itself offline until someone walks over and re-pairs it.
+  it("closes WSS with 4429 (not 4401) once bearer-auth attempts exceed the per-IP cap (Sec H-1)", async () => {
     // Spin up a dedicated server with a TIGHT bearer cap so we can
     // trip the gate without thousands of connections. The map is
     // per-server-instance; the shared test rig at the top of this
@@ -385,7 +389,7 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     // Reset back so subsequent tests in this file aren't affected.
     process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
 
-    function tryConnect(): Promise<{ code: number }> {
+    function tryConnect(): Promise<{ code: number; reason: string }> {
       return new Promise((resolve) => {
         const ws = new WebSocket(tightUrl, {
           headers: {
@@ -395,10 +399,10 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
           },
         });
         ws.once("message", () => {
-          ws.once("close", (code) => resolve({ code }));
+          ws.once("close", (code, reason) => resolve({ code, reason: reason.toString() }));
           ws.close();
         });
-        ws.once("close", (code) => resolve({ code }));
+        ws.once("close", (code, reason) => resolve({ code, reason: reason.toString() }));
       });
     }
 
@@ -407,9 +411,10 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     const r2 = await tryConnect();
     expect(r1.code).not.toBe(WS_CLOSE.AUTH_FAILED);
     expect(r2.code).not.toBe(WS_CLOSE.AUTH_FAILED);
-    // Third: rate-limited → AUTH_FAILED close.
+    // Third: rate-limited → its own transient close code, never AUTH_FAILED.
     const r3 = await tryConnect();
-    expect(r3.code).toBe(WS_CLOSE.AUTH_FAILED);
+    expect(r3.code).toBe(WS_CLOSE.RATE_LIMITED);
+    expect(r3.reason).toBe("rate limit");
 
     await tight.close();
     tightDb.close();

@@ -10,6 +10,9 @@
 //!   * 4401 — token revoked (DELETE /api/devices/:id) or invalid
 //!   * 4408 — superseded by a newer connection for the same device-id
 //!
+//! 4429 — the backend's per-IP bearer cap tripped — is transient but
+//! special: the loop reconnects at the backoff CEILING (no ladder reset)
+//! so a fleet behind one NAT spreads out instead of re-tripping the cap.
 //! Anything else (transient network drop, server restart, viewer
 //! peer gone) just triggers a reconnect.
 //!
@@ -33,6 +36,14 @@ use tokio_tungstenite::tungstenite::Message;
 /// transient disconnect.
 pub const WS_CLOSE_REVOKED: u16 = 4401;
 pub const WS_CLOSE_SUPERSEDED: u16 = 4408;
+/// Backend's per-IP bearer-auth cap tripped (docs/protocol.md § WebSocket
+/// close codes). Transient — see [`is_rate_limited_close`].
+pub const WS_CLOSE_RATE_LIMITED: u16 = 4429;
+
+/// Reason string the backend attaches to a rate-limited close. Backends up
+/// to 0.7.0 sent it with code 4401, so it is the only way to tell a capped
+/// upgrade from a real revocation against those.
+const RATE_LIMIT_CLOSE_REASON: &str = "rate limit";
 
 /// Decide whether a close code means the heartbeat should stop
 /// retrying. Pure for trivial unit-pinning.
@@ -41,6 +52,29 @@ pub fn should_terminate(close_code: Option<u16>) -> bool {
         close_code,
         Some(WS_CLOSE_REVOKED) | Some(WS_CLOSE_SUPERSEDED)
     )
+}
+
+/// Whether a close frame means "the backend's bearer cap is exhausted for
+/// this IP right now". Checked BEFORE [`should_terminate`]: a 4401 whose
+/// reason is "rate limit" came from a pre-0.7.1 backend and must not be
+/// mistaken for a revocation — nothing was revoked, and an unattended
+/// machine that stops retrying stays offline until somebody re-pairs it.
+pub fn is_rate_limited_close(close_code: Option<u16>, reason: &str) -> bool {
+    match close_code {
+        Some(WS_CLOSE_RATE_LIMITED) => true,
+        Some(WS_CLOSE_REVOKED) => reason == RATE_LIMIT_CLOSE_REASON,
+        _ => false,
+    }
+}
+
+/// Smallest attempt index whose [`next_backoff`] already sits at `max`.
+/// Used to park the ladder at the ceiling after a rate-limited close.
+/// Capped at the same 30 doublings `next_backoff` clamps to, so a
+/// degenerate zero `initial` cannot loop.
+pub fn attempts_to_reach_max(initial: Duration, max: Duration) -> u32 {
+    (0..=30u32)
+        .find(|n| next_backoff(*n, initial, max) >= max)
+        .unwrap_or(30)
 }
 
 /// Compute the backoff sleep for attempt `n` (zero-indexed). Doubles
@@ -357,13 +391,27 @@ async fn run_loop(
             ConnectOutcome::Shutdown => {
                 return;
             }
-            ConnectOutcome::Disconnected { reason, hello_seen } => {
-                // A session that reached unattended-hello was a real
-                // connection — restart the backoff ladder from the
-                // bottom instead of ratcheting toward the 60 s ceiling
-                // over the process lifetime (product goal 2: reconnect
-                // latency after a blip must not depend on blip history).
-                if hello_seen {
+            ConnectOutcome::Disconnected {
+                reason,
+                hello_seen,
+                rate_limited,
+            } => {
+                if rate_limited {
+                    // The cap is per IP and shared by every device behind
+                    // the same NAT; a fast retry re-trips it for all of
+                    // them. Park at the ceiling (±50 % jitter spreads the
+                    // fleet) and never restart the ladder here — a session
+                    // that reached hello and then got capped on the way
+                    // back would otherwise come back at 1 s.
+                    attempt = attempt
+                        .max(attempts_to_reach_max(config.backoff_initial, config.backoff_max));
+                    log::warn!("[heartbeat] backend rate-limited the bearer upgrade — retrying at max backoff");
+                } else if hello_seen {
+                    // A session that reached unattended-hello was a real
+                    // connection — restart the backoff ladder from the
+                    // bottom instead of ratcheting toward the 60 s ceiling
+                    // over the process lifetime (product goal 2: reconnect
+                    // latency after a blip must not depend on blip history).
                     attempt = 0;
                 }
                 let _ = evt_tx.send(HeartbeatEvent::Disconnected { reason }).await;
@@ -416,7 +464,14 @@ enum ConnectOutcome {
     /// Transient — reconnect after backoff. `hello_seen` is true when
     /// the session reached `unattended-hello` before dropping, so the
     /// caller can reset the backoff ladder after a real connection.
-    Disconnected { reason: String, hello_seen: bool },
+    /// `rate_limited` marks a close the backend's per-IP bearer cap
+    /// caused (4429, or a legacy 4401 + "rate limit"); the caller then
+    /// parks the ladder at the ceiling instead.
+    Disconnected {
+        reason: String,
+        hello_seen: bool,
+        rate_limited: bool,
+    },
 }
 
 async fn connect_and_run(
@@ -430,6 +485,7 @@ async fn connect_and_run(
             return ConnectOutcome::Disconnected {
                 reason: format!("invalid ws url: {e}"),
                 hello_seen: false,
+                rate_limited: false,
             };
         }
     };
@@ -460,6 +516,7 @@ async fn connect_and_run(
             return ConnectOutcome::Disconnected {
                 reason: format!("connect: {e}"),
                 hello_seen: false,
+                rate_limited: false,
             };
         }
     };
@@ -484,6 +541,7 @@ async fn connect_and_run(
                                 return ConnectOutcome::Disconnected {
                                     reason: format!("serialise outgoing: {e}"),
                                     hello_seen,
+                                    rate_limited: false,
                                 };
                             }
                         };
@@ -491,6 +549,7 @@ async fn connect_and_run(
                             return ConnectOutcome::Disconnected {
                                 reason: "write half closed".to_string(),
                                 hello_seen,
+                                    rate_limited: false,
                             };
                         }
                     }
@@ -507,12 +566,14 @@ async fn connect_and_run(
                         return ConnectOutcome::Disconnected {
                             reason: format!("read: {e}"),
                             hello_seen,
+                            rate_limited: false,
                         };
                     }
                     None => {
                         return ConnectOutcome::Disconnected {
                             reason: "socket EOF".to_string(),
                             hello_seen,
+                                rate_limited: false,
                         };
                     }
                 };
@@ -570,6 +631,7 @@ async fn connect_and_run(
                                     return ConnectOutcome::Disconnected {
                                         reason: format!("backend error {code}: {message}"),
                                         hello_seen,
+                                        rate_limited: false,
                                     };
                                 }
                             }
@@ -586,6 +648,14 @@ async fn connect_and_run(
                     }
                     Message::Close(frame) => {
                         let code = frame.as_ref().map(|f| u16::from(f.code));
+                        let reason = frame.as_ref().map(|f| f.reason.as_str()).unwrap_or("");
+                        if is_rate_limited_close(code, reason) {
+                            return ConnectOutcome::Disconnected {
+                                reason: close_reason(frame.as_ref()),
+                                hello_seen,
+                                rate_limited: true,
+                            };
+                        }
                         if should_terminate(code) {
                             return match code {
                                 Some(WS_CLOSE_REVOKED) => ConnectOutcome::Revoked,
@@ -593,12 +663,14 @@ async fn connect_and_run(
                                 _ => ConnectOutcome::Disconnected {
                                     reason: "terminal close".to_string(),
                                     hello_seen,
+                                    rate_limited: false,
                                 },
                             };
                         }
                         return ConnectOutcome::Disconnected {
                             reason: close_reason(frame.as_ref()),
                             hello_seen,
+                            rate_limited: false,
                         };
                     }
                     Message::Binary(_) | Message::Frame(_) => {
@@ -615,12 +687,14 @@ async fn connect_and_run(
                             last_pong.elapsed().as_secs_f64()
                         ),
                         hello_seen,
+                        rate_limited: false,
                     };
                 }
                 if write.send(Message::Ping(Vec::new().into())).await.is_err() {
                     return ConnectOutcome::Disconnected {
                         reason: "write half closed during ping".to_string(),
                         hello_seen,
+                            rate_limited: false,
                     };
                 }
             }
@@ -690,10 +764,39 @@ mod tests {
             Some(1001),
             Some(1006),
             Some(4000),
+            Some(WS_CLOSE_RATE_LIMITED),
             Some(4500),
         ] {
             assert!(!should_terminate(code), "expected {code:?} to be retryable");
         }
+    }
+
+    #[test]
+    fn rate_limited_close_is_recognised_by_code_or_legacy_reason() {
+        assert!(is_rate_limited_close(Some(WS_CLOSE_RATE_LIMITED), "rate limit"));
+        assert!(is_rate_limited_close(Some(WS_CLOSE_RATE_LIMITED), ""));
+        // Backends ≤ 0.7.0 sent the cap as 4401 + "rate limit".
+        assert!(is_rate_limited_close(Some(WS_CLOSE_REVOKED), "rate limit"));
+        // A real revocation keeps its terminal meaning.
+        assert!(!is_rate_limited_close(Some(WS_CLOSE_REVOKED), "invalid device token"));
+        assert!(!is_rate_limited_close(Some(WS_CLOSE_REVOKED), "device revoked"));
+        assert!(!is_rate_limited_close(Some(WS_CLOSE_SUPERSEDED), "rate limit"));
+        assert!(!is_rate_limited_close(Some(1000), "rate limit"));
+        assert!(!is_rate_limited_close(None, "rate limit"));
+    }
+
+    #[test]
+    fn attempts_to_reach_max_matches_the_backoff_ladder() {
+        let s = Duration::from_secs;
+        assert_eq!(attempts_to_reach_max(s(1), s(60)), 6);
+        assert_eq!(next_backoff(6, s(1), s(60)), s(60));
+        assert_eq!(next_backoff(5, s(1), s(60)), s(32));
+        let ms = Duration::from_millis;
+        assert_eq!(attempts_to_reach_max(ms(20), ms(80)), 2);
+        assert_eq!(attempts_to_reach_max(s(60), s(60)), 0);
+        assert_eq!(attempts_to_reach_max(s(90), s(60)), 0);
+        // Degenerate zero initial never climbs; the clamp keeps it finite.
+        assert_eq!(attempts_to_reach_max(s(0), s(60)), 30);
     }
 
     #[test]
@@ -949,6 +1052,93 @@ mod tests {
         let dbg = format!("{cfg:?}");
         assert!(!dbg.contains("s3cret-token"), "token leaked: {dbg}");
         assert!(dbg.contains("111-111-111"), "non-secret fields stay: {dbg}");
+    }
+
+    /// The backend's per-IP bearer cap (10/min, shared by every device
+    /// behind one NAT) used to close with 4401 — the "token revoked" code —
+    /// so the 11th device reconnecting after a deploy stopped retrying for
+    /// good and sat offline until somebody re-paired it. Both the new 4429
+    /// and the legacy 4401 + "rate limit" must reconnect, and at the
+    /// backoff ceiling so the fleet spreads out instead of re-tripping.
+    async fn rate_limited_close_reconnects_at_max_backoff(code: u16) {
+        use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        tokio::spawn(async move {
+            loop {
+                let Ok((sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let Ok(mut ws) = tokio_tungstenite::accept_async(sock).await else {
+                    continue;
+                };
+                let _ = ws
+                    .close(Some(CloseFrame {
+                        code: CloseCode::from(code),
+                        reason: "rate limit".into(),
+                    }))
+                    .await;
+            }
+        });
+
+        let backoff_initial = Duration::from_millis(20);
+        let backoff_max = Duration::from_millis(80);
+        let config = HeartbeatConfig {
+            backend_ws_url: format!("ws://{addr}/signal"),
+            device_id: "111-111-111".to_string(),
+            token: "test-token".to_string(),
+            origin: format!("http://{addr}"),
+            ping_interval: Duration::from_secs(30),
+            pong_timeout: Duration::from_secs(90),
+            backoff_initial,
+            backoff_max,
+        };
+        let (_cmd_tx, cmd_rx) = mpsc::channel::<HeartbeatCommand>(16);
+        let (evt_tx, mut evt_rx) = mpsc::channel::<HeartbeatEvent>(64);
+        tokio::spawn(run_loop(config, cmd_rx, evt_tx));
+
+        let first = tokio::time::timeout(Duration::from_secs(10), evt_rx.recv())
+            .await
+            .expect("heartbeat event within 10 s")
+            .expect("event channel open");
+        assert!(
+            matches!(first, HeartbeatEvent::Disconnected { .. }),
+            "a rate-limited close is transient, got {first:?}"
+        );
+        let second = tokio::time::timeout(Duration::from_secs(10), evt_rx.recv())
+            .await
+            .expect("heartbeat event within 10 s")
+            .expect("event channel open");
+        match second {
+            HeartbeatEvent::Reconnecting { after, attempt } => {
+                // Jittered ceiling: [max/2, 1.5·max). A fresh ladder would
+                // yield [initial/2, 1.5·initial) = [10 ms, 30 ms).
+                assert!(
+                    after >= backoff_max / 2,
+                    "must park at the backoff ceiling, got {after:?}"
+                );
+                assert_eq!(
+                    attempt,
+                    attempts_to_reach_max(backoff_initial, backoff_max) + 1,
+                    "ladder jumps straight to the ceiling attempt"
+                );
+            }
+            other => panic!("expected Reconnecting, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn close_4429_reconnects_at_max_backoff() {
+        rate_limited_close_reconnects_at_max_backoff(WS_CLOSE_RATE_LIMITED).await;
+    }
+
+    #[tokio::test]
+    async fn legacy_4401_rate_limit_reason_is_not_treated_as_revoked() {
+        rate_limited_close_reconnects_at_max_backoff(WS_CLOSE_REVOKED).await;
     }
 
     // ── Wire-shape round-trips ───────────────────────────────────────

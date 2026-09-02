@@ -196,6 +196,24 @@ success the backend replies:
 
 The sharer then idles, waiting for `pw-check` frames.
 
+#### WebSocket close codes on the bearer path
+
+The backend closes a bearer-authenticated `/signal` socket with one of three
+application codes; the sharer's heartbeat (`heartbeat.rs`) keys its reconnect
+policy on them, so they are part of the wire contract
+(`backend/src/unattended.ts::WS_CLOSE`).
+
+| Code | Reason (free text)                                              | Meaning                                  | Sharer behaviour                                         |
+|------|-----------------------------------------------------------------|------------------------------------------|----------------------------------------------------------|
+| 4401 | `invalid bearer auth` / `invalid device token` / `device revoked` / `verification error` / `unattended mode not configured` | Auth failed or token revoked      | **Terminal** — stop retrying, show „Token widerrufen — bitte erneut pairen" |
+| 4408 | `superseded by newer connection`                                | Another instance owns this device-id     | **Terminal** — stop retrying                             |
+| 4429 | `rate limit`                                                    | Per-IP bearer cap tripped (Sec H-1)      | Transient — reconnect at the backoff **ceiling** (60 s ±50 %), never reset the ladder |
+
+Backends up to 0.7.0 sent the rate-limit close as `4401` + reason `rate
+limit`; sharers ≥ 0.7.1 still recognise that pair as transient. Any other
+close code (1000, 1001, 1006, …) is an ordinary disconnect and reconnects
+with the normal backoff.
+
 ### `needs-password` (→ viewer)
 A `join` whose code resolves to a live unattended device. Instead of pairing
 immediately, the backend prompts the viewer for the device password.

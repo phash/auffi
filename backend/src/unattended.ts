@@ -3,6 +3,23 @@ import type { Db } from "./db.js";
 import { verifyPassword } from "./auth/argon.js";
 
 /**
+ * WebSocket close codes on the unattended bearer path. The sharer's
+ * heartbeat keys its reconnect policy on these (heartbeat.rs), so they are
+ * a wire contract — documented in docs/protocol.md § WebSocket close codes.
+ *
+ *   - AUTH_FAILED  is terminal for the sharer ("token revoked, re-pair").
+ *   - SUPERSEDED   is terminal ("another instance owns this device-id").
+ *   - RATE_LIMITED is transient: the sharer retries at max backoff. It MUST
+ *     stay distinct from AUTH_FAILED — sharing 4401 parked every 11th device
+ *     behind one NAT permanently offline after a deploy restart.
+ */
+export const WS_CLOSE = {
+  AUTH_FAILED: 4401,
+  SUPERSEDED: 4408,
+  RATE_LIMITED: 4429,
+} as const;
+
+/**
  * In-memory registry of open WSS connections from authenticated
  * unattended sharers, keyed by device-id. Used by signaling.ts to
  * remember which device-id a connection belongs to, and by
@@ -19,7 +36,7 @@ export class UnattendedRegistry {
     const prev = this.conns.get(deviceId);
     if (prev && prev !== peer) {
       try {
-        prev.close(4408, "superseded by newer connection");
+        prev.close(WS_CLOSE.SUPERSEDED, "superseded by newer connection");
       } catch {
         /* prev already closing — ignore */
       }
@@ -37,7 +54,7 @@ export class UnattendedRegistry {
     if (!peer) return;
     this.conns.delete(deviceId);
     try {
-      peer.close(4401, "device revoked");
+      peer.close(WS_CLOSE.AUTH_FAILED, "device revoked");
     } catch {
       /* already closing — ignore */
     }
@@ -83,11 +100,6 @@ export function evictAccountDevices(
     .all(accountId);
   for (const { id } of rows) registry.evict(id);
 }
-
-export const WS_CLOSE = {
-  AUTH_FAILED: 4401,
-  SUPERSEDED: 4408,
-} as const;
 
 export interface BearerAuth {
   deviceId: string;

@@ -211,13 +211,13 @@ export function registerSignaling(
       }
       // Sec H-1 (review 2026-05-13): cap argon2-verify rate per IP
       // BEFORE calling verifyBearerAuth. Without this an attacker
-      // can mount a CPU-exhaustion DoS at ~250 ms/attempt. We close
-      // with the same 4401 code as a real auth failure so the
-      // attacker can't distinguish "rate-limited" from "wrong
-      // token". Legitimate unattended-mode sharers reconnect via
-      // the heartbeat backoff (1s → 60s) and never approach the cap.
+      // can mount a CPU-exhaustion DoS at ~250 ms/attempt. The close
+      // code is deliberately NOT 4401: the heartbeat treats 4401 as
+      // "token revoked" and stops retrying for good, and a fleet
+      // behind one NAT reconnecting after a deploy restart does hit
+      // this cap. 4429 tells it to back off to the ceiling instead.
       if (!checkRateLimit(req.ip ?? "unknown", bearerCounts, bearerCfg)) {
-        peer.close(WS_CLOSE.AUTH_FAILED, "rate limit");
+        peer.close(WS_CLOSE.RATE_LIMITED, "rate limit");
         return;
       }
       const auth = parsed;
