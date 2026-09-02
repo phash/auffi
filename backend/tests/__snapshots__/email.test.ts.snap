@@ -29,14 +29,13 @@ exports[`email templates > verify template snapshot 1`] = `
   "text": "Hallo,
 
 du (oder jemand mit deiner E-Mail-Adresse) hat soeben einen Auffi-Account
-angelegt. Damit du dich anmelden kannst, bestätige bitte deine E-Mail-Adresse
-über diesen Link:
+angelegt. Bitte bestätige deine E-Mail-Adresse über diesen Link:
 
     https://auffi.app/dashboard/verify/ABC123
 
 Der Link ist 24 Stunden gültig. Falls du dich nicht registriert hast,
-kannst du diese E-Mail ignorieren — ohne Bestätigung wird der Account
-automatisch verworfen.
+kannst du diese E-Mail ignorieren — ein unbestätigtes, nie genutztes
+Konto wird nach 7 Tagen automatisch gelöscht.
 
 — Auffi
 https://auffi.app

@@ -19,6 +19,16 @@ describe("email templates", () => {
     expect(out).toMatchSnapshot();
   });
 
+  // The verify mail must describe what the backend actually does: login is
+  // not gated on verification, and only never-used unverified accounts are
+  // purged (purge.ts, unverifiedAccountsMs = 7 d).
+  it("verify template promises only the retention the purge implements", () => {
+    const out = verifyEmailTemplate("https://example.test/x/y");
+    expect(out.text).toContain("nach 7 Tagen automatisch gelöscht");
+    expect(out.text).not.toContain("Damit du dich anmelden kannst");
+    expect(out.text).not.toContain("automatisch verworfen");
+  });
+
   it("link placeholder replaced everywhere", () => {
     const out = verifyEmailTemplate("https://example.test/x/y");
     expect(out.text).not.toContain("{{link}}");

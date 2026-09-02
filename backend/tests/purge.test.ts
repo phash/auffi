@@ -145,6 +145,58 @@ describe("runPurge", () => {
     expect(rest).toEqual(["c", "d"]);
   });
 
+  // Signup inserts the account row with email_verified_at = NULL and the
+  // verify mail promises "ohne Bestätigung wird das Konto automatisch
+  // gelöscht" — nothing implemented that, so a typo-signup (or a stranger
+  // registering the victim's address) kept the address + argon2 hash
+  // forever and squatted it with 409 email-taken. Login is NOT gated on
+  // verification, so only accounts that were never used may go: no live
+  // session and no paired device.
+  it("hard-deletes never-used unverified accounts past unverifiedAccountsMs, cascading their tokens", () => {
+    const insertAccount = db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, email_verified_at, created_at) VALUES (?, ?, 'x', ?, ?)",
+    );
+    insertAccount.run(20, "stale@a", null, now - 8 * DAY); // abandoned → purged
+    insertAccount.run(21, "young@a", null, now - HOUR); // still inside the window
+    insertAccount.run(22, "verified@a", now, now - 30 * DAY); // verified → kept
+    insertAccount.run(23, "session@a", null, now - 30 * DAY); // unverified but in use
+    insertAccount.run(24, "device@a", null, now - 30 * DAY); // unverified but owns a device
+    db.prepare(
+      "INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at) VALUES ('h-23', 23, ?, ?)",
+    ).run(now + HOUR, now);
+    db.prepare(
+      "INSERT INTO devices (id, owner_account_id, alias, token_hash, created_at) VALUES ('111-222-333', 24, 'D', 'h', ?)",
+    ).run(now);
+    db.prepare(
+      "INSERT INTO email_verifications (token_hash, account_id, expires_at, used_at) VALUES ('v-20', 20, ?, NULL)",
+    ).run(now + HOUR);
+    db.prepare(
+      "INSERT INTO rate_limit_buckets (key, fail_count, locked_until) VALUES ('account:20:pwfail', 2, NULL)",
+    ).run();
+
+    const rep = runPurge(db, now);
+    expect(rep.unverifiedAccounts).toBe(1);
+    expect(
+      db.prepare<[], { id: number }>("SELECT id FROM accounts ORDER BY id").all().map((r) => r.id),
+    ).toEqual([1, 21, 22, 23, 24]);
+    expect(
+      db.prepare<[], { c: number }>("SELECT COUNT(*) AS c FROM email_verifications WHERE account_id = 20").get()!.c,
+    ).toBe(0);
+    expect(
+      db.prepare<[], { c: number }>("SELECT COUNT(*) AS c FROM rate_limit_buckets WHERE key = 'account:20:pwfail'").get()!.c,
+    ).toBe(0);
+  });
+
+  it("respects a custom unverifiedAccounts retention window", () => {
+    db.prepare(
+      "INSERT INTO accounts (id, email, password_hash, email_verified_at, created_at) VALUES (30, 'u@a', 'x', NULL, ?)",
+    ).run(now - 3 * DAY);
+    expect(runPurge(db, now).unverifiedAccounts).toBe(0);
+    expect(
+      runPurge(db, now, { ...DEFAULT_RETENTION, unverifiedAccountsMs: 2 * DAY }).unverifiedAccounts,
+    ).toBe(1);
+  });
+
   it("is idempotent — second consecutive run reports zeroes everywhere", () => {
     db.prepare(
       "INSERT INTO sessions (token_hash, account_id, expires_at, last_seen_at) VALUES ('h1', 1, ?, ?)",
@@ -164,6 +216,7 @@ describe("runPurge", () => {
       rateLimitBuckets: 0,
       feedback: 0,
       feedbackAuditCascade: 0,
+      unverifiedAccounts: 0,
     });
   });
 
@@ -313,6 +366,7 @@ describe("purgeReportTotal", () => {
     rateLimitBuckets: 0,
     feedback: 0,
     feedbackAuditCascade: 0,
+    unverifiedAccounts: 0,
   };
 
   it("is zero for an all-zero report", () => {

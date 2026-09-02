@@ -254,6 +254,11 @@
             Audit-Log (admin-side): 1 Jahr.
           </li>
           <li>
+            Unbestätigte, nie genutzte Konten (keine Sitzung, kein
+            gekoppeltes Gerät): 7 Tage nach Registrierung, danach
+            automatisches Hard-Delete.
+          </li>
+          <li>
             Konto-Löschung: sofortiges Hard-Delete mit FK-Cascade (alle
             Geräte, Sessions, Logs gehen mit) — es gibt keine Karenzzeit
             und kein Wiederherstellen.

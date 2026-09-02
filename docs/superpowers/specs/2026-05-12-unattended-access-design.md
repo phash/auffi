@@ -149,7 +149,8 @@ rate_limit_buckets (
 - `connection_log` älter als 30 Tage → cron-purge täglich
 - `sessions` mit `expires_at < now` → cron-purge täglich
 - `device_pairings`, `email_verifications`, `password_resets` älter als ihre `expires_at` → cron-purge täglich
-- `accounts` mit `deleted_at < now - 30d` → hard-delete (cascade alles)
+- `accounts` mit `deleted_at < now - 30d` → hard-delete (cascade alles) — *superseded 2026-08-27 (Migration 0013): Löschung ist sofortiges Hard-Delete, kein Soft-Delete*
+- `accounts` mit `email_verified_at IS NULL`, `created_at < now - 7d`, ohne Session und ohne Device → hard-delete (cascade; `purge.ts` `unverifiedAccountsMs`, 2026-09-02)
 
 **DSGVO:**
 - E-Mail ist PII, wird nie geloggt; in DB als Klartext (für Reset-Flow nötig)

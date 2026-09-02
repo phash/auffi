@@ -27,6 +27,18 @@ export interface PurgeRetention {
    */
   feedbackResolvedMs: number;
   feedbackOpenMaxMs: number;
+  /**
+   * Accounts still unverified this long after signup are hard-deleted —
+   * but only if they were never used: no live session and no paired
+   * device. Login is deliberately not gated on verification (spec §4.3),
+   * so an unverified account CAN be someone's working account; the two
+   * NOT EXISTS guards are what keeps those safe. Sessions age out at 30 d,
+   * so a device-less account whose last session lapsed becomes purgeable
+   * on the next pass — that is the intended "abandoned" semantics. The
+   * window is well past the 24 h token TTL so a typo-signup can simply
+   * re-register once the squatted address is released. Default: 7 d.
+   */
+  unverifiedAccountsMs: number;
 }
 
 export const DEFAULT_RETENTION: PurgeRetention = {
@@ -35,6 +47,7 @@ export const DEFAULT_RETENTION: PurgeRetention = {
   codeEventsMs: 365 * 24 * 60 * 60 * 1000, // 1 y
   feedbackResolvedMs: 365 * 24 * 60 * 60 * 1000, // 1 y
   feedbackOpenMaxMs: 2 * 365 * 24 * 60 * 60 * 1000, // 2 y
+  unverifiedAccountsMs: 7 * 24 * 60 * 60 * 1000, // 7 d
 };
 
 export interface PurgeReport {
@@ -60,6 +73,8 @@ export interface PurgeReport {
   rateLimitBuckets: number;
   /** Feedback rows past retention (resolved-window + open-max). */
   feedback: number;
+  /** Never-used accounts still unverified past `unverifiedAccountsMs`. */
+  unverifiedAccounts: number;
 }
 
 /**
@@ -184,6 +199,25 @@ export function runPurge(
     )
     .run(now - retention.feedbackResolvedMs, now - retention.feedbackOpenMaxMs);
 
+  // Abandoned signups (see PurgeRetention.unverifiedAccountsMs). The FK
+  // cascade takes the account's token rows with it, but the account-lockout
+  // bucket is keyed by id string, not by FK, so it is swept explicitly in
+  // the same transaction — an orphaned `account:<id>:pwfail` row with a
+  // non-zero counter would otherwise survive the row it belongs to.
+  const unverifiedPredicate = `
+        email_verified_at IS NULL
+        AND created_at < ?
+        AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.account_id = accounts.id)
+        AND NOT EXISTS (SELECT 1 FROM devices d WHERE d.owner_account_id = accounts.id)`;
+  const purgeUnverified = db.transaction((cutoff: number): number => {
+    db.prepare(
+      `DELETE FROM rate_limit_buckets
+        WHERE key IN (SELECT 'account:' || id || ':pwfail' FROM accounts WHERE ${unverifiedPredicate})`,
+    ).run(cutoff);
+    return db.prepare(`DELETE FROM accounts WHERE ${unverifiedPredicate}`).run(cutoff).changes;
+  });
+  const staleUnverified = purgeUnverified(now - retention.unverifiedAccountsMs);
+
   return {
     sessions: expiredSessions.changes,
     devicePairings: expiredPairings.changes,
@@ -196,6 +230,7 @@ export function runPurge(
     rateLimitBuckets: expiredBuckets.changes,
     feedback: oldFeedback.changes,
     feedbackAuditCascade: feedbackAuditPurged,
+    unverifiedAccounts: staleUnverified,
   };
 }
 

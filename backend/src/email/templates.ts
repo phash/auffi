@@ -22,14 +22,13 @@ const VERIFY_SUBJECT = "Bestätige deine Auffi-E-Mail-Adresse";
 const VERIFY_BODY = `Hallo,
 
 du (oder jemand mit deiner E-Mail-Adresse) hat soeben einen Auffi-Account
-angelegt. Damit du dich anmelden kannst, bestätige bitte deine E-Mail-Adresse
-über diesen Link:
+angelegt. Bitte bestätige deine E-Mail-Adresse über diesen Link:
 
     {{link}}
 
 Der Link ist 24 Stunden gültig. Falls du dich nicht registriert hast,
-kannst du diese E-Mail ignorieren — ohne Bestätigung wird der Account
-automatisch verworfen.
+kannst du diese E-Mail ignorieren — ein unbestätigtes, nie genutztes
+Konto wird nach 7 Tagen automatisch gelöscht.
 
 — Auffi
 https://auffi.app
