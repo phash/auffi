@@ -517,19 +517,8 @@ maybe_run "rsync ops/health-check.sh" \
 maybe_run "rsync ops/lib.sh" \
   rsync_to "${REPO_ROOT}/ops/lib.sh" "${DEPLOY_PATH}/ops/lib.sh"
 
-# Excludes: manuell auf dem Server platzierte Sharer-Binaries in /download/
-# (Flat-Hosting-Altbestand, siehe nginx/auffi-viewer.conf) überleben das
-# --delete. Kein *.dmg — es gibt keinen macOS-Build (CLAUDE.md).
 maybe_run "rsync viewer/dist → viewer-dist/" \
-  rsync_to "${REPO_ROOT}/viewer/dist/" "${DEPLOY_PATH}/viewer-dist/" \
-    --delete \
-    --exclude=/download/*.deb \
-    --exclude=/download/*.rpm \
-    --exclude=/download/*.AppImage \
-    --exclude=/download/*.msi \
-    --exclude=/download/*.exe \
-    --exclude=/download/*.sh \
-    --exclude=/download/latest.txt
+  rsync_viewer_dist "${REPO_ROOT}/viewer/dist/" "${DEPLOY_PATH}/viewer-dist/"
 
 maybe_run "rsync dashboard/dist → dashboard-dist/" \
   rsync_to "${REPO_ROOT}/dashboard/dist/" "${DEPLOY_PATH}/dashboard-dist/" --delete

@@ -135,26 +135,17 @@ maybe_run "Prune old image tarballs (keep 3)" \
   remote "ls -t '${DEPLOY_PATH}'/auffi-backend-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --" || true
 [[ "${DRY_RUN}" == "false" ]] && rm -f "${IMAGE_TAR}" || true
 
-# Transfer viewer dist
+# Transfer viewer dist — same helper as deploy.sh Step 10, so the legacy
+# /download/ flat files survive this --delete too (they did not until 0.7.1).
 maybe_run "rsync viewer/dist → viewer-dist/" \
-  rsync_to \
-    "${REPO_ROOT}/viewer/dist/" \
-    "${DEPLOY_PATH}/viewer-dist/" \
-    --delete
+  rsync_viewer_dist "${REPO_ROOT}/viewer/dist/" "${DEPLOY_PATH}/viewer-dist/"
 
 # Volume-Copy nur standalone — im Cluster-Modus bind-mountet der
 # auffi-viewer-Container ${DEPLOY_PATH}/viewer-dist direkt (siehe
-# docker-compose.cluster.yml), der rsync oben reicht dort. Volume-Name
-# `screenie_viewer-static` wie in deploy.sh Step 11: Compose-Project auf
-# prod ist `screenie` (DEPLOY_PATH=/opt/screenie, s. CLAUDE.md Rebrand-
-# Notizen) — ein falscher Prefix würde von `docker run -v` still als
-# neues, von Caddy nie gelesenes Volume angelegt.
+# docker-compose.cluster.yml), der rsync oben reicht dort.
 if [[ -z "${CLUSTER_PROXY:-}" ]]; then
   maybe_run "Copy viewer-dist into viewer-static volume" \
-    remote "docker run --rm \
-      -v screenie_viewer-static:/data \
-      -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
-      busybox:1.36.1 sh -c 'cp -a /src/. /data/'"
+    populate_viewer_static_volume
 else
   log_info "Cluster mode — viewer container bind-mounts viewer-dist directly"
 fi

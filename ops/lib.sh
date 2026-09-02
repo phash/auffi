@@ -335,6 +335,29 @@ release_restore() {
 }
 
 # ---------------------------------------------------------------------------
+# viewer/dist → viewer-dist/ mit --delete, aber ohne den Flat-Hosting-
+# Altbestand unter /download/ zu löschen: install-linux.sh + latest.txt
+# (von INSTALL-LINUX.md verlinkt, live 200) und alte Installer liegen nur
+# auf dem Host, nicht im Build. Von deploy.sh UND update.sh benutzt — bis
+# 0.7.1 hatte nur deploy.sh die Excludes, ein Hotfix via update.sh
+# löschte genau diese Dateien. Kein *.dmg — es gibt keinen macOS-Build.
+# ---------------------------------------------------------------------------
+VIEWER_DIST_RSYNC_EXCLUDES=(
+  --exclude=/download/*.deb
+  --exclude=/download/*.rpm
+  --exclude=/download/*.AppImage
+  --exclude=/download/*.msi
+  --exclude=/download/*.exe
+  --exclude=/download/*.sh
+  --exclude=/download/latest.txt
+)
+
+rsync_viewer_dist() {
+  # rsync_viewer_dist <local-dist/> <remote-viewer-dist/>
+  rsync_to "$1" "$2" --delete "${VIEWER_DIST_RSYNC_EXCLUDES[@]}"
+}
+
+# ---------------------------------------------------------------------------
 # Standalone only: Caddy served den Viewer aus dem viewer-static-Volume,
 # nicht aus dem Bind-Mount. Volume-Name `screenie_viewer-static`: das
 # Compose-Project auf prod heißt `screenie` (DEPLOY_PATH=/opt/screenie,
