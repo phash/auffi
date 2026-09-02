@@ -89,13 +89,22 @@ VpxEncoderCtx *vpx_shim_create(uint32_t width, uint32_t height, uint32_t bitrate
  * because congestion control fires exactly when spare bandwidth for a keyframe
  * is what we do not have.
  *
+ * The cached cfg is updated only once libvpx accepted the change: it must
+ * keep describing what the codec actually runs, otherwise a rejected
+ * retarget would make the next identical request look like a no-op success
+ * while the encoder still produces the old rate. The Rust wrapper already
+ * skips requests for the current rate, so there is no shortcut here.
+ *
  * Returns 0 on success, the vpx error code otherwise.
  */
 int vpx_shim_set_bitrate(VpxEncoderCtx *ctx, uint32_t bitrate_kbps) {
     if (!ctx || !ctx->initialized) return -1;
-    if (ctx->cfg.rc_target_bitrate == bitrate_kbps) return 0;
-    ctx->cfg.rc_target_bitrate = bitrate_kbps;
-    return (int)vpx_codec_enc_config_set(&ctx->codec, &ctx->cfg);
+    vpx_codec_enc_cfg_t next = ctx->cfg;
+    next.rc_target_bitrate = bitrate_kbps;
+    vpx_codec_err_t err = vpx_codec_enc_config_set(&ctx->codec, &next);
+    if (err) return (int)err;
+    ctx->cfg = next;
+    return 0;
 }
 
 /* Destroy encoder context. */
