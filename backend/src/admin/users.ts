@@ -48,6 +48,13 @@ export function registerAdminUsersRoutes(
     "/api/admin/users",
     { preHandler: [app.requireSession, app.requireAdmin] },
     async (req: FastifyRequest, reply: FastifyReply) => {
+      // Fastify hands a repeated key (`?q=a&q=b`) over as an array; the
+      // string methods below would throw on it and surface as a 500.
+      for (const [key, value] of Object.entries(req.query as Record<string, unknown>)) {
+        if (typeof value !== "string") {
+          return bad(reply, 400, "bad-query", `${key} must be given at most once`);
+        }
+      }
       const q = req.query as {
         cursor?: string;
         limit?: string;

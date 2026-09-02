@@ -166,6 +166,27 @@ describe("GET /api/admin/users", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("falls back to the default page size for a non-integer limit instead of 500ing", async () => {
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/users?limit=1.5",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items.length).toBeGreaterThan(1);
+  });
+
+  it("rejects a repeated query parameter with 400 instead of 500ing", async () => {
+    // Fastify hands repeated keys over as arrays; `.trim()` on one threw.
+    const res = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/users?q=a&q=b",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("bad-query");
+  });
+
   it("rejects malformed cursor with 400", async () => {
     const res = await h.app.inject({
       method: "GET",
