@@ -94,13 +94,14 @@ pub fn with_jitter(base: Duration) -> Duration {
     base - half + Duration::from_nanos(jitter_nanos)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HeartbeatConfig {
     /// `wss://host/signal` (or `ws://…` in dev). Trailing slash is OK.
     pub backend_ws_url: String,
     /// 9-digit `NNN-NNN-NNN` device-id from `account::read_device_id`.
     pub device_id: String,
-    /// Bearer token from `account::KeyringTokenStore::read`.
+    /// Bearer token from `account::KeyringTokenStore::read`. Never
+    /// printed — see the hand-written `Debug` below.
     pub token: String,
     /// `Origin` header — the backend's `verifyClient` requires one
     /// from `ALLOWED_ORIGINS`. Default derived from `backend_ws_url`.
@@ -109,6 +110,24 @@ pub struct HeartbeatConfig {
     pub pong_timeout: Duration,
     pub backoff_initial: Duration,
     pub backoff_max: Duration,
+}
+
+/// Hand-written so a `{:?}` of the config on some future error path
+/// cannot put the long-lived device token into `auffi-debug.log`
+/// (no-secrets-in-logs rule).
+impl std::fmt::Debug for HeartbeatConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HeartbeatConfig")
+            .field("backend_ws_url", &self.backend_ws_url)
+            .field("device_id", &self.device_id)
+            .field("token", &format_args!("<redacted, {} bytes>", self.token.len()))
+            .field("origin", &self.origin)
+            .field("ping_interval", &self.ping_interval)
+            .field("pong_timeout", &self.pong_timeout)
+            .field("backoff_initial", &self.backoff_initial)
+            .field("backoff_max", &self.backoff_max)
+            .finish()
+    }
 }
 
 impl HeartbeatConfig {
@@ -913,6 +932,20 @@ mod tests {
             attempt_after_connected, 1,
             "attempt counter must reset after a session that reached hello"
         );
+    }
+
+    // ── Debug must not print the credential (F064) ──────────────────
+
+    #[test]
+    fn config_debug_redacts_the_bearer_token() {
+        let cfg = HeartbeatConfig::production(
+            "wss://auffi.app/signal".to_string(),
+            "111-111-111".to_string(),
+            "s3cret-token".to_string(),
+        );
+        let dbg = format!("{cfg:?}");
+        assert!(!dbg.contains("s3cret-token"), "token leaked: {dbg}");
+        assert!(dbg.contains("111-111-111"), "non-secret fields stay: {dbg}");
     }
 
     // ── Wire-shape round-trips ───────────────────────────────────────
