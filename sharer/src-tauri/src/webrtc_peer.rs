@@ -169,6 +169,24 @@ fn classify_rtcp(packet: &(dyn webrtc::rtcp::packet::Packet + Send + Sync)) -> V
     Vec::new()
 }
 
+/// Route one `files` DataChannel message by its transport type.
+///
+/// Text frames carry a `FileEvent` (JSON), binary frames carry a chunk frame
+/// (8-byte header + payload). The type bit comes from the SCTP PPID the
+/// viewer set when sending (`send()` vs `send_text()` on its side), so it is
+/// authoritative — content sniffing is not: a chunk frame begins with the
+/// FNV-1a hash of the transfer id, and for 1 in 256 ids that hash's low byte
+/// is `{`.
+fn route_files_message(is_string: bool, bytes: &[u8]) -> Result<FileMessage, String> {
+    if is_string {
+        serde_json::from_slice::<crate::files::FileEvent>(bytes)
+            .map(FileMessage::Event)
+            .map_err(|e| e.to_string())
+    } else {
+        Ok(FileMessage::Chunk(bytes.to_vec()))
+    }
+}
+
 impl SharerPeer {
     /// Create a new peer connection with the provided ICE servers.
     pub async fn new(ice_servers: Vec<RTCIceServer>) -> Result<Self, Error> {
@@ -378,9 +396,10 @@ impl SharerPeer {
     /// place when the viewer opens the channels.  Also stores the `"files"` DC
     /// internally so the sharer can send outbound file data via `send_on_files`.
     ///
-    /// The `"files"` channel carries two kinds of data:
-    /// - JSON text (first byte `{`): a `FileEvent`.
-    /// - Binary: a raw chunk frame with an 8-byte header.
+    /// The `"files"` channel carries two kinds of data, told apart by the
+    /// DataChannel message type (see [`route_files_message`]):
+    /// - text frames: a `FileEvent` as JSON.
+    /// - binary frames: a raw chunk frame with an 8-byte header.
     pub fn on_data_channels(
         &self,
         input_tx: mpsc::Sender<InputEvent>,
@@ -422,19 +441,15 @@ impl SharerPeer {
                         }
                         dc.on_message(Box::new(move |msg| {
                             let tx = tx.clone();
+                            let is_string = msg.is_string;
                             let bytes = msg.data.clone();
                             Box::pin(async move {
-                                let message = if bytes.first() == Some(&b'{') {
-                                    match serde_json::from_slice::<crate::files::FileEvent>(&bytes)
-                                    {
-                                        Ok(ev) => FileMessage::Event(ev),
-                                        Err(e) => {
-                                            log::warn!("files channel: failed to parse JSON: {e}");
-                                            return;
-                                        }
+                                let message = match route_files_message(is_string, &bytes) {
+                                    Ok(m) => m,
+                                    Err(e) => {
+                                        log::warn!("files channel: failed to parse JSON: {e}");
+                                        return;
                                     }
-                                } else {
-                                    FileMessage::Chunk(bytes.to_vec())
                                 };
                                 if tx.send(message).await.is_err() {
                                     log::warn!("files channel: receiver dropped");
@@ -452,13 +467,17 @@ impl SharerPeer {
     }
 
     /// Send a JSON-serialized `FileEvent` on the `"files"` DataChannel.
+    ///
+    /// As a TEXT frame: the viewer routes by message type too
+    /// (`ev.data instanceof ArrayBuffer` → chunk handler), so a binary frame
+    /// carrying JSON would land in its chunk path and be dropped.
     pub async fn send_file_event(&self, event: &crate::files::FileEvent) -> Result<(), String> {
         let guard = self.files_dc.lock().await;
         let dc = guard
             .as_ref()
             .ok_or_else(|| "files data channel not open".to_string())?;
-        let json = serde_json::to_vec(event).map_err(|e| e.to_string())?;
-        dc.send(&bytes::Bytes::from(json))
+        let json = serde_json::to_string(event).map_err(|e| e.to_string())?;
+        dc.send_text(json)
             .await
             .map(|_| ())
             .map_err(|e| e.to_string())
@@ -654,6 +673,54 @@ mod tests {
         peer.on_connection_type(|_| {});
         peer.close().await.expect("close");
         assert_eq!(peer.pc.connection_state(), RTCPeerConnectionState::Closed);
+    }
+
+    // The files channel used to decide JSON-vs-chunk by peeking at the first
+    // payload byte. A chunk frame starts with the little-endian FNV-1a of the
+    // transfer id, so for 1 in 256 ids that byte is 0x7B ('{') and every
+    // chunk of the transfer was fed to the JSON parser and dropped — the
+    // helper streamed the whole file, then both sides reported failure.
+    // The DataChannel message type (string vs binary) is authoritative.
+    mod files_routing {
+        use super::super::route_files_message;
+        use crate::files::{build_chunk_frame, fnv1a32, FileEvent, FileMessage};
+
+        #[test]
+        fn chunk_frame_whose_hash_starts_with_brace_routes_as_chunk() {
+            let id = (0u32..)
+                .map(|i| format!("id-{i}"))
+                .find(|s| fnv1a32(s) & 0xFF == 0x7B)
+                .expect("some id hashes to a leading brace");
+            let frame = build_chunk_frame(&id, 0, b"abc");
+            assert_eq!(frame[0], b'{', "premise: the frame looks like JSON");
+            assert!(matches!(
+                route_files_message(false, &frame),
+                Ok(FileMessage::Chunk(b)) if b == frame
+            ));
+        }
+
+        #[test]
+        fn text_frame_routes_as_event() {
+            let routed = route_files_message(true, br#"{"kind":"file-done","id":"x"}"#);
+            assert!(matches!(
+                routed,
+                Ok(FileMessage::Event(FileEvent::FileDone { id })) if id == "x"
+            ));
+        }
+
+        #[test]
+        fn malformed_text_frame_is_an_error() {
+            assert!(route_files_message(true, b"not json").is_err());
+        }
+
+        #[test]
+        fn binary_frame_starting_with_brace_is_never_parsed_as_json() {
+            let looks_like_json = br#"{"kind":"file-done","id":"x"}"#;
+            assert!(matches!(
+                route_files_message(false, looks_like_json),
+                Ok(FileMessage::Chunk(_))
+            ));
+        }
     }
 
     #[test]

@@ -405,8 +405,11 @@ excess of a clamped burst instead of replaying it later.
 
 ### Channel `files` — File Transfer
 
-Control messages are UTF-8 JSON. Binary chunk frames are raw `ArrayBuffer`
-(see below).
+Control messages are UTF-8 JSON sent as **text** DataChannel messages. Binary
+chunk frames are raw `ArrayBuffer` sent as **binary** messages (see below).
+Receivers MUST tell the two apart by the DataChannel message type (string vs
+binary), never by inspecting the payload — a chunk frame starts with a hash
+whose first byte can be `{`.
 
 **Sender offers a file:**
 ```json
