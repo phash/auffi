@@ -166,6 +166,22 @@ describe("GET /api/downloads/file/:asset (stream-through proxy)", () => {
     expect(row?.count ?? 0).toBe(0);
   });
 
+  it("returns 502 (not 500) and no counter bump when the upstream fetch itself rejects", async () => {
+    // DNS failure, ECONNRESET, TLS error: undici rejects with "fetch failed"
+    // before there is a Response to inspect. That is the same upstream
+    // outage as a non-2xx and must map to the documented 502 contract.
+    h = await build(async () => {
+      throw new TypeError("fetch failed");
+    });
+    const res = await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error).toBe("upstream-unavailable");
+    const row = h.db
+      .prepare("SELECT count FROM download_counts WHERE asset_name = ?")
+      .get(asset) as { count: number } | undefined;
+    expect(row?.count ?? 0).toBe(0);
+  });
+
   it("cancels the upstream body on the 502 path so the connection is released", async () => {
     // A non-ok upstream response with a body (GitHub 404 page) must not
     // leave the undici connection half-open until GC.

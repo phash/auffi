@@ -157,6 +157,11 @@ function defaultUpstreamFetcher(asset: string, tag?: string): Promise<Response> 
     : "releases/latest/download";
   return fetch(`https://github.com/phash/auffi/${slug}/${encodeURIComponent(asset)}`, {
     redirect: "follow",
+    // Bounds the headers phase only — once the response arrives the body
+    // streams unaffected. Without it a half-open GitHub/S3 hop (TCP up,
+    // headers never sent) parks the client's request and an undici socket
+    // for undici's ~5 min default, with the download page spinning.
+    signal: AbortSignal.timeout(15_000),
   });
 }
 
@@ -251,7 +256,17 @@ export function registerDownloadRoutes(
         return reply.status(200).send();
       }
 
-      const upstream = await upstreamFetcher(asset, tag);
+      // A network-level rejection (DNS, ECONNRESET, TLS, the timeout above)
+      // is the same upstream outage as a non-2xx: 502, not Fastify's 500.
+      let upstream: Response;
+      try {
+        upstream = await upstreamFetcher(asset, tag);
+      } catch (err) {
+        req.log.warn({ err, asset }, "download upstream fetch failed");
+        return reply
+          .status(502)
+          .send({ error: "upstream-unavailable", message: "could not fetch asset" });
+      }
       if (!upstream.ok || !upstream.body) {
         // Release the connection: a non-ok response with a body (GitHub
         // 404 page, S3 error XML) would otherwise keep the undici stream
