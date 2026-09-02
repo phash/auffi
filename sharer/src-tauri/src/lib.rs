@@ -1220,6 +1220,18 @@ fn emit_streaming_failed(app: &tauri::AppHandle, reason: &str) {
     let _ = app.emit("streaming-failed", serde_json::json!({ "reason": reason }));
 }
 
+/// Drop the live `InputController` on process exit so its `Drop` releases
+/// whatever the viewer still holds. Tauri ends the process from inside the
+/// event loop without dropping managed state, so a helper mid-drag when the
+/// user clicks the tray's "Beenden" (or closes the ad-hoc window) would
+/// otherwise leave the OS with the button down — the very action taken to
+/// end the session recreating gh #97. Returns whether a controller was live.
+fn release_input_on_exit(state: &Arc<tokio::sync::Mutex<Option<InputController>>>) -> bool {
+    // Main-thread call, no runtime context here; the applier only holds the
+    // lock across one synchronous `handle`, so this cannot stall for long.
+    state.blocking_lock().take().is_some()
+}
+
 /// Consecutive `encoder.encode` failures the loop tolerates before it ends
 /// the stream with `streaming-failed` (reason `encode`). Roughly one second
 /// at 30 fps, the same threshold the track-write arm uses. A persistent
@@ -1884,14 +1896,22 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error running tauri");
+        .build(tauri::generate_context!())
+        .expect("error building tauri")
+        .run(|app, event| {
+            use tauri::Manager;
+            if let tauri::RunEvent::Exit = event {
+                if release_input_on_exit(&app.state::<InputControllerState>().0) {
+                    dbg_log("[exit] released held input before quitting");
+                }
+            }
+        });
 }
 
 #[cfg(test)]
 mod tests {
     use super::reportable_relay_bytes;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     // gh #109 follow-up: bytes_relayed is a TURN-traffic figure. Filling it
     // with the track total on a direct path made every p2p session read as
@@ -2262,6 +2282,29 @@ mod tests {
         {
         }
         assert_returns_future(super::capture::ScreenCapturer::start);
+    }
+
+    #[test]
+    fn release_input_on_exit_reports_no_controller() {
+        let state = Arc::new(tokio::sync::Mutex::new(None));
+        assert!(!super::release_input_on_exit(&state));
+    }
+
+    /// Needs a display: builds a real controller, holds a button and a key,
+    /// and checks the exit hook takes (and thereby releases) it.
+    #[test]
+    #[ignore]
+    fn release_input_on_exit_takes_the_live_controller_with_real_enigo() {
+        use super::input::{Button, InputController, InputEvent};
+        let mut ctrl = InputController::new(0, 0, 1920, 1080).expect("need display");
+        ctrl.apply(InputEvent::MouseButton {
+            button: Button::Left,
+            pressed: true,
+        })
+        .expect("press");
+        let state = Arc::new(tokio::sync::Mutex::new(Some(ctrl)));
+        assert!(super::release_input_on_exit(&state));
+        assert!(state.blocking_lock().is_none(), "controller must be gone after exit");
     }
 
     // A persistent frame/encoder size mismatch (Wayland renegotiation, any
