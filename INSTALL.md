@@ -181,8 +181,11 @@ Distros eh tut).
 Plasma 6 oder GNOME 47+ brauchen den **GStreamer-PipeWire-Plugin
 (`gst-plugin-pipewire`)**. Auf Arch heißt das Paket genau so; auf
 Debian/Ubuntu `gstreamer1.0-pipewire`; auf Fedora `pipewire-libs`.
-Wenn der Plugin fehlt fällt Auffi auf den XWayland-Pfad zurück und
-zeigt dir nichts an.
+Fehlt das Plugin, gibt es **keinen Fallback**: Auffi wählt auf Wayland
+(`XDG_SESSION_TYPE=wayland`) immer den Portal-Pfad, und der Start
+schlägt mit „Streamen konnte nicht gestartet werden" fehl — absichtlich
+laut statt eines schwarzen Bilds. Details stehen in
+`/tmp/auffi-debug.log`.
 
 Check:
 
