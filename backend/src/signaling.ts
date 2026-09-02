@@ -34,11 +34,9 @@ import {
 // home is rate-limit.ts.
 export type { RateLimitConfig, RateLimitEntry } from "./rate-limit.js";
 
-export type PerPeerRateLimitConfig = { windowMs: number; max: number };
-
 function checkPerPeerLimit(
   entry: RateLimitEntry,
-  cfg: PerPeerRateLimitConfig
+  cfg: RateLimitConfig
 ): boolean {
   const now = Date.now();
   if (now > entry.resetAt) {
@@ -61,12 +59,11 @@ function isMessageObject(value: unknown): value is IncomingMessage {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function newPerPeerEntry(cfg: PerPeerRateLimitConfig): RateLimitEntry {
+function newPerPeerEntry(cfg: RateLimitConfig): RateLimitEntry {
   return { count: 0, resetAt: Date.now() + cfg.windowMs };
 }
 
-
-const DEFAULT_PER_PEER_LIMIT: PerPeerRateLimitConfig = { windowMs: 10_000, max: 50 };
+const DEFAULT_PER_PEER_LIMIT: RateLimitConfig = { windowMs: 10_000, max: 50 };
 
 /// Allowed values of `payload.kind` in a relay message. Anything else is a
 /// protocol error and gets rejected before being forwarded to the other peer.
@@ -129,7 +126,7 @@ export function registerSignaling(
   store: SessionStore,
   rateLimitCfg: RateLimitConfig = { windowMs: 60_000, max: 5 },
   attemptCounts: Map<string, RateLimitEntry> = new Map(),
-  perPeerCfg: PerPeerRateLimitConfig = DEFAULT_PER_PEER_LIMIT,
+  perPeerCfg: RateLimitConfig = DEFAULT_PER_PEER_LIMIT,
   registerCfg: RateLimitConfig = DEFAULT_REGISTER_LIMIT,
   registerCounts: Map<string, RateLimitEntry> = new Map(),
   /**
