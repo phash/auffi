@@ -22,7 +22,7 @@
 //! bounded if the encoder falls behind: stale frames get discarded rather
 //! than queued.
 
-use std::os::fd::IntoRawFd;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::PathBuf;
 use std::sync::mpsc;
 
@@ -33,15 +33,45 @@ use gstreamer_video as gst_video;
 
 use ashpd::desktop::{
     screencast::{CursorMode, Screencast, SourceType},
-    PersistMode,
+    PersistMode, Session,
 };
 
 use super::BgraFrame;
 use crate::dbg_log;
 
+/// What the portal handed us and what we owe it back.
+///
+/// `pipewiresrc` dups the fd it is given (`pw_context_connect_fd(fcntl(fd,
+/// F_DUPFD_CLOEXEC, ..))`) and never closes the original, so the `OwnedFd`
+/// must stay ours and be closed by us. The ashpd `Session` has no `Drop`
+/// impl and ashpd keeps one process-wide zbus connection, so
+/// xdg-desktop-portal never sees a peer disconnect that would garbage-
+/// collect the session either — it has to be `close()`d explicitly.
+/// Dropping this handle does both.
+struct PortalHandle {
+    pw_fd: Option<OwnedFd>,
+    session: Option<Session<'static, Screencast<'static>>>,
+}
+
+impl Drop for PortalHandle {
+    fn drop(&mut self) {
+        // The fd closes with the field. `close()` is async and Drop is not;
+        // Tauri's runtime outlives every capturer, so the request is handed
+        // to it rather than blocked on (Drop runs inside the streaming loop).
+        if let Some(session) = self.session.take() {
+            tauri::async_runtime::spawn(async move {
+                match session.close().await {
+                    Ok(()) => dbg_log("[gst-portal] session closed"),
+                    Err(e) => dbg_log(&format!("[gst-portal] session close failed: {e}")),
+                }
+            });
+        }
+    }
+}
+
 /// Output of the async portal negotiation step.
 struct PortalStreams {
-    pw_fd: std::os::fd::OwnedFd,
+    portal: PortalHandle,
     node_id: u32,
     width: u32,
     height: u32,
@@ -116,6 +146,35 @@ async fn open_portal() -> Result<PortalStreams, String> {
         .map_err(|e| format!("create_session failed: {e}"))?;
     dbg_log("[gst-portal] session created");
 
+    // A cancelled dialog or a failed start must not leave the session
+    // registered at the portal either.
+    match negotiate(&proxy, &session).await {
+        Ok((pw_fd, node_id, width, height)) => Ok(PortalStreams {
+            portal: PortalHandle {
+                pw_fd: Some(pw_fd),
+                session: Some(session),
+            },
+            node_id,
+            width,
+            height,
+        }),
+        Err(e) => {
+            if let Err(close_err) = session.close().await {
+                dbg_log(&format!(
+                    "[gst-portal] session close after failed negotiation: {close_err}"
+                ));
+            }
+            Err(e)
+        }
+    }
+}
+
+/// Source selection, start, and the PipeWire remote — everything between
+/// `create_session` and a usable stream. Returns `(fd, node_id, w, h)`.
+async fn negotiate(
+    proxy: &Screencast<'static>,
+    session: &Session<'static, Screencast<'static>>,
+) -> Result<(OwnedFd, u32, u32, u32), String> {
     let saved_token = read_restore_token();
     dbg_log(&format!(
         "[gst-portal] restore_token present={}",
@@ -124,7 +183,7 @@ async fn open_portal() -> Result<PortalStreams, String> {
 
     proxy
         .select_sources(
-            &session,
+            session,
             CursorMode::Embedded,
             SourceType::Monitor.into(),
             // single monitor only: open_portal uses just the first stream, so
@@ -138,7 +197,7 @@ async fn open_portal() -> Result<PortalStreams, String> {
     dbg_log("[gst-portal] select_sources OK");
 
     let response = proxy
-        .start(&session, None)
+        .start(session, None)
         .await
         .map_err(|e| format!("start failed: {e}"))?
         .response()
@@ -171,17 +230,12 @@ async fn open_portal() -> Result<PortalStreams, String> {
     ));
 
     let pw_fd = proxy
-        .open_pipe_wire_remote(&session)
+        .open_pipe_wire_remote(session)
         .await
         .map_err(|e| format!("open_pipe_wire_remote failed: {e}"))?;
     dbg_log("[gst-portal] open_pipe_wire_remote OK");
 
-    Ok(PortalStreams {
-        pw_fd,
-        node_id,
-        width,
-        height,
-    })
+    Ok((pw_fd, node_id, width, height))
 }
 
 /// Whether a delivered sample still matches the geometry the encoder was
@@ -226,6 +280,10 @@ pub struct GstPortalCapturer {
     /// The running pipeline.  Drop sends it to Null, which tears down the
     /// pipewiresrc connection and unblocks the appsink consumer thread.
     _pipeline: gst::Pipeline,
+    /// Declared AFTER `_pipeline`: fields drop in declaration order once
+    /// `Drop::drop` has set the pipeline to Null, so the PipeWire fd is
+    /// closed and the portal session ended only after pipewiresrc let go.
+    _portal: PortalHandle,
     pub frame_width: u32,
     pub frame_height: u32,
 }
@@ -258,7 +316,12 @@ impl GstPortalCapturer {
 
         gst::init().map_err(|e| format!("gst::init failed: {e}"))?;
 
-        let raw_fd = streams.pw_fd.into_raw_fd();
+        let raw_fd = streams
+            .portal
+            .pw_fd
+            .as_ref()
+            .ok_or_else(|| "portal handle without PipeWire fd".to_string())?
+            .as_raw_fd();
         let pipeline_desc = format!(
             "pipewiresrc fd={raw_fd} path={node_id} do-timestamp=true \
              ! videoconvert \
@@ -337,6 +400,7 @@ impl GstPortalCapturer {
         Ok(Self {
             rx: Some(rx),
             _pipeline: pipeline,
+            _portal: streams.portal,
             frame_width: streams.width,
             frame_height: streams.height,
         })
@@ -345,7 +409,7 @@ impl GstPortalCapturer {
 
 impl Drop for GstPortalCapturer {
     fn drop(&mut self) {
-        // Best-effort teardown.
+        // Best-effort teardown; `_portal` then closes the fd and the session.
         let _ = self._pipeline.set_state(gst::State::Null);
     }
 }
@@ -353,6 +417,52 @@ impl Drop for GstPortalCapturer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
+    fn inode_of(fd: i32) -> Option<u64> {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        (unsafe { libc::fstat(fd, &mut st) } == 0).then_some(st.st_ino)
+    }
+
+    // `into_raw_fd()` gave the PipeWire socket away for good: pipewiresrc
+    // dups the fd it is handed and nobody closed the original, so every
+    // session start and every monitor switch leaked one fd (and one portal
+    // session) for the process lifetime — a 24/7 unattended sharer runs out.
+    #[test]
+    fn portal_handle_drop_closes_pw_fd() {
+        let mut fds = [0i32; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        let read_end = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+        let write_end = unsafe { OwnedFd::from_raw_fd(fds[1]) };
+        let raw = read_end.as_raw_fd();
+        let inode = inode_of(raw).expect("open pipe has an inode");
+
+        drop(PortalHandle {
+            pw_fd: Some(read_end),
+            session: None,
+        });
+
+        // Closed, or — if another thread already reused the number — a
+        // different file entirely. Either way our pipe end is gone.
+        assert_ne!(inode_of(raw), Some(inode), "read end must be closed by Drop");
+        assert!(inode_of(write_end.as_raw_fd()).is_some(), "control: the write end is untouched");
+    }
+
+    /// End-to-end leak check against a real portal. Needs a Wayland session
+    /// and three clicks on "Teilen"; run with
+    /// `cargo test --lib -- --ignored start_drop_cycles`.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn start_drop_cycles_do_not_leak_fds() {
+        let open_fds = || std::fs::read_dir("/proc/self/fd").expect("procfs").count();
+        let baseline = open_fds();
+        for _ in 0..3 {
+            let cap = GstPortalCapturer::start().await.expect("portal + pipeline");
+            drop(cap);
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        assert_eq!(open_fds(), baseline, "every start/drop cycle must return all fds");
+    }
 
     // The pipeline caps pin only `format=BGRA`, so a compositor renegotiation
     // (dock/undock, scale change during a session) changes the buffer size
