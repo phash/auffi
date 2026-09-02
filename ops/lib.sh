@@ -277,6 +277,82 @@ remote_image_exists() {
 }
 
 # ---------------------------------------------------------------------------
+# Release-Snapshots — pro deployter SHA eine Kopie der bind-gemounteten
+# Assets (viewer-dist, dashboard-dist, nginx/, coturn/, standalone auch
+# caddy/) unter ${DEPLOY_PATH}/releases/<sha>/. Das Backend-Image trägt
+# seine SHA selbst; die Frontends und Configs tun das nicht — ohne Snapshot
+# kann --rollback nur das Image zurücksetzen und lässt eine Frontend-/
+# Config-Regression live (docs/ops-runbook.md § Rollback).
+# caddy/ nur standalone: im Cluster-Modus ist /opt/caddyserver/Caddyfile
+# hand-gepflegt und ${DEPLOY_PATH}/caddy wird gar nicht deployed
+# (docs/footguns.md § Cluster-Ops).
+# ---------------------------------------------------------------------------
+release_dir() {
+  echo "${DEPLOY_PATH}/releases/$1"
+}
+
+release_assets() {
+  printf '%s\n' viewer-dist dashboard-dist nginx coturn
+  [[ -z "${CLUSTER_PROXY:-}" ]] && printf '%s\n' caddy
+  return 0
+}
+
+remote_release_exists() {
+  remote "test -d '$(release_dir "$1")'"
+}
+
+release_snapshot() {
+  # release_snapshot <sha> — Assets aus ${DEPLOY_PATH} nach releases/<sha>/.
+  local sha="$1" dir asset
+  dir="$(release_dir "${sha}")"
+  for asset in $(release_assets); do
+    remote "if [ -d '${DEPLOY_PATH}/${asset}' ]; then mkdir -p '${dir}/${asset}' && rsync -a --delete '${DEPLOY_PATH}/${asset}/' '${dir}/${asset}/'; fi"
+  done
+}
+
+release_restore() {
+  # release_restore <sha> — releases/<sha>/ zurück nach ${DEPLOY_PATH}.
+  local sha="$1" dir asset
+  dir="$(release_dir "${sha}")"
+  for asset in $(release_assets); do
+    remote "if [ -d '${dir}/${asset}' ]; then mkdir -p '${DEPLOY_PATH}/${asset}' && rsync -a --delete '${dir}/${asset}/' '${DEPLOY_PATH}/${asset}/'; fi"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Standalone only: Caddy served den Viewer aus dem viewer-static-Volume,
+# nicht aus dem Bind-Mount. Volume-Name `screenie_viewer-static`: das
+# Compose-Project auf prod heißt `screenie` (DEPLOY_PATH=/opt/screenie,
+# s. docs/ops-runbook.md Rebrand-Notizen) — ein falscher Prefix würde von
+# `docker run -v` still als neues, von Caddy nie gelesenes Volume angelegt.
+# ---------------------------------------------------------------------------
+populate_viewer_static_volume() {
+  remote "docker run --rm \
+    -v screenie_viewer-static:/data \
+    -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
+    busybox sh -c 'cp -a /src/. /data/'"
+}
+
+# ---------------------------------------------------------------------------
+# HTTP-Status-Check für die Post-Deploy-/Post-Rollback-Smoke-Checks.
+# Eigener UA: curls Default-UA matcht den @scrapers-Filter im Standalone-
+# Caddyfile (403 auf allem außer /healthz + /readyz) — geprüft werden hier
+# aber gerade die Marketing-/SEO-Pfade.
+# ---------------------------------------------------------------------------
+DEPLOY_CHECK_UA="auffi-deploy-check/1.0"
+
+check_url_status() {
+  local url="$1"; local expected="$2"
+  local got
+  got=$(curl -s -A "${DEPLOY_CHECK_UA}" -o /dev/null -w "%{http_code}" --max-time 10 "${url}" || echo "000")
+  if [[ "${got}" != "${expected}" ]]; then
+    log_error "${url} → ${got} (expected ${expected})"
+    return 1
+  fi
+  log_ok "${url} → ${got}"
+}
+
+# ---------------------------------------------------------------------------
 # Deploy-Log — append-only Datei auf prod mit Geschichte aller Deploys.
 # Format pro Zeile: ISO8601-UTC TAB sha TAB deployer TAB notes
 # ---------------------------------------------------------------------------

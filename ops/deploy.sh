@@ -22,12 +22,17 @@
 #  11) Erweiterte Health-Checks (homepage, healthz, llms.txt, robots.txt, 404)
 #  12) Image-Prune auf prod (keep last 3 + :latest)
 #  13) Deploy-Log-Append auf prod
+#  14) Release-Snapshot: viewer-dist, dashboard-dist, nginx/, coturn/
+#      (standalone auch caddy/) nach /opt/screenie/releases/<sha>/
 #
 # Rollback:
 #   --rollback liest den vorletzten SHA aus /opt/screenie/.deploy-log,
-#   setzt APP_VERSION in .env.prod, und macht compose up -d.
-#   Setzt voraus, dass das alte Image noch auf prod ist (Image-Prune
-#   hält die letzten 3 + :latest vor).
+#   setzt APP_VERSION in .env.prod, spielt den Release-Snapshot dieses
+#   SHAs zurück (Frontends + Configs), macht compose up -d und restartet
+#   die Sidecars mit Single-File-Bind-Mounts. Setzt voraus, dass Image
+#   und Snapshot noch auf prod sind (Prune hält die letzten 3 + :latest).
+#   Ohne Snapshot (SHA vor 0.7.1 deployed) wird NUR das Backend-Image
+#   zurückgesetzt — das Skript warnt dann explizit.
 #
 # Environment:
 #   Reads ops/.env.deploy (or env vars) for SSH target and paths.
@@ -66,7 +71,10 @@ Options:
   --skip-tests          Skip the pre-deploy npm/cargo test runs.
   --skip-image-prune    Don't prune old backend images on prod after deploy.
   --notes "<text>"      Note appended to the deploy-log entry.
-  --rollback            Roll back to the previous SHA from /opt/screenie/.deploy-log.
+  --rollback            Roll back to the previous SHA from /opt/screenie/.deploy-log:
+                        backend image + viewer-dist/dashboard-dist/nginx/coturn
+                        (standalone: caddy) from its release snapshot. Without a
+                        snapshot only the backend image is rolled back (warned).
   --help                Show this help and exit.
 EOF
 }
@@ -97,6 +105,48 @@ DEPLOY_LOG_REMOTE="${DEPLOY_PATH}/.deploy-log"
 # ---------------------------------------------------------------------------
 acquire_deploy_lock
 install_cleanup_trap
+
+# ---------------------------------------------------------------------------
+# Post-Deploy-/Post-Rollback-Smoke: wait_healthy deckt den Backend-Start ab,
+# hier prüfen wir dass die Marketing- und SEO-Pfade noch antworten. Hard-fail
+# bei Regression.
+# ---------------------------------------------------------------------------
+post_deploy_smoke() {
+  wait_healthy "https://${DEPLOY_DOMAIN}/healthz" 90
+  check_url_status "https://${DEPLOY_DOMAIN}/" "200"
+  check_url_status "https://${DEPLOY_DOMAIN}/healthz" "200"
+  check_url_status "https://${DEPLOY_DOMAIN}/llms.txt" "200"
+  check_url_status "https://${DEPLOY_DOMAIN}/robots.txt" "200"
+  check_url_status "https://${DEPLOY_DOMAIN}/sitemap.xml" "200"
+  # Smoke-Check unbekannter Pfad — Erwartung ist Mode-abhängig:
+  #   Cluster: nginx/auffi-viewer.conf → try_files =404 → echte 404.
+  #   Standalone: caddy/Caddyfile SPA-Fallback (try_files {path}
+  #   /index.html) → 200 mit index.html.
+  # URL OHNE führenden Dot, weil die Caddy-dotfile_protection-Regel
+  # (siehe docs/footguns.md "Caddyfile Footguns") alle /. -Pfade mit 403 blockt.
+  if [[ -n "${CLUSTER_PROXY:-}" ]]; then
+    check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "404"
+  else
+    check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "200"
+  fi
+}
+
+# Sidecars, die ihre Config/ihr Dist per Bind-Mount lesen. `compose up -d`
+# recreatet sie nicht (Spec unverändert), ein Single-File-Bind-Mount hängt
+# aber am alten Inode — nur ein Restart lädt die zurückgespielten Dateien.
+restart_bind_mount_sidecars() {
+  local svc
+  local services=(auffi-dashboard auffi-coturn)
+  if [[ -n "${CLUSTER_PROXY:-}" ]]; then
+    services+=(auffi-viewer)
+  else
+    services+=(auffi-caddy)
+  fi
+  for svc in "${services[@]}"; do
+    maybe_run "docker restart ${svc}" \
+      remote "docker restart '${svc}' >/dev/null"
+  done
+}
 
 # ---------------------------------------------------------------------------
 # Rollback-Modus — eigener kurzer Flow, dann exit.
@@ -132,6 +182,16 @@ if [[ "${ROLLBACK}" == "true" ]]; then
     exit 1
   fi
 
+  RESTORE_ASSETS=false
+  if remote_release_exists "${PREV_SHA}"; then
+    RESTORE_ASSETS=true
+    log_info "Release-Snapshot $(release_dir "${PREV_SHA}") vorhanden — Frontends + Configs werden mit zurückgerollt."
+  else
+    log_warn "Kein Release-Snapshot für ${PREV_SHA} (vor 0.7.1 deployed?) — Rollback setzt NUR das Backend-Image zurück."
+    log_warn "viewer-dist, dashboard-dist, nginx/, coturn/ (standalone: caddy/) bleiben auf dem Stand des letzten Deploys."
+    log_warn "Für eine Frontend-/Config-Regression den alten Stand auschecken und ./ops/deploy.sh --version ${PREV_SHA} fahren."
+  fi
+
   if [[ "${YES}" != "true" ]]; then
     confirm "Wirklich auf ${PREV_SHA} zurückrollen?"
   fi
@@ -142,11 +202,24 @@ if [[ "${ROLLBACK}" == "true" ]]; then
   maybe_run "Retag image to :latest" \
     remote "docker tag 'auffi-backend:${PREV_SHA}' 'auffi-backend:latest'"
 
+  if [[ "${RESTORE_ASSETS}" == "true" ]]; then
+    maybe_run "Restore viewer-dist/dashboard-dist/configs from releases/${PREV_SHA}" \
+      release_restore "${PREV_SHA}"
+    if [[ -z "${CLUSTER_PROXY:-}" ]]; then
+      maybe_run "Copy restored viewer-dist into viewer-static volume" \
+        populate_viewer_static_volume
+    fi
+  fi
+
   maybe_run "docker compose up -d (rollback recreate)" \
     remote_compose "up -d --remove-orphans"
 
+  if [[ "${RESTORE_ASSETS}" == "true" ]]; then
+    restart_bind_mount_sidecars
+  fi
+
   if [[ "${DRY_RUN}" == "false" ]]; then
-    wait_healthy "https://${DEPLOY_DOMAIN}/healthz" 90
+    post_deploy_smoke
   fi
 
   maybe_run "Append rollback to deploy-log" \
@@ -468,10 +541,7 @@ log_step "Populate viewer-static volume (skipped im Cluster-Modus)"
 
 if [[ -z "${CLUSTER_PROXY:-}" ]]; then
   maybe_run "Copy viewer-dist into viewer-static volume" \
-    remote "docker run --rm \
-      -v screenie_viewer-static:/data \
-      -v '${DEPLOY_PATH}/viewer-dist':/src:ro \
-      busybox sh -c 'cp -a /src/. /data/'"
+    populate_viewer_static_volume
 else
   log_info "Cluster mode — viewer container bind-mounts viewer-dist directly"
 fi
@@ -521,40 +591,7 @@ fi
 log_step "Health-Checks (homepage, healthz, llms.txt, robots.txt, 404)"
 
 if [[ "${DRY_RUN}" == "false" ]]; then
-  wait_healthy "https://${DEPLOY_DOMAIN}/healthz" 90
-  # Smoke-Tests — Hard-fail bei Regression. wait_healthy decken den
-  # Backend-Start ab, hier prüfen wir dass die Marketing- und SEO-Pfade
-  # noch antworten.
-  # Eigener UA: curls Default-UA matcht den @scrapers-Filter im Standalone-
-  # Caddyfile (403 auf allem außer /healthz + /readyz) — die Checks hier
-  # prüfen aber gerade die Marketing-/SEO-Pfade.
-  DEPLOY_CHECK_UA="auffi-deploy-check/1.0"
-  check_url_status() {
-    local url="$1"; local expected="$2"
-    local got
-    got=$(curl -s -A "${DEPLOY_CHECK_UA}" -o /dev/null -w "%{http_code}" --max-time 10 "${url}" || echo "000")
-    if [[ "${got}" != "${expected}" ]]; then
-      log_error "${url} → ${got} (expected ${expected})"
-      return 1
-    fi
-    log_ok "${url} → ${got}"
-  }
-  check_url_status "https://${DEPLOY_DOMAIN}/" "200"
-  check_url_status "https://${DEPLOY_DOMAIN}/healthz" "200"
-  check_url_status "https://${DEPLOY_DOMAIN}/llms.txt" "200"
-  check_url_status "https://${DEPLOY_DOMAIN}/robots.txt" "200"
-  check_url_status "https://${DEPLOY_DOMAIN}/sitemap.xml" "200"
-  # Smoke-Check unbekannter Pfad — Erwartung ist Mode-abhängig:
-  #   Cluster: nginx/auffi-viewer.conf → try_files =404 → echte 404.
-  #   Standalone: caddy/Caddyfile SPA-Fallback (try_files {path}
-  #   /index.html) → 200 mit index.html.
-  # URL OHNE führenden Dot, weil die Caddy-dotfile_protection-Regel
-  # (siehe CLAUDE.md "Caddyfile Footguns") alle /. -Pfade mit 403 blockt.
-  if [[ -n "${CLUSTER_PROXY:-}" ]]; then
-    check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "404"
-  else
-    check_url_status "https://${DEPLOY_DOMAIN}/auffi-deploy-smoketest-$$" "200"
-  fi
+  post_deploy_smoke
 else
   log_dry "skip health checks in dry-run"
 fi
@@ -569,6 +606,16 @@ maybe_run "Append deploy entry" \
   deploy_log_append "${APP_VERSION}" "${NOTES}"
 
 # ---------------------------------------------------------------------------
+# Step 16b: Release-Snapshot — erst NACH Health-Checks + Log-Append, damit
+# nur gesunde, geloggte Deploys einen Snapshot bekommen und --rollback
+# Deploy-Log und releases/ deckungsgleich vorfindet.
+# ---------------------------------------------------------------------------
+log_step "Release-Snapshot → $(release_dir "${APP_VERSION}")"
+
+maybe_run "Snapshot viewer-dist/dashboard-dist/configs" \
+  release_snapshot "${APP_VERSION}"
+
+# ---------------------------------------------------------------------------
 # Step 17: Image-Prune auf prod (keep last-3-unique-SHAs aus deploy-log + :latest)
 # Frühere Variante nutzte `docker images | tail -n +4` was bei ungenau
 # definierter Sortierung gerne den JUST-deployten Tag erwischt hat (siehe
@@ -578,8 +625,11 @@ maybe_run "Append deploy entry" \
 if [[ "${SKIP_IMAGE_PRUNE}" == "true" ]]; then
   log_step "Image-Prune übersprungen (--skip-image-prune)"
 else
-  log_step "Image-Prune (keep last 3 unique SHAs aus deploy-log + :latest)"
-  maybe_run "Prune old backend images" \
+  log_step "Image- + Snapshot-Prune (keep last 3 unique SHAs aus deploy-log + :latest)"
+  # Release-Snapshots hängen an derselben KEEP_LIST wie die Images, damit
+  # "Image noch da" auch "Snapshot noch da" heißt und releases/ nicht
+  # unbegrenzt wächst.
+  maybe_run "Prune old backend images + release snapshots" \
     remote "set -e; \
       KEEP_LIST=\$(tail -n 20 '${DEPLOY_LOG_REMOTE}' 2>/dev/null \
         | awk -F'\t' '{print \$2}' \
@@ -589,7 +639,11 @@ else
       for sha in \${KEEP_LIST}; do KEEP_REGEX=\"\${KEEP_REGEX}|^\${sha}$\"; done; \
       docker images --filter 'reference=auffi-backend' --format '{{.Tag}}' \
         | grep -E -v \"\${KEEP_REGEX}\" \
-        | xargs -r -I{} docker rmi 'auffi-backend:{}' >/dev/null 2>&1 || true"
+        | xargs -r -I{} docker rmi 'auffi-backend:{}' >/dev/null 2>&1 || true; \
+      for dir in '${DEPLOY_PATH}'/releases/*/; do \
+        [ -d \"\${dir}\" ] || continue; \
+        basename \"\${dir}\" | grep -E -q \"\${KEEP_REGEX}\" || rm -rf \"\${dir}\"; \
+      done"
 fi
 
 # ---------------------------------------------------------------------------

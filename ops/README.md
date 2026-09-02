@@ -246,8 +246,23 @@ warning header in the script before using it.
 
 Reads the previous SHA from the deploy-log on the VPS (falling back to the
 last logged entry when the most recent deploy failed before being logged),
-sets `APP_VERSION` in `.env.prod`, and recreates the stack. The image prune
-keeps the last 3 deployed SHAs, so the rollback target is still loaded.
+sets `APP_VERSION` in `.env.prod`, restores that SHA's **release snapshot**
+(`/opt/screenie/releases/<sha>/` — `viewer-dist`, `dashboard-dist`, `nginx/`,
+`coturn/`, in standalone mode also `caddy/`), recreates the stack, restarts
+the sidecars that read those files through single-file bind mounts
+(`auffi-dashboard`, `auffi-coturn`, cluster: `auffi-viewer`, standalone:
+`auffi-caddy`), and runs the same smoke checks as a deploy. Every successful
+deploy writes its snapshot after the health checks pass; the prune step keeps
+images and snapshots for the same last 3 SHAs, so the rollback target is
+still loaded.
+
+**Without a snapshot** (a SHA deployed before 0.7.1) the rollback is
+backend-image-only — the script says so loudly, and the frontends/configs stay
+at the newer state. To back out a frontend/config regression in that case,
+check out the old commit and run `./ops/deploy.sh --version <sha>`.
+
+`ops/update.sh` (hotfix path) bypasses the deploy-log AND the snapshots: a
+hotfixed viewer-dist is not restorable via `--rollback`.
 
 ---
 
