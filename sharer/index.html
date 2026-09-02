@@ -518,10 +518,6 @@
          positioned button on the right; click toggles input.type
          between password and text. ── */
       .password-wrap { position: relative; width: 100%; }
-      .password-wrap input[type="password"],
-      .password-wrap input[type="text"] {
-        padding-right: 2.625rem;
-      }
       .password-toggle {
         position: absolute;
         right: 0;
@@ -550,9 +546,9 @@
       }
       .password-toggle[aria-pressed="true"] { color: var(--text); }
 
-      /* ── Unattended inputs — shape + theme-aware colours. Inline styles only
-         set padding/font; without an explicit background/color the select and
-         text inputs render with the UA-default light chrome in dark mode. ── */
+      /* ── Unattended inputs — shape + theme-aware colours. Without an
+         explicit background/color the select and text inputs render with the
+         UA-default light chrome in dark mode. ── */
       #unattended-pair-code,
       #unattended-pair-alias,
       #unattended-pw-input,
@@ -562,6 +558,18 @@
         background: var(--surface);
         color: var(--text);
       }
+      #unattended-pair-code,
+      #unattended-pair-alias,
+      #unattended-pw-input {
+        width: 100%;
+        padding: 0.5rem;
+        font-size: 1rem;
+      }
+      #unattended-pair-code { font-family: var(--font-mono, monospace); }
+      /* Room for the 2.25rem eye-toggle button the wrapper places inside the
+         right edge. Declared on the id (not on `.password-wrap input`) because
+         the id rule above sets the shorthand and would outrank it. */
+      #unattended-pw-input { padding-right: 2.625rem; }
 
       /* ── Global focus ring ── */
       :focus-visible {
@@ -1307,14 +1315,12 @@
             Pairing-Code vom Dashboard (Form: XXX-XXX-XX):
           </p>
           <input id="unattended-pair-code" type="text" autocomplete="off" placeholder="z. B. ABC-DEF-7K"
-            aria-label="Pairing-Code vom Dashboard"
-            style="width: 100%; padding: 0.5rem; font-family: var(--font-mono, monospace); font-size: 1rem;" />
+            aria-label="Pairing-Code vom Dashboard" />
           <p style="font-size: 0.8125rem; color: var(--text-secondary); margin: 0.5rem 0 0.25rem;">
             Geräte-Name (sichtbar im Dashboard):
           </p>
           <input id="unattended-pair-alias" type="text" autocomplete="off"
-            aria-label="Geräte-Name (sichtbar im Dashboard)"
-            style="width: 100%; padding: 0.5rem; font-size: 1rem;" />
+            aria-label="Geräte-Name (sichtbar im Dashboard)" />
           <button id="unattended-pair-btn" type="button" class="btn btn-primary"
             style="margin-top: 0.5rem; width: 100%;">Gerät verbinden</button>
           <p id="unattended-pair-status" role="status" aria-live="polite"
@@ -1326,8 +1332,7 @@
             Geräte-Passwort setzen (mindestens 8 Zeichen):
           </p>
           <input id="unattended-pw-input" type="password" autocomplete="new-password"
-            aria-label="Geräte-Passwort setzen"
-            style="width: 100%; padding: 0.5rem; font-size: 1rem;" />
+            aria-label="Geräte-Passwort setzen" />
           <button id="unattended-pw-btn" type="button" class="btn btn-primary"
             style="margin-top: 0.5rem; width: 100%;">Passwort setzen</button>
           <p id="unattended-pw-status" role="status" aria-live="polite"

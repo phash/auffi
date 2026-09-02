@@ -56,6 +56,7 @@ async function mount(): Promise<void> {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string) => Promise.resolve(INVOKE_RESULTS[cmd]));
   document.body.innerHTML = html.slice(html.indexOf("<body>") + "<body>".length, html.lastIndexOf("</body>"));
+  document.head.innerHTML = html.slice(html.indexOf("<style>"), html.indexOf("</style>") + "</style>".length);
   vi.resetModules();
   await import("../src/unattended.js");
   await flush();
@@ -129,6 +130,16 @@ describe("unattended.ts settings wiring", () => {
     expect(calls("unattended_confirm")).toEqual([
       ["unattended_confirm", { confirmId: 8, accepted: false }],
     ]);
+  });
+
+  // The eye-toggle button is absolutely positioned inside the input's right
+  // edge; the input carried an inline `padding: 0.5rem`, which beats every
+  // stylesheet selector, so the last typed characters ran under the button.
+  it("keeps the typed password clear of the eye-toggle button", () => {
+    const input = byId<HTMLInputElement>("unattended-pw-input");
+    expect(input.parentElement?.classList.contains("password-wrap")).toBe(true);
+    // 2.625rem at jsdom's 16px root — wider than the 2.25rem (36px) button.
+    expect(getComputedStyle(input).paddingRight).toBe("42px");
   });
 
   it("unpairs without a teardown when nothing was streaming", async () => {
