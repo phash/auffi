@@ -43,9 +43,11 @@ describe("truncateUserAgent", () => {
     expect(truncateUserAgent(ua)).toBe("Chrome/Android");
   });
 
-  it("identifies the Sharer's reqwest client (no browser, Linux OS)", () => {
-    const ua = "reqwest/0.13.3";
-    expect(truncateUserAgent(ua)).toBe("reqwest");
+  it("identifies a bare reqwest UA (no OS token) as 'reqwest', and appends the OS when present", () => {
+    // The sharer's reqwest client sets no custom UA, so the bare form is
+    // what actually arrives; the OS-bearing form pins the general rule.
+    expect(truncateUserAgent("reqwest/0.13.3")).toBe("reqwest");
+    expect(truncateUserAgent("reqwest/0.13.3 (Linux)")).toBe("reqwest/Linux");
   });
 
   it("identifies curl probes", () => {
