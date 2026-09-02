@@ -263,10 +263,11 @@ function openModal(): void {
     }
   });
 
-  // Focus the textarea so a keyboard user lands on the primary input, and
-  // confine Tab to the dialog with Escape-to-close.
-  bodyArea.focus();
+  // Confine Tab to the dialog with Escape-to-close (the trap records the FAB
+  // as the opener to return to), then focus the textarea so a keyboard user
+  // lands on the primary input.
   releaseTrap = trapFocus(overlay, close);
+  bodyArea.focus();
 }
 
 function showToast(message: string): void {

@@ -64,8 +64,10 @@ export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
 
-    confirm.focus();
+    // Trap first, then move focus in — the trap records the opener to
+    // return focus to on close.
     const releaseTrap = trapFocus(backdrop, () => close(false));
+    confirm.focus();
 
     function close(value: boolean): void {
       releaseTrap();

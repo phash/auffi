@@ -16,7 +16,12 @@ const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 export function trapFocus(container: HTMLElement, onEscape?: () => void): () => void {
-  const previouslyFocused = document.activeElement as HTMLElement | null;
+  // Only an element OUTSIDE the modal counts as the opener: a caller that
+  // already moved focus into the dialog must not have its own button recorded
+  // as the place to return to (it is gone once the modal is removed).
+  const active = document.activeElement;
+  const previouslyFocused =
+    active instanceof HTMLElement && !container.contains(active) ? active : null;
 
   const focusable = (): HTMLElement[] =>
     Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
@@ -45,6 +50,6 @@ export function trapFocus(container: HTMLElement, onEscape?: () => void): () => 
   container.addEventListener("keydown", onKeydown);
   return () => {
     container.removeEventListener("keydown", onKeydown);
-    previouslyFocused?.focus?.();
+    previouslyFocused?.focus();
   };
 }

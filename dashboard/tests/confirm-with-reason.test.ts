@@ -116,6 +116,19 @@ describe("confirmWithReason modal", () => {
     await p;
   });
 
+  it("returns focus to the opener after Escape", async () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const p = confirmWithReason({ title: "Test", message: "x", confirmLabel: "Ja" });
+    expect(document.activeElement).toBe(document.querySelector(".admin-modal-reason"));
+    document
+      .getElementById("admin-modal-backdrop")!
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(await p).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it("resolves with the trimmed reason on Confirm", async () => {
     const p = confirmWithReason({
       title: "Test",

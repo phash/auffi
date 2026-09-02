@@ -104,10 +104,11 @@ export function confirmWithReason(opts: ConfirmOptions): Promise<string | null> 
     backdrop.appendChild(modal);
     document.body.appendChild(backdrop);
 
-    textarea.focus();
     // Confine Tab to the dialog and wire Escape → cancel; restores focus to
-    // the triggering control on close.
+    // the triggering control on close — which is why the trap is installed
+    // before focus moves into the textarea.
     const releaseTrap = trapFocus(backdrop, () => close(null));
+    textarea.focus();
 
     function close(value: string | null): void {
       releaseTrap();

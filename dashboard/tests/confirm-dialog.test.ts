@@ -54,6 +54,17 @@ describe("confirmDialog", () => {
     void p1;
   });
 
+  it("returns focus to the opener after Escape", async () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const p = confirmDialog({ title: "T", message: "m", confirmLabel: "Ok" });
+    expect(document.activeElement).not.toBe(opener);
+    backdrop().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await p;
+    expect(document.activeElement).toBe(opener);
+  });
+
   it("danger variant marks the confirm button", () => {
     confirmDialog({ title: "T", message: "m", confirmLabel: "Weg", variant: "danger" });
     expect(byText("Weg").classList.contains("danger")).toBe(true);

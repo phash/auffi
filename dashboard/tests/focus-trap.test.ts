@@ -46,4 +46,14 @@ describe("trapFocus (dashboard)", () => {
     release();
     expect(document.activeElement).toBe(opener);
   });
+
+  it("does not adopt an element inside the container as the opener", () => {
+    // Callers may move focus into the modal before installing the trap; the
+    // modal's own button must never be recorded as the place to return to.
+    first.focus();
+    const release = trapFocus(modal);
+    last.focus();
+    release();
+    expect(document.activeElement).toBe(last);
+  });
 });
