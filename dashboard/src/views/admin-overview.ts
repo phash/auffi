@@ -32,11 +32,14 @@ export const renderAdminOverview: RouteRenderer = (
   card.appendChild(status);
   root.appendChild(card);
 
+  let unmounted = false;
+
   void (async (): Promise<void> => {
     const [statsRes, codesRes] = await Promise.all([
       fetchAdminStats(),
       fetchAdminCodeStats(),
     ]);
+    if (unmounted) return;
 
     if (
       (!statsRes.ok && statsRes.status === 401) ||
@@ -61,6 +64,10 @@ export const renderAdminOverview: RouteRenderer = (
 
     renderKpis(root, statsRes.data, codesRes.data);
   })();
+
+  return () => {
+    unmounted = true;
+  };
 };
 
 function renderKpis(

@@ -26,8 +26,11 @@ export const renderDevices: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
 
   root.appendChild(card);
 
+  let unmounted = false;
+
   void (async (): Promise<void> => {
     const res = await listDevices();
+    if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
         // Cookie expired or never logged in — bounce to /login
@@ -41,6 +44,14 @@ export const renderDevices: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
     }
     renderList(root, res.data.items);
   })();
+
+  // Router-invoked cleanup. The router's per-render container already
+  // isolates late DOM writes, but the 401 branch's navigate("/login") is a
+  // global history mutation: landing after the user moved on (and maybe
+  // logged in again) would yank them back to the login form.
+  return () => {
+    unmounted = true;
+  };
 };
 
 function renderList(root: HTMLElement, items: Device[]): void {

@@ -227,6 +227,73 @@ describe("renderConnectionLog", () => {
     expect(window.location.pathname).toMatch(/\/dashboard\/login$/);
   });
 
+  it("does not navigate away after unmount when an in-flight request 401s", async () => {
+    let release: null | (() => void) = null;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(jsonResponse({ error: "unauthorized" }, 401));
+          }),
+      ) as unknown as typeof fetch,
+    });
+    const before = window.location.pathname;
+    const root = makeRoot();
+    const cleanup = renderConnectionLog(root, ctx("111-222-333"));
+    await flush();
+    expect(typeof cleanup, "renderer must return a cleanup for the router").toBe("function");
+    (cleanup as () => void)();
+    release!();
+    await flush();
+    await flush();
+    expect(window.location.pathname, "must not have navigated after unmount").toBe(before);
+  });
+
+  it("does not navigate away after unmount when an in-flight 'Mehr laden' 401s", async () => {
+    let release: null | (() => void) = null;
+    let call = 0;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(() => {
+        call += 1;
+        if (call === 1) {
+          return Promise.resolve(
+            jsonResponse({
+              items: [
+                {
+                  id: 30,
+                  deviceId: "111-222-333",
+                  startedAt: 1,
+                  endedAt: 2,
+                  viewerIpPrefix: "84.xxx",
+                  connectionType: "p2p" as const,
+                  bytesRelayed: 0,
+                },
+              ],
+              nextCursor: 30,
+              maxLimit: 100,
+            }),
+          );
+        }
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(jsonResponse({ error: "unauthorized" }, 401));
+        });
+      }) as unknown as typeof fetch,
+    });
+    const before = window.location.pathname;
+    const root = makeRoot();
+    const cleanup = renderConnectionLog(root, ctx("111-222-333"));
+    await flush();
+    (root.querySelector("button.primary") as HTMLButtonElement).click();
+    await flush();
+    (cleanup as () => void)();
+    release!();
+    await flush();
+    await flush();
+    expect(window.location.pathname).toBe(before);
+  });
+
   it("surfaces a 403 (forbidden — cross-account) as an error", async () => {
     _setApiClientForTests({
       base: "",

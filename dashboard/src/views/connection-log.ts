@@ -69,6 +69,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
   }
 
   let cursor: number | undefined = undefined;
+  let unmounted = false;
 
   const loadNext = async (): Promise<void> => {
     more.disabled = true;
@@ -80,6 +81,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
       more.textContent = "Lade …";
     }
     const res = await listConnectionLog(deviceId, cursor);
+    if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
         navigate("/login");
@@ -127,6 +129,10 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
 
   more.addEventListener("click", () => void loadNext());
   void loadNext();
+
+  return () => {
+    unmounted = true;
+  };
 };
 
 function renderRow(row: ConnectionLogRow): HTMLLIElement {

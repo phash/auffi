@@ -30,9 +30,13 @@ export const renderAddDevice: RouteRenderer = (root: HTMLElement, _ctx: RouteCon
   root.appendChild(card);
 
   let stopCountdown: (() => void) | null = null;
+  let unmounted = false;
 
   void (async (): Promise<void> => {
     const res = await mintPairingCode();
+    // A mint that lands after the user left must neither start a countdown
+    // (the cleanup already ran with stopCountdown === null) nor navigate.
+    if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
         navigate("/login");
@@ -48,6 +52,7 @@ export const renderAddDevice: RouteRenderer = (root: HTMLElement, _ctx: RouteCon
   // Router-invoked cleanup: stop the countdown when the view unmounts,
   // otherwise the interval keeps ticking against detached DOM.
   return () => {
+    unmounted = true;
     stopCountdown?.();
   };
 };

@@ -40,8 +40,11 @@ export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteC
     return;
   }
 
+  let unmounted = false;
+
   void (async (): Promise<void> => {
     const res = await listDevices();
+    if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
         navigate("/login");
@@ -66,6 +69,10 @@ export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteC
     }
     renderEditor(root, dev);
   })();
+
+  return () => {
+    unmounted = true;
+  };
 };
 
 function renderEditor(root: HTMLElement, dev: Device): void {

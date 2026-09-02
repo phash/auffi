@@ -134,6 +134,34 @@ describe("renderAdminStats", () => {
     expect(err.textContent).toContain("Admin");
   });
 
+  it("does not navigate away after unmount when an in-flight request 401s", async () => {
+    let release: null | (() => void) = null;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(jsonResponse({ error: "unauthorized" }, 401));
+          }),
+      ) as unknown as typeof fetch,
+    });
+    const before = window.location.pathname;
+    const root = makeRoot();
+    const cleanup = renderAdminStats(root, {
+      path: "/admin/stats",
+      segments: ["admin", "stats"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    await flush();
+    expect(typeof cleanup, "renderer must return a cleanup for the router").toBe("function");
+    (cleanup as () => void)();
+    release!();
+    await flush();
+    await flush();
+    expect(window.location.pathname, "must not have navigated after unmount").toBe(before);
+  });
+
   it("renders uptime as a duration, not an 'ago' phrase", async () => {
     _setApiClientForTests({
       base: "",

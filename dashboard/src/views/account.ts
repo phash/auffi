@@ -27,8 +27,11 @@ export const renderAccount: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
   card.appendChild(status);
   root.appendChild(card);
 
+  let unmounted = false;
+
   void (async (): Promise<void> => {
     const res = await getMe();
+    if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
         navigate("/login");
@@ -40,6 +43,10 @@ export const renderAccount: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
     }
     renderEditor(root, res.data);
   })();
+
+  return () => {
+    unmounted = true;
+  };
 };
 
 function renderEditor(root: HTMLElement, me: Me): void {

@@ -104,6 +104,33 @@ describe("renderAddDevice", () => {
     expect(window.location.pathname).toMatch(/\/dashboard\/login$/);
   });
 
+  it("does not navigate away after unmount when an in-flight request 401s", async () => {
+    let release: null | (() => void) = null;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(jsonResponse({ error: "unauthorized" }, 401));
+          }),
+      ) as unknown as typeof fetch,
+    });
+    const before = window.location.pathname;
+    const root = makeRoot();
+    const cleanup = renderAddDevice(root, {
+      path: "/devices/new",
+      segments: ["devices", "new"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    await flush();
+    (cleanup as () => void)();
+    release!();
+    await flush();
+    await flush();
+    expect(window.location.pathname, "must not have navigated after unmount").toBe(before);
+  });
+
   it("surfaces the backend message on other errors", async () => {
     _setApiClientForTests({
       base: "",
@@ -186,6 +213,36 @@ describe("renderAddDevice — countdown lifecycle", () => {
     expect(typeof cleanup).toBe("function");
     (cleanup as () => void)();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("starts no countdown when the view unmounted before the mint resolved", async () => {
+    // Leaving /devices/new during the POST round-trip ran the cleanup while
+    // stopCountdown was still null; the late response then started an
+    // interval nobody could ever stop.
+    vi.useFakeTimers();
+    let release: null | (() => void) = null;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = () =>
+              resolve(jsonResponse({ code: "ABC-DEF-7K", expiresAt: Date.now() + 10 * 60_000 }));
+          }),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    const cleanup = renderAddDevice(root, {
+      path: "/devices/new",
+      segments: ["devices", "new"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    (cleanup as () => void)();
+    release!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(root.querySelector('[aria-label="Pairing-Code"]')).toBeNull();
   });
 
   it("starts no interval at all when the code is already expired on mount", async () => {

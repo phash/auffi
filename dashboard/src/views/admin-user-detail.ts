@@ -52,12 +52,14 @@ export const renderAdminUserDetail: RouteRenderer = (
   root.appendChild(card);
 
   let inFlight = false;
+  let unmounted = false;
 
   async function load(): Promise<void> {
     if (inFlight) return;
     inFlight = true;
     const res = await getAdminUser(id);
     inFlight = false;
+    if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
         navigate("/login");
@@ -335,6 +337,10 @@ export const renderAdminUserDetail: RouteRenderer = (
   }
 
   void load();
+
+  return () => {
+    unmounted = true;
+  };
 };
 
 function badge(text: string, klass: string): HTMLSpanElement {

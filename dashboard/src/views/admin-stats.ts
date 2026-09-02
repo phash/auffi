@@ -34,11 +34,14 @@ export const renderAdminStats: RouteRenderer = (
 
   root.appendChild(card);
 
+  let unmounted = false;
+
   void (async (): Promise<void> => {
     const [statsRes, codesRes] = await Promise.all([
       fetchAdminStats(),
       fetchAdminCodeStats(),
     ]);
+    if (unmounted) return;
 
     // Auth-first: 401 → Login. Beim 401 sind wir auf dem zweiten Aufruf
     // wahrscheinlich noch nicht weitergeroutet; die zweite Antwort
@@ -67,6 +70,10 @@ export const renderAdminStats: RouteRenderer = (
 
     renderSections(root, statsRes.data, codesRes.data);
   })();
+
+  return () => {
+    unmounted = true;
+  };
 };
 
 function renderSections(

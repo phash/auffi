@@ -207,6 +207,29 @@ describe("renderAccount", () => {
     expect(window.location.pathname).toMatch(/\/dashboard\/login$/);
   });
 
+  it("does not navigate away after unmount when an in-flight request 401s", async () => {
+    let release: null | (() => void) = null;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(jsonResponse({ error: "unauthorized" }, 401));
+          }),
+      ) as unknown as typeof fetch,
+    });
+    const before = window.location.pathname;
+    const root = makeRoot();
+    const cleanup = renderAccount(root, CTX);
+    await flush();
+    expect(typeof cleanup, "renderer must return a cleanup for the router").toBe("function");
+    (cleanup as () => void)();
+    release!();
+    await flush();
+    await flush();
+    expect(window.location.pathname, "must not have navigated after unmount").toBe(before);
+  });
+
   it("401 on initial GET → /login redirect", async () => {
     _setApiClientForTests({
       base: "",
