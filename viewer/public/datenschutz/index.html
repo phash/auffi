@@ -178,12 +178,29 @@
           <li>
             <strong>IP-Pseudonymisierung:</strong> Im Bestätigungsdialog
             beim Sharer wird nur das gekürzte IP-Prefix
-            (<code>84.xxx</code>) angezeigt, nie die volle Adresse.
+            (<code>84.xxx</code>) sowie das daraus ermittelte
+            Herkunftsland angezeigt, nie die volle Adresse.
+          </li>
+          <li>
+            <strong>Herkunftsland (GeoIP):</strong> Damit die sharende
+            Person eine Anfrage einordnen kann, ermittelt der Auffi-Server
+            beim Ad-hoc-Verbinden aus der vollständigen IP-Adresse des
+            Zuschauers das Land (ISO-Ländercode, z.&nbsp;B. „DE"). Die
+            Zuordnung erfolgt ausschließlich im Arbeitsspeicher unseres
+            Servers gegen eine lokal hinterlegte Datenbank (IP-to-Country
+            Lite von DB-IP, CC-BY-4.0); es werden keine Daten an Dritte
+            übertragen, das Ergebnis wird weder protokolliert noch
+            gespeichert, sondern nur einmalig an den Sharer übermittelt.
+            Bei Verbindungen zu gekoppelten Geräten (Fernzugriff, §6)
+            entfällt diese Ermittlung. Rechtsgrundlage: Art. 6 Abs. 1
+            lit. f DSGVO (berechtigtes Interesse an einer
+            nachvollziehbaren Verbindungsfreigabe).
           </li>
         </ul>
         <p>
-          Verarbeitungsgrundlage: Art. 6 Abs. 1 lit. b DSGVO
-          (Vertragserfüllung — du forderst aktiv eine Verbindung an).
+          Verarbeitungsgrundlage der Vermittlung selbst: Art. 6 Abs. 1
+          lit. b DSGVO (Vertragserfüllung — du forderst aktiv eine
+          Verbindung an).
         </p>
       </section>
 
@@ -237,8 +254,9 @@
             Audit-Log (admin-side): 1 Jahr.
           </li>
           <li>
-            Soft-gelöschte Konten: 30 Tage Karenz, danach Hard-Delete mit
-            FK-Cascade (alle Geräte, Sessions, Logs gehen mit).
+            Konto-Löschung: sofortiges Hard-Delete mit FK-Cascade (alle
+            Geräte, Sessions, Logs gehen mit) — es gibt keine Karenzzeit
+            und kein Wiederherstellen.
           </li>
         </ul>
       </section>
@@ -321,8 +339,11 @@
         <h3>Was erfasst wird</h3>
         <ul>
           <li>
-            <strong>Aufrufe der statischen Seiten</strong> —
-            Startseite, Impressum, Datenschutz, Download
+            <strong>Aufrufe der statischen Seiten</strong> — alle
+            Marketing-, Vergleichs- und Rechtsseiten (Startseite, Download,
+            Impressum, Datenschutz, die <code>/vergleich/</code>- und
+            Themenseiten sowie deren englische Fassungen), nicht die
+            laufende Sitzung
           </li>
           <li>
             <strong>Herkunft des Aufrufs</strong> — Suchmaschine,
@@ -561,7 +582,7 @@
           aktuelle Version ist auf <code>auffi.app/datenschutz/</code>
           abrufbar.
         </p>
-        <p>Stand: Mai 2026.</p>
+        <p>Stand: September 2026.</p>
       </section>
     </main>
 
