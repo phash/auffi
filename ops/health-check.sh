@@ -75,20 +75,44 @@ if [[ -n "${MRD_API_KEY:-}" ]] && [[ -n "${MRD_CLUSTER_ID:-}" ]]; then
   STATE="operational"
   [[ "${FAILURES}" -gt 0 ]] && STATE="degraded"
 
-  MRD_PAYLOAD="{\"state\":\"${STATE}\",\"checked_at\":\"${TIMESTAMP}\"}"
+  MRD_CLUSTER_URL="https://www.mr-development.de/api/v1/external/clusters/${MRD_CLUSTER_ID}"
 
-  CURL_STATUS="$(curl -fsS --max-time 10 \
+  # PUT /clusters/:id/status erwartet {"status": {…}} — ein Record, dessen
+  # Keys die Projekte auf dem Cluster sind (jeder Wert ein freier Text).
+  # Ein flaches {"state": …} bekommt VALIDATION_ERROR, und weil der Post
+  # non-fatal ist, fiel das monatelang nicht auf. Der Record wird per GET
+  # geholt und nur unser Key ersetzt, damit ein PUT die Einträge der
+  # anderen Projekte nicht überschreibt.
+  MRD_CURRENT="$(curl -fsS --max-time 10 -H "X-API-Key: ${MRD_API_KEY}" "${MRD_CLUSTER_URL}" 2>/dev/null || true)"
+  MRD_PAYLOAD="$(printf '%s' "${MRD_CURRENT}" | python3 -c '
+import json, sys
+state, checked = sys.argv[1], sys.argv[2]
+try:
+    doc = json.load(sys.stdin)
+except ValueError:
+    doc = {}
+cluster = doc.get("data", doc) if isinstance(doc, dict) else {}
+status = cluster.get("status") if isinstance(cluster, dict) else None
+if not isinstance(status, dict):
+    status = {}
+status["auffi"] = f"{state} — healthz+readyz checked {checked}"
+print(json.dumps({"status": status}))
+' "${STATE}" "${TIMESTAMP}")"
+
+  MRD_RESULT="$(curl -sS --max-time 10 \
     -X PUT \
     -H "Content-Type: application/json" \
     -H "X-API-Key: ${MRD_API_KEY}" \
     -d "${MRD_PAYLOAD}" \
-    "https://www.mr-development.de/api/v1/external/clusters/${MRD_CLUSTER_ID}/status" \
-    -o /dev/null -w "%{http_code}" 2>/dev/null)" || CURL_STATUS="error"
+    -w $'\n%{http_code}' \
+    "${MRD_CLUSTER_URL}/status" 2>/dev/null)" || MRD_RESULT=$'\nerror'
+  CURL_STATUS="${MRD_RESULT##*$'\n'}"
+  MRD_BODY="${MRD_RESULT%$'\n'*}"
 
   if [[ "${CURL_STATUS}" == "200" ]] || [[ "${CURL_STATUS}" == "204" ]]; then
     log_ok "[${TIMESTAMP}] MRD-API status posted: ${STATE}"
   else
-    log_warn "[${TIMESTAMP}] MRD-API status post failed (HTTP ${CURL_STATUS}) — non-fatal"
+    log_warn "[${TIMESTAMP}] MRD-API status post failed (HTTP ${CURL_STATUS}) — non-fatal. Response: ${MRD_BODY}"
   fi
 fi
 
