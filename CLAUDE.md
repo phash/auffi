@@ -74,10 +74,11 @@ cd dashboard && npm run build      # static dist/
 # CSP-Hashes nach jedem Edit an Inline-Scripts/JSON-LD nachziehen (schreibt caddy/Caddyfile)
 cd viewer && npm run csp:sync     # csp:check = nur prüfen (CI-tauglich)
 
-# Windows-Installer-Smoke (dockur/QEMU, braucht /dev/kvm), Ergebnis in .win-test/share/install-result.txt
-# ZUERST alle 3 Windows-Assets nach .win-test/share/ laden UND sha256 gegen SHA256SUMS prüfen,
-# ERST DANN booten — sonst liest install.bat ein halb-übertragenes MSI: `msiexec exit=1619`.
-cd .win-test && docker compose down -v && docker compose up -d   # noVNC: http://127.0.0.1:8007
+# Windows-Installer-Smoke im Emulator (dockur/QEMU, braucht /dev/kvm) — lädt + prüft die Assets,
+# startet/rebootet die VM, Logon-Task fährt oem/smoke.bat, wartet auf RESULT (~4 min warm).
+# VM-Disk NIE mit `down -v` verwerfen (sonst 15–60 min Neuinstallation). Details: docs/ops-runbook.md § Windows-Emulator-Smoke
+.win-test/run.sh vX.Y.Z [--keep-running]          # noVNC: http://127.0.0.1:8007
+node .win-test/screenshot.mjs [--click X,Y]        # VM-Bildschirm als PNG (Code sichtbar? = TLS+WSS ok)
 
 # Local stack (nur backend — voller Stack lokal via ./ops/smoke.sh)
 docker compose up --build

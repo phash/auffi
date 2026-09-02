@@ -4,11 +4,12 @@
 # startet Auffi.exe, prüft Prozess + Debug-Log. Ergebnis (RESULT=PASS/FAIL) ->
 # share/install-result.txt.
 #
-#   1) share/ enthält Auffi_0.6.4_x64_en-US.msi
-#   2) docker compose -f .win-test/docker-compose.yml up -d
-#   3) Mitschauen: http://localhost:8007 (noVNC)
-#   4) Ergebnis: .win-test/share/install-result.txt (auf RESULT=PASS prüfen)
-#   5) docker compose -f .win-test/docker-compose.yml down -v
+#   Normalfall: .win-test/run.sh vX.Y.Z  (lädt + prüft die Assets, startet/rebootet
+#   die VM, wartet auf share/install-result.txt). Mitschauen: http://127.0.0.1:8007
+#   (noVNC). oem/install.bat läuft nur beim allerersten Boot und richtet einen
+#   Logon-Task ein, der oem/smoke.bat (über die Freigabe, immer aktuell) bei jedem
+#   Boot ausführt — die VM-Disk deshalb NICHT mit `down -v` verwerfen, ein warmer
+#   Neustart testet ein neues Release in wenigen Minuten statt in einer Stunde.
 #
 # WICHTIG: explizites `name:` — sonst teilt sich dieses Dir (.win-test) den
 # Default-Compose-Projektnamen mit t2controller/.win-test und `up` entfernt
@@ -38,6 +39,9 @@ services:
       - auffi-win-data:/storage
       - ./oem:/oem
       - ./share:/data
+      # Zweitens in die Freigabe gemountet: so ist \\host.lan\Data\oem\smoke.bat
+      # bei jedem Boot die aktuelle Fassung, ohne Windows neu zu installieren.
+      - ./oem:/data/oem:ro
     stop_grace_period: 2m
     restart: "no"
 

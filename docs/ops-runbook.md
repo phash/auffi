@@ -73,6 +73,24 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 
 **Der Versions-Bump fasst nur `href=` und `softwareVersion` an.** Install-Befehle (`msiexec /i …`, `dpkg -i`, `rpm -i`, AppImage-`chmod`), Versions-Badge und der `/releases/tag/`-Link müssen mitgezogen werden — aber NUR oberhalb der ersten `<h3>X.Y.Z (…)`-Changelog-Überschrift, sonst frisst ein pauschales Replace die Changelog-Einträge (so passiert in v0.6.7). Guard: `viewer/tests/marketing-pages.test.ts`.
 
+## Windows-Emulator-Smoke (`.win-test/`)
+
+dockur/windows (QEMU-in-Docker, braucht `/dev/kvm`) bootet ein Windows 11. Beim allerersten Boot läuft `oem/install.bat` (OOBE, als Administrator) und registriert nur einen Logon-Task; der führt bei **jedem** Boot `oem/smoke.bat` aus. `oem/` ist zusätzlich unter `/data/oem` in die Freigabe (`\\host.lan\Data`) gemountet — der Smoke ist damit immer die aktuelle Fassung, ohne Windows neu zu installieren. Der Smoke installiert die MSI still, startet Portable und NSIS-Setup, prüft je Installer Prozess + `ProductVersion` des Binaries gegen `share/version.txt` und schreibt `share/install-result.txt` (`RESULT=PASS|FAIL|SKIP`, Kopfzeile trägt die Version).
+
+```bash
+.win-test/run.sh v0.7.1                 # Assets von GitHub laden + SHA256SUMS prüfen, VM (neu)starten, auf RESULT warten — warm ≈ 4 min
+.win-test/run.sh v0.7.1 --keep-running  # letzte App-Instanz offen lassen → Screenshot / Live-Verbindungstest
+.win-test/run.sh v0.7.1 --fresh         # VM-Disk verwerfen → frisches Windows (ISO via Mirror + Setup ≈ 15–60 min)
+.win-test/run.sh v0.7.1 --no-download   # share/ ist schon bestückt (z. B. lokaler Build)
+node .win-test/screenshot.mjs [out.png] [--click X,Y] [--type TEXT] [--key Enter]   # VM-Bildschirm via noVNC; Klick in Screenshot-Pixeln
+```
+
+- **Warm halten.** Die VM-Disk (Volume `auffi-wintest_auffi-win-data`) ist der Unterschied zwischen vier Minuten und einer Stunde. `docker compose stop` gibt die 4 GB RAM frei und behält die Disk; `down -v` nur, wenn ein wirklich frisches Windows gebraucht wird (z. B. Zertifikatsspeicher-Test wie 0.6.6).
+- **RAM.** Die VM braucht 4 GB; `run.sh` verweigert den Start unter 4,6 GB `MemAvailable` (dockur drosselt sonst `RAM_SIZE`, die OOBE hängt). Nachbar-VMs (`t2cw-windows`, PraxisZeit) vorher stoppen.
+- **Reichweite.** Beweist Installation + Start + Version je Installer. „kein Debug-Log in 25 s" heißt: Capture/Connect sind NICHT abgedeckt. Dafür `--keep-running` und dann `screenshot.mjs`: zeigt die App den 9-stelligen Code, stehen TLS-Trust + WSS gegen auffi.app (die 0.6.6-Lektion: installiert ≠ verbunden). Mit `--click` lässt sich der Akzeptieren-Dialog aus dem Screenshot heraus bedienen — so ist ein echter Ad-hoc-Connect Windows → Browser möglich.
+- **Ergebnis lesen.** `run.sh` wartet auf eine Ergebnisdatei mit genau der angeforderten Version in der Kopfzeile — ein alter Lauf kann nicht als neuer durchgehen. Bei Timeout: noVNC `http://127.0.0.1:8007` (nur Loopback) und `share/first-boot.txt` ansehen.
+- **Gotchas.** `.bat` müssen CRLF sein (`sed -i 's/\r*$/\r/'`); Klammern in `echo`-Text innerhalb von `( … )`-Blöcken killen cmd — Paren-Balance + goto-Labels vor dem Boot prüfen (`run.sh` tut das nicht). Microsofts Direkt-Download ist von dieser IP geblockt, dockur fällt auf einen Mirror zurück. Explizites compose-`name:` bleibt Pflicht, sonst räumt `up` den t2cw-Container als „Orphan" ab.
+
 ## Admin-Promote auf prod
 
 `sqlite3`-Binary ist NICHT im backend-Image, also via Node + better-sqlite3 (ist schon installiert) auf der DB unter `/var/lib/auffi/auffi.db`. SQLite-WAL ist sicher fuer einen einzelnen Live-Writer, der UPDATE ist atomic; Backend muss NICHT gestoppt werden.
