@@ -13,7 +13,7 @@ function captureFetch(
   const calls: FetchCall[] = [];
   const original = globalThis.fetch;
   globalThis.fetch = (async (
-    input: RequestInfo | URL,
+    input: string | URL | Request,
     init?: RequestInit
   ): Promise<Response> => {
     calls.push({ url: input.toString(), init });

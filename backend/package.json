@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest"

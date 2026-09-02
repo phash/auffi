@@ -14,7 +14,7 @@ const DOWNLOAD_PAGES = [
 ].map((p) => resolve(REPO_ROOT, p));
 
 async function build(
-  upstreamFetcher?: (asset: string) => Promise<Response>,
+  upstreamFetcher?: (asset: string, tag?: string) => Promise<Response>,
 ): Promise<{ app: FastifyInstance; db: Db }> {
   const db = openDb(":memory:");
   applyMigrations(db, defaultMigrationsDir());

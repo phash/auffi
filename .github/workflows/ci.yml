@@ -44,6 +44,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `npm run build` type-checks src only; vitest transpiles tests without
+      # checking them. tsconfig.test.json covers both.
+      - name: Type-check (src + tests)
+        run: npm run typecheck
+
       - name: Run tests with coverage
         run: npm test -- --coverage
 

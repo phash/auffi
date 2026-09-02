@@ -3,6 +3,7 @@ import { verifyEmailTemplate, resetPasswordTemplate } from "../src/email/templat
 import {
   captureTransport,
   smtpConfigFromEnv,
+  type CaptureTransport,
 } from "../src/email/transport.js";
 import { buildAuthMailer, mailerFromEnv } from "../src/email/mailer.js";
 
@@ -158,7 +159,7 @@ describe("mailerFromEnv", () => {
       DASHBOARD_URL: "https://self-hosted.example/db",
     });
     await out.mailer.sendVerifyEmail("x@y", "tok");
-    const captured = (out.transport as { captured: { text: string }[] }).captured;
+    const captured = (out.transport as CaptureTransport).captured;
     expect(captured[0].text).toContain("https://self-hosted.example/db/verify/tok");
   });
 });

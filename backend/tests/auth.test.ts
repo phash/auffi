@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { OutgoingHttpHeaders } from "node:http";
 import Fastify, { FastifyInstance } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
@@ -39,9 +40,9 @@ async function build(): Promise<{
   return { app, db, mailer };
 }
 
-function cookieValue(headers: Record<string, string | string[] | undefined>): string | undefined {
+function cookieValue(headers: OutgoingHttpHeaders): string | undefined {
   const sc = headers["set-cookie"];
-  const raw = Array.isArray(sc) ? sc[0] : sc;
+  const raw = Array.isArray(sc) ? sc[0] : typeof sc === "string" ? sc : undefined;
   if (!raw) return undefined;
   const m = raw.match(/^__Host-auffi_session=([^;]+)/);
   return m?.[1];

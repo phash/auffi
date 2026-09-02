@@ -133,13 +133,15 @@ describe("GET /api/devices/:id/log", () => {
     return sc.match(/__Host-auffi_session=([^;]+)/)![1];
   }
 
+  type LogPage = { items: Array<{ id: number }>; nextCursor: string | null };
+
   it("returns newest rows first, default limit 20, with nextCursor", async () => {
     const c = await cookieFor("owner@a.test", "owner-account-pw");
     const res = await fetch(`${baseUrl}/api/devices/333-333-333/log`, {
       headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" },
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as LogPage;
     expect(body.items.length).toBe(20);
     expect(body.nextCursor).not.toBeNull();
     // Newest first.
@@ -148,18 +150,18 @@ describe("GET /api/devices/:id/log", () => {
 
   it("paginates via cursor query param", async () => {
     const c = await cookieFor("owner@a.test", "owner-account-pw");
-    const first = await (
+    const first = (await (
       await fetch(`${baseUrl}/api/devices/333-333-333/log?limit=10`, {
         headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" },
       })
-    ).json();
+    ).json()) as LogPage;
     expect(first.items.length).toBe(10);
-    const second = await (
+    const second = (await (
       await fetch(
         `${baseUrl}/api/devices/333-333-333/log?limit=10&cursor=${first.nextCursor}`,
         { headers: { cookie: `__Host-auffi_session=${c}`, origin: "http://127.0.0.1" } },
       )
-    ).json();
+    ).json()) as LogPage;
     expect(second.items[0].id).toBeLessThan(first.items[9].id);
   });
 

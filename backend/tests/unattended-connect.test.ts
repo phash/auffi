@@ -143,13 +143,13 @@ describe("UnattendedSessions", () => {
 
   it("begin returns 'busy' on a second attempt for the same device", () => {
     const ss = new UnattendedSessions();
-    expect(ss.begin("123-456-789", v, s)).toBe("ok");
-    expect(ss.begin("123-456-789", {} as WebSocket, s)).toBe("busy");
+    expect(ss.begin("123-456-789", v, s, "84.xxx")).toBe("ok");
+    expect(ss.begin("123-456-789", {} as WebSocket, s, "84.xxx")).toBe("busy");
   });
 
   it("transitions state through awaiting-pw → pw-in-flight → confirmed", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s);
+    ss.begin("123-456-789", v, s, "84.xxx");
     expect(ss.findByViewer(v)?.state).toBe("awaiting-pw");
     ss.transition("123-456-789", "pw-in-flight");
     expect(ss.findByViewer(v)?.state).toBe("pw-in-flight");
@@ -159,7 +159,7 @@ describe("UnattendedSessions", () => {
 
   it("detachViewer removes the session but detachSharer is needed to clear by sharer-key", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s);
+    ss.begin("123-456-789", v, s, "84.xxx");
     expect(ss.detachViewer(v)?.deviceId).toBe("123-456-789");
     expect(ss.findByViewer(v)).toBeNull();
     expect(ss.size()).toBe(0);
@@ -167,7 +167,7 @@ describe("UnattendedSessions", () => {
 
   it("findBySharer returns the session by sharer ref", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s);
+    ss.begin("123-456-789", v, s, "84.xxx");
     expect(ss.findBySharer(s)?.deviceId).toBe("123-456-789");
   });
 
