@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { _setApiClientForTests } from "../src/api.js";
 import { renderDeviceDetail } from "../src/views/device-detail.js";
 
@@ -190,8 +190,7 @@ describe("renderDeviceDetail", () => {
     let deleteFired = false;
     _setApiClientForTests({
       base: "",
-      fetch: vi.fn(async (input, init) => {
-        const url = typeof input === "string" ? input : input.toString();
+      fetch: vi.fn(async (_input, init) => {
         const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
         if (method === "GET") return jsonResponse({ items: [SEED] });
         deleteFired = true;

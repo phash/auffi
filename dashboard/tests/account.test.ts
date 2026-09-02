@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { _setApiClientForTests } from "../src/api.js";
 import { friendlyAccountError, renderAccount } from "../src/views/account.js";
 
@@ -87,7 +87,7 @@ describe("renderAccount", () => {
     const calls: Array<{ method: string; body: string }> = [];
     _setApiClientForTests({
       base: "",
-      fetch: vi.fn(async (input, init) => {
+      fetch: vi.fn(async (_input, init) => {
         const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
         if (method === "GET") return jsonResponse(ME);
         calls.push({
@@ -118,7 +118,7 @@ describe("renderAccount", () => {
     let patchCount = 0;
     _setApiClientForTests({
       base: "",
-      fetch: vi.fn(async (input, init) => {
+      fetch: vi.fn(async (_input, init) => {
         const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
         if (method === "GET") return jsonResponse(ME);
         patchCount += 1;
@@ -175,7 +175,7 @@ describe("renderAccount", () => {
   it("password change navigates to /login on success (sessions revoked)", async () => {
     _setApiClientForTests({
       base: "",
-      fetch: vi.fn(async (input, init) => {
+      fetch: vi.fn(async (_input, init) => {
         const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
         if (method === "GET") return jsonResponse(ME);
         return jsonResponse({ ok: true });
@@ -197,7 +197,7 @@ describe("renderAccount", () => {
     let patchCalled = false;
     _setApiClientForTests({
       base: "",
-      fetch: vi.fn(async (input, init) => {
+      fetch: vi.fn(async (_input, init) => {
         const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
         if (method === "GET") return jsonResponse(ME);
         patchCalled = true;
@@ -220,7 +220,7 @@ describe("renderAccount", () => {
     let deleteCalled = false;
     _setApiClientForTests({
       base: "",
-      fetch: vi.fn(async (input, init) => {
+      fetch: vi.fn(async (_input, init) => {
         const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
         if (method === "GET") return jsonResponse(ME);
         deleteCalled = true;
@@ -243,7 +243,7 @@ describe("renderAccount", () => {
     let deleteCalled = false;
     _setApiClientForTests({
       base: "",
-      fetch: vi.fn(async (input, init) => {
+      fetch: vi.fn(async (_input, init) => {
         const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
         if (method === "GET") return jsonResponse(ME);
         deleteCalled = true;
