@@ -148,22 +148,24 @@ export function registerAdminFeedbackRoutes(
         .get(fid);
       if (!row) return bad(reply, 404, "not-found", "feedback row not found");
       const nextResolvedAt = body.resolved ? Date.now() : null;
-      db.prepare("UPDATE feedback SET resolved_at = ? WHERE id = ?").run(nextResolvedAt, fid);
-      writeAudit(
-        db,
-        req,
-        body.resolved ? "feedback.resolve" : "feedback.reopen",
-        "feedback",
-        fid,
-        {
-          resolved_at: row.resolved_at,
-          source: row.source,
-          category: row.category,
-          rating: row.rating,
-          body: row.body,
-        },
-        { resolved_at: nextResolvedAt },
-      );
+      db.transaction(() => {
+        db.prepare("UPDATE feedback SET resolved_at = ? WHERE id = ?").run(nextResolvedAt, fid);
+        writeAudit(
+          db,
+          req,
+          body.resolved ? "feedback.resolve" : "feedback.reopen",
+          "feedback",
+          fid,
+          {
+            resolved_at: row.resolved_at,
+            source: row.source,
+            category: row.category,
+            rating: row.rating,
+            body: row.body,
+          },
+          { resolved_at: nextResolvedAt },
+        );
+      })();
       return reply.status(200).send({ ok: true, resolvedAt: nextResolvedAt });
     },
   );
@@ -242,30 +244,31 @@ export function registerAdminFeedbackRoutes(
       const now = Date.now();
       const adminId = req.account!.id;
       const nextResolvedAt = row.resolved_at ?? now;
-      db.prepare(
-        `UPDATE feedback
-            SET reply_body = ?, replied_at = ?, replied_by = ?,
-                reply_sent_at = NULL, resolved_at = ?
-          WHERE id = ?`,
-      ).run(replyText, now, adminId, nextResolvedAt, fid);
-
-      writeAudit(
-        db,
-        req,
-        "feedback.reply",
-        "feedback",
-        fid,
-        {
-          reply_body: row.reply_body,
-          replied_at: row.replied_at,
-          resolved_at: row.resolved_at,
-        },
-        {
-          reply_body: replyText,
-          replied_at: now,
-          resolved_at: nextResolvedAt,
-        },
-      );
+      db.transaction(() => {
+        db.prepare(
+          `UPDATE feedback
+              SET reply_body = ?, replied_at = ?, replied_by = ?,
+                  reply_sent_at = NULL, resolved_at = ?
+            WHERE id = ?`,
+        ).run(replyText, now, adminId, nextResolvedAt, fid);
+        writeAudit(
+          db,
+          req,
+          "feedback.reply",
+          "feedback",
+          fid,
+          {
+            reply_body: row.reply_body,
+            replied_at: row.replied_at,
+            resolved_at: row.resolved_at,
+          },
+          {
+            reply_body: replyText,
+            replied_at: now,
+            resolved_at: nextResolvedAt,
+          },
+        );
+      })();
 
       let sentAt: number | null = null;
       let sendError: string | null = null;
@@ -302,8 +305,8 @@ export function registerAdminFeedbackRoutes(
 
   /**
    * DELETE /api/admin/feedback/:id — hard-delete (spam/PII).
-   * Audit-logged before the DELETE; the row's text is captured in the
-   * `before` snapshot so an admin still has a record after deletion.
+   * Audit row and DELETE commit together; the row's text is captured in
+   * the `before` snapshot so an admin still has a record after deletion.
    */
   app.delete(
     "/api/admin/feedback/:id",
@@ -325,8 +328,10 @@ export function registerAdminFeedbackRoutes(
         )
         .get(fid);
       if (!row) return bad(reply, 404, "not-found", "feedback row not found");
-      writeAudit(db, req, "feedback.delete", "feedback", fid, row, null);
-      db.prepare("DELETE FROM feedback WHERE id = ?").run(fid);
+      db.transaction(() => {
+        writeAudit(db, req, "feedback.delete", "feedback", fid, row, null);
+        db.prepare("DELETE FROM feedback WHERE id = ?").run(fid);
+      })();
       return reply.status(204).send();
     },
   );

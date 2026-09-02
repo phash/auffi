@@ -447,6 +447,34 @@ describe("GET /api/admin/feedback", () => {
   // source) — not only the resolved_at diff — so retention-purge
   // can later sweep the feedback table without losing forensic
   // context.
+  it("PATCH rolls the resolve back when the audit row cannot be written", async () => {
+    // Mutation and audit must land in one transaction: a resolved row
+    // without its audit trail is exactly what the trail exists to prevent.
+    // A trigger stands in for the failure (disk full, SQLITE_BUSY).
+    const list = await h.app.inject({
+      method: "GET",
+      url: "/api/admin/feedback",
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    const target = list.json().items[0];
+    h.db.exec(
+      "CREATE TRIGGER audit_down BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END",
+    );
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/admin/feedback/${target.id}`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { resolved: true },
+    });
+    expect(res.statusCode).toBe(500);
+    const row = h.db
+      .prepare<[number], { resolved_at: number | null }>(
+        "SELECT resolved_at FROM feedback WHERE id = ?",
+      )
+      .get(target.id)!;
+    expect(row.resolved_at).toBeNull();
+  });
+
   it("PATCH writes a full-row before-snapshot into the audit log", async () => {
     const list = await h.app.inject({
       method: "GET",
@@ -546,6 +574,28 @@ describe("DELETE /api/admin/feedback/:id", () => {
       .get("feedback.delete") as { action: string; before_json: string };
     expect(auditRow.action).toBe("feedback.delete");
     expect(auditRow.before_json).toContain("spam");
+  });
+
+  it("writes no audit row when the DELETE itself fails", async () => {
+    // The audit row asserts a deletion happened; if the DELETE throws
+    // after it, the trail lies. Both must commit or neither.
+    h.db.exec(
+      "CREATE TRIGGER no_delete BEFORE DELETE ON feedback BEGIN SELECT RAISE(ABORT, 'delete refused'); END",
+    );
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/admin/feedback/${feedbackId}`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    expect(res.statusCode).toBe(500);
+    const still = h.db
+      .prepare("SELECT COUNT(*) AS c FROM feedback WHERE id = ?")
+      .get(feedbackId) as { c: number };
+    expect(still.c).toBe(1);
+    const audits = h.db
+      .prepare("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'feedback.delete'")
+      .get() as { c: number };
+    expect(audits.c).toBe(0);
   });
 
   it("404s on unknown id", async () => {
@@ -804,6 +854,27 @@ describe("POST /api/admin/feedback/:id/reply", () => {
     } finally {
       h.feedbackTransport.send = originalSend;
     }
+  });
+
+  it("rolls the stored reply back when the audit row cannot be written", async () => {
+    h.db.exec(
+      "CREATE TRIGGER audit_down BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END",
+    );
+    const res = await h.app.inject({
+      method: "POST",
+      url: `/api/admin/feedback/${feedbackId}/reply`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { reply: "kommt nie an" },
+    });
+    expect(res.statusCode).toBe(500);
+    const row = h.db
+      .prepare<[number], { reply_body: string | null; resolved_at: number | null }>(
+        "SELECT reply_body, resolved_at FROM feedback WHERE id = ?",
+      )
+      .get(feedbackId)!;
+    expect(row.reply_body).toBeNull();
+    expect(row.resolved_at).toBeNull();
+    expect(h.feedbackTransport.captured).toHaveLength(0);
   });
 
   it("audit log captures the reply transition (before+after)", async () => {
