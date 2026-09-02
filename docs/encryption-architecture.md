@@ -203,7 +203,7 @@ Zusätzlich verifiziert (aus demselben Audit, Tabelle „What's good — verifie
 
 - **Sharer-Confirmation ist mandatory** — kein Auto-Accept im Ad-hoc-Flow (im Unattended-Mode wahlweise per Device-Passwort gegated).
 - **Constant-time Login** — argon2-Verify wird auch beim „unknown account" gegen einen Decoy-Hash gefahren, damit Timing kein User-Existence leakt. [`backend/src/auth/argon.ts:56-84`](../backend/src/auth/argon.ts).
-- **Token-Lebenszyklus**: Session-Cookie 30 d, Email-Verification + Password-Reset 24 h und single-use, Device-Pairing-Code 5 min und single-use. Alle als `used_at` innerhalb einer DB-Transaktion markiert.
+- **Token-Lebenszyklus**: Session-Cookie 30 d, Email-Verification 24 h, Password-Reset 1 h, Device-Pairing-Code 10 min — die drei letzten single-use ([`backend/src/auth/handlers.ts`](../backend/src/auth/handlers.ts) `VERIFY_TTL_MS` / `RESET_TTL_MS`, [`backend/src/devices/handlers.ts`](../backend/src/devices/handlers.ts) `PAIRING_TTL_MS`). Alle als `used_at` innerhalb einer DB-Transaktion markiert.
 - **Kein `danger_accept_invalid_certs` / `rejectUnauthorized: false` irgendwo im Code.** Suche und du findest nichts.
 - **Keine Plaintext-Secrets persistiert.** Nur Hashes.
 
