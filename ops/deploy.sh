@@ -347,12 +347,13 @@ else
   maybe_run "Load image on remote" \
     remote "gunzip -c '${DEPLOY_PATH}/auffi-backend-${APP_VERSION}.tar.gz' | docker load"
 
-  maybe_run "Retag image (sync mit .env.prod APP_VERSION + :latest)" \
-    remote "ENV_APP_VERSION=\$(grep -E '^APP_VERSION=' '${DEPLOY_PATH}/.env.prod' 2>/dev/null | cut -d= -f2- | tr -d '\"'); \
-      docker tag 'auffi-backend:${APP_VERSION}' 'auffi-backend:latest'; \
-      if [ -n \"\${ENV_APP_VERSION}\" ] && [ \"\${ENV_APP_VERSION}\" != '${APP_VERSION}' ]; then \
-        docker tag 'auffi-backend:${APP_VERSION}' \"auffi-backend:\${ENV_APP_VERSION}\"; \
-      fi"
+  # Only :latest. Step 12 points .env.prod at ${APP_VERSION} before Step 13's
+  # compose up, so the previously running SHA's tag must keep naming the
+  # previous image — it is exactly what --rollback re-deploys. Retagging the
+  # new image under that SHA (done here until 0.7.1) made a rollback restart
+  # the very image it was meant to back out of.
+  maybe_run "Retag image :latest" \
+    remote "docker tag 'auffi-backend:${APP_VERSION}' 'auffi-backend:latest'"
 
   maybe_run "Prune old image tarballs on remote (keep 3)" \
     remote "ls -t '${DEPLOY_PATH}'/auffi-backend-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm --" || true
