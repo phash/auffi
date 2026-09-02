@@ -110,7 +110,10 @@ function renderEditor(root: HTMLElement, me: Me): void {
     pending.style.borderRadius = "6px";
     pending.style.marginBottom = "0.75rem";
     pending.textContent =
-      `Änderung auf ${me.pendingEmail} angefragt — bestätige den Link in der Mail an die neue Adresse.`;
+      `Änderung auf ${me.pendingEmail} angefragt — bestätige den Link in der Mail an die neue Adresse.` +
+      (me.pendingEmailExpiresAt === null
+        ? ""
+        : ` Link gültig bis ${formatAbsolute(me.pendingEmailExpiresAt)}.`);
     idCard.appendChild(pending);
   }
 

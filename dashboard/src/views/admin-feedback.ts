@@ -208,6 +208,13 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
   const src = document.createElement("span");
   src.textContent = item.source;
   meta.appendChild(src);
+  // Browser/OS family only (privacy review L-2) — enough to place a
+  // "Code blinkt nicht"-report on Safari/iOS vs. Firefox/Linux.
+  if (item.userAgentHint !== null) {
+    const ua = document.createElement("span");
+    ua.textContent = item.userAgentHint;
+    meta.appendChild(ua);
+  }
   const email = document.createElement("span");
   email.textContent = item.accountEmail;
   meta.appendChild(email);

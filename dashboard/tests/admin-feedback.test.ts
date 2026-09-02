@@ -58,6 +58,27 @@ function findButton(root: HTMLElement, label: string): HTMLButtonElement {
 
 afterEach(() => _setApiClientForTests(null));
 
+describe("renderAdminFeedback — card meta", () => {
+  it("shows the browser/OS hint so a bug report can be placed", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({
+          items: [feedbackItem(1, { userAgentHint: "Firefox/Linux" }), feedbackItem(2)],
+          nextCursor: null,
+        }),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAdminFeedback(root, ctx());
+    await flush();
+    const cards = root.querySelectorAll(".feedback-admin-card");
+    expect(cards[0].querySelector(".feedback-admin-meta")!.textContent).toContain("Firefox/Linux");
+    // A null hint (sharer / stripped UA) renders no empty chip.
+    expect(cards[1].querySelector(".feedback-admin-meta")!.textContent).not.toContain("null");
+  });
+});
+
 describe("renderAdminFeedback — cursor pagination", () => {
   it("hides 'Mehr laden' when the first page is the last page", async () => {
     _setApiClientForTests({

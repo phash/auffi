@@ -67,17 +67,20 @@ describe("renderAccount", () => {
     expect(root.textContent).toContain("Bestätigt am");
   });
 
-  it("shows the pending-email banner when one is in flight", async () => {
+  it("shows the pending-email banner with its expiry when one is in flight", async () => {
+    const expiresAt = Date.UTC(2026, 8, 3, 12, 30);
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async () =>
-        jsonResponse({ ...ME, pendingEmail: "neu@a.test", pendingEmailExpiresAt: 99 }),
+        jsonResponse({ ...ME, pendingEmail: "neu@a.test", pendingEmailExpiresAt: expiresAt }),
       ) as unknown as typeof fetch,
     });
     const root = makeRoot();
     renderAccount(root, CTX);
     await flush();
     expect(root.textContent).toContain("Änderung auf neu@a.test angefragt");
+    expect(root.textContent).toContain("Link gültig bis");
+    expect(root.textContent).toContain("2026");
   });
 
   it("PATCHes new_email + current_password and shows success", async () => {
