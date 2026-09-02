@@ -227,9 +227,9 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       // Email shape check is cheap; do it BEFORE argon2 to avoid wasting
       // ~250 ms on obviously-bogus input.
       if (!isPlausibleEmail(email) || !password) {
-        // Even here, pay the argon2 cost so timing is uniform. Only emit
-        // a 400 when the *body* is entirely missing fields — that's a
-        // protocol error, not a credential test.
+        // Even here, pay the argon2 cost so timing is uniform, and answer
+        // the same 401 as a wrong password — a distinct status for
+        // malformed input would be one more thing to probe.
         await verifyPasswordTimingSafe(null, password || "x");
         return bad(reply, 401, "bad-credentials", "email or password incorrect");
       }
