@@ -49,6 +49,8 @@ Tieferes Referenzmaterial wurde aus dieser Datei ausgegliedert, um sie schlank z
 # Backend (Fastify signaling)
 cd backend && npm run dev          # tsx watch on :8080
 cd backend && npm test             # vitest
+cd backend && npm run typecheck    # tsc über src UND tests (CI-Gate seit 0.7.1)
+bash ops/tests/run-all.sh          # Ops-Shell-Tests (deploy/rollback/headers/pins), laufen auch in CI
 
 # Viewer (browser SPA)
 cd viewer && npm run dev           # vite on :5173
@@ -63,7 +65,7 @@ cd viewer && npx playwright test tests/e2e/visual-audit.spec.ts --workers=1
 # Sharer (Tauri desktop app)
 cd sharer && npm run tauri:dev     # native window + DevTools
 cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
-cd sharer/src-tauri && cargo test --lib                          # 239 Rust unit tests — note nested dir
+cd sharer/src-tauri && cargo test --lib                          # Rust unit tests (Baseline s. DoD) — note nested dir
 cd sharer/src-tauri && cargo clippy --lib --tests -- -D warnings
 
 # Dashboard (unattended-access SPA — only needed if you're working on the account/device flow)
@@ -79,6 +81,9 @@ cd viewer && npm run csp:sync     # csp:check = nur prüfen (CI-tauglich)
 # VM-Disk NIE mit `down -v` verwerfen (sonst 15–60 min Neuinstallation). Details: docs/ops-runbook.md § Windows-Emulator-Smoke
 .win-test/run.sh vX.Y.Z [--keep-running]          # noVNC: http://127.0.0.1:8007
 node .win-test/screenshot.mjs [--click X,Y]        # VM-Bildschirm als PNG (Code sichtbar? = TLS+WSS ok)
+node .win-test/live-connect.mjs NNN-NNN-NNN        # Browser-Seite des echten Connects; Klicks scripten (30-s-Media-Backstop)
+# Prod anfassen: Caddy 403t curl/HeadlessChrome-UAs → curl -A "Mozilla/5.0 …", Playwright mit normalem userAgent
+# Lokaler E2E-Backend: RATE_LIMIT_MAX=1000 setzen — seit 0.7.1 zählt JEDER Join (auch Treffer) aufs 5/min-Budget
 
 # Local stack (nur backend — voller Stack lokal via ./ops/smoke.sh)
 docker compose up --build
@@ -86,7 +91,14 @@ docker compose up --build
 # Production deploy
 ./ops/deploy.sh                    # idempotent — Tests + Build + Transfer + Compose-Up + Health + Log
 ./ops/deploy.sh --yes              # ohne Confirm | --dry-run | --rollback | --skip-tests
+# deploy.sh verweigert dirty tree (--allow-dirty). Hat csp:sync caddy/Caddyfile geändert: Hashes danach
+# von Hand ins Cluster-Caddyfile (Anker `wss://turn.auffi.app:5349`, `docker restart caddy-proxy`, kein reload)
 ```
+
+## Agent-Workflows in diesem Repo
+
+- `isolation: 'worktree'` forkt von `origin/main`, nicht vom ausgecheckten Branch → Worker-Commits per `git cherry-pick <base>..<head>` holen, nie mergen (zieht sonst alte Historie mit). Worker brauchen `ln -s` auf die node_modules + `CARGO_TARGET_DIR=<repo>/sharer/src-tauri/target`.
+- Session-Cap: 15 xhigh-Finder + 3-Lens-Verify pro Befund reißt das Limit. Reicht: 1 medium-Verifier pro Medium-Befund, Lows direkt an Fix-Worker je Komponente; nach der Integration IMMER die volle Test-Gate (Seams zwischen Workern zeigen sich nur im gemergten Tree).
 
 Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Promote-SQL: siehe `docs/ops-runbook.md`.
 
@@ -126,6 +138,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 - **Code TTL enforced server-side**, not just client-side. 10 minutes hard cap.
 - **All persisted state must have a retention policy.** In-memory state is fine; if you add a DB later, document retention.
 - **No third-party trackers** in the viewer. No analytics SDKs, no Google Fonts CDN, no external CSS. Self-host everything. *Exception:* a self-hosted Matomo on the same VPS (opt-in consent-banner, cookieless) — full architecture in `docs/matomo-dsgvo.md`, threat-model in `docs/footguns.md` § Matomo Cross-Tenant Trust.
+- **Statische Seiten: kein inline `<style>`** — prod sendet `style-src 'self'` und wirft es lautlos weg, der Visual-Audit (Dev-Server ohne CSP) sieht das nicht (Guard: `viewer/tests/marketing-seo.test.ts`); inline JSON-LD-`<script>` nur mit `npm run csp:sync`.
 - **TLS everywhere in production.** No HTTP, no WS. Let's Encrypt via reverse proxy.
 - **Sharer confirmation is mandatory** — never auto-accept incoming peer connections.
 - **WebRTC must use DTLS-SRTP** (default). Don't disable it.
