@@ -93,6 +93,8 @@ docker compose up --build
 ./ops/deploy.sh --yes              # ohne Confirm | --dry-run | --rollback | --skip-tests
 # deploy.sh verweigert dirty tree (--allow-dirty). Hat csp:sync caddy/Caddyfile geändert: Hashes danach
 # von Hand ins Cluster-Caddyfile (Anker `wss://turn.auffi.app:5349`, `docker restart caddy-proxy`, kein reload)
+# Nach Deploy von Marketing-Änderungen: sitemap.xml-lastmod von Hand mitziehen (kein Generator), dann
+bash ops/indexnow-ping.sh         # Bing/ChatGPT-Search benachrichtigen — deploy.sh ruft es NICHT auf
 ```
 
 ## Agent-Workflows in diesem Repo
@@ -139,6 +141,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 - **All persisted state must have a retention policy.** In-memory state is fine; if you add a DB later, document retention.
 - **No third-party trackers** in the viewer. No analytics SDKs, no Google Fonts CDN, no external CSS. Self-host everything. *Exception:* a self-hosted Matomo on the same VPS (opt-in consent-banner, cookieless) — full architecture in `docs/matomo-dsgvo.md`, threat-model in `docs/footguns.md` § Matomo Cross-Tenant Trust.
 - **Statische Seiten: kein inline `<style>`** — prod sendet `style-src 'self'` und wirft es lautlos weg, der Visual-Audit (Dev-Server ohne CSP) sieht das nicht (Guard: `viewer/tests/marketing-seo.test.ts`); inline JSON-LD-`<script>` nur mit `npm run csp:sync`.
+- **Marketing-Seiten sind per Test vertraglich gebunden** (`viewer/index.html`, `viewer/en/index.html`, `viewer/public/<slug>/index.html`; Guard `viewer/tests/marketing-seo.test.ts`): neue Seite → `PAGES` + `TARGETS` + `sitemap.xml` + `ops/indexnow-ping.sh`. Hub ≤ 1,3× Wörter der dünnsten Spoke, jede Spoke sagt ihr Keyword öfter als der Hub → Hub-Text nicht wachsen lassen, Linkkraft über `CROSS_LINKS` (Startseite → Intent-Spokes) verteilen.
 - **TLS everywhere in production.** No HTTP, no WS. Let's Encrypt via reverse proxy.
 - **Sharer confirmation is mandatory** — never auto-accept incoming peer connections.
 - **WebRTC must use DTLS-SRTP** (default). Don't disable it.

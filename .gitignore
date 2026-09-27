@@ -44,3 +44,5 @@ screens/
 auffi-debug*.log
 Textdokument*.txt
 *-debug.log
+
+.claude.local.md
