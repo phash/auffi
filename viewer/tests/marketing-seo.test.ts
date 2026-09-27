@@ -190,6 +190,56 @@ describe("comparison cluster — hub/spoke keyword targeting", () => {
   }
 });
 
+// --- Equity into the intent spokes from outside the cluster -----------------
+// Search Console (2026-09-27): "fernwartung opensource" drew 176 impressions, and
+// Google answered them with the hub at position 52 while /fernwartung-open-source/
+// itself saw 1 impression. Every link into that spoke came from inside the cluster;
+// the landing page — the only page with real click signal, all of it brand traffic —
+// linked the hub and nothing else. Contract: the landing page links each intent spoke
+// of its language, and the tool spoke closest to an intent links it too, each with an
+// anchor carrying the spoke's own head term.
+const CROSS_LINKS: Array<{ from: string; to: string }> = [
+  { from: "viewer/index.html", to: "/bildschirm-teilen-ohne-installation/" },
+  { from: "viewer/index.html", to: "/fernwartung-open-source/" },
+  { from: "viewer/index.html", to: "/fernwartung-kostenlos/" },
+  { from: "viewer/en/index.html", to: "/en/screen-sharing-without-install/" },
+  { from: "viewer/en/index.html", to: "/en/open-source-remote-support/" },
+  { from: "viewer/en/index.html", to: "/en/free-remote-support/" },
+  { from: "viewer/public/vergleich/rustdesk/index.html", to: "/fernwartung-open-source/" },
+  { from: "viewer/public/en/compare/rustdesk/index.html", to: "/en/open-source-remote-support/" },
+];
+
+describe("intent spokes receive equity from outside the cluster", () => {
+  for (const { from, to } of CROSS_LINKS) {
+    const keyword = TARGETS.find((t) => t.path === to)!.keyword;
+    it(`${from} links to ${to} with an anchor containing "${keyword}"`, () => {
+      const d = new JSDOM(readFileSync(f(from), "utf-8")).window.document;
+      const texts = Array.from(d.querySelectorAll(`a[href="${to}"]`)).map((a) => norm(a.textContent ?? ""));
+      expect(texts.some((x) => x.includes(keyword)), `anchor texts: ${texts.join(" | ") || "(none)"}`).toBe(true);
+    });
+  }
+});
+
+// "fernwartung ohne installation" ranked at position 23.5 although the no-install
+// page never said "Fernwartung" outside its footer link. The page owns the
+// no-install intent under both names searchers use for it.
+describe("no-install spoke carries the remote-support variant of its intent", () => {
+  const variants = [
+    { path: "/bildschirm-teilen-ohne-installation/", phrase: "fernwartung ohne installation" },
+    { path: "/en/screen-sharing-without-install/", phrase: "remote support without installation" },
+  ];
+  for (const { path, phrase } of variants) {
+    const t = TARGETS.find((x) => x.path === path)!;
+    it(`${path} says "${phrase}" in its description and its lead`, () => {
+      const d = targetDoc(t);
+      const desc = norm(d.querySelector('meta[name="description"]')?.getAttribute("content") ?? "");
+      const lead = norm(d.querySelector("main .vs-lead")?.textContent ?? "");
+      expect(desc, "description").toContain(phrase);
+      expect(lead, "lead").toContain(phrase);
+    });
+  }
+});
+
 // --- Hub/spoke authority balance -------------------------------------------
 // Search Console (2026-08-25) showed the split from the 2026-07-26 title fix had not
 // landed: the hub /vergleich/ still drew 509 impressions at position 51 with 0 clicks
