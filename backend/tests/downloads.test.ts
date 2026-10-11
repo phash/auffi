@@ -2,9 +2,15 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Fastify, { FastifyInstance } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { readFileSync } from "node:fs";
+import { createServer, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
-import { registerDownloadRoutes, KNOWN_ASSETS } from "../src/downloads/handlers.js";
+import {
+  registerDownloadRoutes,
+  createUpstreamFetcher,
+  KNOWN_ASSETS,
+} from "../src/downloads/handlers.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 const DOWNLOAD_PAGES = [
@@ -332,5 +338,85 @@ describe("GET /api/downloads/file/:asset (stream-through proxy)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toBe("application/octet-stream");
     expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+});
+
+describe("createUpstreamFetcher (real fetch against a local upstream)", () => {
+  const asset = "Auffi_0.7.1_x64-setup.exe";
+  const CHUNK = 64 * 1024;
+  const CHUNKS = 8;
+
+  let upstream: Server;
+  let baseUrl: string;
+  let requestedPaths: string[];
+  let h: Awaited<ReturnType<typeof build>> | undefined;
+
+  async function startUpstream(handler: (res: ServerResponse) => void): Promise<void> {
+    requestedPaths = [];
+    upstream = createServer((req, res) => {
+      requestedPaths.push(req.url ?? "");
+      handler(res);
+    });
+    await new Promise<void>((done) => upstream.listen(0, "127.0.0.1", done));
+    baseUrl = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}/phash/auffi`;
+  }
+
+  function slowBody(res: ServerResponse): void {
+    res.writeHead(200, {
+      "content-type": "application/octet-stream",
+      "content-length": String(CHUNK * CHUNKS),
+    });
+    let sent = 0;
+    const tick = setInterval(() => {
+      res.write(Buffer.alloc(CHUNK, sent));
+      if (++sent === CHUNKS) {
+        clearInterval(tick);
+        res.end();
+      }
+    }, 50);
+    res.on("close", () => clearInterval(tick));
+  }
+
+  afterEach(async () => {
+    if (h) {
+      await h.app.close();
+      h.db.close();
+      h = undefined;
+    }
+    upstream.closeAllConnections();
+    await new Promise<void>((done) => upstream.close(() => done()));
+  });
+
+  it("streams a body that takes longer than the headers timeout to its last byte", async () => {
+    // Regression: the headers timeout was an AbortSignal handed to fetch,
+    // which also aborts the body. A 270 MB installer needs far longer than
+    // 15 s on a normal line, so every Windows download was cut off midway.
+    await startUpstream(slowBody);
+    h = await build(createUpstreamFetcher({ baseUrl, headersTimeoutMs: 100 }));
+    const res = await h.app.inject({
+      method: "GET",
+      url: `/api/downloads/file/${asset}?tag=v0.7.1`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.rawPayload.byteLength).toBe(CHUNK * CHUNKS);
+    expect(res.rawPayload[CHUNK * CHUNKS - 1]).toBe(CHUNKS - 1);
+  });
+
+  it("answers 502 when the upstream never sends headers", async () => {
+    await startUpstream(() => {});
+    h = await build(createUpstreamFetcher({ baseUrl, headersTimeoutMs: 100 }));
+    const res = await h.app.inject({ method: "GET", url: `/api/downloads/file/${asset}` });
+    expect(res.statusCode).toBe(502);
+  });
+
+  it("fetches the pinned tag, or the latest release when no tag is given", async () => {
+    await startUpstream((res) => res.end("x"));
+    const fetchAsset = createUpstreamFetcher({ baseUrl, headersTimeoutMs: 1_000 });
+    await (await fetchAsset(asset, "v0.7.1")).arrayBuffer();
+    await (await fetchAsset(asset)).arrayBuffer();
+    expect(requestedPaths).toEqual([
+      "/phash/auffi/releases/download/v0.7.1/Auffi_0.7.1_x64-setup.exe",
+      "/phash/auffi/releases/latest/download/Auffi_0.7.1_x64-setup.exe",
+    ]);
   });
 });

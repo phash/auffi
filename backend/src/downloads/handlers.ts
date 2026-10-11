@@ -149,8 +149,9 @@ export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
 
 /**
  * Where the proxy fetches release assets from. Production points at the
- * GitHub-releases CDN; tests inject a stub so they neither hit the
- * network nor depend on the actual asset being uploaded.
+ * GitHub-releases CDN; tests inject a stub or point `baseUrl` at a local
+ * server so they neither hit the network nor depend on the actual asset
+ * being uploaded.
  *
  * If `tag` is provided, the asset is fetched from that specific release
  * tag (`/releases/download/<tag>/<asset>`). Otherwise it falls back to
@@ -162,18 +163,33 @@ export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
  * `follow` on redirect: GitHub 302s the request to the S3-CDN URL with
  * the actual bytes.
  */
-function defaultUpstreamFetcher(asset: string, tag?: string): Promise<Response> {
-  const slug = tag
-    ? `releases/download/${encodeURIComponent(tag)}`
-    : "releases/latest/download";
-  return fetch(`https://github.com/phash/auffi/${slug}/${encodeURIComponent(asset)}`, {
-    redirect: "follow",
-    // Bounds the headers phase only — once the response arrives the body
-    // streams unaffected. Without it a half-open GitHub/S3 hop (TCP up,
-    // headers never sent) parks the client's request and an undici socket
-    // for undici's ~5 min default, with the download page spinning.
-    signal: AbortSignal.timeout(15_000),
-  });
+export function createUpstreamFetcher(opts: {
+  baseUrl: string;
+  headersTimeoutMs: number;
+}): (asset: string, tag?: string) => Promise<Response> {
+  return async (asset, tag) => {
+    const slug = tag
+      ? `releases/download/${encodeURIComponent(tag)}`
+      : "releases/latest/download";
+    // Bounds the headers phase only. Without it a half-open GitHub/S3 hop
+    // (TCP up, headers never sent) parks the client's request and an undici
+    // socket for undici's ~5 min default. The timer must be cleared once the
+    // headers arrive: fetch's signal also aborts the body, and a 270 MB
+    // installer streams for minutes on an ordinary line.
+    const headers = new AbortController();
+    const timer = setTimeout(
+      () => headers.abort(new DOMException("upstream sent no headers", "TimeoutError")),
+      opts.headersTimeoutMs,
+    );
+    try {
+      return await fetch(`${opts.baseUrl}/${slug}/${encodeURIComponent(asset)}`, {
+        redirect: "follow",
+        signal: headers.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 }
 
 /**
@@ -203,7 +219,9 @@ export function registerDownloadRoutes(
   db: Db,
   opts: DownloadRoutesOptions = {},
 ): void {
-  const upstreamFetcher = opts.upstreamFetcher ?? defaultUpstreamFetcher;
+  const upstreamFetcher =
+    opts.upstreamFetcher ??
+    createUpstreamFetcher({ baseUrl: "https://github.com/phash/auffi", headersTimeoutMs: 15_000 });
   /**
    * GET /api/downloads — public, returns the click-count for every
    * known asset (zero for assets nobody has clicked yet so the viewer
