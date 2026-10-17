@@ -100,7 +100,9 @@ bash ops/indexnow-ping.sh         # Bing/ChatGPT-Search benachrichtigen — depl
 # Nutzung/Feedback auf prod lesen (read-only; ssh + Node-Muster wie Admin-Promote in docs/ops-runbook.md):
 # `code_events` (nur id, created_at in ms-Epoch) = Code-Mints. Eigene Release-/Win-Smokes sind nicht
 # herausfilterbar, daher zählen Release-Wochen zu hoch. `feedback` (body, source, user_agent_hint, resolved_at):
-# Viewer-Einträge sind anonym, ohne Antwortkanal. In `node -e` im ssh-'…' String-Literale mit Backticks, nicht Quotes.
+# Viewer-Einträge sind anonym, ohne Antwortkanal. Kein `node -e` im ssh-'…' (SQL-Literale brechen das Quoting):
+# Skript lokal schreiben, per stdin: ssh musikersuche@musikersuche.org 'docker exec -i -w /app auffi-backend node -' < x.js
+# Writes wie der Admin-Handler: UPDATE + audit_log-Row in einer Transaktion (backend/src/admin/feedback.ts).
 ```
 
 ## Agent-Workflows in diesem Repo
