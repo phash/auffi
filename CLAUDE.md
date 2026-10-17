@@ -55,6 +55,7 @@ bash ops/tests/run-all.sh          # Ops-Shell-Tests (deploy/rollback/headers/pi
 # Viewer (browser SPA)
 cd viewer && npm run dev           # vite on :5173
 cd viewer && npm run build         # static dist/
+cd viewer && npm test              # vitest (Unit + marketing-seo/help-sync-Guards)
 cd viewer && npm run test:e2e      # Playwright
 
 # Visual-Audit gegen live prod (24 Screenshots in /tmp/visual-audit/):
@@ -95,6 +96,11 @@ docker compose up --build
 # von Hand ins Cluster-Caddyfile (Anker `wss://turn.auffi.app:5349`, `docker restart caddy-proxy`, kein reload)
 # Nach Deploy von Marketing-Änderungen: sitemap.xml-lastmod von Hand mitziehen (kein Generator), dann
 bash ops/indexnow-ping.sh         # Bing/ChatGPT-Search benachrichtigen — deploy.sh ruft es NICHT auf
+
+# Nutzung/Feedback auf prod lesen (read-only; ssh + Node-Muster wie Admin-Promote in docs/ops-runbook.md):
+# `code_events` (nur id, created_at in ms-Epoch) = Code-Mints. Eigene Release-/Win-Smokes sind nicht
+# herausfilterbar, daher zählen Release-Wochen zu hoch. `feedback` (body, source, user_agent_hint, resolved_at):
+# Viewer-Einträge sind anonym, ohne Antwortkanal. In `node -e` im ssh-'…' String-Literale mit Backticks, nicht Quotes.
 ```
 
 ## Agent-Workflows in diesem Repo
@@ -162,7 +168,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-09-02 (v0.7.1): backend 530, sharer-lib 347 (+ 13 `#[ignore]` Display-/GPU-requiring), viewer 670, dashboard 214, sharer-js 131, ops shell tests 10 files via `bash ops/tests/run-all.sh`. Suites can timeout-flake under parallel load — re-run the flaked file ISOLATED before believing a red run. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-10-17: backend 533, sharer-lib 347 (+ 13 `#[ignore]` Display-/GPU-requiring), viewer 680, dashboard 214, sharer-js 131, ops shell tests 10 files via `bash ops/tests/run-all.sh`. Suites can timeout-flake under parallel load — re-run the flaked file ISOLATED before believing a red run. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy -- -D warnings`. (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
