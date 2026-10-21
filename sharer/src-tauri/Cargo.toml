@@ -23,7 +23,7 @@ tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync"] 
 # See src/tls_roots.rs — the anchors are merged with the bundled set instead.
 tokio-tungstenite = { version = "=0.30.0", features = ["rustls-tls-native-roots"] }
 rustls-native-certs = "=0.8.4"
-webpki-roots = "=1.0.9"
+webpki-roots = "=1.0.10"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 futures-util = "=0.3.34"
@@ -44,7 +44,7 @@ reqwest = { version = "=0.13.4", default-features = false, features = ["rustls",
 # the graph. We install ring explicitly at process startup in lib.rs.
 # The version is pinned to the same release the rest of the graph
 # resolves to (see Cargo.lock).
-rustls = { version = "=0.23.43", default-features = false, features = ["ring"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 uuid = { version = "=1.26.0", features = ["v4"] }
 tauri-plugin-store = "=2.4.4"
 tauri-plugin-shell = "=2.3.5"
