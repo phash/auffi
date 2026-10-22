@@ -9,6 +9,6 @@
   "license": "ISC",
   "dependencies": {
     "@roamhq/wrtc": "0.10.0",
-    "ws": "8.20.0"
+    "ws": "8.22.0"
   }
 }
