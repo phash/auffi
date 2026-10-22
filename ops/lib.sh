@@ -263,7 +263,7 @@ caddy_validate_local() {
   # Stock-Image (z.B. für ein plugin-freies Caddyfile.local).
   local caddy_dir image out
   caddy_dir="$(cd "$(dirname "${caddyfile}")" && pwd)"
-  image="caddy:2.11.2-alpine"
+  image="caddy:2.11.7-alpine"
   if [[ -f "${caddy_dir}/Dockerfile" ]]; then
     image="auffi-caddy:validate"
     if ! out=$(docker build -q -t "${image}" "${caddy_dir}" 2>&1); then

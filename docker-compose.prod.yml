@@ -96,7 +96,7 @@ services:
     build:
       context: ./caddy
       dockerfile: Dockerfile
-    image: auffi-caddy:2.11.2-ratelimit
+    image: auffi-caddy:2.11.7-ratelimit
     container_name: auffi-caddy
     restart: unless-stopped
     ports:
