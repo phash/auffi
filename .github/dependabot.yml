@@ -1,0 +1,64 @@
+version: 2
+
+# Weekly, one grouped PR for minor+patch per ecosystem/directory; majors come
+# as individual PRs so their breaking notes get read. Every version stays an
+# exact pin (CLAUDE.md § Library Versions) — Dependabot keeps the pin style.
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /backend
+      - /viewer
+      - /dashboard
+      - /sharer
+      - /scripts
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: cargo
+    directory: /sharer/src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+
+  # Dockerfiles: backend (node + alpine geoip stage) and the standalone Caddy.
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /caddy
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Backend stays on Node 22 until the planned move to 24
+      # (docs/ops-runbook.md § Docker Conventions).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
+  # docker-compose.{prod,cluster,smoke}.yml: coturn, nginx, alpine, busybox.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      compose-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
