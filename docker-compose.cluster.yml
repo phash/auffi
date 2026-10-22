@@ -73,7 +73,7 @@ services:
   # notices the changed pair and hot-reloads it via SIGUSR2. Missing cert is
   # non-fatal — coturn then disables TURNS but keeps UDP/TCP TURN on 3478.
   turn-cert-stage:
-    image: alpine:3.20
+    image: alpine:3.24.3
     container_name: auffi-turn-cert-stage
     restart: unless-stopped
     # Caddy writes certificates as root:root mode 0600 inside its own data

@@ -185,7 +185,7 @@ if ! docker run --rm \
     -v "${CADDY_DATA_VOLUME}:/src/data:ro" \
     -v "${CADDY_CONFIG_VOLUME}:/src/config:ro" \
     -v "${BACKUP_DIR}:/dst" \
-    alpine:3.20 \
+    alpine:3.24.3 \
     sh -c "tar czf '/dst/${CADDY_FILENAME}' -C /src . && chown ${HOST_UID}:${HOST_GID} '/dst/${CADDY_FILENAME}'" ; then
   err "tar der Caddy-Volumes fehlgeschlagen!"
   rm -f "${CADDY_FILEPATH}"

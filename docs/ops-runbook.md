@@ -174,7 +174,7 @@ docker compose -f /opt/screenie/docker-compose.prod.yml \
 # 2) Atomic-mv im Volume via ephemerer Container — alpine mountet das
 #    Volume, sieht die Live-DB unter /db/, schreibt die wiederhergestellte
 #    Version atomar dorthin.
-docker run --rm -v screenie_auffi-db:/db -v /tmp:/src alpine:3 sh -c '
+docker run --rm -v screenie_auffi-db:/db -v /tmp:/src alpine:3.24.3 sh -c '
   cp /db/auffi.db /db/auffi.db.bak-$(date +%s) &&
   cp /src/restore.db /db/auffi.db &&
   rm -f /db/auffi.db-wal /db/auffi.db-shm
@@ -200,7 +200,7 @@ tar xzf /opt/backup/auffi/auffi-caddy_${TS}.tar.gz
 # Nur Auffi-relevante Subordner in das LIVE-Cluster-Volume zurücktragen:
 docker run --rm \
   -v "$(pwd)/data/caddy/certificates/acme-v02.api.letsencrypt.org-directory:/src:ro" \
-  -v caddyserver_caddy_data:/dst alpine:3 sh -c '
+  -v caddyserver_caddy_data:/dst alpine:3.24.3 sh -c '
     mkdir -p /dst/caddy/certificates/acme-v02.api.letsencrypt.org-directory &&
     cp -a /src/auffi.app /src/www.auffi.app /src/turn.auffi.app \
       /dst/caddy/certificates/acme-v02.api.letsencrypt.org-directory/
