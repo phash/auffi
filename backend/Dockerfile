@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22.22.2-alpine3.23 AS deps
+FROM node:22.23.4-alpine3.24 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # `npm ci --ignore-scripts` keeps untrusted postinstalls out of the
@@ -33,7 +33,7 @@ RUN npm prune --omit=dev --ignore-scripts
 # and a fixed month pin hard-blocked every build (incl. hotfix deploys)
 # once it rolled off (2026-08 incident). Pass --build-arg DBIP_MONTH=YYYY-MM
 # for a reproducible pinned build; a pinned month that 404s fails loudly.
-FROM alpine:3.23 AS geoip
+FROM alpine:3.24.3 AS geoip
 ARG DBIP_MONTH=auto
 WORKDIR /geoip
 RUN set -eu; \
@@ -61,7 +61,7 @@ RUN set -eu; \
     && test -s dbip.mmdb \
     && echo "geoip: using dbip-country-lite ${found}"
 
-FROM node:22.22.2-alpine3.23 AS runner
+FROM node:22.23.4-alpine3.24 AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=prod-deps /app/node_modules ./node_modules

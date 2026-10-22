@@ -120,7 +120,8 @@ console.log(\"after :\", JSON.stringify(after));"'
 - Each component that runs on a server has its own `Dockerfile` (multi-stage build).
 - Root `docker-compose.yml` for local dev (backend + dependencies).
 - Root `docker-compose.prod.yml` for production (backend + coturn + reverse proxy + Let's Encrypt + optional DB).
-- Use **pinned image tags** (e.g. `node:22.22.2-alpine3.23` in `backend/Dockerfile`), never `latest`.
+- Use **pinned image tags** (e.g. `node:22.23.4-alpine3.24` in `backend/Dockerfile`), never `latest`.
+- **Node 22 reaches end of life on 2027-04-30.** The backend stays on the 22 major for now (patch bumps only); the next move is Node 24 (Active LTS) — bump `backend/Dockerfile` and the CI `node-version` together, well before April 2027.
 - Health checks defined for every long-running service.
 - No secrets in `Dockerfile` or images. Configuration via env vars from `.env` (gitignored).
 
