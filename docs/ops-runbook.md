@@ -131,7 +131,7 @@ console.log(\"after :\", JSON.stringify(after));"'
 - **Standalone** — `docker-compose.prod.yml` brings up our own Caddy on :80/:443.
 - **Cluster** (current prod) — `docker-compose.prod.yml` + `docker-compose.cluster.yml` overlay. Our Caddy is disabled; the cluster's shared Caddy at `/opt/caddyserver/Caddyfile` reverse-proxies `auffi.app` to `auffi-backend:8080` via the external `caddy-proxy` network. The `viewer` runs as a small nginx-alpine sidecar serving the static dist.
 
-TURN certs are shared via the `turn-cert-stage` sidecar copying from the Caddy cert volume to `turn-certs-staged`.
+TURN certs are shared via the long-running `turn-cert-stage` sidecar (`coturn/cert-stage.sh`) copying from the Caddy cert volume to `turn-certs-staged` every 6 h when changed; coturn hot-reloads them (SIGUSR2, see docs/footguns.md § Cluster-Ops).
 
 ### CSP script-src after adding marketing pages
 

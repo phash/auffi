@@ -66,24 +66,23 @@ services:
     networks:
       - cluster-proxy
 
-  # One-shot sidecar: copies the Caddy-issued TLS cert + key for the TURN
-  # subdomain from the cluster Caddy's data volume into a small shared
-  # volume that coturn can read as its unprivileged user. Re-runs on every
-  # `docker compose up` so cert renewals propagate after a redeploy or a
-  # `maintenance.sh restart coturn`. Exits 0 cleanly even if the cert is
-  # missing — coturn's entrypoint then disables TURNS but keeps UDP/TCP
-  # TURN on 3478.
+  # Long-running sidecar: copies the Caddy-issued TLS cert + key for the TURN
+  # subdomain from the cluster Caddy's data volume into a small shared volume
+  # that coturn can read as its unprivileged user, and re-copies every 6 h
+  # when Caddy has renewed it (coturn/cert-stage.sh). coturn's entrypoint
+  # notices the changed pair and hot-reloads it via SIGUSR2. Missing cert is
+  # non-fatal — coturn then disables TURNS but keeps UDP/TCP TURN on 3478.
   turn-cert-stage:
     image: alpine:3.20
     container_name: auffi-turn-cert-stage
-    restart: "no"
+    restart: unless-stopped
     # Caddy writes certificates as root:root mode 0600 inside its own data
     # volume. A non-root sidecar can only read them with CAP_DAC_READ_SEARCH
     # (a small but real capability grant) AND only if the staged-volume
     # ownership is pre-fixed. The cluster Caddy is shared — we don't control
     # its file ownership policy. So the sidecar still runs as UID 0, but is
     # neutered with all caps dropped, a read-only root filesystem, and
-    # no-new-privileges. Effective attack surface for this 6-line cp script
+    # no-new-privileges. Effective attack surface for this small cp loop
     # is minimal. (gh #66)
     user: "0:0"
     cap_drop:
@@ -96,24 +95,18 @@ services:
     volumes:
       - caddy-data:/caddy-data:ro
       - turn-certs-staged:/staged
+      - ./coturn/cert-stage.sh:/cert-stage.sh:ro
     environment:
       TURN_REALM: ${TURN_REALM:-turn.auffi.app}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        set -eu
-        SRC_DIR=$$(find /caddy-data/caddy/certificates -type d -name "$${TURN_REALM}" 2>/dev/null | head -n1)
-        if [ -n "$${SRC_DIR}" ] && [ -s "$${SRC_DIR}/$${TURN_REALM}.crt" ] && [ -s "$${SRC_DIR}/$${TURN_REALM}.key" ]; then
-          cp "$${SRC_DIR}/$${TURN_REALM}.crt" /staged/cert.pem
-          cp "$${SRC_DIR}/$${TURN_REALM}.key" /staged/key.pem
-          chmod 644 /staged/cert.pem /staged/key.pem
-          echo "[turn-cert-stage] staged cert and key from $${SRC_DIR}"
-        else
-          echo "[turn-cert-stage] no cert found for $${TURN_REALM}; TURNS will be disabled until Caddy issues one" >&2
-          # Truncate any stale staged files so coturn's entrypoint disables TLS cleanly.
-          : > /staged/cert.pem
-          : > /staged/key.pem
-        fi
+    entrypoint: ["/bin/sh", "/cert-stage.sh"]
+    # Healthy once the first staging pass is done (cert copied or the empty
+    # pair written), so coturn's first start sees the current state.
+    healthcheck:
+      test: ["CMD-SHELL", "test -e /tmp/staged-once"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 5s
 
   coturn:
     volumes:
@@ -122,7 +115,7 @@ services:
       - turn-certs-staged:/var/lib/turn:ro
     depends_on:
       turn-cert-stage:
-        condition: service_completed_successfully
+        condition: service_healthy
 
 volumes:
   turn-certs-staged:

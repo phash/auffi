@@ -510,12 +510,24 @@ if [[ "${DRY_RUN}" == "false" ]]; then
     log_info "nginx/auffi-dashboard.conf changed → auffi-dashboard wird restartet"
   fi
   # coturn nutzt eine .tmpl die beim Container-Start gerendert wird —
-  # also reicht ein restart. (In Cluster + Standalone identisch.)
+  # also reicht ein restart. (In Cluster + Standalone identisch.) Das
+  # entrypoint.sh ist ebenfalls ein Single-File-Bind-Mount.
   if file_changed_on_remote \
       "${REPO_ROOT}/coturn/turnserver.conf.tmpl" \
-      "${DEPLOY_PATH}/coturn/turnserver.conf.tmpl"; then
+      "${DEPLOY_PATH}/coturn/turnserver.conf.tmpl" \
+    || file_changed_on_remote \
+      "${REPO_ROOT}/coturn/entrypoint.sh" \
+      "${DEPLOY_PATH}/coturn/entrypoint.sh"; then
     SERVICES_TO_RESTART+=("auffi-coturn")
     log_info "coturn-Config changed → auffi-coturn wird restartet"
+  fi
+  # Der turn-cert-stage-Sidecar läuft seit 2026-10 dauerhaft (Cert-Renewal-
+  # Loop) und existiert nur im Cluster-Overlay.
+  if [[ -n "${CLUSTER_PROXY:-}" ]] && file_changed_on_remote \
+      "${REPO_ROOT}/coturn/cert-stage.sh" \
+      "${DEPLOY_PATH}/coturn/cert-stage.sh"; then
+    SERVICES_TO_RESTART+=("auffi-turn-cert-stage")
+    log_info "coturn/cert-stage.sh changed → auffi-turn-cert-stage wird restartet"
   fi
   if [[ -z "${CLUSTER_PROXY:-}" ]] && file_changed_on_remote \
       "${REPO_ROOT}/caddy/Caddyfile" \

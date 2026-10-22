@@ -151,14 +151,15 @@ applies depends on the deployment mode:
 **Cluster mode (current prod) — Caddy certificate export via the
 `turn-cert-stage` sidecar. Nothing to install.**
 
-`docker-compose.cluster.yml` runs a one-shot `turn-cert-stage` container on
-every `docker compose up`: it copies `turn.auffi.app.crt/.key` out of the
+`docker-compose.cluster.yml` runs a long-lived `turn-cert-stage` container
+(`coturn/cert-stage.sh`): it copies `turn.auffi.app.crt/.key` out of the
 cluster Caddy's data volume (`caddyserver_caddy_data`) into the
-`turn-certs-staged` volume that coturn mounts. Prerequisite: the cluster
-Caddyfile has a site block for `turn.auffi.app` so Caddy obtains and renews
-the cert. A renewal reaches coturn on the next deploy or
-`./ops/maintenance.sh restart coturn` (coturn reads the cert at startup) —
-`./ops/maintenance.sh cert-info` shows what 5349 currently presents.
+`turn-certs-staged` volume that coturn mounts, and re-checks every 6 h.
+Prerequisite: the cluster Caddyfile has a site block for `turn.auffi.app` so
+Caddy obtains and renews the cert. coturn's entrypoint notices a changed pair
+within ~10 min and hot-reloads it (SIGUSR2) — no restart, no deploy needed
+(docs/footguns.md § Cluster-Ops). `./ops/maintenance.sh cert-info` shows
+what 5349 currently presents.
 
 **Standalone mode — certbot on the host.**
 
@@ -189,15 +190,15 @@ docker run --rm \
 ```
 
 Auto-renewal — the hooks stop/start Caddy only when a renewal is actually
-due, and the run is logged so a failure is visible:
+due, and the run is logged so a failure is visible. coturn picks the renewed
+pair up by itself (its entrypoint polls the files and reloads via SIGUSR2):
 ```sh
 echo '0 3 * * * root certbot renew \
     --pre-hook "docker stop auffi-caddy" --post-hook "docker start auffi-caddy" \
     --deploy-hook "docker run --rm -v /etc/letsencrypt:/src:ro -v screenie_turn-certs:/dst \
       busybox:1.36.1 sh -c \"cp -L /src/live/turn.<your-domain>/fullchain.pem /dst/cert.pem \
       && cp -L /src/live/turn.<your-domain>/privkey.pem /dst/key.pem \
-      && chmod 644 /dst/cert.pem /dst/key.pem\" \
-      && docker compose -f /opt/screenie/docker-compose.prod.yml restart coturn" \
+      && chmod 644 /dst/cert.pem /dst/key.pem\"" \
     >> /var/log/certbot-auffi.log 2>&1' \
   | sudo tee /etc/cron.d/certbot-auffi
 ```

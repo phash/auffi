@@ -7,7 +7,9 @@
 # /var/lib/turn inside coturn (the path coturn/entrypoint.sh and
 # turnserver.conf.tmpl read). See ops/README.md § TLS for coturn for the
 # one-time cert setup procedure. Missing certs are non-fatal: the entrypoint
-# strips the TLS listener and plain TURN on 3478 keeps working.
+# strips the TLS listener and plain TURN on 3478 keeps working. A renewed (or
+# first) cert pair in the volume is picked up without a manual restart — see
+# docs/footguns.md § Cluster-Ops (coturn cert reload).
 #
 # coturn runs with network_mode: host because TURN allocates dynamic UDP ports
 # (49152-65535 by default) and Docker's UDP-port-range mapping is fragile at
