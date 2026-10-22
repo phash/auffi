@@ -241,7 +241,7 @@ nginx_validate_local() {
   local out
   if ! out=$(docker run --rm \
       -v "${conf_file}:/etc/nginx/conf.d/default.conf:ro" \
-      nginx:1.29-alpine nginx -t 2>&1); then
+      nginx:1.30.6-alpine nginx -t 2>&1); then
     log_error "nginx -t failed for ${conf_file}:"
     printf '%s\n' "${out}" >&2
     return 1

@@ -57,7 +57,7 @@ services:
   # before proxying, so nginx sees /, /assets/..., /login, etc.
   # See `nginx/auffi-dashboard.conf` for the SPA fallback config.
   dashboard:
-    image: nginx:1.29-alpine
+    image: nginx:1.30.6-alpine
     container_name: auffi-dashboard
     restart: unless-stopped
     user: "101:101"
