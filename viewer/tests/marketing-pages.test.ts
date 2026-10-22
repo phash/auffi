@@ -78,6 +78,17 @@ describe("landing pages: download links stay consistent", () => {
     );
   });
 
+  // The checks below compare each page only with itself, so the landing pages
+  // stayed on 0.7.0 — internally consistent — for the whole 0.7.1 release
+  // while /download/ served 0.7.1. The release bump only touched /download/.
+  it("every page advertises the same release as /download/", () => {
+    const current = softwareApp(pageDoc("../public/download/index.html")).softwareVersion;
+    const lagging = Object.entries(PAGES)
+      .filter(([, rel]) => softwareApp(pageDoc(rel)).softwareVersion !== current)
+      .map(([name]) => name);
+    expect(lagging, `pages behind /download/ (${current})`).toEqual([]);
+  });
+
   // Every page that links installers, not just the landing pages: /download/
   // was outside this loop, so a half-finished version bump there — some
   // buttons on the new release, some still on the old — shipped silently and
