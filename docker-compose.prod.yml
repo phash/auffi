@@ -119,7 +119,7 @@ services:
       - internal
 
   coturn:
-    image: coturn/coturn:4.6.3-alpine
+    image: coturn/coturn:4.18.0-alpine
     container_name: auffi-coturn
     restart: unless-stopped
     network_mode: host
