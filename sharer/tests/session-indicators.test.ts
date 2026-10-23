@@ -21,7 +21,6 @@ describe("resetSessionIndicators", () => {
       streamingActions: el("streaming-actions", "visible"),
       howtoCard: el("howto-card", "card hidden"),
       pauseBanner: el("pause-banner", "visible"),
-      freeTierBanner: el("free-tier-banner", "visible"),
       connTypeInfo: el("connection-type-info", "visible relay"),
     };
     els.connTypeInfo.textContent = "Verbindung: über Relay";
@@ -30,7 +29,6 @@ describe("resetSessionIndicators", () => {
 
     expect(els.streamingActions.classList.contains("visible")).toBe(false);
     expect(els.pauseBanner.classList.contains("visible")).toBe(false);
-    expect(els.freeTierBanner.classList.contains("visible")).toBe(false);
     expect(els.howtoCard.classList.contains("hidden")).toBe(false);
     expect(els.howtoCard.classList.contains("card")).toBe(true);
     expect(els.connTypeInfo.textContent).toBe("");
@@ -42,7 +40,6 @@ describe("resetSessionIndicators", () => {
       streamingActions: el("streaming-actions"),
       howtoCard: el("howto-card", "card"),
       pauseBanner: el("pause-banner"),
-      freeTierBanner: el("free-tier-banner"),
       connTypeInfo: el("connection-type-info"),
     };
     expect(() => resetSessionIndicators(els)).not.toThrow();

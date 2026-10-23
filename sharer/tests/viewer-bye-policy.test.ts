@@ -9,26 +9,14 @@ import { planViewerBye } from "../src/viewer-bye-policy.js";
 // additionally left the dialog open with an Accept that could only fail.
 describe("planViewerBye", () => {
   it("dismisses a pending request and keeps the code when no stream existed", () => {
-    const plan = planViewerBye({ confirmPending: true, freeTierCutoffSeen: false });
+    const plan = planViewerBye({ confirmPending: true });
     expect(plan.kind).toBe("dismiss-confirm");
     expect(plan.status).toContain("Code bleibt gültig");
     expect(plan.status).not.toContain("beendet");
   });
 
-  it("ignores the free-tier flag before a stream ever existed", () => {
-    const plan = planViewerBye({ confirmPending: true, freeTierCutoffSeen: true });
-    expect(plan.kind).toBe("dismiss-confirm");
-    expect(plan.status).not.toContain("Zeitlimit");
-  });
-
   it("ends the stream with the friendly copy when the helper left mid-stream", () => {
-    const plan = planViewerBye({ confirmPending: false, freeTierCutoffSeen: false });
+    const plan = planViewerBye({ confirmPending: false });
     expect(plan).toEqual({ kind: "end-stream", status: "Helfer hat die Verbindung beendet." });
-  });
-
-  it("names the relay time limit when the cutoff preceded the bye", () => {
-    const plan = planViewerBye({ confirmPending: false, freeTierCutoffSeen: true });
-    expect(plan.kind).toBe("end-stream");
-    expect(plan.status).toContain("Zeitlimit");
   });
 });

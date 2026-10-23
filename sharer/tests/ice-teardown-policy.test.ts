@@ -9,7 +9,7 @@ import {
 // From a user log, 2026-08-31: ICE reached `disconnected` at t+32 s and the
 // sharer encoded 1250 further frames into a peer that was gone — the screen
 // stayed captured, the encoder stayed busy, and on a relay path the TURN
-// bandwidth and free-tier timer kept running. The viewer has handled this
+// bandwidth kept flowing. The viewer has handled this
 // since the beginning; the sharer discarded every non-connected state.
 describe("planIceState", () => {
   it("tears down at once on the terminal states", () => {

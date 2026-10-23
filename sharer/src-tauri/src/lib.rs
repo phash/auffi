@@ -5,7 +5,6 @@ mod capture;
 mod device_password;
 mod encoder;
 mod files;
-mod free_tier_timer;
 mod heartbeat;
 mod hotkey;
 mod input;
@@ -212,11 +211,6 @@ struct InputControllerState(Arc<tokio::sync::Mutex<Option<InputController>>>);
 
 /// Shared access to the active `FileTransferManager`.
 struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManager>>>);
-
-/// Holds the abort handles of the currently-running free-tier relay timer
-/// so `disconnect_streaming` can cancel them. Without this the warning /
-/// cutoff sleeps from a prior session would fire against a new one. (gh #63)
-struct FreeTierTimerState(Arc<Mutex<Option<free_tier_timer::TimerHandles>>>);
 
 /// Command channel into the live streaming loop. The `switch_monitor`
 /// command builds a fresh capturer + encoder and ships them through the
@@ -437,7 +431,6 @@ async fn start_streaming(
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
     file_state: State<'_, FileTransferState>,
-    timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
     outbound_state: State<'_, OutboundSinkState>,
     unattended_state: State<'_, unattended_cmd::UnattendedState>,
@@ -626,7 +619,6 @@ async fn start_streaming(
         .generation
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         + 1;
-    let timer_state_for_cb = Arc::clone(&timer_state.0);
     peer.on_connection_type(move |conn_type| {
         use webrtc_peer::ConnectionType;
         let value = match conn_type {
@@ -679,45 +671,6 @@ async fn start_streaming(
                     }
                 }
             });
-        }
-
-        match conn_type {
-            ConnectionType::Relay => {
-                let app_warn = app_for_conn_type.clone();
-                let app_cut = app_for_conn_type.clone();
-                let handles = free_tier_timer::start(
-                    free_tier_timer::TimerConfig::default(),
-                    move || {
-                        if let Err(e) = app_warn.emit("free-tier-warning", serde_json::json!({})) {
-                            log::warn!("free-tier-warning emit failed: {e}");
-                        }
-                    },
-                    move || {
-                        if let Err(e) = app_cut.emit("free-tier-cutoff", serde_json::json!({})) {
-                            log::warn!("free-tier-cutoff emit failed: {e}");
-                        }
-                    },
-                );
-                // Park the abort handles in shared state so disconnect_streaming
-                // can cancel them. Drops any pre-existing handles first (defensive
-                // — should never happen since disconnect always clears).
-                let mut guard = timer_state_for_cb.lock().unwrap_or_else(|p| p.into_inner());
-                if let Some(prev) = guard.take() {
-                    prev.cancel();
-                }
-                *guard = Some(handles);
-            }
-            ConnectionType::P2p => {
-                // A Relay→P2p flip (ICE restart, late direct pair after an
-                // initial relay nomination) must cancel the parked warning/
-                // cutoff timers — otherwise they fire against a session that
-                // no longer uses the relay and cut a legitimate P2P stream.
-                let mut guard = timer_state_for_cb.lock().unwrap_or_else(|p| p.into_inner());
-                if let Some(handles) = guard.take() {
-                    dbg_log("[ice-connected] relay->p2p flip — cancelling free-tier timers");
-                    handles.cancel();
-                }
-            }
         }
     });
 
@@ -1048,7 +1001,7 @@ fn check_streaming_preconditions(
 }
 
 /// Tear down the active WebRTC session (peer, input controller, file
-/// transfer, free-tier timers, streaming loop).
+/// transfer, streaming loop).
 ///
 /// `keep_signaling` controls whether the underlying WS task to the
 /// backend is preserved. Defaults to `false` (full teardown — used on
@@ -1065,7 +1018,6 @@ async fn disconnect_streaming(
     rtc_state: State<'_, WebRtcState>,
     input_state: State<'_, InputControllerState>,
     file_state: State<'_, FileTransferState>,
-    timer_state: State<'_, FreeTierTimerState>,
     switch_state: State<'_, SwitchState>,
     outbound_state: State<'_, OutboundSinkState>,
     bytes_state: State<'_, SessionBytesState>,
@@ -1176,16 +1128,6 @@ async fn disconnect_streaming(
     {
         let mut guard = file_state.0.lock().await;
         *guard = None;
-    }
-
-    // Cancel any pending free-tier warning / cutoff timer so it cannot fire
-    // against a subsequent session (gh #63). Poison-recover so a panicked
-    // peer-callback thread can't strand a live timer here.
-    {
-        let mut guard = timer_state.0.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(handles) = guard.take() {
-            handles.cancel();
-        }
     }
 
     // Drop the switch-monitor channel sender so the streaming_loop sees
@@ -1887,7 +1829,6 @@ pub fn run() {
             None,
         ))))
         .manage(FileTransferState(Arc::new(tokio::sync::Mutex::new(None))))
-        .manage(FreeTierTimerState(Arc::new(Mutex::new(None))))
         .manage(SwitchState(Mutex::new(None)))
         .manage(OutboundSinkState(Arc::new(tokio::sync::Mutex::new(None))))
         .manage(SessionBytesState(Arc::new(SessionMetrics::default())))

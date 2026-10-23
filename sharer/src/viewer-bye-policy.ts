@@ -18,10 +18,7 @@ export type ViewerByePlan =
   /** Mid-stream: drop the WebRTC session, keep the signaling registration. */
   | { kind: "end-stream"; status: string };
 
-export function planViewerBye(input: {
-  confirmPending: boolean;
-  freeTierCutoffSeen: boolean;
-}): ViewerByePlan {
+export function planViewerBye(input: { confirmPending: boolean }): ViewerByePlan {
   if (input.confirmPending) {
     return {
       kind: "dismiss-confirm",
@@ -30,8 +27,6 @@ export function planViewerBye(input: {
   }
   return {
     kind: "end-stream",
-    status: input.freeTierCutoffSeen
-      ? "Übertragung beendet — Zeitlimit für kostenlose Relay-Verbindungen erreicht."
-      : "Helfer hat die Verbindung beendet.",
+    status: "Helfer hat die Verbindung beendet.",
   };
 }

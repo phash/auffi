@@ -77,7 +77,6 @@ const monitorCancelBtn = document.getElementById("monitor-cancel-btn")! as HTMLB
 const copyBtn = document.getElementById("copy-btn")! as HTMLButtonElement;
 const newCodeBtn = document.getElementById("new-code-btn")! as HTMLButtonElement;
 const pauseBannerEl = document.getElementById("pause-banner")!;
-const freeTierBannerEl = document.getElementById("free-tier-banner")!;
 const streamingActionsEl = document.getElementById("streaming-actions")!;
 const stopStreamingBtn = document.getElementById("stop-streaming-btn")! as HTMLButtonElement;
 const sendFileBtn = document.getElementById("send-file-btn")! as HTMLButtonElement;
@@ -161,10 +160,6 @@ let specificStopStatusPending = false;
 // while Unattended mode is active would steal the heartbeat's sink — relay
 // answers would route into the wrong channel and break the session.
 let adhocSurfaceActive = false;
-
-// Relay free-tier cutoff arrived — the viewer ends the session next; lets
-// the bye branch show the real reason instead of "Helfer hat…".
-let freeTierCutoffSeen = false;
 
 // SDP+ICE arrive immediately after `peer-confirmed` but the WebRTC peer is
 // only constructed when start_streaming runs (after the user picks a monitor).
@@ -437,7 +432,6 @@ const sessionIndicatorEls = {
   streamingActions: streamingActionsEl,
   howtoCard: howtoCardEl,
   pauseBanner: pauseBannerEl,
-  freeTierBanner: freeTierBannerEl,
   connTypeInfo: connTypeInfoEl,
 };
 
@@ -893,11 +887,7 @@ listen<{ payload: RelayPayload }>("relay", (e) => {
   } else if (p.kind === "ice" && p.candidate) {
     signalBuffer.ice(p.candidate);
   } else if (p.kind === "bye") {
-    const plan = planViewerBye({
-      confirmPending: confirmEl.classList.contains("visible"),
-      freeTierCutoffSeen,
-    });
-    freeTierCutoffSeen = false;
+    const plan = planViewerBye({ confirmPending: confirmEl.classList.contains("visible") });
     dismissConnectionRequest();
     closeMonitorPicker();
     if (plan.kind === "end-stream") {
@@ -956,7 +946,6 @@ listen<{ keepSignaling: boolean }>("streaming-stopped", (e) => {
     return;
   }
   specificStopStatusPending = false;
-  freeTierCutoffSeen = false;
   if (plan.showGenericStatus) {
     setStatus("Stream beendet.", "idle");
   }
@@ -1061,23 +1050,6 @@ listen<string>("connection-type", (e) => {
     connTypeInfoEl.classList.remove("relay");
     connTypeInfoEl.classList.add("direct");
   }
-});
-
-// Relay sessions are free-tier-capped: Rust starts an 8-minute warning +
-// 10-minute cutoff timer on relay connect (lib.rs). Enforcement lives in
-// the viewer (it ends the session at cutoff) — these listeners make sure
-// the sharer-user is warned before the drop instead of being surprised.
-listen("free-tier-warning", () => {
-  freeTierBannerEl.classList.add("visible");
-});
-
-listen("free-tier-cutoff", () => {
-  freeTierBannerEl.classList.remove("visible");
-  freeTierCutoffSeen = true;
-  setStatus(
-    "Zeitlimit für kostenlose Relay-Verbindungen erreicht — die Übertragung wird beendet.",
-    "error",
-  );
 });
 
 let pendingFileOfferId: string | null = null;

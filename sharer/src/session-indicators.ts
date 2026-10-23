@@ -1,6 +1,6 @@
 /**
  * Per-session indicators the ad-hoc UI shows while a helper is connected:
- * the streaming action row, the input-pause and free-tier banners, the
+ * the streaming action row, the input-pause banner, the
  * direct/relay label, and the "So geht's" recap that hides during a session.
  *
  * Several teardown paths run with `keepSignaling: true` (viewer swap, ICE
@@ -14,7 +14,6 @@ export interface SessionIndicatorElements {
   streamingActions: HTMLElement;
   howtoCard: HTMLElement;
   pauseBanner: HTMLElement;
-  freeTierBanner: HTMLElement;
   connTypeInfo: HTMLElement;
 }
 
@@ -22,7 +21,6 @@ export function resetSessionIndicators(els: SessionIndicatorElements): void {
   els.streamingActions.classList.remove("visible");
   els.howtoCard.classList.remove("hidden");
   els.pauseBanner.classList.remove("visible");
-  els.freeTierBanner.classList.remove("visible");
   els.connTypeInfo.textContent = "";
   els.connTypeInfo.className = "";
 }
