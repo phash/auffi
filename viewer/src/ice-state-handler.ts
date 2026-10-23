@@ -12,6 +12,8 @@ import type { StatusKind } from "./status-kind.js";
 export interface IceStateCallbacks {
   teardown: (reason: string, kind: StatusKind, canReconnect: boolean) => void;
   setStatus: (text: string, kind: StatusKind) => void;
+  /** true once the first frame was decoded. */
+  isStreaming: () => boolean;
 }
 
 export interface IceStateHandlerOptions {
@@ -36,6 +38,11 @@ export function createIceStateHandler(
 
   let timer: ReturnType<typeof setTimeout> | null = null;
 
+  // ICE giving up before a single frame arrived is the blocked-network case
+  // (no P2P path, TURN unreachable) — "Verbindung verloren" would claim a
+  // working connection dropped; the firewall hint says what to try instead.
+  const lostText = (): string => (cb.isStreaming() ? t("ice.lost") : t("timeout.firewall"));
+
   function clearTimer_(): void {
     if (timer !== null) {
       clearTimer(timer);
@@ -46,7 +53,7 @@ export function createIceStateHandler(
   function handle(state: RTCIceConnectionState): void {
     if (state === "failed" || state === "closed") {
       clearTimer_();
-      cb.teardown(t("ice.lost"), "err", true);
+      cb.teardown(lostText(), "err", true);
       return;
     }
     if (state === "disconnected") {
@@ -54,7 +61,7 @@ export function createIceStateHandler(
       cb.setStatus(t("ice.unstable"), "info");
       timer = setTimer(() => {
         timer = null;
-        cb.teardown(t("ice.lost"), "err", true);
+        cb.teardown(lostText(), "err", true);
       }, graceMs);
       return;
     }

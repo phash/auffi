@@ -468,6 +468,7 @@ export function bindUI(backendWsUrl: string): void {
       setStatus(text, kind);
       compactBar?.setStatus(text);
     },
+    isStreaming: () => sessionTracker.isLive(),
   });
   const clearIceGraceTimer = (): void => iceState.clear();
 

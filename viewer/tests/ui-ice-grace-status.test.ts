@@ -30,3 +30,26 @@ describe("ICE grace status mirrors into the compact bar", () => {
     expect(compact.textContent).toBe("Stream läuft.");
   });
 });
+
+describe("ICE failure wording", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("before the first frame it points at a blocking network", async () => {
+    const session = await startUiSession();
+    const pc = await session.confirm();
+    session.track(pc);
+    pc.fireIceState("failed");
+    expect(document.getElementById("status")!.textContent).toContain("Firewall");
+  });
+
+  it("after the first frame it says the connection was lost", async () => {
+    const session = await startUiSession();
+    const pc = await session.confirm();
+    session.track(pc);
+    (document.getElementById("remote-video") as HTMLVideoElement).dispatchEvent(new Event("playing"));
+    pc.fireIceState("failed");
+    expect(document.getElementById("status")!.textContent).toBe("Verbindung verloren.");
+  });
+});
