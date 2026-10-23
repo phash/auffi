@@ -361,20 +361,24 @@ describe("createUpstreamFetcher (real fetch against a local upstream)", () => {
     baseUrl = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}/phash/auffi`;
   }
 
+  const HEADERS_TIMEOUT_MS = 1_000;
+
+  // Headers go out at once (writeHead alone buffers them until the first
+  // body write, which on a loaded box landed after the headers timeout),
+  // then the body is held back for twice the headers timeout. A body still
+  // arriving after the old AbortSignal would have fired proves the timeout
+  // no longer covers it — independent of machine speed.
   function slowBody(res: ServerResponse): void {
     res.writeHead(200, {
       "content-type": "application/octet-stream",
       "content-length": String(CHUNK * CHUNKS),
     });
-    let sent = 0;
-    const tick = setInterval(() => {
-      res.write(Buffer.alloc(CHUNK, sent));
-      if (++sent === CHUNKS) {
-        clearInterval(tick);
-        res.end();
-      }
-    }, 50);
-    res.on("close", () => clearInterval(tick));
+    res.flushHeaders();
+    const hold = setTimeout(() => {
+      for (let sent = 0; sent < CHUNKS; sent++) res.write(Buffer.alloc(CHUNK, sent));
+      res.end();
+    }, HEADERS_TIMEOUT_MS * 2);
+    res.on("close", () => clearTimeout(hold));
   }
 
   afterEach(async () => {
@@ -392,7 +396,7 @@ describe("createUpstreamFetcher (real fetch against a local upstream)", () => {
     // which also aborts the body. A 270 MB installer needs far longer than
     // 15 s on a normal line, so every Windows download was cut off midway.
     await startUpstream(slowBody);
-    h = await build(createUpstreamFetcher({ baseUrl, headersTimeoutMs: 100 }));
+    h = await build(createUpstreamFetcher({ baseUrl, headersTimeoutMs: HEADERS_TIMEOUT_MS }));
     const res = await h.app.inject({
       method: "GET",
       url: `/api/downloads/file/${asset}?tag=v0.7.1`,
