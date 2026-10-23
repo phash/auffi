@@ -9,6 +9,7 @@ import { UnattendedSessions } from "../src/unattended_sessions.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { hashPassword } from "../src/auth/argon.js";
 import type { CountryLookup } from "../src/geoip.js";
+import { waitFor, watchUnattendedSharer } from "./support/ws-watch.js";
 
 const TOKEN = "5678abcd".repeat(8);
 const DEVICE_ID = "321-654-987";
@@ -66,14 +67,6 @@ async function start(
   if (typeof addr === "string" || !addr) throw new Error("no address");
   open = { app, url: `ws://127.0.0.1:${addr.port}/signal`, db, store };
   return open;
-}
-
-async function waitFor(cond: () => boolean, what: string): Promise<void> {
-  const deadline = Date.now() + 5_000;
-  while (!cond()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
 }
 
 function recv(ws: WebSocket): Promise<any> {
@@ -286,29 +279,6 @@ describe("socket limits on the ad-hoc path", () => {
   });
 });
 
-/**
- * Frames the sharer receives up to the reply of a `turn-credentials-request`
- * sent now. The server answers frames in order, so anything it sent the
- * sharer for an EARLIER event arrives before that reply — a deterministic
- * "nothing else came" check instead of a sleep.
- */
-async function sharerFramesUntilBarrier(sharer: WebSocket): Promise<unknown[]> {
-  const frames: unknown[] = [];
-  return new Promise((resolve) => {
-    const onMessage = (d: Buffer): void => {
-      const frame = JSON.parse(d.toString());
-      if (frame.type === "turn-credentials") {
-        sharer.off("message", onMessage);
-        resolve(frames);
-      } else {
-        frames.push(frame);
-      }
-    };
-    sharer.on("message", onMessage);
-    sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
-  });
-}
-
 describe("unattended password path guards", () => {
   it("refuses a second pw-attempt while the first is still being checked", async () => {
     const h = await start();
@@ -317,6 +287,7 @@ describe("unattended password path guards", () => {
     viewer.send(JSON.stringify({ type: "pw-attempt", password: "first" }));
     expect(await recv(sharer)).toMatchObject({ type: "pw-check", attempt: "first" });
 
+    const toSharer = watchUnattendedSharer(sharer);
     viewer.send(JSON.stringify({ type: "pw-attempt", password: "second" }));
     expect(await recv(viewer)).toEqual({
       type: "error",
@@ -324,7 +295,7 @@ describe("unattended password path guards", () => {
       message: "no pw-check expected",
     });
     // Only one argon2 verify per attempt reaches the sharer.
-    expect(await sharerFramesUntilBarrier(sharer)).toEqual([]);
+    expect(await toSharer.settle()).toEqual([]);
     viewer.close();
     sharer.close();
   });
@@ -337,13 +308,14 @@ describe("unattended password path guards", () => {
     const h = await start();
     const sharer = await openUnattendedSharer(h.url);
     const viewer = await viewerAwaitingPassword(h.url);
+    const toSharer = watchUnattendedSharer(sharer);
     viewer.send(JSON.stringify({ type: "pw-attempt", ...extra }));
     expect(await recv(viewer)).toEqual({
       type: "error",
       code: "bad-message",
       message: "password missing",
     });
-    expect(await sharerFramesUntilBarrier(sharer)).toEqual([]);
+    expect(await toSharer.settle()).toEqual([]);
     viewer.close();
     sharer.close();
   });

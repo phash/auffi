@@ -8,6 +8,7 @@ import { SessionStore } from "../src/codes.js";
 import { UnattendedRegistry } from "../src/unattended.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { hashPassword } from "../src/auth/argon.js";
+import { waitFor, watchFrames, watchUnattendedSharer } from "./support/ws-watch.js";
 import {
   checkLockout,
   PW_ENTRY_TIMEOUT_MS,
@@ -391,7 +392,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
 
     const row = db
       .prepare<[string], { device_id: string; connection_type: string; ended_at: number | null; bytes_relayed: number }>(
@@ -410,9 +411,9 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
     sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 4096 }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
 
     const rows = db
       .prepare<[string], { ended_at: number | null; bytes_relayed: number }>(
@@ -437,7 +438,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     await once(viewer, "message");
 
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
     const count = db
       .prepare<[string], { c: number }>("SELECT COUNT(*) AS c FROM connection_log WHERE device_id = ?")
       .get(deviceId)!.c;
@@ -456,18 +457,17 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
 
     viewer.close();
-    await new Promise((r) => setTimeout(r, 150));
-
-    const row = db
-      .prepare<[string], { ended_at: number | null }>(
-        "SELECT ended_at FROM connection_log WHERE device_id = ?",
-      )
-      .get(deviceId);
-    expect(row, "row still exists").toBeTruthy();
-    expect(row!.ended_at, "viewer teardown must close the row").not.toBeNull();
+    const endedAt = (): number | null | undefined =>
+      db
+        .prepare<[string], { ended_at: number | null }>(
+          "SELECT ended_at FROM connection_log WHERE device_id = ?",
+        )
+        .get(deviceId)?.ended_at;
+    // viewer teardown must close the row (and the row must still exist)
+    await waitFor(() => typeof endedAt() === "number", "row finalised by the viewer teardown");
     sharer.close();
   });
 
@@ -475,17 +475,18 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
 
     sharer.close();
-    await new Promise((r) => setTimeout(r, 150));
-
-    const row = db
-      .prepare<[string], { ended_at: number | null }>(
-        "SELECT ended_at FROM connection_log WHERE device_id = ?",
-      )
-      .get(deviceId);
-    expect(row!.ended_at, "sharer teardown must close the row too").not.toBeNull();
+    await waitFor(
+      () =>
+        typeof db
+          .prepare<[string], { ended_at: number | null }>(
+            "SELECT ended_at FROM connection_log WHERE device_id = ?",
+          )
+          .get(deviceId)?.ended_at === "number",
+      "row finalised by the sharer teardown",
+    );
     viewer.close();
   });
 
@@ -493,9 +494,9 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
     sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 999 }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
 
     viewer.close();
     await new Promise((r) => setTimeout(r, 150));
@@ -513,9 +514,9 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
     sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 1e30 }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
 
     const row = db
       .prepare<[string], { bytes_relayed: number }>(
@@ -531,7 +532,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
     sharer.send(JSON.stringify({ type: "connection-started", connectionType: "carrier-pigeon" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
     const count = db
       .prepare<[string], { c: number }>("SELECT COUNT(*) AS c FROM connection_log WHERE device_id = ?")
       .get(deviceId)!.c;
@@ -553,16 +554,9 @@ describe("/signal unattended connect flow (gh #17)", () => {
     const { sharer, viewer } = await confirmedPair();
     try {
       db.prepare("DELETE FROM devices WHERE id = ?").run(deviceId);
-      const stray: unknown[] = [];
-      const onMessage = (d: Buffer): void => {
-        stray.push(JSON.parse(d.toString()));
-      };
-      sharer.on("message", onMessage);
+      const toSharer = watchUnattendedSharer(sharer);
       sharer.send(JSON.stringify({ type: "connection-started", connectionType: "p2p" }));
-      await new Promise((r) => setTimeout(r, 80));
-      sharer.off("message", onMessage);
-
-      expect(stray).toEqual([]);
+      expect(await toSharer.settle()).toEqual([]);
       expect(sharer.readyState).toBe(sharer.OPEN);
       expect(viewer.readyState).toBe(viewer.OPEN);
       expect(
@@ -594,23 +588,17 @@ describe("/signal unattended connect flow (gh #17)", () => {
 
     // The property is "dropped server-side, never forwarded": the sharer's
     // argon2 path must not see the over-long attempt at all.
-    const stray: unknown[] = [];
-    const onMessage = (d: Buffer): void => {
-      stray.push(JSON.parse(d.toString()));
-    };
-    sharer.on("message", onMessage);
+    const toSharer = watchUnattendedSharer(sharer);
 
     const tooLong = "x".repeat(257);
     viewer.send(JSON.stringify({ type: "pw-attempt", password: tooLong }));
     const out = await once(viewer, "message");
     expect(out.type).toBe("error");
     expect(out.message).toContain("password too long");
-    await new Promise((r) => setTimeout(r, 80));
-    expect(stray).toEqual([]);
+    expect(await toSharer.settle()).toEqual([]);
 
     // The session stayed in awaiting-pw: the next legitimate attempt is the
     // FIRST thing the sharer receives.
-    sharer.off("message", onMessage);
     viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
     const check = await once(sharer, "message");
     expect(check).toMatchObject({ type: "pw-check", attempt: "right" });
@@ -757,18 +745,10 @@ describe("/signal unattended connect flow (gh #17)", () => {
       else viewer.once("close", () => r());
     });
 
-    // Collect anything the sharer might receive after the result.
-    const stray: unknown[] = [];
-    const onMessage = (data: Buffer): void => {
-      stray.push(JSON.parse(data.toString()));
-    };
-    sharer.on("message", onMessage);
-
+    // Collect anything the sharer receives up to a probe after the result.
+    const toSharer = watchUnattendedSharer(sharer);
     sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
-    // Give the server a generous tick to send (or not send) a reply.
-    await new Promise((r) => setTimeout(r, 80));
-
-    sharer.off("message", onMessage);
+    const stray = await toSharer.settle();
     // The invariant is "nothing fatal", not "nothing at all": a
     // synthesized bye may race in from the viewer's close handler.
     const fatal = stray.filter(
@@ -813,17 +793,13 @@ describe("/signal unattended connect flow (gh #17)", () => {
     expect(checkB.type).toBe("pw-check");
     expect(checkB.attemptId).not.toBe(staleId);
 
-    const toB: unknown[] = [];
-    const onMessage = (data: Buffer): void => {
-      toB.push(JSON.parse(data.toString()));
-    };
-    b.on("message", onMessage);
+    const watchB = watchFrames(b);
     sharer.send(JSON.stringify({ type: "pw-check-result", attemptId: staleId, result: "rejected" }));
     sharer.send(JSON.stringify({ type: "pw-check-result", attemptId: staleId, result: "ok" }));
-    await new Promise((r) => setTimeout(r, 80));
+    await watchUnattendedSharer(sharer).settle();
+    const toB = await watchB.settle();
     expect(toB, `B must not hear A's stale answers: ${JSON.stringify(toB)}`).toEqual([]);
     expect(b.readyState).toBe(b.OPEN);
-    b.off("message", onMessage);
 
     sharer.send(
       JSON.stringify({ type: "pw-check-result", attemptId: checkB.attemptId, result: "ok" }),

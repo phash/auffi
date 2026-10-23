@@ -6,6 +6,7 @@ import { createServer } from "../src/server.js";
 import { registerSignaling } from "../src/signaling.js";
 import { SessionStore } from "../src/codes.js";
 import type { CountryLookup } from "../src/geoip.js";
+import { waitFor, watchFrames } from "./support/ws-watch.js";
 
 let app: FastifyInstance;
 let url: string;
@@ -40,6 +41,43 @@ function recv(ws: WebSocket): Promise<any> {
   return new Promise((resolve) => {
     ws.once("message", (data) => resolve(JSON.parse(data.toString())));
   });
+}
+
+/**
+ * Join `code` as a fresh viewer once the slot is free. A confirmed viewer's
+ * close sends the sharer nothing, so there is no frame that says the server
+ * has detached it; a join racing that close answers "session full" and is
+ * simply retried. Resolves with the joined viewer after the sharer's
+ * peer-joined.
+ */
+async function joinWhenFree(target: string, code: string, sharer: WebSocket): Promise<WebSocket> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const viewer = openWs(target);
+    await new Promise((r) => viewer.once("open", r));
+    const outcome = await new Promise<"joined" | "full">((resolve) => {
+      const onSharer = (d: WebSocket.RawData): void => {
+        if (JSON.parse(d.toString()).type !== "peer-joined") return;
+        cleanup();
+        resolve("joined");
+      };
+      const onViewer = (): void => {
+        cleanup();
+        resolve("full");
+      };
+      const cleanup = (): void => {
+        sharer.off("message", onSharer);
+        viewer.off("message", onViewer);
+      };
+      sharer.on("message", onSharer);
+      viewer.on("message", onViewer);
+      viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    });
+    if (outcome === "joined") return viewer;
+    viewer.close();
+    if (Date.now() > deadline) throw new Error("slot never freed");
+    await new Promise((r) => setTimeout(r, 10));
+  }
 }
 
 /**
@@ -213,10 +251,10 @@ describe("signaling handshake", () => {
     viewer1.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined
 
-    // close viewer — sharer session should survive
+    // close viewer — sharer session should survive; the synthesized bye
+    // says the server has detached it
     viewer1.close();
-    // wait a tick for the close event to propagate on the server side
-    await new Promise((r) => setTimeout(r, 50));
+    expect(await recv(sharer)).toEqual({ type: "relay", payload: { kind: "bye" } });
 
     // second viewer can now attach with the same code
     const viewer2 = openWs(url);
@@ -244,22 +282,15 @@ describe("signaling handshake", () => {
     await recv(viewer1); // peer-confirmed
 
     viewer1.close();
-    await new Promise((r) => setTimeout(r, 50));
 
     // Second viewer joins the still-open session.
-    const viewer2 = openWs(url);
-    await new Promise((r) => viewer2.once("open", r));
-    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
-    await recv(sharer); // peer-joined (again)
+    const viewer2 = await joinWhenFree(url, code, sharer);
 
     // The relay gate must be CLOSED again for the swapped-in viewer.
-    let viewer2GotRelay = false;
-    viewer2.on("message", (data) => {
-      if (JSON.parse(data.toString()).type === "relay") viewer2GotRelay = true;
-    });
+    const toViewer2 = watchFrames(viewer2);
     sharer.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 0 } }));
-    await new Promise((r) => setTimeout(r, 100));
-    expect(viewer2GotRelay).toBe(false);
+    await watchFrames(sharer).settle();
+    expect(await toViewer2.settle()).toEqual([]);
 
     // And Ablehnen must actually reach viewer2 — not be a silent no-op.
     sharer.send(JSON.stringify({ type: "confirm", accepted: false }));
@@ -308,20 +339,19 @@ describe("signaling handshake", () => {
 
     const viewer2 = openWs(url);
     await new Promise((r) => viewer2.once("open", r));
-    const v2msgs: Array<Record<string, unknown>> = [];
-    viewer2.on("message", (data) => v2msgs.push(JSON.parse(data.toString())));
     viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
     await recv(sharer); // peer-joined
 
     // Relay must still be gated — the stale accept must not have confirmed.
+    const toViewer2 = watchFrames(viewer2);
     sharer.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 7 } }));
-    await new Promise((r) => setTimeout(r, 100));
-    expect(v2msgs).toEqual([]);
+    await watchFrames(sharer).settle();
+    expect(await toViewer2.settle()).toEqual([]);
 
     // A fresh accept with the viewer attached works normally.
+    const confirmed = recv(viewer2);
     sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
-    await new Promise((r) => setTimeout(r, 100));
-    expect(v2msgs).toEqual([{ type: "peer-confirmed" }]);
+    expect(await confirmed).toEqual({ type: "peer-confirmed" });
 
     sharer.close();
     viewer2.close();
@@ -350,19 +380,14 @@ describe("signaling handshake", () => {
     viewer.pause();
     await new Promise((r) => setTimeout(r, 50));
 
-    const sharerInbox: unknown[] = [];
-    sharer.on("message", (d) => sharerInbox.push(JSON.parse(d.toString())));
+    const toSharer = watchFrames(sharer);
     sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(sharerInbox).toEqual([]);
+    expect(await toSharer.settle()).toEqual([]);
 
+    // The bye needs the server's close event, which waits for the resume.
+    const bye = recv(sharer);
     viewer.resume();
-    await new Promise<void>((r) => {
-      if (viewer.readyState === WebSocket.CLOSED) return r();
-      viewer.once("close", () => r());
-    });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(sharerInbox).toEqual([{ type: "relay", payload: { kind: "bye" } }]);
+    expect(await bye).toEqual({ type: "relay", payload: { kind: "bye" } });
     sharer.close();
   });
 
@@ -432,21 +457,14 @@ describe("signaling handshake", () => {
     // Inject an unexpected kind that the backend must reject (defence in
     // depth — protocol only allows sdp/ice/hello/bye). The viewer must not
     // receive the message.
-    let viewerReceivedRelay = false;
-    viewer.on("message", (data) => {
-      const m = JSON.parse(data.toString());
-      if (m.type === "relay") viewerReceivedRelay = true;
-    });
-
+    const toViewer = watchFrames(viewer);
     sharer.send(JSON.stringify({ type: "relay", payload: { kind: "exec", cmd: "rm -rf /" } }));
     const err = await recv(sharer);
     expect(err.type).toBe("error");
     expect(err.code).toBe("bad-message");
     expect(err.message).toContain("relay");
 
-    // Give any (forbidden) forwarded message a moment to arrive
-    await new Promise((r) => setTimeout(r, 100));
-    expect(viewerReceivedRelay).toBe(false);
+    expect(await toViewer.settle()).toEqual([]);
 
     sharer.close();
     viewer.close();
@@ -552,24 +570,14 @@ describe("signaling handshake", () => {
 
     // Viewer1 leaves; the sharer stays online with the same code.
     viewer1.close();
-    await new Promise((r) => setTimeout(r, 30));
-
-    const viewer2 = openWs(url);
-    await new Promise((r) => viewer2.once("open", r));
-    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
-    await recv(sharer); // peer-joined for viewer2
+    const viewer2 = await joinWhenFree(url, code, sharer);
 
     // Without the reset, `confirmed` would still be latched true and this
     // relay would be forwarded to the sharer before any re-confirmation.
+    const toSharer = watchFrames(sharer);
     viewer2.send(JSON.stringify({ type: "relay", payload: { kind: "hello", ts: 1 } }));
-    const leaked = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), 100);
-      sharer.once("message", () => {
-        clearTimeout(timer);
-        resolve(true);
-      });
-    });
-    expect(leaked).toBe(false);
+    await watchFrames(viewer2).settle();
+    expect(await toSharer.settle()).toEqual([]);
 
     sharer.close();
     viewer2.close();
@@ -588,12 +596,7 @@ describe("signaling handshake", () => {
     sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
     await recv(viewer1);
     viewer1.close();
-    await new Promise((r) => setTimeout(r, 30));
-
-    const viewer2 = openWs(url);
-    await new Promise((r) => viewer2.once("open", r));
-    viewer2.send(JSON.stringify({ type: "join", role: "viewer", code }));
-    await recv(sharer); // peer-joined for viewer2
+    const viewer2 = await joinWhenFree(url, code, sharer);
 
     // The sharer declines viewer2. Because confirmed was reset, the decline
     // path runs (rather than being swallowed by the already-confirmed guard).
@@ -612,15 +615,10 @@ describe("signaling handshake", () => {
   it("confirm:false against the live confirmed viewer is ignored", async () => {
     const { sharer, viewer } = await establishConfirmedPair(url);
 
+    const toViewer = watchFrames(viewer);
     sharer.send(JSON.stringify({ type: "confirm", accepted: false }));
-    const gotRejected = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), 120);
-      viewer.once("message", () => {
-        clearTimeout(timer);
-        resolve(true);
-      });
-    });
-    expect(gotRejected).toBe(false);
+    await watchFrames(sharer).settle();
+    expect(await toViewer.settle()).toEqual([]);
     expect(viewer.readyState).toBe(WebSocket.OPEN);
 
     // Relay still flows — the session is intact.
@@ -1124,18 +1122,16 @@ describe("server-side WS keepalive reaps silent sockets", () => {
 
     const helper = connect({ autoPong: true });
     await new Promise((r) => helper.once("open", r));
-    const helperInbox: Array<Record<string, unknown>> = [];
-    helper.on("message", (d) => helperInbox.push(JSON.parse(d.toString())));
+    const toHelper = watchFrames(helper);
     helper.send(JSON.stringify({ type: "join", role: "viewer", code }));
     const rejoined = await recv(sharer);
     expect(rejoined.type).toBe("peer-joined");
     // The reaped viewer's accept must not carry over — the sharer confirms
     // afresh, so the helper sees no peer-confirmed until it does.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(helperInbox).toEqual([]);
+    expect(await toHelper.settle()).toEqual([]);
+    const confirmed = recv(helper);
     sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(helperInbox).toEqual([{ type: "peer-confirmed" }]);
+    expect(await confirmed).toEqual({ type: "peer-confirmed" });
 
     sharer.close();
     helper.close();
@@ -1165,10 +1161,9 @@ describe("server-side WS keepalive reaps silent sockets", () => {
     const { code } = await recv(sharer);
 
     expect(await closed(sharer, DEADLINE_MS * 4)).toBe(true);
-    // The client observes the FIN a tick before the server's own close
-    // handler (removeBySharer) has run.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(kaStore.getSession(code)).toBeNull();
+    // The client observes the FIN before the server's own close handler
+    // (removeBySharer) has necessarily run.
+    await waitFor(() => kaStore.getSession(code) === null, "removeBySharer");
 
     const late = connect({ autoPong: true });
     await new Promise((r) => late.once("open", r));
