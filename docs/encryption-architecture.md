@@ -5,7 +5,7 @@ Eine technische Erklärung der Krypto-Kette zwischen Sharer (Tauri-Desktop-App) 
 Verwandte Dokumente:
 
 - [`docs/protocol.md`](protocol.md) — Wire-Format aller Signaling-Frames
-- [`docs/security-review-2026-05.md`](security-review-2026-05.md) — Audit mit konkreten Line-References
+- [`docs/security-review-2026-05.md`](security-review-2026-05.md) — Audit-Snapshot vom Mai 2026 (Line-References dort sind inzwischen verschoben)
 - [`docs/security-review-2026-05-14-feedback.md`](security-review-2026-05-14-feedback.md) — Audit der Feedback-Surface
 - [`docs/postmortem-2026-05-13-connectivity.md`](postmortem-2026-05-13-connectivity.md) — Wie mDNS-Modus und coturn-Pinning die ICE-Auswahl beeinflussen
 
@@ -40,13 +40,13 @@ Sharer                  Backend (auffi-backend)              Viewer
   │── confirm:accepted ─────────►│── peer-confirmed ───────────►│
 ```
 
-Das Backend ([`backend/src/signaling.ts`](../backend/src/signaling.ts)) ist ein **dummer Relay**. Es bekommt drei Sorten Frames:
+Das Backend ([`backend/src/signaling.ts`](../backend/src/signaling.ts)) reicht die Peer-Frames als `relay` durch. Der Payload trägt eine von vier `kind`s (`RELAY_KINDS`: `sdp`, `ice`, `hello`, `bye`):
 
 - **SDP-Offer / SDP-Answer**: Session-Description-Protocol-Strings mit Codec-Info, ICE-Credentials, **DTLS-Fingerprints** der jeweiligen selbst-signierten Zertifikate.
 - **ICE-Candidates**: Adress-Tupel `(IP, Port, Protocol)`, mit denen sich die zwei Peers gegenseitig erreichen können.
-- **Hello / Bye**: Keepalive.
+- **Hello / Bye**: Sitzungs-Start / -Ende zwischen den Peers.
 
-Das Backend tut für jeden dieser Frames **eine einzige Sache**: weiterleiten an den anderen Peer im selben Room. Es parsed weder SDP noch validiert ICE. Es kann auch nicht — die Inhalte sind verschlüsselt-relevant für den Peer.
+Das Backend prüft pro Relay-Frame nur zwei Dinge: Ist die Session vom Sharer bestätigt (vorher wird jeder Relay verworfen), und ist `kind` einer der vier Werte (sonst `error`/`bad-message`)? Den Rest des Payloads reicht es unverändert an den anderen Peer weiter. SDP parst es nicht, ICE-Candidates validiert es nicht.
 
 **Was das Backend nie sieht**: Pixel, Mauspositionen, Tastatur-Eingaben, Datei-Inhalte, DTLS-Handshake-Material, abgeleitete Schlüssel.
 
@@ -118,7 +118,7 @@ Verhinderung: im SDP, das beim Signaling übers Backend läuft, sendet jeder Pee
 - die Fingerprint-Strings im durchgereichten SDP fälschen → fliegt sofort auf, weil der DTLS-Server-Cert nicht zum gefälschten Fingerprint passt → Handshake bricht ab
 - oder den DTLS-Server-Cert mit demselben Hash haben → SHA-256-Preimage-Angriff, praktisch unmöglich
 
-Also: **der Server kann das SDP nicht verändern ohne die Sitzung zu zerstören**. Das ist der gleiche Schutz wie HPKP/CT für TLS, nur eingebaut in WebRTC.
+Die Grenze dieses Schutzes: Er wirkt gegen jeden, der *zwischen* den Peers sitzt (Router, TURN-Relay), weil der die SDP-Fingerprints nicht anfassen kann. Er hilft aber nicht gegen ein **bösartiges Signaling-Backend**. Ein Backend, das *beide* Fingerprints durch die eines eigenen Zertifikats ersetzt und beide DTLS-Verbindungen selbst terminiert, fiele keinem Peer auf. Die Fingerprints sind also genau so vertrauenswürdig wie der TLS-gesicherte Signaling-Kanal und der Betreiber des Backends. Auffi zeigt keine Fingerprint-Verifikation „out of band" an (wie etwa die Sicherheitsnummern bei Signal). Wer dem Betreiber nicht traut, hostet das Backend selbst (AGPL).
 
 ### 3.3 SRTP-Profile-Aushandlung
 
@@ -152,7 +152,7 @@ Pro RTP-Paket:
 - **Auth**: HMAC-SHA1 (10 Bytes truncated) über Header + Encrypted-Payload + Replay-Index
 - **Replay-Schutz**: Sliding-Window-Counter (default 64 Pakete) — Pakete mit zu kleinem Counter werden verworfen
 
-Der Sharer ([`sharer/src-tauri/src/webrtc_peer.rs`](../sharer/src-tauri/src/webrtc_peer.rs)) füttert VP8/VP9-Frames in den Encoder, webrtc-rs verpackt sie in SRTP-Pakete und schickt sie über den ICE-Pfad. Der Viewer ([`viewer/src/webrtc-client.ts`](../viewer/src/webrtc-client.ts)) macht die umgekehrte Operation: SRTP-Decrypt → VP8/VP9-Decode → `<video>`-Element.
+Der Sharer ([`sharer/src-tauri/src/webrtc_peer.rs`](../sharer/src-tauri/src/webrtc_peer.rs)) füttert die Bildschirm-Frames in den VP8-Encoder (der Sharer bietet nur einen VP8-Track an, `video/VP8`), webrtc-rs verpackt sie in SRTP-Pakete und schickt sie über den ICE-Pfad. Der Viewer ([`viewer/src/webrtc-client.ts`](../viewer/src/webrtc-client.ts)) macht die umgekehrte Operation: SRTP-Decrypt → VP8-Decode → `<video>`-Element.
 
 ### 4.2 Input + Files → SCTP über DTLS (DataChannel, RFC 8831)
 
@@ -195,19 +195,19 @@ Aus dem Security-Review vom 2026-05-13 ([`docs/security-review-2026-05.md`](secu
 
 | Channel | Algorithmus | Verified im Code |
 |---|---|---|
-| Sharer ↔ Backend (Signaling) | TLS 1.2/1.3 via `rustls-tls-native-roots` | [`sharer/src-tauri/Cargo.toml:19`](../sharer/src-tauri/Cargo.toml) |
-| Sharer ↔ Backend (TURN-Creds-Fetch) | TLS 1.2/1.3 via `reqwest` + rustls | [`sharer/src-tauri/Cargo.toml:31`](../sharer/src-tauri/Cargo.toml) |
+| Sharer ↔ Backend (Signaling-WSS) | TLS 1.2/1.3 via `tokio-tungstenite` + rustls; Trust = OS-Zertifikatsspeicher **plus** gebündelte Mozilla-Roots (`webpki-roots`), zusammengeführt | [`sharer/src-tauri/src/tls_roots.rs`](../sharer/src-tauri/src/tls_roots.rs) `connector()` |
+| Sharer ↔ Backend (REST: TURN-Creds, Pairing, Feedback, Update-Check) | TLS 1.2/1.3 via `reqwest` + rustls, auf denselben zusammengeführten Trust-Anchors | [`sharer/src-tauri/src/tls_roots.rs`](../sharer/src-tauri/src/tls_roots.rs) `http_client()` |
 | Viewer ↔ Backend (Signaling) | TLS via Caddy → Backend | [`caddy/Caddyfile`](../caddy/Caddyfile) |
-| **Viewer ↔ Sharer (Media + Data)** | **DTLS-SRTP, mandatory** | webrtc-rs default; explizit nicht abgeschaltet in [`sharer/src-tauri/src/webrtc_peer.rs:106-111`](../sharer/src-tauri/src/webrtc_peer.rs) |
-| Sharer ↔ coturn (ICE-Relay) | TLS auf dem TURNS-Endpoint (Port 5349) | `Caddyfile:46` |
-| Password-Hashes in der DB | argon2id, `m=64 MiB, t=3, p=1` (≈ 250 ms / 1 vCPU) | [`backend/src/auth/argon.ts:14-19`](../backend/src/auth/argon.ts) |
-| Token-Hashes in der DB | SHA-256 für Sessions, Email-Verifications, Password-Resets, Device-Tokens | [`backend/src/auth/tokens.ts`](../backend/src/auth/tokens.ts) |
-| TURN-Credentials | HMAC-SHA1 über `expiry:uuid`, ≤ 1 h TTL (RFC 5766 mandate) | [`backend/src/turn-credentials.ts:32`](../backend/src/turn-credentials.ts) |
+| **Viewer ↔ Sharer (Media + Data)** | **DTLS-SRTP, mandatory** | webrtc-rs default; die `SettingEngine` in [`sharer/src-tauri/src/webrtc_peer.rs`](../sharer/src-tauri/src/webrtc_peer.rs) setzt nur mDNS-Modus und NAT-1:1-IPs, nichts an DTLS |
+| Sharer/Viewer ↔ coturn (TURNS) | TLS ≥ 1.2 auf Port 5349, **von coturn selbst terminiert** (nicht von Caddy). Caddy stellt nur das Let's-Encrypt-Zertifikat aus, coturn liest es aus dem Caddy-Datenvolume (im Cluster-Betrieb kopiert der `cert-stage.sh`-Sidecar es bei jeder Erneuerung nach, `entrypoint.sh` lädt es per SIGUSR2 neu) | [`coturn/turnserver.conf.tmpl`](../coturn/turnserver.conf.tmpl) `tls-listening-port`, `cipher-list`, `cert`/`pkey` |
+| Password-Hashes in der DB | argon2id, `m=64 MiB, t=3, p=1` (≈ 250 ms / 1 vCPU) | [`backend/src/auth/argon.ts`](../backend/src/auth/argon.ts) `ARGON_OPTS` |
+| Token-Hashes in der DB | SHA-256 für Sessions, Email-Verifications, Password-Resets, Pairing-Codes; Device-Tokens argon2id (wie Passwörter) | [`backend/src/auth/tokens.ts`](../backend/src/auth/tokens.ts) `hashToken`, [`backend/src/devices/handlers.ts`](../backend/src/devices/handlers.ts) (redeem → `hashPassword`) |
+| TURN-Credentials | HMAC-SHA1 über `expiry:uuid`, ≤ 1 h TTL (RFC 5766 mandate) | [`backend/src/turn-credentials.ts`](../backend/src/turn-credentials.ts) |
 
 Zusätzlich verifiziert (aus demselben Audit, Tabelle „What's good — verified"):
 
 - **Sharer-Confirmation ist mandatory** — kein Auto-Accept im Ad-hoc-Flow (im Unattended-Mode wahlweise per Device-Passwort gegated).
-- **Constant-time Login** — argon2-Verify wird auch beim „unknown account" gegen einen Decoy-Hash gefahren, damit Timing kein User-Existence leakt. [`backend/src/auth/argon.ts:56-84`](../backend/src/auth/argon.ts).
+- **Constant-time Login** — argon2-Verify wird auch beim „unknown account" gegen einen Decoy-Hash gefahren, damit Timing kein User-Existence leakt. [`backend/src/auth/argon.ts`](../backend/src/auth/argon.ts) (`getTimingDecoy`).
 - **Token-Lebenszyklus**: Session-Cookie 30 d, Email-Verification 24 h, Password-Reset 1 h, Device-Pairing-Code 10 min — die drei letzten single-use ([`backend/src/auth/handlers.ts`](../backend/src/auth/handlers.ts) `VERIFY_TTL_MS` / `RESET_TTL_MS`, [`backend/src/devices/handlers.ts`](../backend/src/devices/handlers.ts) `PAIRING_TTL_MS`). Alle als `used_at` innerhalb einer DB-Transaktion markiert.
 - **Kein `danger_accept_invalid_certs` / `rejectUnauthorized: false` irgendwo im Code.** Suche und du findest nichts.
 - **Keine Plaintext-Secrets persistiert.** Nur Hashes.
@@ -216,12 +216,12 @@ Zusätzlich verifiziert (aus demselben Audit, Tabelle „What's good — verifie
 
 ## Konkret nachlesen
 
-- [`sharer/src-tauri/src/webrtc_peer.rs`](../sharer/src-tauri/src/webrtc_peer.rs) — `setup_peer_connection()`. Hier wird die `SettingEngine` konfiguriert (mDNS-Modus, ICE-Range, DTLS-Cert-Generation).
+- [`sharer/src-tauri/src/webrtc_peer.rs`](../sharer/src-tauri/src/webrtc_peer.rs) — `setup_peer_connection()`. Hier wird die `SettingEngine` konfiguriert (mDNS-Modus, per UPnP ermittelte Public-IP als srflx-Candidate; DTLS-Zertifikat und SRTP-Profil bleiben webrtc-rs-Default).
 - [`viewer/src/webrtc-client.ts`](../viewer/src/webrtc-client.ts) — `ViewerPeer.start()`. Browser-seitig dasselbe via Web-API.
-- [`backend/src/signaling.ts`](../backend/src/signaling.ts) — siehst, dass das Backend wirklich nur Frames durchreicht. Suche nach `forwardRelay` / der `relay`-Match-Arm.
-- [`coturn/turnserver.conf.tmpl`](../coturn/turnserver.conf.tmpl) — `no-loopback-peers`, `denied-peer-ip` etc. Der TURN-Server kann von außen nicht als allgemein-offener Proxy missbraucht werden.
+- [`backend/src/signaling.ts`](../backend/src/signaling.ts) — siehst, dass das Backend wirklich nur Frames durchreicht. Suche nach `RELAY_KINDS`: dort steht die einzige Prüfung, die ein Relay-Frame durchläuft.
+- [`coturn/turnserver.conf.tmpl`](../coturn/turnserver.conf.tmpl) — `denied-peer-ip`-Deny-Liste (alle privaten, Loopback-, Link-Local- und Doku-Bereiche inkl. IPv4-mapped IPv6), `no-tcp-relay`, `no-multicast-peers`, TLS ≥ 1.2 mit expliziter `cipher-list`. Der TURN-Server kann damit nicht als offener Proxy ins interne Netz missbraucht werden.
 - [`docs/protocol.md`](protocol.md) — die Wire-Frames, alle JSON. Macht klar, dass keine Inhalts-Felder im Signaling vorkommen.
-- Audit-Belege: [`docs/security-review-2026-05.md`](security-review-2026-05.md), Abschnitt 2, hat die Verified-Good-Tabelle mit den genauen `webrtc_peer.rs`-Line-References.
+- Audit-Belege: [`docs/security-review-2026-05.md`](security-review-2026-05.md), Abschnitt 2, hat die Verified-Good-Tabelle (Snapshot vom Mai 2026; die Zeilennummern dort sind inzwischen verschoben).
 
 ---
 
