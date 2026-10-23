@@ -388,6 +388,10 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       // Spec §4.5 step 3: a successful reset invalidates every other
       // session of the account — log everyone else out.
       deleteAllSessionsForAccount(db, row.account_id);
+      // Redeeming the mailed link proves control of the account. Without
+      // this the owner who reset BECAUSE an attacker's guesses locked the
+      // account would still be refused with the new password.
+      recordAccountPwSuccess(db, row.account_id);
       return true;
     });
     if (!tx()) return bad(reply, 410, "token-used", "reset link already used");

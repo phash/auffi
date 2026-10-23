@@ -651,6 +651,23 @@ describe("POST /api/auth/login — per-account lockout", () => {
     expect(h.db.prepare("SELECT COUNT(*) AS c FROM sessions").get()).toEqual({ c: 0 });
   });
 
+  it("a password reset lifts the lock — the owner proved control of the mailbox", async () => {
+    for (let i = 0; i < 5; i++) await login(`wrong-${i}`);
+    h.mailer.sent.length = 0;
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/forgot",
+      payload: { email: "eve@example.com" },
+    });
+    const reset = await h.app.inject({
+      method: "POST",
+      url: `/api/auth/reset/${h.mailer.sent[0].token}`,
+      payload: { password: "the-new-password" },
+    });
+    expect(reset.statusCode).toBe(200);
+    expect((await login("the-new-password")).status).toBe(200);
+  });
+
   it("the lock answers exactly like a wrong password — no account enumeration", async () => {
     for (let i = 0; i < 5; i++) await login(`wrong-${i}`);
     const locked = await h.app.inject({
