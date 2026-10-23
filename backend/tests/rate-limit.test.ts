@@ -98,3 +98,27 @@ describe("join rate limit gates correct guesses too", () => {
     sharer.close();
   });
 });
+
+describe("REST rate limits over IPv6", () => {
+  it("count a whole /64 as one client", async () => {
+    // POST /api/auth/forgot allows 3 per hour per client.
+    const statuses: number[] = [];
+    for (let i = 1; i <= 4; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/auth/forgot",
+        remoteAddress: `2001:db8:77:1::${i}`,
+        payload: { email: "nobody@example.com" },
+      });
+      statuses.push(res.statusCode);
+    }
+    const otherPrefix = await app.inject({
+      method: "POST",
+      url: "/api/auth/forgot",
+      remoteAddress: "2001:db8:77:2::1",
+      payload: { email: "nobody@example.com" },
+    });
+    statuses.push(otherPrefix.statusCode);
+    expect(statuses).toEqual([200, 200, 200, 429, 200]);
+  });
+});
