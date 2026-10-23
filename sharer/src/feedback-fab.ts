@@ -25,16 +25,30 @@ const CATEGORY_LABELS: Record<Category, string> = {
 };
 const CATEGORY_ORDER: Category[] = ["bug", "feature", "praise", "other"];
 
+let refreshGeneration = 0;
+
 /**
  * Install or remove the FAB based on the paired-state of this
  * sharer. Call at app boot and on every Unattended-mode toggle.
  */
 export async function refreshFeedbackFab(): Promise<void> {
-  removeExisting();
+  // Boot and every state change refresh concurrently; only the newest call
+  // may touch the DOM, and only after its awaits — otherwise overlapping
+  // refreshes each append a FAB, or a stale "paired" answer wins.
+  const mine = ++refreshGeneration;
   const paired = (await invoke<string | null>("unattended_is_paired").catch(() => null));
   const pwSet = (await invoke<boolean>("unattended_is_password_set").catch(() => false));
+  if (mine !== refreshGeneration) return;
+  removeExisting();
   if (!paired || !pwSet) return;
   document.body.appendChild(buildFab());
+}
+
+/** Rust answers with German copy; anything else is not for the user's eyes. */
+function sendErrorText(err: unknown): string {
+  return typeof err === "string" && err.trim().length > 0
+    ? err
+    : "Feedback konnte nicht gesendet werden.";
 }
 
 function removeExisting(): void {
@@ -252,7 +266,8 @@ function openModal(): void {
       showToast("Danke fürs Feedback!");
     } catch (err) {
       submitBtn.disabled = false;
-      status.textContent = String(err);
+      console.warn("[feedback] send failed:", err);
+      status.textContent = sendErrorText(err);
       status.className = "feedback-modal-status err";
     }
   });

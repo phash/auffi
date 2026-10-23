@@ -292,11 +292,11 @@ const FEEDBACK_BODY_MAX_UNITS: usize = 4000;
 fn validate_feedback_body(body: &str) -> Result<&str, String> {
     let trimmed = body.trim();
     if trimmed.is_empty() {
-        return Err("body must not be empty".to_string());
+        return Err("Bitte gib eine Nachricht ein.".to_string());
     }
     if trimmed.encode_utf16().count() > FEEDBACK_BODY_MAX_UNITS {
         return Err(format!(
-            "body too long (max {FEEDBACK_BODY_MAX_UNITS} chars)"
+            "Die Nachricht ist zu lang (höchstens {FEEDBACK_BODY_MAX_UNITS} Zeichen)."
         ));
     }
     Ok(trimmed)
@@ -552,10 +552,10 @@ pub async fn unattended_submit_feedback(
     // shape the backend re-validates server-side; we only fail-fast
     // here to give the UI a snappier error.
     if !matches!(category.as_str(), "bug" | "feature" | "praise" | "other") {
-        return Err("invalid category".to_string());
+        return Err("Bitte eine Kategorie wählen.".to_string());
     }
     if !(1..=5).contains(&rating) {
-        return Err("rating must be 1..5".to_string());
+        return Err("Bitte eine Bewertung von 1 bis 5 Sternen wählen.".to_string());
     }
     let trimmed = validate_feedback_body(&body)?;
 
@@ -585,20 +585,30 @@ pub async fn unattended_submit_feedback(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Senden fehlgeschlagen: {e}"))?;
+        .map_err(|e| {
+            crate::dbg_log(&format!("[feedback] send failed: {e}"));
+            "Feedback konnte nicht gesendet werden — bitte Internetverbindung prüfen.".to_string()
+        })?;
 
     let status = res.status();
     if !status.is_success() {
-        let body_preview = res
-            .text()
-            .await
-            .unwrap_or_default()
-            .chars()
-            .take(200)
-            .collect::<String>();
-        return Err(format!("Backend {}: {}", status.as_u16(), body_preview));
+        crate::dbg_log(&format!("[feedback] backend answered {status}"));
+        return Err(feedback_error_message(status.as_u16()));
     }
     Ok(())
+}
+
+/// German copy for a refused `POST /api/feedback` (statuses per
+/// docs/protocol.md § `POST /api/feedback`). The response body never
+/// reaches the user.
+pub(crate) fn feedback_error_message(status: u16) -> String {
+    match status {
+        401 => "Dieses Gerät ist nicht mehr gekoppelt — bitte neu koppeln.".to_string(),
+        429 => {
+            "Zu viele Feedback-Nachrichten — bitte in einer Minute erneut versuchen.".to_string()
+        }
+        status => format!("Feedback konnte nicht gesendet werden (Serverfehler {status})."),
+    }
 }
 
 /// What the forwarder should do with a [`PwCheckOutcome`].
@@ -1432,6 +1442,26 @@ mod tests {
     fn feedback_body_is_trimmed_and_must_not_be_blank() {
         assert_eq!(validate_feedback_body("  hallo \n"), Ok("hallo"));
         assert!(validate_feedback_body("   \n").is_err());
+    }
+
+    // The feedback modal showed `Backend 429: {"error":"rate-limited"}`
+    // verbatim. The statuses the route documents get German copy the
+    // sharer-user can act on; nothing from the response body reaches it.
+    #[test]
+    fn feedback_failures_read_as_german_copy() {
+        assert!(feedback_error_message(401).contains("neu koppeln"));
+        assert!(feedback_error_message(429).contains("Minute"));
+        let other = feedback_error_message(500);
+        assert!(
+            other.contains("500") && other.starts_with("Feedback"),
+            "{other}"
+        );
+        assert!(validate_feedback_body("   ")
+            .unwrap_err()
+            .starts_with("Bitte"));
+        assert!(validate_feedback_body(&"a".repeat(4001))
+            .unwrap_err()
+            .contains("4000 Zeichen"));
     }
 
     // ── peer-joined gate (local proof of a pw-check ok) ───────────────

@@ -40,13 +40,14 @@ pub const DEVICE_ID_FILE: &str = "device_id.txt";
 
 #[derive(Debug)]
 pub enum AccountError {
-    /// Pairing code rejected: empty, malformed, already used, or
-    /// expired. Backend distinguishes these via the JSON `error` field.
+    /// Local input check failed (code shape, empty alias); the message is
+    /// German copy for the pairing status line.
     InvalidCode(String),
     /// HTTP transport failure (DNS, TLS, connection reset, …).
     Transport(String),
-    /// Backend returned a non-2xx status we didn't otherwise classify.
-    Backend { status: u16, body: String },
+    /// The backend refused the redeem; German copy from
+    /// [`redeem_error_message`], never the raw response body.
+    Rejected(String),
     /// Local IO failed when reading/writing the device-id config file.
     Io(io::Error),
     /// Keyring access failed (DBus error, locked Secret Service, …).
@@ -59,9 +60,11 @@ pub enum AccountError {
 impl std::fmt::Display for AccountError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidCode(msg) => write!(f, "ungültiger Pairing-Code: {msg}"),
-            Self::Transport(msg) => write!(f, "Backend nicht erreichbar: {msg}"),
-            Self::Backend { status, body } => write!(f, "Backend-Fehler ({status}): {body}"),
+            Self::InvalidCode(msg) | Self::Rejected(msg) => f.write_str(msg),
+            Self::Transport(msg) => write!(
+                f,
+                "Server nicht erreichbar — bitte Internetverbindung prüfen ({msg})."
+            ),
             Self::Io(e) => write!(f, "Konfig-Datei-IO fehlgeschlagen: {e}"),
             Self::Keyring(msg) => write!(f, "Schlüsselbund-Zugriff fehlgeschlagen: {msg}"),
             Self::MalformedResponse(msg) => write!(f, "unerwartete Backend-Antwort: {msg}"),
@@ -192,30 +195,41 @@ pub fn normalise_pairing_code(input: &str) -> Result<String, AccountError> {
         buf = buf.replace("--", "-");
     }
     if !is_valid_pairing_code(&buf) {
-        return Err(AccountError::InvalidCode(format!(
-            "Code muss Form XXX-XXX-XX haben (bekam {buf:?})"
-        )));
+        return Err(AccountError::InvalidCode(
+            "Der Pairing-Code hat nicht das richtige Format (z. B. 7K3-9PQ-XR).".to_string(),
+        ));
     }
     Ok(buf)
 }
 
-/// Maximum number of bytes of backend response body to surface in
-/// `AccountError::Backend` / `AccountError::InvalidCode`. CQ M-30
-/// (review 2026-05-13): a 5xx from a misconfigured reverse proxy can
-/// return verbose HTML, which would otherwise spill into the toast.
-const MAX_BACKEND_BODY_BYTES: usize = 200;
-
-/// Clamp `body` to at most `MAX_BACKEND_BODY_BYTES`, respecting UTF-8
-/// boundaries and appending an ellipsis when truncation happened.
-pub(crate) fn clamp_for_display(body: &str) -> String {
-    if body.len() <= MAX_BACKEND_BODY_BYTES {
-        return body.to_string();
+/// German copy for a refused `POST /api/devices/redeem`. The backend
+/// answers `{ "error": "<code>", "message": "<english>" }`
+/// (`backend/src/devices/handlers.ts`): 400 `bad-code` / `bad-alias`,
+/// 410 `code-invalid` / `code-used`, 503 `id-collision`, and the route's
+/// rate limit answers 429. Only the code is read — neither the English
+/// message nor a proxy's HTML error page reaches the user.
+pub(crate) fn redeem_error_message(status: u16, body: &str) -> String {
+    let code = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("error")?.as_str().map(str::to_owned));
+    match (status, code.as_deref()) {
+        (400, Some("bad-alias")) => "Der Gerätename ist ungültig (1–80 Zeichen).".to_string(),
+        (400, _) => {
+            "Der Pairing-Code hat nicht das richtige Format (z. B. 7K3-9PQ-XR).".to_string()
+        }
+        (410, Some("code-used")) => {
+            "Der Pairing-Code wurde bereits verwendet — bitte im Dashboard einen neuen erzeugen."
+                .to_string()
+        }
+        (410, _) => "Der Pairing-Code ist abgelaufen oder unbekannt — bitte im Dashboard einen \
+                     neuen erzeugen."
+            .to_string(),
+        (429, _) => "Zu viele Versuche — bitte in einer Minute erneut versuchen.".to_string(),
+        (503, _) => {
+            "Der Server ist gerade ausgelastet — bitte gleich noch einmal versuchen.".to_string()
+        }
+        (status, _) => format!("Kopplung fehlgeschlagen (Serverfehler {status})."),
     }
-    let mut cut = MAX_BACKEND_BODY_BYTES;
-    while cut > 0 && !body.is_char_boundary(cut) {
-        cut -= 1;
-    }
-    format!("{}…", &body[..cut])
 }
 
 /// True iff `s` matches `^[A-Z0-9]{3}-[A-Z0-9]{3}-[A-Z0-9]{2}$`. Split
@@ -345,24 +359,10 @@ pub async fn pair<S: TokenStore>(
         .await
         .map_err(|e| AccountError::Transport(e.to_string()))?;
     if !status.is_success() {
-        // Spec §5.2: backend returns 400/410 with {error: "expired"} etc.
-        // We don't try to parse here — the surface area would couple us
-        // to backend strings; instead surface the raw body so the UI
-        // can show a friendly toast distinguishing "ungültig/abgelaufen"
-        // from "Backend down".
-        //
-        // CQ M-30 (review 2026-05-13): clamp the surfaced body to
-        // 200 bytes so a 5xx returning verbose HTML ("Internal
-        // Server Error\n<html>…</html>") doesn't dump the full
-        // server-side error text into the user's toast.
-        let clamped = clamp_for_display(&body);
-        if status.as_u16() == 400 || status.as_u16() == 404 || status.as_u16() == 410 {
-            return Err(AccountError::InvalidCode(clamped));
-        }
-        return Err(AccountError::Backend {
-            status: status.as_u16(),
-            body: clamped,
-        });
+        return Err(AccountError::Rejected(redeem_error_message(
+            status.as_u16(),
+            &body,
+        )));
     }
     let parsed: PairingResponse =
         serde_json::from_str(&body).map_err(|e| AccountError::MalformedResponse(e.to_string()))?;
@@ -538,43 +538,6 @@ mod tests {
         ));
     }
 
-    // ── clamp_for_display ────────────────────────────────────────────
-    // CQ M-30 regression pin: a 5xx backend response with verbose HTML
-    // (think Caddy default error page) must not flood the toast.
-
-    #[test]
-    fn clamp_for_display_passes_short_body_through() {
-        let body = "Code abgelaufen";
-        assert_eq!(clamp_for_display(body), body);
-    }
-
-    #[test]
-    fn clamp_for_display_truncates_long_body_with_ellipsis() {
-        let long = "x".repeat(MAX_BACKEND_BODY_BYTES + 50);
-        let out = clamp_for_display(&long);
-        // Each ellipsis is 3 bytes in UTF-8 (…); body bytes plus the ellipsis.
-        assert_eq!(out.len(), MAX_BACKEND_BODY_BYTES + "…".len());
-        assert!(out.ends_with('…'));
-    }
-
-    #[test]
-    fn clamp_for_display_respects_utf8_boundaries() {
-        // Build a body where byte MAX_BACKEND_BODY_BYTES lands in the
-        // middle of a multi-byte character. "ö" is 2 bytes; pad with
-        // single-byte chars so the cut would otherwise split it.
-        let mut body = String::new();
-        for _ in 0..MAX_BACKEND_BODY_BYTES - 1 {
-            body.push('a');
-        }
-        body.push('ö');
-        body.push('z');
-        let out = clamp_for_display(&body);
-        assert!(out.is_char_boundary(out.len()));
-        // The 'ö' (bytes MAX-1..MAX+1) must be excluded, so cut shifts
-        // back to MAX-1.
-        assert!(out.ends_with("a…"));
-    }
-
     // ── normalise_alias ──────────────────────────────────────────────
 
     #[test]
@@ -644,13 +607,43 @@ mod tests {
         mock.assert_async().await;
     }
 
+    // The real backend shape (backend/src/devices/handlers.ts `bad()`):
+    // `{ "error": "<code>", "message": "<english>" }`. The user used to see
+    // that raw JSON in the pairing status line.
+    #[test]
+    fn redeem_errors_map_to_german_copy() {
+        let body = |code: &str| format!(r#"{{"error":"{code}","message":"english detail"}}"#);
+        assert!(redeem_error_message(400, &body("bad-code")).contains("Format"));
+        assert!(redeem_error_message(400, &body("bad-alias")).contains("Gerätename"));
+        assert!(redeem_error_message(410, &body("code-invalid")).contains("abgelaufen"));
+        assert!(redeem_error_message(410, &body("code-used")).contains("bereits verwendet"));
+        assert!(redeem_error_message(429, "").contains("Zu viele Versuche"));
+        assert!(redeem_error_message(503, &body("id-collision")).contains("gleich noch einmal"));
+        let other = redeem_error_message(500, "<html>Internal Server Error</html>");
+        assert!(other.contains("500"), "{other}");
+        for msg in [
+            redeem_error_message(410, &body("code-used")),
+            redeem_error_message(500, "<html>Internal Server Error</html>"),
+            redeem_error_message(400, "not json"),
+        ] {
+            assert!(
+                !msg.contains('{') && !msg.contains('<'),
+                "raw body leaked: {msg}"
+            );
+            assert!(
+                !msg.contains("english detail"),
+                "backend text leaked: {msg}"
+            );
+        }
+    }
+
     #[tokio::test]
-    async fn pair_400_response_surfaces_as_invalid_code() {
+    async fn pair_rejection_surfaces_german_copy_and_writes_nothing() {
         let mut server = mockito::Server::new_async().await;
         server
             .mock("POST", "/api/devices/redeem")
             .with_status(410)
-            .with_body(r#"{"error":"expired"}"#)
+            .with_body(r#"{"error":"code-invalid","message":"pairing code expired or unknown"}"#)
             .create_async()
             .await;
 
@@ -666,7 +659,8 @@ mod tests {
         )
         .await
         .expect_err("expired must fail");
-        assert!(matches!(err, AccountError::InvalidCode(_)));
+        assert!(matches!(err, AccountError::Rejected(_)));
+        assert!(err.to_string().contains("abgelaufen"), "{err}");
         assert!(
             store.read().unwrap().is_none(),
             "failed pair must not write token"
@@ -678,7 +672,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pair_500_response_surfaces_as_backend_error() {
+    async fn pair_server_error_names_the_status_in_german_copy() {
         let mut server = mockito::Server::new_async().await;
         server
             .mock("POST", "/api/devices/redeem")
@@ -699,10 +693,8 @@ mod tests {
         )
         .await
         .expect_err("500 must fail");
-        match err {
-            AccountError::Backend { status, .. } => assert_eq!(status, 500),
-            other => panic!("expected Backend, got {other:?}"),
-        }
+        assert!(matches!(err, AccountError::Rejected(_)));
+        assert!(err.to_string().contains("500"), "{err}");
     }
 
     #[tokio::test]
