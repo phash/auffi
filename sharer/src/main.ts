@@ -26,6 +26,7 @@ import { resetSessionIndicators } from "./session-indicators.js";
 import { planViewerBye } from "./viewer-bye-policy.js";
 import { unattendedMainStatus } from "./unattended-mode-status.js";
 import { planSignalingLost } from "./signaling-lost-policy.js";
+import { fileSendErrorMessage } from "./file-send-messages.js";
 
 interface FileOfferPayload {
   id: string;
@@ -777,9 +778,13 @@ document.addEventListener("keydown", (e) => {
 // ── Send file ────────────────────────────────────────────────────────────────
 
 sendFileBtn.addEventListener("click", () => {
-  invoke("pick_and_send_file").catch((err: unknown) => {
-    showFriendlyError("Datei konnte nicht gesendet werden.", err);
-  });
+  invoke<boolean>("pick_and_send_file")
+    .then((sent) => {
+      if (sent) setStatus("Datei wurde gesendet.", "success");
+    })
+    .catch((err: unknown) => {
+      showFriendlyError(fileSendErrorMessage(err), err);
+    });
 });
 
 // ── About page buttons ───────────────────────────────────────────────────────

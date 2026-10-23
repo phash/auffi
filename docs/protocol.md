@@ -522,6 +522,18 @@ whose first byte can be `{`.
 { "kind": "file-error", "id": "uuid", "message": "disk full" }
 ```
 
+The sender MUST NOT stream a single chunk before `file-accept` arrives — the
+receiver refuses data that precedes the helper's/user's consent. The sharer
+waits up to 60 s for the answer; on timeout it withdraws the offer with
+`file-error` `"offer-timeout"` and the receiver drops the pending offer (a
+late accept then has nothing to start). A `file-reject` or `file-error` for an
+id that is already streaming stops the sender's chunk loop.
+
+`message` values the sharer sends as a receiver: `too-many-active`,
+`file-too-large`, `duplicate-id` (the offer's id — or its 32-bit FNV routing
+hash, see below — matches a transfer that is still live), `cannot open file: …`,
+`incomplete-transfer`. Receivers treat unknown values as a generic failure.
+
 **Chunk (binary frame — NOT JSON):**
 
 After `file-accept`, the sender streams chunks as raw `ArrayBuffer` messages.

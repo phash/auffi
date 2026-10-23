@@ -15,7 +15,7 @@ cc = "=1.4.4"
 
 [dependencies]
 tauri = { version = "=2.11.5", features = ["tray-icon"] }
-tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
 # The `rustls-tls-native-roots` feature is kept for the Connector type and the
 # rustls-native-certs dependency, but we do NOT use its default connector: it
 # trusts the OS store alone, which on Windows is populated lazily and left the

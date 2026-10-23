@@ -1,12 +1,18 @@
 use std::{
     collections::BTreeMap,
     collections::HashMap,
+    future::Future,
     io::{BufWriter, Write},
     path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
+    sync::Arc,
+    time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime};
+use tokio::io::AsyncReadExt;
+use tokio::sync::oneshot;
 
 /// Maximum simultaneous pending (unaccepted) + active (accepted) transfers.
 const MAX_CONCURRENT_TRANSFERS: usize = 5;
@@ -44,7 +50,7 @@ pub enum FileMessage {
 /// The `File` prefix is intentional: it matches the protocol naming convention
 /// used in the viewer and is kept for cross-language clarity.
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum FileEvent {
     FileOffer {
@@ -107,6 +113,60 @@ pub struct FileTransferManager {
     /// Directory received files are created in (`output_dir()` in
     /// production; a tempdir in tests).
     output_dir: PathBuf,
+    /// Our own offers to the viewer, keyed by the UUID we minted.
+    outbound: HashMap<String, OutboundSend>,
+}
+
+/// How the viewer answered one of our offers.
+#[derive(Debug, PartialEq, Eq)]
+enum OfferAnswer {
+    Accepted,
+    Rejected,
+    Failed(String),
+}
+
+/// One sharer → viewer transfer. `answer` is consumed by the first
+/// accept/reject/error; `abort` stays so a reject or error that arrives
+/// while chunks are already flowing — or the session teardown — stops the
+/// stream.
+struct OutboundSend {
+    answer: Option<oneshot::Sender<OfferAnswer>>,
+    abort: Arc<AtomicBool>,
+}
+
+/// Why an outbound send ended without `file-done`. [`SendFailure::code`] is
+/// the stable string the webview maps to German copy.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SendFailure {
+    /// The helper clicked Ablehnen (or the transfer was refused mid-stream).
+    Rejected,
+    /// No answer within the offer timeout; the offer was withdrawn.
+    TimedOut,
+    /// The session ended (or was never there) before the send completed.
+    Cancelled,
+    /// Too many transfers in flight.
+    Busy,
+    /// Disk, channel or viewer-reported error; the detail is for the log.
+    Failed(String),
+}
+
+impl SendFailure {
+    pub(crate) fn code(&self) -> &'static str {
+        match self {
+            SendFailure::Rejected => "file-rejected",
+            SendFailure::TimedOut => "file-timeout",
+            SendFailure::Cancelled => "file-cancelled",
+            SendFailure::Busy => "file-busy",
+            SendFailure::Failed(_) => "file-failed",
+        }
+    }
+}
+
+/// Outbound side of the `files` DataChannel. A trait so the consent flow in
+/// [`send_file`] runs against a recording sink in tests.
+pub(crate) trait FileSink {
+    fn send_event(&self, event: &FileEvent) -> impl Future<Output = Result<(), String>> + Send;
+    fn send_chunk(&self, frame: Vec<u8>) -> impl Future<Output = Result<(), String>> + Send;
 }
 
 /// Why a `file-done` did not produce a usable file; the partial file has
@@ -123,7 +183,61 @@ impl FileTransferManager {
             pending: HashMap::new(),
             active: HashMap::new(),
             output_dir,
+            outbound: HashMap::new(),
         }
+    }
+
+    /// Register one of our own offers before it goes out. The receiver
+    /// resolves with the viewer's answer (or errors once the manager is
+    /// dropped); the flag is raised when the stream must stop.
+    fn begin_send(
+        &mut self,
+        id: &str,
+    ) -> Result<(oneshot::Receiver<OfferAnswer>, Arc<AtomicBool>), SendFailure> {
+        if self.outbound.len() >= MAX_CONCURRENT_TRANSFERS {
+            return Err(SendFailure::Busy);
+        }
+        let (tx, rx) = oneshot::channel();
+        let abort = Arc::new(AtomicBool::new(false));
+        self.outbound.insert(
+            id.to_string(),
+            OutboundSend {
+                answer: Some(tx),
+                abort: Arc::clone(&abort),
+            },
+        );
+        Ok((rx, abort))
+    }
+
+    /// Forget an outbound send once it ended, whichever way.
+    fn finish_send(&mut self, id: &str) {
+        self.outbound.remove(id);
+    }
+
+    /// Route the viewer's answer to one of our offers. Returns `false` when
+    /// `event` is not about an outbound send (unknown id, or an offer/done).
+    pub(crate) fn route_answer(&mut self, event: &FileEvent) -> bool {
+        let (id, answer) = match event {
+            FileEvent::FileAccept { id } => (id, OfferAnswer::Accepted),
+            FileEvent::FileReject { id } => (id, OfferAnswer::Rejected),
+            FileEvent::FileError { id, message } => (id, OfferAnswer::Failed(message.clone())),
+            FileEvent::FileOffer { .. } | FileEvent::FileDone { .. } => return false,
+        };
+        let Some(send) = self.outbound.get_mut(id) else {
+            return false;
+        };
+        if answer == OfferAnswer::Accepted {
+            if let Some(tx) = send.answer.take() {
+                let _ = tx.send(OfferAnswer::Accepted);
+            }
+            return true;
+        }
+        let send = self.outbound.remove(id).expect("looked up above");
+        send.abort.store(true, Ordering::Relaxed);
+        if let Some(tx) = send.answer {
+            let _ = tx.send(answer);
+        }
+        true
     }
 
     /// The AppHandle-free half of a `file-offer`: cap + size gate, then
@@ -201,6 +315,9 @@ impl FileTransferManager {
         event: FileEvent,
         app: &AppHandle<R>,
     ) -> Vec<FileEvent> {
+        if self.route_answer(&event) {
+            return vec![];
+        }
         match event {
             FileEvent::FileOffer {
                 id,
@@ -260,7 +377,8 @@ impl FileTransferManager {
                 log::warn!("file transfer error for id={id}: {message}");
                 vec![]
             }
-            // These are responses from the viewer — not processed by the receive path.
+            // Answers to our own offers were routed above; one for an
+            // unknown id (late, after a timeout) has nothing left to act on.
             FileEvent::FileAccept { .. } | FileEvent::FileReject { .. } => vec![],
         }
     }
@@ -342,11 +460,7 @@ impl FileTransferManager {
             // Parked bytes count too: otherwise withholding seq 0 lets a
             // viewer park MAX_PENDING_OUT_OF_ORDER_CHUNKS chunks past the
             // declared size.
-            let parked: u64 = state
-                .pending_chunks
-                .values()
-                .map(|c| c.len() as u64)
-                .sum();
+            let parked: u64 = state.pending_chunks.values().map(|c| c.len() as u64).sum();
             let total_after = state
                 .received_bytes
                 .saturating_add(parked)
@@ -416,11 +530,16 @@ impl FileTransferManager {
 }
 
 /// Session teardown drops the manager mid-transfer; whatever was still being
-/// received is a partial file and must not stay behind in Downloads.
+/// received is a partial file and must not stay behind in Downloads, and our
+/// own sends stop (a send still waiting for its answer sees the dropped
+/// oneshot instead).
 impl Drop for FileTransferManager {
     fn drop(&mut self) {
         for (_, state) in self.active.drain() {
             discard(state);
+        }
+        for (_, send) in self.outbound.drain() {
+            send.abort.store(true, Ordering::Relaxed);
         }
     }
 }
@@ -510,9 +629,7 @@ fn dedupe_filename(filename: &str, n: u32) -> String {
         }
         _ => (filename, ""),
     };
-    let mut keep = stem
-        .len()
-        .min(MAX_NAME_BYTES - suffix.len() - ext.len());
+    let mut keep = stem.len().min(MAX_NAME_BYTES - suffix.len() - ext.len());
     while !stem.is_char_boundary(keep) {
         keep -= 1;
     }
@@ -656,49 +773,123 @@ pub fn build_chunk_frame(id: &str, seq: u32, payload: &[u8]) -> Vec<u8> {
 
 const CHUNK_SIZE: usize = 16 * 1024;
 
-/// Read a file from `path` and send it to the viewer as a series of binary
-/// chunk frames.  The `peer` is used to transmit both JSON events and raw
-/// chunk frames over the `"files"` DataChannel.
-pub async fn send_file(path: PathBuf, peer: &crate::webrtc_peer::SharerPeer) -> Result<(), String> {
-    use std::io::Read;
+/// How long the helper has to answer one of our offers. The viewer shows a
+/// dialog, so this is human-paced; past it the offer is withdrawn rather than
+/// leaving the user's "Datei senden" hanging forever.
+pub(crate) const OFFER_ANSWER_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Offer the file at `path` to the viewer and stream it only once the helper
+/// accepted (docs/protocol.md § Channel `files`).
+///
+/// `transfers` is the session's manager slot: the offer is registered there
+/// so the file task can route the viewer's answer to it, and a teardown
+/// (slot emptied) cancels the send. The slot is locked only briefly — never
+/// across the wait or the stream.
+pub(crate) async fn send_file<S: FileSink>(
+    path: PathBuf,
+    sink: &S,
+    transfers: &tokio::sync::Mutex<Option<FileTransferManager>>,
+    answer_timeout: Duration,
+) -> Result<(), SendFailure> {
     let name = path
         .file_name()
-        .ok_or_else(|| "path has no file name".to_string())?
+        .ok_or_else(|| SendFailure::Failed("path has no file name".into()))?
         .to_string_lossy()
         .to_string();
-
-    let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    let size = metadata.len();
+    let file = tokio::fs::File::open(&path)
+        .await
+        .map_err(|e| SendFailure::Failed(format!("open: {e}")))?;
+    let size = file
+        .metadata()
+        .await
+        .map_err(|e| SendFailure::Failed(format!("metadata: {e}")))?
+        .len();
 
     let id = uuid_v4();
-    let mime = mime_guess(&name);
+    let (answer, abort) = transfers
+        .lock()
+        .await
+        .as_mut()
+        .ok_or(SendFailure::Cancelled)?
+        .begin_send(&id)?;
 
-    peer.send_file_event(&FileEvent::FileOffer {
+    let offer = FileEvent::FileOffer {
         id: id.clone(),
+        mime: mime_guess(&name),
         name,
         size,
-        mime,
-    })
-    .await?;
+    };
+    let outcome = offer_and_stream(&id, &offer, file, sink, answer, &abort, answer_timeout).await;
+    if let Some(mgr) = transfers.lock().await.as_mut() {
+        mgr.finish_send(&id);
+    }
+    outcome
+}
 
-    let mut file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+async fn offer_and_stream<S: FileSink>(
+    id: &str,
+    offer: &FileEvent,
+    mut file: tokio::fs::File,
+    sink: &S,
+    answer: oneshot::Receiver<OfferAnswer>,
+    abort: &AtomicBool,
+    answer_timeout: Duration,
+) -> Result<(), SendFailure> {
+    sink.send_event(offer).await.map_err(SendFailure::Failed)?;
+
+    match tokio::time::timeout(answer_timeout, answer).await {
+        Ok(Ok(OfferAnswer::Accepted)) => {}
+        Ok(Ok(OfferAnswer::Rejected)) => return Err(SendFailure::Rejected),
+        Ok(Ok(OfferAnswer::Failed(message))) => return Err(SendFailure::Failed(message)),
+        // The manager was dropped: the session ended while we waited.
+        Ok(Err(_)) => return Err(SendFailure::Cancelled),
+        Err(_) => {
+            // Withdraw the offer so the viewer's dialog does not accept into
+            // a transfer nobody will stream.
+            let _ = sink
+                .send_event(&FileEvent::FileError {
+                    id: id.to_string(),
+                    message: "offer-timeout".to_string(),
+                })
+                .await;
+            return Err(SendFailure::TimedOut);
+        }
+    }
+
     let mut buf = vec![0u8; CHUNK_SIZE];
     let mut seq: u32 = 0;
-
     loop {
-        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if abort.load(Ordering::Relaxed) {
+            return Err(SendFailure::Cancelled);
+        }
+        let n = read_full(&mut file, &mut buf)
+            .await
+            .map_err(|e| SendFailure::Failed(format!("read: {e}")))?;
         if n == 0 {
             break;
         }
-        let frame = build_chunk_frame(&id, seq, &buf[..n]);
-        peer.send_file_chunk(frame).await?;
+        sink.send_chunk(build_chunk_frame(id, seq, &buf[..n]))
+            .await
+            .map_err(SendFailure::Failed)?;
         seq += 1;
     }
+    sink.send_event(&FileEvent::FileDone { id: id.to_string() })
+        .await
+        .map_err(SendFailure::Failed)
+}
 
-    peer.send_file_event(&FileEvent::FileDone { id }).await?;
-
-    Ok(())
+/// Fill `buf` as far as the file allows; short only at EOF. A bare `read`
+/// may return less on any call, which would put odd-sized chunks on the wire.
+async fn read_full(file: &mut tokio::fs::File, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        let n = file.read(&mut buf[filled..]).await?;
+        if n == 0 {
+            break;
+        }
+        filled += n;
+    }
+    Ok(filled)
 }
 
 fn uuid_v4() -> String {
@@ -1025,7 +1216,10 @@ mod tests {
             mgr.admit_offer("dup-id", "second.bin", 4),
             Err("duplicate-id")
         );
-        assert_eq!(mgr.active.get("dup-id").expect("still active").name, "first.bin");
+        assert_eq!(
+            mgr.active.get("dup-id").expect("still active").name,
+            "first.bin"
+        );
 
         mgr.admit_offer("pending-id", "p.bin", 4).expect("admitted");
         assert_eq!(
@@ -1308,8 +1502,10 @@ mod tests {
     fn parked_chunks_count_against_the_declared_size() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut mgr = mgr_in(&dir);
-        mgr.active
-            .insert("park-id".to_string(), make_active_state_with_size("park-id", 4));
+        mgr.active.insert(
+            "park-id".to_string(),
+            make_active_state_with_size("park-id", 4),
+        );
         let full = vec![0u8; CHUNK_SIZE];
         let mut aborted = false;
         for seq in 1..=8u32 {
@@ -1334,7 +1530,10 @@ mod tests {
             make_active_state_with_size("big-id", 1024 * 1024),
         );
         let result = mgr.handle_chunk(&build_chunk_frame("big-id", 1, &vec![0u8; CHUNK_SIZE + 1]));
-        assert!(result.is_err(), "a 16 KiB+1 payload is a protocol violation");
+        assert!(
+            result.is_err(),
+            "a 16 KiB+1 payload is a protocol violation"
+        );
         assert!(!mgr.active.contains_key("big-id"));
     }
 
@@ -1342,8 +1541,10 @@ mod tests {
     fn stale_or_repeated_sequence_numbers_abort_the_transfer() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut mgr = mgr_in(&dir);
-        mgr.active
-            .insert("st-id".to_string(), make_active_state_with_size("st-id", 64));
+        mgr.active.insert(
+            "st-id".to_string(),
+            make_active_state_with_size("st-id", 64),
+        );
         mgr.handle_chunk(&build_chunk_frame("st-id", 0, b"abcd"))
             .expect("seq 0");
         assert!(
@@ -1353,8 +1554,10 @@ mod tests {
         );
         assert!(!mgr.active.contains_key("st-id"));
 
-        mgr.active
-            .insert("rep-id".to_string(), make_active_state_with_size("rep-id", 64));
+        mgr.active.insert(
+            "rep-id".to_string(),
+            make_active_state_with_size("rep-id", 64),
+        );
         mgr.handle_chunk(&build_chunk_frame("rep-id", 2, b"abcd"))
             .expect("parked");
         assert!(
@@ -1483,5 +1686,262 @@ mod tests {
         };
         let err = verify_complete(&mut state).expect_err("flush failure must fail");
         assert!(err.contains("flush"), "reason: {err}");
+    }
+
+    // ─── outbound consent (sharer → viewer) ──────────────────────────────────
+    //
+    // send_file used to stream right after its file-offer. The viewer refuses
+    // chunks that arrive before its Annehmen (it would make the helper's
+    // decision moot), so every sharer→viewer send failed — and a decline was
+    // ignored on this side anyway.
+
+    use std::sync::Mutex as StdMutex;
+    use std::time::Duration;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        events: StdMutex<Vec<FileEvent>>,
+        chunks: StdMutex<Vec<Vec<u8>>>,
+    }
+
+    impl FileSink for RecordingSink {
+        async fn send_event(&self, event: &FileEvent) -> Result<(), String> {
+            self.events.lock().unwrap().push(event.clone());
+            Ok(())
+        }
+        async fn send_chunk(&self, frame: Vec<u8>) -> Result<(), String> {
+            self.chunks.lock().unwrap().push(frame);
+            Ok(())
+        }
+    }
+
+    type Slot = Arc<tokio::sync::Mutex<Option<FileTransferManager>>>;
+
+    fn slot_in(dir: &tempfile::TempDir) -> Slot {
+        Arc::new(tokio::sync::Mutex::new(Some(mgr_in(dir))))
+    }
+
+    fn source_file(dir: &tempfile::TempDir, len: usize) -> (PathBuf, Vec<u8>) {
+        let data: Vec<u8> = (0..len).map(|i| (i % 251) as u8).collect();
+        let path = dir.path().join("outgoing.bin");
+        std::fs::write(&path, &data).expect("write source");
+        (path, data)
+    }
+
+    fn spawn_send(
+        path: PathBuf,
+        sink: &Arc<RecordingSink>,
+        slot: &Slot,
+        timeout: Duration,
+    ) -> tokio::task::JoinHandle<Result<(), SendFailure>> {
+        let sink = Arc::clone(sink);
+        let slot = Arc::clone(slot);
+        tokio::spawn(async move { send_file(path, &*sink, &slot, timeout).await })
+    }
+
+    async fn offered_id(sink: &RecordingSink) -> String {
+        for _ in 0..400 {
+            if let Some(FileEvent::FileOffer { id, .. }) = sink.events.lock().unwrap().first() {
+                return id.clone();
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("no file-offer was sent");
+    }
+
+    #[tokio::test]
+    async fn send_streams_only_after_the_viewer_accepts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let slot = slot_in(&dir);
+        let sink = Arc::new(RecordingSink::default());
+        let (path, data) = source_file(&dir, 2 * CHUNK_SIZE + 100);
+
+        let task = spawn_send(path, &sink, &slot, Duration::from_secs(10));
+        let id = offered_id(&sink).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(
+            sink.chunks.lock().unwrap().is_empty(),
+            "no chunk may leave before file-accept"
+        );
+
+        assert!(slot
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .route_answer(&FileEvent::FileAccept { id: id.clone() }));
+        task.await.expect("join").expect("send succeeds");
+
+        let chunks = sink.chunks.lock().unwrap().clone();
+        assert_eq!(chunks.len(), 3);
+        let mut reassembled = Vec::new();
+        for (seq, frame) in chunks.iter().enumerate() {
+            assert_eq!(frame[..4], fnv1a32(&id).to_le_bytes());
+            assert_eq!(frame[4..8], (seq as u32).to_le_bytes());
+            reassembled.extend_from_slice(&frame[8..]);
+        }
+        assert_eq!(reassembled, data);
+        assert_eq!(
+            sink.events.lock().unwrap().last(),
+            Some(&FileEvent::FileDone { id })
+        );
+        assert!(slot.lock().await.as_ref().unwrap().outbound.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rejected_offer_sends_no_chunks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let slot = slot_in(&dir);
+        let sink = Arc::new(RecordingSink::default());
+        let (path, _) = source_file(&dir, 10);
+
+        let task = spawn_send(path, &sink, &slot, Duration::from_secs(10));
+        let id = offered_id(&sink).await;
+        slot.lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .route_answer(&FileEvent::FileReject { id });
+        assert_eq!(task.await.expect("join"), Err(SendFailure::Rejected));
+        assert!(sink.chunks.lock().unwrap().is_empty());
+        assert!(slot.lock().await.as_ref().unwrap().outbound.is_empty());
+    }
+
+    #[tokio::test]
+    async fn viewer_error_answer_fails_the_send() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let slot = slot_in(&dir);
+        let sink = Arc::new(RecordingSink::default());
+        let (path, _) = source_file(&dir, 10);
+
+        let task = spawn_send(path, &sink, &slot, Duration::from_secs(10));
+        let id = offered_id(&sink).await;
+        slot.lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .route_answer(&FileEvent::FileError {
+                id,
+                message: "file-too-large".into(),
+            });
+        assert_eq!(
+            task.await.expect("join"),
+            Err(SendFailure::Failed("file-too-large".into()))
+        );
+        assert!(sink.chunks.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn unanswered_offer_times_out_and_withdraws_it() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let slot = slot_in(&dir);
+        let sink = Arc::new(RecordingSink::default());
+        let (path, _) = source_file(&dir, 10);
+
+        let result = spawn_send(path, &sink, &slot, Duration::from_millis(50))
+            .await
+            .expect("join");
+        assert_eq!(result, Err(SendFailure::TimedOut));
+        assert!(sink.chunks.lock().unwrap().is_empty());
+        let events = sink.events.lock().unwrap().clone();
+        let FileEvent::FileOffer { id, .. } = &events[0] else {
+            panic!("first event must be the offer: {events:?}");
+        };
+        // The viewer's dialog is told the offer is gone, so a late Annehmen
+        // cannot start waiting for chunks that never come.
+        assert_eq!(
+            events.last(),
+            Some(&FileEvent::FileError {
+                id: id.clone(),
+                message: "offer-timeout".into()
+            })
+        );
+        assert!(slot.lock().await.as_ref().unwrap().outbound.is_empty());
+    }
+
+    #[tokio::test]
+    async fn teardown_while_waiting_cancels_the_send() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let slot = slot_in(&dir);
+        let sink = Arc::new(RecordingSink::default());
+        let (path, _) = source_file(&dir, 10);
+
+        let task = spawn_send(path, &sink, &slot, Duration::from_secs(10));
+        offered_id(&sink).await;
+        *slot.lock().await = None;
+        assert_eq!(task.await.expect("join"), Err(SendFailure::Cancelled));
+        assert!(sink.chunks.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn send_without_a_session_is_cancelled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let slot: Slot = Arc::new(tokio::sync::Mutex::new(None));
+        let sink = Arc::new(RecordingSink::default());
+        let (path, _) = source_file(&dir, 10);
+        let result = spawn_send(path, &sink, &slot, Duration::from_secs(1))
+            .await
+            .expect("join");
+        assert_eq!(result, Err(SendFailure::Cancelled));
+        assert!(sink.events.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_viewer_reject_after_accept_raises_the_abort_flag() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        let (_rx, abort) = mgr.begin_send("out-1").expect("registered");
+        assert!(mgr.route_answer(&FileEvent::FileAccept { id: "out-1".into() }));
+        assert!(!abort.load(Ordering::Relaxed));
+        assert!(mgr.route_answer(&FileEvent::FileError {
+            id: "out-1".into(),
+            message: "disk full".into()
+        }));
+        assert!(abort.load(Ordering::Relaxed));
+        assert!(mgr.outbound.is_empty());
+    }
+
+    #[test]
+    fn dropping_the_manager_aborts_running_sends() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        let (_rx, abort) = mgr.begin_send("out-2").expect("registered");
+        mgr.route_answer(&FileEvent::FileAccept { id: "out-2".into() });
+        drop(mgr);
+        assert!(abort.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn answers_for_unknown_ids_are_ignored() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        assert!(!mgr.route_answer(&FileEvent::FileAccept { id: "nope".into() }));
+        assert!(!mgr.route_answer(&FileEvent::FileReject { id: "nope".into() }));
+        // A second accept for an already-streaming send changes nothing.
+        let (_rx, abort) = mgr.begin_send("out-3").expect("registered");
+        mgr.route_answer(&FileEvent::FileAccept { id: "out-3".into() });
+        mgr.route_answer(&FileEvent::FileAccept { id: "out-3".into() });
+        assert!(!abort.load(Ordering::Relaxed));
+        assert_eq!(mgr.outbound.len(), 1);
+    }
+
+    #[test]
+    fn outbound_sends_are_capped() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        let mut held = Vec::new();
+        for i in 0..MAX_CONCURRENT_TRANSFERS {
+            held.push(mgr.begin_send(&format!("o-{i}")).expect("under the cap"));
+        }
+        assert!(matches!(mgr.begin_send("o-over"), Err(SendFailure::Busy)));
+    }
+
+    #[test]
+    fn send_failures_map_to_stable_webview_codes() {
+        assert_eq!(SendFailure::Rejected.code(), "file-rejected");
+        assert_eq!(SendFailure::TimedOut.code(), "file-timeout");
+        assert_eq!(SendFailure::Cancelled.code(), "file-cancelled");
+        assert_eq!(SendFailure::Busy.code(), "file-busy");
+        assert_eq!(SendFailure::Failed("x".into()).code(), "file-failed");
     }
 }

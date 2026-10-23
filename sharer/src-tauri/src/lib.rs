@@ -1715,12 +1715,16 @@ async fn reject_file(
     peer.send_file_event(&event).await
 }
 
-/// Opens a native file-picker dialog and sends the chosen file to the viewer.
+/// Opens a native file-picker dialog and offers the chosen file to the
+/// viewer; chunks flow only after the helper accepted. `Ok(false)` when the
+/// picker was cancelled. Errors are the stable `SendFailure::code` strings
+/// (plus `file-no-session`) that the webview maps to German copy.
 #[tauri::command]
 async fn pick_and_send_file(
     app: tauri::AppHandle,
     rtc_state: State<'_, WebRtcState>,
-) -> Result<(), String> {
+    file_state: State<'_, FileTransferState>,
+) -> Result<bool, String> {
     use tauri_plugin_dialog::DialogExt;
 
     // Callback API bridged through a oneshot instead of blocking_pick_file:
@@ -1731,18 +1735,32 @@ async fn pick_and_send_file(
         let _ = picked_tx.send(p);
     });
     let path: PathBuf = match picked_rx.await {
-        Ok(Some(p)) => p.into_path().map_err(|e| e.to_string())?,
+        Ok(Some(p)) => p.into_path().map_err(|e| {
+            dbg_log(&format!("[pick_and_send_file] picked path unusable: {e}"));
+            "file-failed".to_string()
+        })?,
         // Dialog cancelled, or the dialog plugin dropped the callback
         // without firing (app teardown) — either way nothing to send.
-        Ok(None) | Err(_) => return Err("no file selected".to_string()),
+        Ok(None) | Err(_) => return Ok(false),
     };
 
-    let guard = rtc_state.0.lock().await;
-    let peer = guard
+    // Clone the channel out and release the peer lock: the send waits up to
+    // OFFER_ANSWER_TIMEOUT for the helper, and Beenden needs this lock.
+    let channel = rtc_state
+        .0
+        .lock()
+        .await
         .as_ref()
-        .ok_or_else(|| "WebRTC peer not initialized; start streaming first".to_string())?;
+        .map(webrtc_peer::SharerPeer::files_channel)
+        .ok_or_else(|| "file-no-session".to_string())?;
 
-    files::send_file(path, peer).await
+    files::send_file(path, &channel, &file_state.0, files::OFFER_ANSWER_TIMEOUT)
+        .await
+        .map(|()| true)
+        .map_err(|failure| {
+            dbg_log(&format!("[pick_and_send_file] send ended: {failure:?}"));
+            failure.code().to_string()
+        })
 }
 
 // ── Autostart (gh #27) ──────────────────────────────────────────────────────

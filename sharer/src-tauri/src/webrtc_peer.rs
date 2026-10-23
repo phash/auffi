@@ -111,7 +111,7 @@ pub struct SharerPeer {
     /// per-sample duration of `TrackLocalStaticSample` was a bitrate bug.
     pub track: Arc<TrackLocalStaticRTP>,
     /// The `"files"` DataChannel, set once the viewer opens it.
-    files_dc: Arc<tokio::sync::Mutex<Option<Arc<RTCDataChannel>>>>,
+    files_dc: FilesChannel,
     /// Observer for every ICE connection-state change.
     ///
     /// webrtc-rs allows a single `on_ice_connection_state_change` handler, and
@@ -303,7 +303,7 @@ impl SharerPeer {
             pc,
             track,
             sender,
-            files_dc: Arc::new(tokio::sync::Mutex::new(None)),
+            files_dc: FilesChannel::default(),
             ice_state_cb,
             type_cb,
         })
@@ -405,7 +405,7 @@ impl SharerPeer {
         input_tx: mpsc::Sender<InputCommand>,
         files_tx: mpsc::Sender<FileMessage>,
     ) {
-        let files_dc_slot = Arc::clone(&self.files_dc);
+        let files_dc_slot = Arc::clone(&self.files_dc.0);
         self.pc.on_data_channel(Box::new(move |dc| {
             let label = dc.label().to_string();
             match label.as_str() {
@@ -478,21 +478,19 @@ impl SharerPeer {
         }));
     }
 
-    /// Send a JSON-serialized `FileEvent` on the `"files"` DataChannel.
-    ///
-    /// As a TEXT frame: the viewer routes by message type too
-    /// (`ev.data instanceof ArrayBuffer` → chunk handler), so a binary frame
-    /// carrying JSON would land in its chunk path and be dropped.
+    /// Send a JSON-serialized `FileEvent` on the `"files"` DataChannel (as a
+    /// text frame, see [`FilesChannel`]).
     pub async fn send_file_event(&self, event: &crate::files::FileEvent) -> Result<(), String> {
-        let guard = self.files_dc.lock().await;
-        let dc = guard
-            .as_ref()
-            .ok_or_else(|| "files data channel not open".to_string())?;
-        let json = serde_json::to_string(event).map_err(|e| e.to_string())?;
-        dc.send_text(json)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        use crate::files::FileSink;
+        self.files_dc.send_event(event).await
+    }
+
+    /// A cheap handle on the `"files"` DataChannel that outlives the lock on
+    /// the peer slot: an outbound transfer waits up to a minute for the
+    /// helper's answer and must not hold `WebRtcState` that long — Beenden
+    /// takes the same lock.
+    pub fn files_channel(&self) -> FilesChannel {
+        self.files_dc.clone()
     }
 
     /// Close the underlying `RTCPeerConnection`, tearing down its ICE agent,
@@ -511,14 +509,40 @@ impl SharerPeer {
             .on_ice_connection_state_change(Box::new(|_| Box::pin(async {})));
         self.pc.close().await
     }
+}
 
-    /// Send a raw binary chunk frame on the `"files"` DataChannel.
-    pub async fn send_file_chunk(&self, frame: Vec<u8>) -> Result<(), String> {
-        let guard = self.files_dc.lock().await;
-        let dc = guard
-            .as_ref()
-            .ok_or_else(|| "files data channel not open".to_string())?;
-        dc.send(&bytes::Bytes::from(frame))
+/// Shared slot for the `"files"` DataChannel; empty until the viewer opens it.
+#[derive(Clone, Default)]
+pub struct FilesChannel(Arc<tokio::sync::Mutex<Option<Arc<RTCDataChannel>>>>);
+
+impl FilesChannel {
+    async fn channel(&self) -> Result<Arc<RTCDataChannel>, String> {
+        self.0
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| "files data channel not open".to_string())
+    }
+}
+
+impl crate::files::FileSink for FilesChannel {
+    /// As a TEXT frame: the viewer routes by message type
+    /// (`ev.data instanceof ArrayBuffer` → chunk handler), so a binary frame
+    /// carrying JSON would land in its chunk path and be dropped.
+    async fn send_event(&self, event: &crate::files::FileEvent) -> Result<(), String> {
+        let json = serde_json::to_string(event).map_err(|e| e.to_string())?;
+        self.channel()
+            .await?
+            .send_text(json)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    async fn send_chunk(&self, frame: Vec<u8>) -> Result<(), String> {
+        self.channel()
+            .await?
+            .send(&bytes::Bytes::from(frame))
             .await
             .map(|_| ())
             .map_err(|e| e.to_string())

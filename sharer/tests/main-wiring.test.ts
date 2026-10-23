@@ -218,4 +218,32 @@ describe("main.ts ad-hoc wiring", () => {
     expect(calls("start_streaming")).toHaveLength(0);
     expect(calls("list_monitors")).toHaveLength(0);
   });
+
+  it("says plainly when the helper declined a file", async () => {
+    await startStream();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "pick_and_send_file" ? Promise.reject("file-rejected") : Promise.resolve(undefined),
+    );
+    byId<HTMLButtonElement>("send-file-btn").click();
+    await flush();
+    expect(byId("status").textContent).toBe("Der Helfer hat die Datei abgelehnt.");
+    expect(byId("status").className).toBe("error");
+  });
+
+  it("stays quiet when the file picker is cancelled and confirms a sent file", async () => {
+    await startStream();
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "pick_and_send_file" ? false : undefined),
+    );
+    byId<HTMLButtonElement>("send-file-btn").click();
+    await flush();
+    expect(byId("status").textContent).toBe("Streaming läuft.");
+
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "pick_and_send_file" ? true : undefined),
+    );
+    byId<HTMLButtonElement>("send-file-btn").click();
+    await flush();
+    expect(byId("status").textContent).toBe("Datei wurde gesendet.");
+  });
 });
