@@ -22,7 +22,7 @@
         {
           q: "Ich möchte jemandem helfen",
           a: [
-            "Lass dir den 9-stelligen Code der anderen Person geben, tippe ihn oben ein und klicke ",
+            "Lass dir den 9-stelligen Code der anderen Person geben, gib ihn auf auffi.app ein und klicke ",
             { b: "Verbinden" },
             ". Du siehst ihren Bildschirm live — und kannst ihn mit Erlaubnis fernsteuern. Kein Konto, keine Installation.",
           ],
@@ -43,7 +43,7 @@
         {
           q: "Ist das sicher?",
           a: [
-            "Ja. Die Übertragung ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt, die Server stehen in Deutschland, jede Verbindung muss am Sharer bestätigt werden, und es gibt keine Tracker. ",
+            "Ja. Die Übertragung ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt, die Server stehen in Deutschland, und es gibt keine Drittanbieter-Tracker. Jede spontane Verbindung (Code) muss am Sharer bestätigt werden; bei eigenen, gekoppelten Geräten schützt stattdessen das Geräte-Passwort. ",
             { a: "Mehr zum Datenschutz", href: "/datenschutz/" },
             ".",
           ],
@@ -66,7 +66,7 @@
         {
           q: "I want to help someone",
           a: [
-            "Ask the other person for their 9-digit code, type it in above and click ",
+            "Ask the other person for their 9-digit code, enter it on auffi.app and click ",
             { b: "Connect" },
             ". You'll see their screen live — and can control it remotely with their permission. No account, no installation.",
           ],
@@ -87,8 +87,8 @@
         {
           q: "Is it secure?",
           a: [
-            "Yes. The stream is end-to-end encrypted with DTLS-SRTP, the servers are in Germany, every connection must be confirmed on the sharer, and there are no trackers. ",
-            { a: "More on privacy", href: "/datenschutz/" },
+            "Yes. The stream is end-to-end encrypted with DTLS-SRTP, the servers are in Germany, and there are no third-party trackers. Every spontaneous connection (code) must be confirmed on the sharer; for your own paired devices, the device password protects access instead. ",
+            { a: "More on privacy (German)", href: "/datenschutz/" },
             ".",
           ],
         },
