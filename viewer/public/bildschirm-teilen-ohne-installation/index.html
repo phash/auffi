@@ -86,12 +86,12 @@
           {
             "@type": "Question",
             "name": "Ist die Verbindung sicher?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Rateversuche pro IP, und die teilende Person bestätigt jede Verbindung aktiv." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Rateversuche pro IP, und jede spontane Verbindung (Code) muss die teilende Person aktiv bestätigen; bei eigenen, gekoppelten Geräten schützt stattdessen das Geräte-Passwort." }
           },
           {
             "@type": "Question",
             "name": "Funktioniert das auf jedem Gerät?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Die helfende Person braucht nur einen aktuellen Browser (Chrome, Edge, Firefox; Safari mit Einschränkungen). Der Sharer für die teilende Seite läuft unter Windows und Linux (macOS folgt)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Die helfende Person braucht nur einen aktuellen Browser (Chrome, Edge, Firefox; Safari mit Einschränkungen). Der Sharer für die teilende Seite läuft unter Windows und Linux; eine macOS-Version gibt es derzeit nicht." }
           }
         ]
       }
@@ -164,7 +164,7 @@
         <ul>
           <li><strong>Kein Download</strong> auf der helfenden Seite — nichts, das an Firmen-Laptops blockiert ist.</li>
           <li><strong>Kein Konto, keine Anmeldung</strong> — ein Code genügt, 10 Minuten gültig.</li>
-          <li><strong>DSGVO-konform</strong>: Server in Deutschland (Frankfurt), keine Tracker, Ende-zu-Ende verschlüsselt.</li>
+          <li><strong>DSGVO-konform</strong>: Server in Deutschland (Frankfurt), keine Drittanbieter-Tracker, Ende-zu-Ende verschlüsselt.</li>
           <li><strong>Open Source (AGPL-3.0)</strong> und selbst hostbar.</li>
         </ul>
       </section>
@@ -200,8 +200,9 @@
           <strong>Warum der Code abläuft.</strong> Neun Ziffern sind kurz genug
           zum Vorlesen und zu wenig für dauerhafte Sicherheit. Deshalb gilt ein
           Code höchstens zehn Minuten, der Server drosselt Rateversuche pro
-          IP-Adresse, und die teilende Person bestätigt jede eingehende
-          Verbindung ausdrücklich. Drei Schranken statt eines langen Passworts,
+          IP-Adresse, und die teilende Person bestätigt jede spontane
+          Verbindung ausdrücklich (eigene, gekoppelte Geräte schützt das
+          Geräte-Passwort). Drei Schranken statt eines langen Passworts,
           das sich niemand am Telefon durchgeben lässt.
         </p>
       </section>
@@ -239,9 +240,9 @@
         <h3>Ist das kostenlos?</h3>
         <p>Ja, komplett. Auffi ist Open Source unter der AGPL-3.0 — kostenlos für private und gewerbliche Nutzung, ohne Sitzungslimit.</p>
         <h3>Ist die Verbindung sicher?</h3>
-        <p>Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Rateversuche pro IP, und die teilende Person bestätigt jede Verbindung aktiv.</p>
+        <p>Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Rateversuche pro IP, und jede spontane Verbindung (Code) muss die teilende Person aktiv bestätigen; bei eigenen, gekoppelten Geräten schützt stattdessen das Geräte-Passwort.</p>
         <h3>Funktioniert das auf jedem Gerät?</h3>
-        <p>Die helfende Person braucht nur einen aktuellen Browser (Chrome, Edge, Firefox; Safari mit Einschränkungen). Der Sharer für die teilende Seite läuft unter Windows und Linux (macOS folgt).</p>
+        <p>Die helfende Person braucht nur einen aktuellen Browser (Chrome, Edge, Firefox; Safari mit Einschränkungen). Der Sharer für die teilende Seite läuft unter Windows und Linux; eine macOS-Version gibt es derzeit nicht.</p>
       </section>
 
       <section>

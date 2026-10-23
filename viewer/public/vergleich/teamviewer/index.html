@@ -63,7 +63,7 @@
           {
             "@type": "Question",
             "name": "Ist Auffi DSGVO-konform?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Ja. Die Server stehen in Deutschland (IONOS Frankfurt), es werden keine IP-Adressen im Klartext gespeichert, es gibt keine Tracker und kein Logging von Inhalten. Der vollständige Sicherheits-Audit liegt offen im Quellcode. Wer maximale Kontrolle will, hostet Auffi dank AGPL-Lizenz komplett selbst." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Ja. Die Server stehen in Deutschland (IONOS Frankfurt), es werden keine IP-Adressen im Klartext gespeichert, es gibt keine Drittanbieter-Tracker und kein Logging von Inhalten. Der vollständige Sicherheits-Audit liegt offen im Quellcode. Wer maximale Kontrolle will, hostet Auffi dank AGPL-Lizenz komplett selbst." }
           },
           {
             "@type": "Question",
@@ -78,7 +78,7 @@
           {
             "@type": "Question",
             "name": "Wie sicher ist die Verbindung bei Auffi?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und der Teilende bestätigt jede Verbindung aktiv. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen direkt zwischen den Geräten (Peer-to-Peer)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und jede spontane Verbindung (Code) muss der Teilende aktiv bestätigen; bei eigenen, gekoppelten Geräten schützt stattdessen das Geräte-Passwort. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen verschlüsselt direkt zwischen den Geräten (Peer-to-Peer); nur wenn Firewalls das blockieren, leitet unser TURN-Relay die weiterhin verschlüsselten Pakete weiter." }
           }
         ]
       }
@@ -147,7 +147,7 @@
               <tr><th scope="row">Verschlüsselung</th><td>Ende-zu-Ende, DTLS-SRTP (WebRTC)</td><td>Ende-zu-Ende, AES-256</td></tr>
               <tr><th scope="row">Tracker / Telemetrie</th><td class="vs-yes">Keine; cookieless Opt-in-Statistik</td><td>Telemetrie vorhanden</td></tr>
               <tr><th scope="row">Unattended Access</th><td>Ja (gepairte Geräte)</td><td class="vs-yes">Ja, sehr ausgereift</td></tr>
-              <tr><th scope="row">Plattformen (Sharer)</th><td>Windows, Linux (macOS folgt)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android</td></tr>
+              <tr><th scope="row">Plattformen (Sharer)</th><td>Windows, Linux (kein macOS)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android</td></tr>
               <tr><th scope="row">Funktionsumfang</th><td>Fokus: Bildschirm + Fernsteuerung + Datei</td><td class="vs-yes">Sehr breit (Meetings, Mobile, Asset-Mgmt)</td></tr>
             </tbody>
           </table>
@@ -176,7 +176,7 @@
         <ul>
           <li><strong>9-stelliger Verbindungscode</strong>, 10 Minuten gültig, serverseitig gegen Rateraten gedrosselt (Rate-Limit pro IP).</li>
           <li><strong>WebRTC P2P</strong> mit DTLS-SRTP — Bild, Maus und Dateien fließen direkt zwischen den Geräten; TURN-Fallback, wenn die direkte Verbindung blockiert ist.</li>
-          <li><strong>Sharer bestätigt jede Verbindung</strong> aktiv (kein heimliches Zuschalten).</li>
+          <li><strong>Jede spontane Verbindung</strong> muss am Sharer bestätigt werden (kein heimliches Zuschalten); bei eigenen, gekoppelten Geräten schützt das Geräte-Passwort.</li>
           <li><strong>AGPL-3.0</strong>, Quellcode und Releases auf <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.</li>
         </ul>
       </section>
@@ -234,7 +234,7 @@
         <h3>Ist Auffi wirklich kostenlos — auch gewerblich?</h3>
         <p>Ja. Auffi ist komplett kostenlos und Open Source unter der AGPL-3.0, ohne Nutzungslimit und ohne Unterscheidung privat/gewerblich. TeamViewer ist nur privat kostenlos; gewerblich ist eine Lizenz nötig.</p>
         <h3>Ist Auffi DSGVO-konform?</h3>
-        <p>Ja. Server in Deutschland, keine IPs im Klartext, keine Tracker, kein Logging von Inhalten — und dank AGPL komplett selbst hostbar.</p>
+        <p>Ja. Server in Deutschland, keine IPs im Klartext, keine Drittanbieter-Tracker, kein Logging von Inhalten — und dank AGPL komplett selbst hostbar.</p>
         <h3>Brauche ich ein Konto oder eine Installation?</h3>
         <p>Für spontane Hilfe nicht: die helfende Person öffnet nur auffi.app und tippt den Code. Nur wer den eigenen Bildschirm teilt, lädt den Sharer; ein Konto braucht es nur für permanenten Unattended-Zugriff.</p>
         <h3>Kann Auffi TeamViewer komplett ersetzen?</h3>

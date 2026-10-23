@@ -71,7 +71,7 @@
           {
             "@type": "Question",
             "name": "Where are the servers, and is Auffi GDPR-compliant?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Auffi's servers are in Germany (IONOS Frankfurt), with no IPs in plaintext, no trackers and no logging of content — and fully self-hostable thanks to the AGPL. AnyDesk is a German company (Stuttgart), but it is proprietary and runs a global server infrastructure." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Auffi's servers are in Germany (IONOS Frankfurt), with no IPs in plaintext, no third-party trackers and no logging of content — and fully self-hostable thanks to the AGPL. AnyDesk is a German company (Stuttgart), but it is proprietary and runs a global server infrastructure." }
           },
           {
             "@type": "Question",
@@ -81,7 +81,7 @@
           {
             "@type": "Question",
             "name": "How secure is the connection with Auffi?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits connection attempts, and the sharer actively confirms every connection. The server only brokers the connection setup — video, mouse and files flow directly between the devices (peer-to-peer)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits connection attempts, and every spontaneous connection (code) must be actively confirmed on the sharer; for your own paired devices, the device password protects access instead. The server only brokers the connection setup — video, mouse and files flow encrypted directly between the devices (peer-to-peer); only if firewalls block that does our TURN relay forward the still-encrypted packets." }
           }
         ]
       }
@@ -151,8 +151,8 @@
               <tr><th scope="row">Encryption</th><td>End-to-end, DTLS-SRTP (WebRTC)</td><td>TLS 1.2, AES-256 (RSA-2048 key exchange)</td></tr>
               <tr><th scope="row">Trackers / telemetry</th><td class="vs-yes">None; cookieless opt-in stats</td><td>Telemetry present</td></tr>
               <tr><th scope="row">Unattended access</th><td>Yes (paired devices)</td><td class="vs-yes">Yes, very mature</td></tr>
-              <tr><th scope="row">Platforms (sharer)</th><td>Windows, Linux (macOS coming)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android &amp; more</td></tr>
-              <tr><th scope="row">Performance</th><td>Solid (WebRTC encoder)</td><td class="vs-yes">Very high (DeskRT codec, low latency)</td></tr>
+              <tr><th scope="row">Platforms (sharer)</th><td>Windows, Linux (no macOS)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android &amp; more</td></tr>
+              <tr><th scope="row">Performance</th><td>Solid (WebRTC encoder, bitrate adapts to the connection)</td><td class="vs-yes">Very high (DeskRT codec, low latency)</td></tr>
               <tr><th scope="row">Feature scope</th><td>Focus: screen + remote control + file</td><td class="vs-yes">Broad (address book, session recording, mobile)</td></tr>
             </tbody>
           </table>
@@ -181,7 +181,7 @@
         <ul>
           <li><strong>9-digit connection code</strong>, valid for 10 minutes, server-side rate-limited against guessing.</li>
           <li><strong>WebRTC P2P</strong> with DTLS-SRTP — video, mouse and files flow directly between the devices; TURN fallback when the direct connection is blocked.</li>
-          <li><strong>The sharer actively confirms every connection</strong> (no silent joining in).</li>
+          <li><strong>Every spontaneous connection</strong> must be confirmed on the sharer (no silent joining in); for your own paired devices, the device password protects access.</li>
           <li><strong>AGPL-3.0</strong>, source code and releases on <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.</li>
         </ul>
       </section>
@@ -210,11 +210,11 @@
         <h3>Does the person helping need to install AnyDesk or anything else?</h3>
         <p>Not with Auffi: the person helping just opens auffi.app in a browser and types in a 9-digit code. AnyDesk requires the AnyDesk software on both ends (installed or portable EXE) — with Auffi, only the person sharing their own screen downloads the small sharer.</p>
         <h3>Where are the servers, and is Auffi GDPR-compliant?</h3>
-        <p>Auffi's servers are in Germany (IONOS Frankfurt), with no IPs in plaintext, no trackers and no logging of content — and fully self-hostable thanks to the AGPL. AnyDesk is a German company (Stuttgart), but it is proprietary and runs a global server infrastructure.</p>
+        <p>Auffi's servers are in Germany (IONOS Frankfurt), with no IPs in plaintext, no third-party trackers and no logging of content — and fully self-hostable thanks to the AGPL. AnyDesk is a German company (Stuttgart), but it is proprietary and runs a global server infrastructure.</p>
         <h3>Can Auffi fully replace AnyDesk?</h3>
         <p>For ad-hoc screen-sharing help and remote control, yes. For maximum performance on graphics-intensive work, very broad platform support (iOS/Android) and enterprise features, AnyDesk remains stronger — Auffi deliberately doesn't cover that.</p>
         <h3>How secure is the connection with Auffi?</h3>
-        <p>Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits connection attempts, and the sharer actively confirms every connection. The server only brokers the connection setup — video, mouse and files flow directly between the devices (peer-to-peer).</p>
+        <p>Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits connection attempts, and every spontaneous connection (code) must be actively confirmed on the sharer; for your own paired devices, the device password protects access instead. The server only brokers the connection setup — video, mouse and files flow encrypted directly between the devices (peer-to-peer); only if firewalls block that does our TURN relay forward the still-encrypted packets.</p>
       </section>
 
       <section>

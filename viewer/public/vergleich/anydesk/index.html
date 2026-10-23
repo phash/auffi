@@ -68,7 +68,7 @@
           {
             "@type": "Question",
             "name": "Wo stehen die Server, und ist Auffi DSGVO-konform?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Auffis Server stehen in Deutschland (IONOS Frankfurt), ohne IPs im Klartext, ohne Tracker, ohne Logging von Inhalten — und dank AGPL komplett selbst hostbar. AnyDesk ist zwar ein deutsches Unternehmen (Stuttgart), aber proprietär und betreibt eine globale Server-Infrastruktur." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Auffis Server stehen in Deutschland (IONOS Frankfurt), ohne IPs im Klartext, ohne Drittanbieter-Tracker, ohne Logging von Inhalten — und dank AGPL komplett selbst hostbar. AnyDesk ist zwar ein deutsches Unternehmen (Stuttgart), aber proprietär und betreibt eine globale Server-Infrastruktur." }
           },
           {
             "@type": "Question",
@@ -78,7 +78,7 @@
           {
             "@type": "Question",
             "name": "Wie sicher ist die Verbindung bei Auffi?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und der Teilende bestätigt jede Verbindung aktiv. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen direkt zwischen den Geräten (Peer-to-Peer)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und jede spontane Verbindung (Code) muss der Teilende aktiv bestätigen; bei eigenen, gekoppelten Geräten schützt stattdessen das Geräte-Passwort. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen verschlüsselt direkt zwischen den Geräten (Peer-to-Peer); nur wenn Firewalls das blockieren, leitet unser TURN-Relay die weiterhin verschlüsselten Pakete weiter." }
           }
         ]
       }
@@ -149,8 +149,8 @@
               <tr><th scope="row">Verschlüsselung</th><td>Ende-zu-Ende, DTLS-SRTP (WebRTC)</td><td>TLS 1.2, AES-256 (RSA-2048-Schlüsseltausch)</td></tr>
               <tr><th scope="row">Tracker / Telemetrie</th><td class="vs-yes">Keine; cookieless Opt-in-Statistik</td><td>Telemetrie vorhanden</td></tr>
               <tr><th scope="row">Unattended Access</th><td>Ja (gepairte Geräte)</td><td class="vs-yes">Ja, sehr ausgereift</td></tr>
-              <tr><th scope="row">Plattformen (Sharer)</th><td>Windows, Linux (macOS folgt)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android u. a.</td></tr>
-              <tr><th scope="row">Performance</th><td>Solide (WebRTC-Encoder)</td><td class="vs-yes">Sehr hoch (DeskRT-Codec, latenzarm)</td></tr>
+              <tr><th scope="row">Plattformen (Sharer)</th><td>Windows, Linux (kein macOS)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android u. a.</td></tr>
+              <tr><th scope="row">Performance</th><td>Solide (WebRTC-Encoder, Bitrate passt sich der Leitung an)</td><td class="vs-yes">Sehr hoch (DeskRT-Codec, latenzarm)</td></tr>
               <tr><th scope="row">Funktionsumfang</th><td>Fokus: Bildschirm + Fernsteuerung + Datei</td><td class="vs-yes">Breit (Adressbuch, Session-Recording, Mobile)</td></tr>
             </tbody>
           </table>
@@ -179,7 +179,7 @@
         <ul>
           <li><strong>9-stelliger Verbindungscode</strong>, 10 Minuten gültig, serverseitig gegen Rateraten gedrosselt (Rate-Limit pro IP).</li>
           <li><strong>WebRTC P2P</strong> mit DTLS-SRTP — Bild, Maus und Dateien fließen direkt zwischen den Geräten; TURN-Fallback, wenn die direkte Verbindung blockiert ist.</li>
-          <li><strong>Sharer bestätigt jede Verbindung</strong> aktiv (kein heimliches Zuschalten).</li>
+          <li><strong>Jede spontane Verbindung</strong> muss am Sharer bestätigt werden (kein heimliches Zuschalten); bei eigenen, gekoppelten Geräten schützt das Geräte-Passwort.</li>
           <li><strong>AGPL-3.0</strong>, Quellcode und Releases auf <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.</li>
         </ul>
       </section>
@@ -221,11 +221,11 @@
         <h3>Muss die helfende Person AnyDesk oder sonst etwas installieren?</h3>
         <p>Bei Auffi nicht: Die helfende Person öffnet nur auffi.app im Browser und tippt einen 9-stelligen Code. AnyDesk verlangt auf beiden Seiten die AnyDesk-Software (Installation oder portable EXE) — bei Auffi lädt nur die Person, die ihren eigenen Bildschirm teilt, den kleinen Sharer.</p>
         <h3>Wo stehen die Server, und ist Auffi DSGVO-konform?</h3>
-        <p>Auffis Server stehen in Deutschland (IONOS Frankfurt), ohne IPs im Klartext, ohne Tracker, ohne Logging von Inhalten — und dank AGPL komplett selbst hostbar. AnyDesk ist zwar ein deutsches Unternehmen (Stuttgart), aber proprietär und betreibt eine globale Server-Infrastruktur.</p>
+        <p>Auffis Server stehen in Deutschland (IONOS Frankfurt), ohne IPs im Klartext, ohne Drittanbieter-Tracker, ohne Logging von Inhalten — und dank AGPL komplett selbst hostbar. AnyDesk ist zwar ein deutsches Unternehmen (Stuttgart), aber proprietär und betreibt eine globale Server-Infrastruktur.</p>
         <h3>Kann Auffi AnyDesk komplett ersetzen?</h3>
         <p>Für spontane Bildschirmhilfe und Fernsteuerung ja. Für maximale Performance bei grafikintensiver Arbeit, sehr breite Plattform-Unterstützung (iOS/Android) und Enterprise-Funktionen bleibt AnyDesk stärker — das deckt Auffi bewusst nicht ab.</p>
         <h3>Wie sicher ist die Verbindung bei Auffi?</h3>
-        <p>Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und der Teilende bestätigt jede Verbindung aktiv. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen direkt zwischen den Geräten (Peer-to-Peer).</p>
+        <p>Jeder Stream ist Ende-zu-Ende mit DTLS-SRTP verschlüsselt (WebRTC). Der 9-stellige Code läuft nach 10 Minuten ab, der Server drosselt Verbindungsversuche serverseitig (Rate-Limit pro IP), und jede spontane Verbindung (Code) muss der Teilende aktiv bestätigen; bei eigenen, gekoppelten Geräten schützt stattdessen das Geräte-Passwort. Der Server vermittelt nur den Verbindungsaufbau — Bild, Maus und Dateien fließen verschlüsselt direkt zwischen den Geräten (Peer-to-Peer); nur wenn Firewalls das blockieren, leitet unser TURN-Relay die weiterhin verschlüsselten Pakete weiter.</p>
       </section>
 
       <section>

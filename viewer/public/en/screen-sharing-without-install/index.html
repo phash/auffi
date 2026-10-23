@@ -89,12 +89,12 @@
           {
             "@type": "Question",
             "name": "Is the connection secure?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits guess attempts per IP, and the sharing person actively confirms every connection." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits guess attempts per IP, and the sharing person must actively confirm every spontaneous connection (code); for your own paired devices, the device password protects access instead." }
           },
           {
             "@type": "Question",
             "name": "Does it work on any device?",
-            "acceptedAnswer": { "@type": "Answer", "text": "The helper only needs a modern browser (Chrome, Edge, Firefox; Safari with limitations). The sharer for the shared side runs on Windows and Linux (macOS coming)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "The helper only needs a modern browser (Chrome, Edge, Firefox; Safari with limitations). The sharer for the shared side runs on Windows and Linux; there is currently no macOS version." }
           }
         ]
       }
@@ -166,7 +166,7 @@
         <ul>
           <li><strong>No download</strong> on the helping side — nothing that gets blocked on corporate laptops.</li>
           <li><strong>No account, no sign-in</strong> — one code is enough, valid for 10 minutes.</li>
-          <li><strong>GDPR-compliant</strong>: servers in Germany (Frankfurt), no trackers, end-to-end encrypted.</li>
+          <li><strong>GDPR-compliant</strong>: servers in Germany (Frankfurt), no third-party trackers, end-to-end encrypted.</li>
           <li><strong>Open source (AGPL-3.0)</strong> and self-hostable.</li>
         </ul>
       </section>
@@ -200,7 +200,8 @@
           <strong>Why the code expires.</strong> Nine digits are short enough to
           read aloud and too short for lasting security. So a code is valid for
           at most ten minutes, the server rate-limits guessing per IP address,
-          and the sharing person confirms every incoming connection explicitly.
+          and the sharing person confirms every spontaneous connection explicitly
+          (your own paired devices are protected by the device password).
           Three barriers instead of one long password nobody can dictate over
           the phone.
         </p>
@@ -241,9 +242,9 @@
         <h3>Is it free?</h3>
         <p>Yes, completely. Auffi is open source under the AGPL-3.0 — free for private and commercial use, with no session limit.</p>
         <h3>Is the connection secure?</h3>
-        <p>Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits guess attempts per IP, and the sharing person actively confirms every connection.</p>
+        <p>Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits guess attempts per IP, and the sharing person must actively confirm every spontaneous connection (code); for your own paired devices, the device password protects access instead.</p>
         <h3>Does it work on any device?</h3>
-        <p>The helper only needs a modern browser (Chrome, Edge, Firefox; Safari with limitations). The sharer for the shared side runs on Windows and Linux (macOS coming).</p>
+        <p>The helper only needs a modern browser (Chrome, Edge, Firefox; Safari with limitations). The sharer for the shared side runs on Windows and Linux; there is currently no macOS version.</p>
       </section>
 
       <section>

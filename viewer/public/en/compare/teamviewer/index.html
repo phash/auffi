@@ -66,7 +66,7 @@
           {
             "@type": "Question",
             "name": "Is Auffi GDPR-compliant?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Yes. The servers are in Germany (IONOS Frankfurt), no IP addresses are stored in plaintext, there are no trackers and no logging of content. The full security audit is open in the source code. If you want maximum control, you can self-host Auffi entirely thanks to the AGPL license." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. The servers are in Germany (IONOS Frankfurt), no IP addresses are stored in plaintext, there are no third-party trackers and no logging of content. The full security audit is open in the source code. If you want maximum control, you can self-host Auffi entirely thanks to the AGPL license." }
           },
           {
             "@type": "Question",
@@ -81,7 +81,7 @@
           {
             "@type": "Question",
             "name": "How secure is the connection with Auffi?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits connection attempts, and the sharer actively confirms every connection. The server only brokers the connection setup — video, mouse and files flow directly between the devices (peer-to-peer)." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Every stream is end-to-end encrypted with DTLS-SRTP (WebRTC). The 9-digit code expires after 10 minutes, the server rate-limits connection attempts, and every spontaneous connection (code) must be actively confirmed on the sharer; for your own paired devices, the device password protects access instead. The server only brokers the connection setup — video, mouse and files flow encrypted directly between the devices (peer-to-peer); only if firewalls block that does our TURN relay forward the still-encrypted packets." }
           }
         ]
       }
@@ -150,7 +150,7 @@
               <tr><th scope="row">Encryption</th><td>End-to-end, DTLS-SRTP (WebRTC)</td><td>End-to-end, AES-256</td></tr>
               <tr><th scope="row">Trackers / telemetry</th><td class="vs-yes">None; cookieless opt-in stats</td><td>Telemetry present</td></tr>
               <tr><th scope="row">Unattended access</th><td>Yes (paired devices)</td><td class="vs-yes">Yes, very mature</td></tr>
-              <tr><th scope="row">Platforms (sharer)</th><td>Windows, Linux (macOS coming)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android</td></tr>
+              <tr><th scope="row">Platforms (sharer)</th><td>Windows, Linux (no macOS)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android</td></tr>
               <tr><th scope="row">Feature scope</th><td>Focus: screen + remote control + file</td><td class="vs-yes">Very broad (meetings, mobile, asset mgmt)</td></tr>
             </tbody>
           </table>
@@ -179,7 +179,7 @@
         <ul>
           <li><strong>9-digit connection code</strong>, valid for 10 minutes, server-side rate-limited against guessing.</li>
           <li><strong>WebRTC P2P</strong> with DTLS-SRTP — video, mouse and files flow directly between the devices; TURN fallback when the direct connection is blocked.</li>
-          <li><strong>The sharer actively confirms every connection</strong> (no silent joining in).</li>
+          <li><strong>Every spontaneous connection</strong> must be confirmed on the sharer (no silent joining in); for your own paired devices, the device password protects access.</li>
           <li><strong>AGPL-3.0</strong>, source code and releases on <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>.</li>
         </ul>
       </section>
@@ -235,7 +235,7 @@
         <h3>Is Auffi really free — even commercially?</h3>
         <p>Yes. Auffi is completely free and open source under AGPL-3.0, with no usage limit and no distinction between private and commercial use. TeamViewer is only free for private use; commercial use requires a license.</p>
         <h3>Is Auffi GDPR-compliant?</h3>
-        <p>Yes. Servers in Germany, no IPs in plaintext, no trackers, no logging of content — and fully self-hostable thanks to the AGPL.</p>
+        <p>Yes. Servers in Germany, no IPs in plaintext, no third-party trackers, no logging of content — and fully self-hostable thanks to the AGPL.</p>
         <h3>Do I need an account or an installation?</h3>
         <p>Not for ad-hoc help: the person helping just opens auffi.app and types in the code. Only the person sharing their own screen downloads the sharer; an account is only needed for permanent unattended access.</p>
         <h3>Can Auffi fully replace TeamViewer?</h3>
