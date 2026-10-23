@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import type { SessionStore, Peer } from "./codes.js";
 import { normalizeCode } from "./codes.js";
@@ -58,6 +58,34 @@ function checkPerPeerLimit(
  */
 function isMessageObject(value: unknown): value is IncomingMessage {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/// Standard WebSocket close code "Internal Error" (RFC 6455 §7.4.1).
+const CLOSE_INTERNAL_ERROR = 1011;
+
+type RawFrame = Buffer | ArrayBuffer | Buffer[];
+
+/**
+ * Module boundary for a socket's message handler. A throw out of a ws
+ * "message" listener is an uncaughtException that takes the process — every
+ * live session — down; the handlers' DB calls (lockout, auto-accept, …)
+ * throw on a locked or failing database. Such a socket is closed with 1011:
+ * both clients treat a close as an ordinary disconnect (the viewer shows its
+ * connection error, the unattended heartbeat reconnects with backoff).
+ */
+function guarded(
+  peer: WebSocket,
+  log: FastifyBaseLogger,
+  handler: (raw: RawFrame) => void,
+): (raw: RawFrame) => void {
+  return (raw) => {
+    try {
+      handler(raw);
+    } catch (err) {
+      log.warn({ err }, "signal message handler failed; closing socket");
+      peer.close(CLOSE_INTERNAL_ERROR, "internal error");
+    }
+  };
 }
 
 function newPerPeerEntry(cfg: RateLimitConfig): RateLimitEntry {
@@ -306,7 +334,7 @@ export function registerSignaling(
       //     status to the paired viewer (gh #17)
       //   - relay:           after pw-ok, normal SDP/ICE flows
       //   - anything else:   protocol error
-      peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
+      peer.on("message", guarded(peer, req.log, (raw) => {
         if (role !== "unattended-sharer") {
           send(peer, {
             type: "error",
@@ -475,7 +503,7 @@ export function registerSignaling(
         }
 
         send(peer, { type: "error", code: "bad-message", message: "unexpected message" });
-      });
+      }));
 
       // Tear down any pending session if the sharer drops. The viewer
       // gets the same "sharer-gone" treatment as the ad-hoc flow.
@@ -489,7 +517,7 @@ export function registerSignaling(
       return;
     }
 
-    peer.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
+    peer.on("message", guarded(peer, req.log, (raw) => {
       if (!checkPerPeerLimit(peerMsgEntry, perPeerCfg)) {
         send(peer, { type: "error", code: "rate-limit", message: "message rate exceeded" });
         peer.close();
@@ -724,7 +752,7 @@ export function registerSignaling(
       }
 
       send(peer, { type: "error", code: "bad-message", message: "unexpected message" });
-    });
+    }));
 
     peer.on("close", () => {
       // gh #17: viewer might be in an unattended session — tear that
