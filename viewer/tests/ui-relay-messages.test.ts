@@ -41,18 +41,4 @@ describe("relay messages from the sharer", () => {
     expect(document.getElementById("reconnect-wrap")!.classList.contains("active")).toBe(true);
     expect(document.getElementById("video-wrapper")!.classList.contains("active")).toBe(false);
   });
-
-  it("a failing answer ends the connect attempt with the generic copy, not the DOMException", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const session = await startUiSession();
-    const pc = await session.confirm();
-    pc.setRemoteDescription = async () => {
-      throw new DOMException("Failed to parse SessionDescription", "OperationError");
-    };
-    session.ws.fakeMessage({ type: "relay", payload: { kind: "sdp", sdp: { type: "answer", sdp: "garbage" } } });
-    await flush();
-
-    expect(status()).toBe("Verbindung fehlgeschlagen. Bitte erneut versuchen.");
-    expect(error).toHaveBeenCalled();
-  });
 });

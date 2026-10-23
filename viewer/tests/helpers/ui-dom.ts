@@ -57,7 +57,47 @@ export function buildUiTestDOM(): void {
   const connType = document.createElement("div");
   connType.id = "connection-type";
   videoWrapper.appendChild(connType);
+  const panOverlay = document.createElement("div");
+  panOverlay.id = "pan-overlay";
+  panOverlay.hidden = true;
+  for (const id of ["pan-up", "pan-down", "pan-left", "pan-right", "pan-reset"]) {
+    const btn = document.createElement("button");
+    btn.id = id;
+    panOverlay.appendChild(btn);
+  }
+  videoWrapper.appendChild(panOverlay);
+  const controls = document.createElement("div");
+  controls.id = "video-controls";
+  for (const id of ["zoom-out", "zoom-reset", "zoom-in", "fullscreen-btn"]) {
+    const btn = document.createElement("button");
+    btn.id = id;
+    controls.appendChild(btn);
+  }
+  const zoomLevel = document.createElement("span");
+  zoomLevel.id = "zoom-level";
+  controls.appendChild(zoomLevel);
+  videoWrapper.appendChild(controls);
   app.appendChild(videoWrapper);
+
+  const summary = document.createElement("section");
+  summary.id = "session-summary";
+  summary.hidden = true;
+  for (const id of ["session-summary-duration", "session-summary-conn"]) {
+    const span = document.createElement("span");
+    span.id = id;
+    summary.appendChild(span);
+  }
+  const filesWrap = document.createElement("div");
+  filesWrap.id = "session-summary-files-wrap";
+  filesWrap.hidden = true;
+  const files = document.createElement("div");
+  files.id = "session-summary-files";
+  filesWrap.appendChild(files);
+  summary.appendChild(filesWrap);
+  const summaryClose = document.createElement("button");
+  summaryClose.id = "session-summary-close";
+  summary.appendChild(summaryClose);
+  app.appendChild(summary);
 
   const inputToggle = document.createElement("button");
   inputToggle.id = "input-toggle";
