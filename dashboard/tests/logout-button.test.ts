@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { _setApiClientForTests } from "../src/api.js";
 import { mountLogoutButton } from "../src/logout-button.js";
+import { _resetSessionForTests, refreshSession } from "../src/session.js";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -102,5 +103,44 @@ describe("mountLogoutButton", () => {
     await flush();
 
     expect(window.location.pathname).toMatch(/\/dashboard\/login$/);
+  });
+
+  describe("visibility follows the session", () => {
+    afterEach(() => _resetSessionForTests());
+
+    function meFetch(status: number): typeof fetch {
+      return vi.fn(async () =>
+        status === 200
+          ? jsonResponse({ id: 1, email: "a@b.test", admin: false })
+          : jsonResponse({ error: "unauthorized", message: "x" }, status),
+      ) as unknown as typeof fetch;
+    }
+
+    it("starts hidden while the session is anonymous (e.g. on /login)", () => {
+      _resetSessionForTests();
+      const btn = mountLogoutButton(makeContainer());
+      expect(btn.hidden).toBe(true);
+    });
+
+    it("shows once a session probe reports logged-in and hides again on logout", async () => {
+      _resetSessionForTests();
+      const btn = mountLogoutButton(makeContainer());
+
+      _setApiClientForTests({ base: "", fetch: meFetch(200) });
+      await refreshSession();
+      expect(btn.hidden).toBe(false);
+
+      _setApiClientForTests({ base: "", fetch: meFetch(401) });
+      await refreshSession();
+      expect(btn.hidden).toBe(true);
+    });
+
+    it("is visible immediately when mounted after the session is already logged-in", async () => {
+      _resetSessionForTests();
+      _setApiClientForTests({ base: "", fetch: meFetch(200) });
+      await refreshSession();
+      const btn = mountLogoutButton(makeContainer());
+      expect(btn.hidden).toBe(false);
+    });
   });
 });

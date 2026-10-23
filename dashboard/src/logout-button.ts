@@ -11,7 +11,7 @@
 //      The user is always sent to login so they can confirm they're out.
 
 import { logout } from "./api.js";
-import { redirectToLogin } from "./session.js";
+import { isLoggedIn, onSessionChange, redirectToLogin } from "./session.js";
 
 /**
  * Mount an "Abmelden" ghost-pill button inside `container` (expected to be
@@ -20,6 +20,10 @@ import { redirectToLogin } from "./session.js";
  * falls back to appending directly when that zone is absent (tests / stripped
  * markup).
  *
+ * The button is only shown while the cached session is logged-in, so the
+ * anonymous /login and /signup pages don't offer an "Abmelden" that does
+ * nothing.
+ *
  * Returns the created button so callers can adjust aria attributes if needed.
  */
 export function mountLogoutButton(container: HTMLElement): HTMLButtonElement {
@@ -27,6 +31,10 @@ export function mountLogoutButton(container: HTMLElement): HTMLButtonElement {
   btn.type = "button";
   btn.className = "topbar-logout-btn";
   btn.textContent = "Abmelden";
+  btn.hidden = !isLoggedIn();
+  onSessionChange((session) => {
+    btn.hidden = !session.loggedIn;
+  });
 
   btn.addEventListener("click", () => {
     void logout().finally(redirectToLogin);

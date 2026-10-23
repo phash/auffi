@@ -125,8 +125,8 @@ function bootstrap(rootEl: HTMLElement): void {
   const nav = buildNav(routes, isAdmin());
 
   // Mount "Abmelden" in the topbar-meta row (right side, next to the viewer
-  // link) — visible on every authed page so shared-computer users can always
-  // end their session.
+  // link) — it shows itself whenever the session is logged-in, so
+  // shared-computer users can always end their session.
   const topbarMeta = document.querySelector<HTMLElement>(".topbar-meta");
   if (topbarMeta) mountLogoutButton(topbarMeta);
 
