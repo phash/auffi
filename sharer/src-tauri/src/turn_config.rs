@@ -149,4 +149,21 @@ mod tests {
         let servers = to_ice_servers(None);
         assert!(servers.is_empty());
     }
+
+    // The backend may now rate-limit /turn-credentials with 429. Like every
+    // other non-OK answer that must degrade to "no TURN" (host/mDNS
+    // candidates only), never fail the stream start.
+    #[tokio::test]
+    async fn rate_limited_turn_fetch_degrades_to_no_servers() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/turn-credentials")
+            .with_status(429)
+            .with_body(r#"{"error":"rate-limited"}"#)
+            .create_async()
+            .await;
+        let servers = fetch_ice_servers(&server.url(), "https://auffi.app", "123456789").await;
+        assert!(servers.is_empty());
+        mock.assert_async().await;
+    }
 }

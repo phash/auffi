@@ -14,13 +14,18 @@
  * Pure so the decision is testable without a Tauri runtime.
  */
 
-import { friendlyDisconnectReason } from "./disconnect-reason.js";
+import { friendlyDisconnectReason, isCodeExpiredClose } from "./disconnect-reason.js";
 
 export interface SignalingLostPlan {
   /** Leave Beenden / Bildschirm wechseln / Datei senden on screen. */
   keepStreamingActions: boolean;
   /** Offer "Neu verbinden" — only when no stream is live. */
   showReconnect: boolean;
+  /**
+   * Offer "Neuer Code" instead: the backend closed with 4410 because the code
+   * expired, so reconnecting would only find a dead code.
+   */
+  showNewCode: boolean;
   /** German status line. */
   status: string;
 }
@@ -30,14 +35,17 @@ export function planSignalingLost(streamActive: boolean, reason: string): Signal
     return {
       keepStreamingActions: true,
       showReconnect: false,
+      showNewCode: false,
       status:
         "Verbindung zum Server verloren — die Übertragung läuft weiter. " +
         "Mit „Beenden“ kannst du sie stoppen.",
     };
   }
+  const expired = isCodeExpiredClose(reason);
   return {
     keepStreamingActions: false,
-    showReconnect: true,
+    showReconnect: !expired,
+    showNewCode: expired,
     status: friendlyDisconnectReason(reason),
   };
 }

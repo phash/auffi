@@ -9,7 +9,17 @@
  * sharer-user can act on to plain sentences; the raw string belongs in the
  * console only.
  */
+export const CODE_EXPIRED_STATUS = "Code abgelaufen — bitte einen neuen Code erzeugen.";
+
+/** The backend closes the ad-hoc WS with 4410 whenever the code expired. */
+export function isCodeExpiredClose(reason: string): boolean {
+  return /^close code=4410\b/.test(reason);
+}
+
 export function friendlyDisconnectReason(reason: string): string {
+  if (isCodeExpiredClose(reason)) {
+    return CODE_EXPIRED_STATUS;
+  }
   if (/^connect(?: failed)?:|^invalid (?:signaling|ws) url|^invalid origin/.test(reason)) {
     return "Server nicht erreichbar — bitte Internetverbindung prüfen.";
   }

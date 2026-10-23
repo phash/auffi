@@ -189,6 +189,14 @@ describe("main.ts ad-hoc wiring", () => {
     expect(byId("status").textContent).not.toContain("pong");
   });
 
+  it("offers Neuer Code, not Neu verbinden, when the backend expires the code", async () => {
+    await emit("code-assigned", { code: "123456789", expiresInSec: 600 });
+    await emit("disconnected", { reason: 'close code=4410 reason="code expired"' });
+    expect(byId("status").textContent).toBe("Code abgelaufen — bitte einen neuen Code erzeugen.");
+    expect(byId("reconnect-btn-wrap").style.display).toBe("none");
+    expect(byId("new-code-btn").classList.contains("visible")).toBe(true);
+  });
+
   // ICE failed on a live stream: keepSignaling teardown whose
   // streaming-stopped event the listener ignores — the controls, banners and
   // relay label must be cleared here, and the still-valid code re-offered.

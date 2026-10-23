@@ -72,6 +72,15 @@ describe("friendlyDisconnectReason", () => {
     }
   });
 
+  it("names an expired code on the backend's 4410 close", () => {
+    expect(friendlyDisconnectReason('close code=4410 reason="code expired"')).toBe(
+      "Code abgelaufen — bitte einen neuen Code erzeugen.",
+    );
+    expect(friendlyDisconnectReason('close code=44100 reason=""')).toBe(
+      "Verbindung zum Server getrennt.",
+    );
+  });
+
   it("falls back to a generic link-lost sentence for everything else", () => {
     for (const raw of ["socket EOF", 'close code=1005 reason=""', "some-new-reason", ""]) {
       expect(friendlyDisconnectReason(raw), raw).toBe("Verbindung zum Server getrennt.");

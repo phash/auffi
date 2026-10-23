@@ -27,6 +27,7 @@ import { planViewerBye } from "./viewer-bye-policy.js";
 import { unattendedMainStatus } from "./unattended-mode-status.js";
 import { planSignalingLost } from "./signaling-lost-policy.js";
 import { fileSendErrorMessage } from "./file-send-messages.js";
+import { CODE_EXPIRED_STATUS } from "./disconnect-reason.js";
 
 interface FileOfferPayload {
   id: string;
@@ -364,7 +365,7 @@ function startExpiryCountdown(expiresInSec: number): void {
     renderExpiry();
     if (expiryRemaining <= 0) {
       stopExpiryCountdown();
-      setStatus("Code abgelaufen — bitte einen neuen Code erzeugen.", "error");
+      setStatus(CODE_EXPIRED_STATUS, "error");
     }
   }, 1000);
 }
@@ -379,7 +380,7 @@ function resumeExpiryCountdown(): void {
   const remaining = remainingSeconds(codeDeadlineMs, Date.now());
   startExpiryCountdown(remaining);
   if (remaining <= 0) {
-    setStatus("Code abgelaufen — bitte einen neuen Code erzeugen.", "error");
+    setStatus(CODE_EXPIRED_STATUS, "error");
   }
 }
 
@@ -973,6 +974,7 @@ listen<{ reason: string }>("disconnected", (e) => {
   } else {
     hideReconnect();
   }
+  if (plan.showNewCode) newCodeBtn.classList.add("visible");
   showFriendlyError(plan.status, e.payload.reason);
 });
 

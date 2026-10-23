@@ -28,4 +28,18 @@ describe("planSignalingLost", () => {
     expect(plan.status).toContain("antwortet nicht");
     expect(plan.status).not.toContain("pong");
   });
+
+  // The backend closes every expiry drop with 4410. "Neu verbinden" would
+  // only reconnect to a dead code; the honest next step is a fresh code.
+  it("treats a 4410 close as an expired code with the Neuer-Code path", () => {
+    const plan = planSignalingLost(false, 'close code=4410 reason="code expired"');
+    expect(plan.status).toBe("Code abgelaufen — bitte einen neuen Code erzeugen.");
+    expect(plan.showReconnect).toBe(false);
+    expect(plan.showNewCode).toBe(true);
+  });
+
+  it("offers no Neuer-Code shortcut for other link losses", () => {
+    expect(planSignalingLost(false, "socket EOF").showNewCode).toBe(false);
+    expect(planSignalingLost(true, 'close code=4410 reason=""').showNewCode).toBe(false);
+  });
 });
