@@ -57,6 +57,8 @@ export function sanitizeFilename(input: string): string {
   s = s
     // ASCII controls (U+0000-U+001F, U+007F)
     .replace(/[\u0000-\u001f\u007f]/g, "_")
+    // C1 controls (U+0080-U+009F), matching the sharer's sanitizer
+    .replace(/[\u0080-\u009f]/g, "_")
     // Bidi overrides + isolates
     .replace(/[\u202a-\u202e\u2066-\u2069]/g, "_")
     // Zero-width spaces / joiners + BOM
@@ -153,6 +155,7 @@ type IncomingReceive = {
 
 export class FileTransferManager {
   private offerHandler: ((offer: FileOffer) => Promise<boolean>) | null = null;
+  private withdrawnHandler: ((id: string) => void) | null = null;
   private completeHandler: ((file: File, id: string) => void) | null = null;
   private statusHandler: ((status: TransferStatus) => void) | null = null;
 
@@ -235,6 +238,12 @@ export class FileTransferManager {
     this.offerHandler = handler;
   }
 
+  /** The sharer gave up on an offer the helper has not answered yet
+   *  (file-error, e.g. its 60 s offer-timeout). */
+  onOfferWithdrawn(handler: (id: string) => void): void {
+    this.withdrawnHandler = handler;
+  }
+
   onIncomingComplete(handler: (file: File, id: string) => void): void {
     this.completeHandler = handler;
   }
@@ -296,6 +305,7 @@ export class FileTransferManager {
         if (receive) {
           this.pendingReceive.delete(event.id);
           if (receive.accepted) this.failReceiveStatus(receive);
+          else this.withdrawnHandler?.(event.id);
         }
         // Send side: the sharer answers offers with file-error too
         // (too-many-active, file-too-large, cannot-open-file) — settle the

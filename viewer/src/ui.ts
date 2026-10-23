@@ -514,6 +514,18 @@ export function bindUI(backendWsUrl: string): void {
     showNextOffer();
   };
 
+  // The sharer withdrew an offer: drop it without answering. If it is the
+  // one on screen, release its trap and show the next.
+  const withdrawFileOffer = (id: string): void => {
+    const index = offerQueue.findIndex((entry) => entry.offer.id === id);
+    if (index < 0) return;
+    offerQueue.splice(index, 1);
+    if (index > 0) return;
+    fileOfferTrapRelease?.();
+    fileOfferTrapRelease = null;
+    showNextOffer();
+  };
+
   // Teardown: reject everything still queued, not just the visible offer.
   const rejectAllOffers = (): void => {
     fileOfferTrapRelease?.();
@@ -852,6 +864,8 @@ export function bindUI(backendWsUrl: string): void {
               if (offerQueue.length === 1) showNextOffer();
             });
           });
+
+          files.onOfferWithdrawn(withdrawFileOffer);
 
           // Sends cut off by teardown settle a tick later; by then this
           // manager is no longer current and its "fehlgeschlagen" would be

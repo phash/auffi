@@ -72,6 +72,32 @@ describe("overlapping file offers", () => {
     expect(keydownTrapListeners(add, remove)).toBe(0);
   });
 
+  // The sharer withdraws an unanswered offer after 60 s with
+  // file-error "offer-timeout"; the dialog must not stay up for a transfer
+  // that no longer exists, and the next queued offer takes its place.
+  it("closes a withdrawn offer and shows the next one", async () => {
+    const { pc } = await liveSession();
+    await offer(pc, "a", "erstes.txt");
+    await offer(pc, "b", "zweites.txt");
+
+    pc.channel("files").fakeMessage(
+      JSON.stringify({ kind: "file-error", id: "a", message: "offer-timeout" }),
+    );
+    await flush();
+
+    const toast = document.getElementById("file-offer-toast")!;
+    expect(toast.classList.contains("active")).toBe(true);
+    expect(document.getElementById("file-offer-body")!.textContent).toContain("zweites.txt");
+
+    pc.channel("files").fakeMessage(
+      JSON.stringify({ kind: "file-error", id: "b", message: "offer-timeout" }),
+    );
+    await flush();
+    expect(toast.classList.contains("active")).toBe(false);
+    expect(fileEvents(pc, "file-accept")).toEqual([]);
+    expect(fileEvents(pc, "file-reject")).toEqual([]);
+  });
+
   it("does not hijack Tab on the page after overlapping offers were closed", async () => {
     const { pc } = await liveSession();
     await offer(pc, "a", "erstes.txt");

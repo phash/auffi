@@ -77,6 +77,10 @@ describe("sanitizeFilename", () => {
     expect(sanitizeFilename("﻿﻿bomstart")).toBe("__bomstart");
   });
 
+  it("strips C1 control characters like the sharer does", () => {
+    expect(sanitizeFilename("a\u0085b\u009bc.txt")).toBe("a_b_c.txt");
+  });
+
   it("strips leading dots", () => {
     expect(sanitizeFilename(".hidden")).toBe("hidden");
     expect(sanitizeFilename("...still")).toBe("still");
