@@ -5,7 +5,20 @@ import { friendlyJoinError, connectTimeoutMessage } from "../src/connect-message
 describe("t() catalog", () => {
   it("defaults to German (jsdom <html lang> is unset)", () => {
     expect(t("status.streamRunning")).toBe("Stream läuft.");
-    expect(t("join.declined")).toBe("Der Sharer hat die Verbindung abgelehnt.");
+    expect(t("join.declined")).toBe("Die andere Seite hat die Verbindung abgelehnt.");
+  });
+
+  // The helper is non-technical: "Sharer" is our component name and
+  // "ICE" a protocol acronym; neither belongs in a status line.
+  it("uses no internal jargon in user-facing copy", () => {
+    for (const lang of ["de", "en"] as const) {
+      for (const key of ["status.awaitingConfirm", "teardown.sharerEnded", "join.declined"]) {
+        expect(t(key, {}, lang)).not.toMatch(/sharer|ICE/i);
+      }
+    }
+    expect(t("status.awaitingConfirm")).toBe("Warte auf Bestätigung durch die andere Seite…");
+    expect(t("teardown.sharerEnded")).toBe("Die andere Seite hat die Übertragung beendet.");
+    expect(t("teardown.iceError")).toBe("teardown.iceError");
   });
 
   it("returns English when lang='en'", () => {

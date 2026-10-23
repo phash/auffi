@@ -18,13 +18,13 @@ describe("friendlyJoinError", () => {
   it("treats an unattended user-decline as an informational rejection", () => {
     const r = friendlyJoinError("rejected-by-user");
     expect(r.kind).toBe("info");
-    expect(r.text).toBe("Der Sharer hat die Verbindung abgelehnt.");
+    expect(r.text).toBe("Die andere Seite hat die Verbindung abgelehnt.");
   });
 
   it("maps a peer-rejected:declined to the same friendly decline", () => {
     const r = friendlyJoinError("peer-rejected: declined");
     expect(r.kind).toBe("info");
-    expect(r.text).toBe("Der Sharer hat die Verbindung abgelehnt.");
+    expect(r.text).toBe("Die andere Seite hat die Verbindung abgelehnt.");
   });
 
   it("explains a sharer-gone rejection with a path forward", () => {

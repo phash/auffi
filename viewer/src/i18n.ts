@@ -27,7 +27,7 @@ type Entry = string | ((p: Params) => string);
 const MESSAGES: Record<Lang, Record<string, Entry>> = {
   de: {
     // status / teardown (ui.ts)
-    "status.awaitingConfirm": "Warte auf Bestätigung durch den Sharer…",
+    "status.awaitingConfirm": "Warte auf Bestätigung durch die andere Seite…",
     "status.connectedReceiving": "Verbunden — empfange Stream…",
     "status.streamRunning": "Stream läuft.",
     "status.connecting": "Verbindung wird hergestellt …",
@@ -36,7 +36,7 @@ const MESSAGES: Record<Lang, Record<string, Entry>> = {
     "teardown.endedCanReconnect": "Verbindung beendet. Möchtest du doch nochmal verbinden?",
     "teardown.disconnected": "Getrennt.",
     "teardown.cancelled": "Verbindung abgebrochen.",
-    "teardown.sharerEnded": "Der Sharer hat den Stream beendet.",
+    "teardown.sharerEnded": "Die andere Seite hat die Übertragung beendet.",
     "teardown.cancelledByHelper": "Vom Helfer abgebrochen.",
     "pw.prompt": "Dieses Gerät ist passwortgeschützt. Bitte das Geräte-Passwort eingeben.",
     "pw.wrong": (p) => `Falsches Passwort. Noch ${p.n} Versuch${p.n === 1 ? "" : "e"}.`,
@@ -68,7 +68,7 @@ const MESSAGES: Record<Lang, Record<string, Entry>> = {
     "ice.unstable": "Verbindung instabil — versuche, sie wiederherzustellen…",
     "ice.lost": "Verbindung verloren.",
     // join errors (connect-messages.ts)
-    "join.declined": "Der Sharer hat die Verbindung abgelehnt.",
+    "join.declined": "Die andere Seite hat die Verbindung abgelehnt.",
     "join.expired": "Der Code ist abgelaufen. Bitte beim Helfer einen neuen Code anfragen.",
     "join.lockout": (p) => `Zu viele Fehlversuche. Gesperrt für ca. ${p.mins} Min — bitte später erneut versuchen.`,
     "join.sharerGone": "Der andere Computer ist nicht mehr erreichbar. Bitte beim Helfer nachfragen und erneut verbinden.",
@@ -93,7 +93,7 @@ const MESSAGES: Record<Lang, Record<string, Entry>> = {
     "teardown.endedCanReconnect": "Connection ended. Would you like to reconnect?",
     "teardown.disconnected": "Disconnected.",
     "teardown.cancelled": "Connection cancelled.",
-    "teardown.sharerEnded": "The other side ended the stream.",
+    "teardown.sharerEnded": "The other side ended the session.",
     "teardown.cancelledByHelper": "Cancelled.",
     "pw.prompt": "This device is password-protected. Please enter the device password.",
     "pw.wrong": (p) => `Wrong password. ${p.n} attempt${p.n === 1 ? "" : "s"} left.`,

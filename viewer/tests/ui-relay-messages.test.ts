@@ -30,6 +30,18 @@ describe("relay messages from the sharer", () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  it("the sharer's bye ends the session with plain wording and offers reconnect", async () => {
+    const session = await startUiSession();
+    const pc = await session.confirm();
+    session.track(pc);
+    session.ws.fakeMessage({ type: "relay", payload: { kind: "bye" } });
+    await flush();
+
+    expect(status()).toBe("Die andere Seite hat die Übertragung beendet.");
+    expect(document.getElementById("reconnect-wrap")!.classList.contains("active")).toBe(true);
+    expect(document.getElementById("video-wrapper")!.classList.contains("active")).toBe(false);
+  });
+
   it("a failing answer ends the connect attempt with the generic copy, not the DOMException", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const session = await startUiSession();
