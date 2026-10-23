@@ -120,7 +120,7 @@ export class ViewerPeer {
     const queued = this.queuedRemoteCandidates;
     this.queuedRemoteCandidates = [];
     for (const candidate of queued) {
-      await this.pc.addIceCandidate(candidate);
+      await this.addCandidate(this.pc, candidate);
     }
   }
 
@@ -130,7 +130,21 @@ export class ViewerPeer {
       this.queuedRemoteCandidates.push(candidate);
       return;
     }
-    await this.pc.addIceCandidate(candidate);
+    await this.addCandidate(this.pc, candidate);
+  }
+
+  /**
+   * A candidate the browser refuses (exotic interface, unresolvable mDNS
+   * name) is one network path fewer, not a failed connection — ICE still
+   * has every other candidate, and a genuinely dead link surfaces as ICE
+   * state `failed`. So it is logged, never propagated.
+   */
+  private async addCandidate(pc: RTCPeerConnection, candidate: RTCIceCandidateInit): Promise<void> {
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch (e) {
+      console.warn("remote ICE candidate rejected", e);
+    }
   }
 
   onTrack(fn: (stream: MediaStream) => void): void {

@@ -888,8 +888,10 @@ export function bindUI(backendWsUrl: string): void {
             teardown(t("join.generic"), "err", true);
           });
         } else if (payload.kind === "ice") {
-          peer?.addRemoteIceCandidate(payload.candidate).catch(() => {
-            teardown(t("teardown.iceError"), "err");
+          // ViewerPeer already absorbs a refused candidate; what is left is
+          // a candidate before start(), which costs one path, not the session.
+          peer?.addRemoteIceCandidate(payload.candidate).catch((e: unknown) => {
+            console.warn("remote ICE candidate dropped", e);
           });
         } else if (payload.kind === "bye") {
           teardown(t("teardown.sharerEnded"), "info", true);

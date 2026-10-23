@@ -369,12 +369,37 @@ describe("ViewerPeer: remote ICE candidates that overtake the answer", () => {
     expect(added).toEqual(["candidate:1", "candidate:2", "candidate:3"]);
   });
 
-  it("surfaces a failing queued candidate to the acceptAnswer caller", async () => {
+  // One unparsable candidate (an exotic interface, an mDNS name the browser
+  // refuses) is one path fewer, not a dead connection: ICE still has every
+  // other candidate. It used to reject acceptAnswer and tear the session down.
+  it("skips a failing queued candidate and still adds the rest", async () => {
     const pc = new MockRTCPeerConnection();
-    pc.addIceCandidate = async () => { throw new Error("bad candidate"); };
+    const added: string[] = [];
+    pc.addIceCandidate = async (c: RTCIceCandidateInit) => {
+      if (c.candidate === "candidate:bad") throw new Error("bad candidate");
+      added.push(c.candidate ?? "");
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const peer = new ViewerPeer({ pcFactory: () => pc as unknown as RTCPeerConnection });
     await peer.start();
-    await peer.addRemoteIceCandidate({ candidate: "candidate:x", sdpMid: "0" });
-    await expect(peer.acceptAnswer({ type: "answer", sdp: "v=0" })).rejects.toThrow("bad candidate");
+    await peer.addRemoteIceCandidate({ candidate: "candidate:bad", sdpMid: "0" });
+    await peer.addRemoteIceCandidate({ candidate: "candidate:good", sdpMid: "0" });
+
+    await expect(peer.acceptAnswer({ type: "answer", sdp: "v=0" })).resolves.toBeUndefined();
+    expect(added).toEqual(["candidate:good"]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("a failing live candidate resolves with a console warning", async () => {
+    const pc = new MockRTCPeerConnection();
+    pc.addIceCandidate = async () => { throw new Error("bad candidate"); };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const peer = new ViewerPeer({ pcFactory: () => pc as unknown as RTCPeerConnection });
+    await peer.start();
+    await peer.acceptAnswer({ type: "answer", sdp: "v=0" });
+    await expect(peer.addRemoteIceCandidate({ candidate: "candidate:x", sdpMid: "0" })).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
