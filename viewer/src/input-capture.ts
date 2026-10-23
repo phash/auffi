@@ -238,6 +238,9 @@ export class InputCapture {
     this.bind("wheel", onWheel);
     this.bind("keydown", onKeyDown);
     this.bind("keyup", onKeyUp);
+    // Focus moving elsewhere in the page (a dialog focusing its button, a
+    // toolbar click) routes the pending keyup to that element instead.
+    this.bind("blur", () => this.releaseEverything());
 
     const onBlur = (): void => this.releaseEverything();
     window.addEventListener("blur", onBlur);

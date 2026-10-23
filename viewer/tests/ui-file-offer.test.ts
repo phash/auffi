@@ -85,6 +85,53 @@ describe("overlapping file offers", () => {
     expect(tab.defaultPrevented).toBe(false);
   });
 
+  // While Steuerung is active every keystroke goes to the shared machine.
+  // Focusing Ablehnen on a new offer used to pull the keyboard off the video
+  // mid-keystroke: the keyup landed on the button and the sharer kept the
+  // key held, and Escape (the advertised "stop control") rejected the offer.
+  describe("while remote control is active", () => {
+    async function controlling(): Promise<{ pc: MockPC; video: HTMLVideoElement }> {
+      const { pc } = await liveSession();
+      (document.getElementById("input-toggle") as HTMLButtonElement).click();
+      const video = document.getElementById("remote-video") as HTMLVideoElement;
+      expect(document.activeElement).toBe(video);
+      return { pc, video };
+    }
+
+    it("shows the offer without taking keyboard focus off the video", async () => {
+      const { pc, video } = await controlling();
+      video.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA", key: "a", bubbles: true }));
+
+      await offer(pc, "a", "bericht.pdf");
+
+      expect(document.getElementById("file-offer-toast")!.classList.contains("active")).toBe(true);
+      expect(document.activeElement).toBe(video);
+      const keyEvents = pc.channel("input").sentJson().filter((m) => m.kind === "key");
+      expect(keyEvents).toEqual([expect.objectContaining({ code: "KeyA", pressed: true })]);
+    });
+
+    it("Escape stops control but leaves the offer open, then focuses Ablehnen", async () => {
+      const { pc } = await controlling();
+      await offer(pc, "a", "bericht.pdf");
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+      await flush();
+
+      expect(document.getElementById("input-toggle")!.getAttribute("aria-pressed")).toBe("false");
+      expect(fileEvents(pc, "file-reject")).toEqual([]);
+      expect(document.getElementById("file-offer-toast")!.classList.contains("active")).toBe(true);
+      expect(document.activeElement).toBe(document.getElementById("file-offer-reject"));
+    });
+
+    it("the buttons still answer the offer", async () => {
+      const { pc } = await controlling();
+      await offer(pc, "a", "bericht.pdf");
+      (document.getElementById("file-offer-accept") as HTMLButtonElement).click();
+      await flush();
+      expect(fileEvents(pc, "file-accept")).toEqual(["a"]);
+    });
+  });
+
   it("teardown drains every queued offer and releases the trap", async () => {
     const { pc } = await liveSession();
     const add = vi.spyOn(document, "addEventListener");

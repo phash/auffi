@@ -486,6 +486,34 @@ describe("InputCapture: losing window focus releases what is held", () => {
     document.body.removeChild(video);
   });
 
+  // Focus moving off the video INSIDE the page (a dialog focusing its
+  // button, a toolbar click) sends the keyup to the new element — the video
+  // never sees it and the sharer keeps the key down.
+  it("releases held keys when the video itself loses focus", () => {
+    const video = makeVideo();
+    document.body.appendChild(video);
+    const emit = vi.fn();
+    const cap = new InputCapture(video, emit);
+    cap.enable();
+    video.focus();
+    video.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyA", key: "a" }));
+    emit.mockClear();
+
+    const other = document.createElement("button");
+    document.body.appendChild(other);
+    other.focus();
+
+    expect(emit).toHaveBeenCalledWith({
+      kind: "key", code: "KeyA", pressed: false,
+      modifiers: { shift: false, ctrl: false, alt: false, meta: false },
+    });
+    emit.mockClear();
+    cap.disable();
+    expect(emit).not.toHaveBeenCalled();
+    document.body.removeChild(other);
+    document.body.removeChild(video);
+  });
+
   it("stops listening for blur once disabled", () => {
     const video = makeVideo();
     document.body.appendChild(video);

@@ -217,6 +217,12 @@ export function bindUI(backendWsUrl: string): void {
   const panRightBtn = document.getElementById("pan-right") as HTMLButtonElement | null;
   const panResetBtn = document.getElementById("pan-reset") as HTMLButtonElement | null;
 
+  // The toggle's pressed state is the helper's intent to control the remote
+  // machine — set before the data channels open, so it outlives InputCapture.
+  function controlActive(): boolean {
+    return inputToggleBtn.getAttribute("aria-pressed") === "true";
+  }
+
   let currentZoom = DEFAULT_ZOOM;
   let currentPan: PanState = ZERO_PAN;
 
@@ -317,7 +323,7 @@ export function bindUI(backendWsUrl: string): void {
     if (e.key !== "f" && e.key !== "F") return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.defaultPrevented) return;
-    if (inputToggleBtn.getAttribute("aria-pressed") === "true") return;
+    if (controlActive()) return;
     const target = e.target as HTMLElement | null;
     if (target) {
       const tag = target.tagName;
@@ -480,8 +486,16 @@ export function bindUI(backendWsUrl: string): void {
     const sizeMb = (next.offer.size / (1024 * 1024)).toFixed(2);
     fileOfferBody.textContent = `"${next.offer.name}" (${sizeMb} MB)`;
     fileOfferToast.classList.add("active");
-    // Confine Tab to the dialog (it declares aria-modal) and make Escape
-    // reject the offer. Focus the safe default (reject).
+    // While Steuerung is active the keyboard belongs to the shared machine:
+    // grabbing focus would land the next keyup on the toast (stuck key over
+    // there) and Escape would both stop control and reject the offer. The
+    // toast stays clickable; it takes focus once control is switched off.
+    if (!controlActive()) focusFileOffer();
+  };
+
+  // Confine Tab to the dialog (it declares aria-modal) and make Escape
+  // reject the offer. Focus the safe default (reject).
+  const focusFileOffer = (): void => {
     fileOfferTrapRelease = trapFocus(fileOfferToast, () => closeFileOffer(false));
     fileOfferReject.focus();
   };
@@ -506,10 +520,7 @@ export function bindUI(backendWsUrl: string): void {
   };
 
   const escapeHandler = (e: KeyboardEvent): void => {
-    if (e.key === "Escape" && inputToggleBtn.getAttribute("aria-pressed") === "true") {
-      capture?.disable();
-      setInputTogglePressed(inputToggleBtn, false);
-    }
+    if (e.key === "Escape" && controlActive()) disableControl();
   };
 
   // gh #36: unattended-mode password prompt. Hoisted to bindUI level
@@ -728,20 +739,26 @@ export function bindUI(backendWsUrl: string): void {
     }
   });
 
-  const enableControl = (): void => {
+  function enableControl(): void {
     const videoEl = document.getElementById("remote-video") as HTMLVideoElement;
+    // An open offer's trap would turn the Escape that stops control into a
+    // reject as well; the toast stays up and clickable without it.
+    fileOfferTrapRelease?.();
+    fileOfferTrapRelease = null;
     capture?.enable();
     setInputTogglePressed(inputToggleBtn, true);
     videoEl.focus();
-  };
+  }
+
+  function disableControl(): void {
+    capture?.disable();
+    setInputTogglePressed(inputToggleBtn, false);
+    if (offerQueue.length > 0 && fileOfferTrapRelease === null) focusFileOffer();
+  }
 
   inputToggleBtn.addEventListener("click", () => {
-    if (inputToggleBtn.getAttribute("aria-pressed") === "true") {
-      capture?.disable();
-      setInputTogglePressed(inputToggleBtn, false);
-    } else {
-      enableControl();
-    }
+    if (controlActive()) disableControl();
+    else enableControl();
   });
 
   document.addEventListener("keydown", escapeHandler);
@@ -802,7 +819,7 @@ export function bindUI(backendWsUrl: string): void {
           // The toolbar is reachable from the track event on — seconds
           // before the channels open, longer over TURN — so the helper may
           // already have asked for control; the toggle state is the intent.
-          if (inputToggleBtn.getAttribute("aria-pressed") === "true") enableControl();
+          if (controlActive()) enableControl();
 
           fileManager = new FileTransferManager(
             (ev) => hub.sendFile(ev),
