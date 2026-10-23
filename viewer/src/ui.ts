@@ -5,6 +5,7 @@ import type { RelayBye, RelayIce, RelaySdp } from "./protocol.js";
 import { fetchIceServers } from "./turn-config.js";
 import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
+import { FileStatusList } from "./file-status.js";
 import type { FileOffer } from "./file-transfer.js";
 import { DEFAULT_ZOOM, ZOOM_STEPS, formatZoom, nextZoomLevel } from "./zoom.js";
 import { ZERO_PAN, clampPan, stepPan, type PanState } from "./pan.js";
@@ -362,6 +363,7 @@ export function bindUI(backendWsUrl: string): void {
   });
   let capture: InputCapture | null = null;
   let fileManager: FileTransferManager | null = null;
+  const fileStatus = FileStatusList.mount(document.body);
   let lastCode: string | null = null;
   let manualDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
   const MANUAL_DISCONNECT_RECONNECT_WINDOW_MS = 30_000;
@@ -603,6 +605,7 @@ export function bindUI(backendWsUrl: string): void {
     capture = null;
     fileManager?.cancelAll();
     fileManager = null;
+    fileStatus.clearTransient();
     rejectAllOffers();
     hidePwPrompt();
     setInputTogglePressed(inputToggleBtn, false);
@@ -692,13 +695,30 @@ export function bindUI(backendWsUrl: string): void {
     fileInput.click();
   });
 
+  const sendFile = (file: File): void => {
+    fileManager?.send(file).catch(() => {
+      // The outcome (abgelehnt / fehlgeschlagen) reaches the helper through
+      // onTransferStatus; the rejection only must not go unhandled.
+    });
+  };
+
+  // Started from the Speichern click — a download without a user gesture
+  // makes Chrome ask "allow multiple downloads?" from the second file on.
+  const saveFile = (file: File): void => {
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
   fileInput.addEventListener("change", () => {
     const file = fileInput.files?.[0];
-    if (file && fileManager) {
-      fileManager.send(file).catch(() => {
-        // Transfer was rejected or failed; no user-visible error needed here
-      });
-    }
+    if (file) sendFile(file);
     fileInput.value = "";
   });
 
@@ -732,11 +752,7 @@ export function bindUI(backendWsUrl: string): void {
     videoWrapper.classList.remove("drop-over");
     if (!fileManager) return;
     const file = e.dataTransfer?.files[0];
-    if (file) {
-      fileManager.send(file).catch(() => {
-        // Transfer was rejected or failed; no user-visible error needed here
-      });
-    }
+    if (file) sendFile(file);
   });
 
   function enableControl(): void {
@@ -821,31 +837,31 @@ export function bindUI(backendWsUrl: string): void {
           // already have asked for control; the toggle state is the intent.
           if (controlActive()) enableControl();
 
-          fileManager = new FileTransferManager(
+          const files = new FileTransferManager(
             (ev) => hub.sendFile(ev),
             (buf) => hub.sendFileChunk(buf),
             () => hub.filesBufferedAmount(),
             (threshold) => hub.awaitFilesBufferedLow(threshold),
           );
+          fileManager = files;
 
-          fileManager.onIncomingOffer((offer: FileOffer) => {
+          files.onIncomingOffer((offer: FileOffer) => {
             return new Promise<boolean>((resolve) => {
               offerQueue.push({ offer, resolve });
               if (offerQueue.length === 1) showNextOffer();
             });
           });
 
-          fileManager.onIncomingComplete((file: File) => {
+          // Sends cut off by teardown settle a tick later; by then this
+          // manager is no longer current and its "fehlgeschlagen" would be
+          // noise on the start screen.
+          files.onTransferStatus((status) => {
+            if (fileManager === files) fileStatus.update(status);
+          });
+
+          files.onIncomingComplete((file: File, id: string) => {
             sessionTracker.recordReceivedFile({ name: file.name, size: file.size });
-            const url = URL.createObjectURL(file);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = file.name;
-            a.style.display = "none";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+            fileStatus.offerSave(id, () => saveFile(file));
           });
 
           hub.onFile((ev) => fileManager?.handle(ev));

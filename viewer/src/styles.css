@@ -1291,6 +1291,48 @@ body.streaming .hero-alt-cta { display: none; }
 }
 .toast-btn-reject:hover { background: var(--surface); box-shadow: var(--shadow-sm); }
 
+/* File-transfer status rows (file-status.ts) — one line per transfer,
+   bottom-right so they never cover the centred offer / password toasts. */
+.file-status-list {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(var(--footer-height) + 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(360px, calc(100vw - 2rem));
+  z-index: 100;
+}
+.file-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lift);
+  padding: 0.5rem 0.5rem 0.5rem 0.875rem;
+  font-size: 0.875rem;
+}
+.file-status-row.ok { border-left-color: var(--signal-on); }
+.file-status-row.err { border-left-color: var(--error); }
+.file-status-text { flex: 1; word-break: break-word; }
+.file-status-actions { display: flex; align-items: center; gap: 0.25rem; }
+.file-status-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 1.125rem;
+  line-height: 1;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.file-status-close:hover { color: var(--ink); background: var(--paper); }
+
 /* Signup-Toast — first-load welcome after dashboard signup ── */
 .signup-confirm-toast {
   position: fixed;

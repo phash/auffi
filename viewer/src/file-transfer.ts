@@ -153,7 +153,7 @@ type IncomingReceive = {
 
 export class FileTransferManager {
   private offerHandler: ((offer: FileOffer) => Promise<boolean>) | null = null;
-  private completeHandler: ((file: File) => void) | null = null;
+  private completeHandler: ((file: File, id: string) => void) | null = null;
   private statusHandler: ((status: TransferStatus) => void) | null = null;
 
   private pendingSend: Map<string, PendingSend> = new Map();
@@ -235,7 +235,7 @@ export class FileTransferManager {
     this.offerHandler = handler;
   }
 
-  onIncomingComplete(handler: (file: File) => void): void {
+  onIncomingComplete(handler: (file: File, id: string) => void): void {
     this.completeHandler = handler;
   }
 
@@ -475,6 +475,6 @@ export class FileTransferManager {
     const file = new File(parts, state.offer.name, { type: safeMime });
     state.chunks.clear();
     this.emitStatus({ id, name: state.offer.name, direction: "receive", phase: "done" });
-    this.completeHandler?.(file);
+    this.completeHandler?.(file, id);
   }
 }
