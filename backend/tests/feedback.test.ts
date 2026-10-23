@@ -577,7 +577,7 @@ describe("DELETE /api/admin/feedback/:id", () => {
     h.db.close();
   });
 
-  it("removes the row and writes an audit_log entry capturing the body", async () => {
+  it("removes the row and writes a content-free feedback.delete audit entry", async () => {
     const res = await h.app.inject({
       method: "DELETE",
       url: `/api/admin/feedback/${feedbackId}`,
@@ -595,7 +595,37 @@ describe("DELETE /api/admin/feedback/:id", () => {
       )
       .get("feedback.delete") as { action: string; before_json: string };
     expect(auditRow.action).toBe("feedback.delete");
-    expect(auditRow.before_json).toContain("spam");
+    // Datenschutz §9 promises the content goes with the feedback — the
+    // deletion record must not become its shadow copy.
+    expect(auditRow.before_json).not.toContain("spam");
+    expect(auditRow.before_json).not.toContain("user2@example.com");
+    expect(JSON.parse(auditRow.before_json)).toMatchObject({ category: "bug", rating: 2 });
+  });
+
+  it("deletes the earlier content-carrying audit rows of that feedback with it", async () => {
+    await h.app.inject({
+      method: "PATCH",
+      url: `/api/admin/feedback/${feedbackId}`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+      payload: { resolved: true },
+    });
+    expect(
+      (h.db.prepare("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'feedback.resolve'").get() as { c: number }).c,
+    ).toBe(1);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/admin/feedback/${feedbackId}`,
+      headers: { cookie: `__Host-auffi_session=${adminCookie}` },
+    });
+    expect(res.statusCode).toBe(204);
+    const rows = h.db
+      .prepare<[string], { action: string; before_json: string | null; after_json: string | null }>(
+        "SELECT action, before_json, after_json FROM audit_log WHERE target_type = 'feedback' AND target_id = ?",
+      )
+      .all(String(feedbackId));
+    expect(rows.map((r) => r.action)).toEqual(["feedback.delete"]);
+    expect(JSON.stringify(rows)).not.toContain("spam");
   });
 
   it("writes no audit row when the DELETE itself fails", async () => {

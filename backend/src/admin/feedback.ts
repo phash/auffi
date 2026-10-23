@@ -305,8 +305,10 @@ export function registerAdminFeedbackRoutes(
 
   /**
    * DELETE /api/admin/feedback/:id — hard-delete (spam/PII).
-   * Audit row and DELETE commit together; the row's text is captured in
-   * the `before` snapshot so an admin still has a record after deletion.
+   * Datenschutz §9 promises the content leaves together with the feedback,
+   * so the earlier audit rows about it (resolve/reply snapshots carry body
+   * and reply text) go in the same transaction, and the deletion record
+   * keeps only metadata — no body, no email.
    */
   app.delete(
     "/api/admin/feedback/:id",
@@ -318,17 +320,20 @@ export function registerAdminFeedbackRoutes(
         return bad(reply, 400, "bad-id", "id must be a positive integer");
       }
       const row = db
-        .prepare<[number], FeedbackRow>(
-          `SELECT f.id, f.account_id, a.email AS account_email,
-                  f.source, f.category, f.rating, f.body,
-                  f.user_agent_hint, f.created_at, f.resolved_at
-             FROM feedback f
-             JOIN accounts a ON a.id = f.account_id
-            WHERE f.id = ?`,
+        .prepare<
+          [number],
+          Pick<FeedbackRow, "id" | "source" | "category" | "rating" | "created_at" | "resolved_at">
+        >(
+          `SELECT id, source, category, rating, created_at, resolved_at
+             FROM feedback
+            WHERE id = ?`,
         )
         .get(fid);
       if (!row) return bad(reply, 404, "not-found", "feedback row not found");
       db.transaction(() => {
+        db.prepare("DELETE FROM audit_log WHERE target_type = 'feedback' AND target_id = ?").run(
+          String(fid),
+        );
         writeAudit(db, req, "feedback.delete", "feedback", fid, row, null);
         db.prepare("DELETE FROM feedback WHERE id = ?").run(fid);
       })();

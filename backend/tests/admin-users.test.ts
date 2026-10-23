@@ -495,6 +495,33 @@ describe("DELETE /api/admin/users/:id", () => {
     ).toEqual({ reply_body: "danke", replied_by: null });
   });
 
+  it("takes the audit trail of the target's own feedback with it", async () => {
+    const targetId = 2;
+    h.db
+      .prepare(
+        `INSERT INTO feedback (id, account_id, source, category, rating, body, created_at)
+         VALUES (51, ?, 'dashboard', 'bug', 3, 'user-text', ?)`,
+      )
+      .run(targetId, Date.now());
+    h.db
+      .prepare(
+        `INSERT INTO audit_log (admin_id, action, target_type, target_id, before_json, created_at)
+         VALUES (1, 'feedback.resolve', 'feedback', '51', '{"body":"user-text"}', ?)`,
+      )
+      .run(Date.now());
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/admin/users/${targetId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { reason: "cleanup" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(
+      h.db.prepare("SELECT COUNT(*) AS c FROM audit_log WHERE target_type = 'feedback'").get(),
+    ).toEqual({ c: 0 });
+  });
+
   it("leaves the target's sharers connected when the delete itself fails", async () => {
     const targetId = 2;
     h.db

@@ -67,7 +67,10 @@ export interface PurgeReport {
   auditLog: number;
   /** code_events rows older than retention. */
   codeEvents: number;
-  /** audit_log rows pointing at a feedback row being purged this pass. */
+  /**
+   * audit_log rows pointing at a feedback row purged this pass, plus
+   * content-carrying ones whose feedback was already gone.
+   */
   feedbackAuditCascade: number;
   /** rate_limit_buckets rows whose lockout is past and counter is zero. */
   rateLimitBuckets: number;
@@ -189,7 +192,21 @@ export function runPurge(
       const feedback = db
         .prepare(`DELETE FROM feedback WHERE ${stalePredicate}`)
         .run(resolvedCutoff, openCutoff).changes;
-      return { audit, feedback };
+      // Backstop for feedback that left by any other path (an FK cascade
+      // that skipped the explicit sweep, rows from before it existed): its
+      // audit rows still carry the body. Only a content-free deletion
+      // record — what DELETE /api/admin/feedback/:id writes since v0.7.2 —
+      // may outlive the feedback; a legacy one with a body goes too.
+      const orphans = db
+        .prepare(
+          `DELETE FROM audit_log
+            WHERE target_type = 'feedback'
+              AND NOT EXISTS (SELECT 1 FROM feedback f WHERE CAST(f.id AS TEXT) = audit_log.target_id)
+              AND NOT (action = 'feedback.delete'
+                       AND json_extract(before_json, '$.body') IS NULL)`,
+        )
+        .run().changes;
+      return { audit: audit + orphans, feedback };
     },
   );
   const oldFeedback = purgeFeedback(

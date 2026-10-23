@@ -327,6 +327,35 @@ describe("runPurge", () => {
     expect(surviving.find((r) => r.target_type === "feedback")).toBeUndefined();
   });
 
+  it("purges content-carrying audit rows whose feedback is already gone, keeps content-free delete records", () => {
+    db.prepare(
+      `INSERT INTO feedback (id, account_id, source, category, rating, body, created_at)
+       VALUES (5, 1, 'dashboard', 'bug', 3, 'still-here', ?)`,
+    ).run(now - DAY);
+    const auditInsert = db.prepare(
+      `INSERT INTO audit_log (admin_id, action, target_type, target_id, before_json, after_json, created_at)
+       VALUES (1, ?, 'feedback', ?, ?, NULL, ?)`,
+    );
+    // Feedback 888 vanished with its account (FK cascade) — its audit rows
+    // were left behind with the body.
+    auditInsert.run("feedback.resolve", "888", '{"body":"orphaned-text"}', now - DAY);
+    // A pre-0.7.2 deletion record still carries body + email.
+    auditInsert.run("feedback.delete", "889", '{"body":"legacy-text","account_email":"x@y"}', now - DAY);
+    // The current deletion record carries no content and stays.
+    auditInsert.run("feedback.delete", "890", '{"id":890,"category":"bug","rating":2}', now - DAY);
+    auditInsert.run("feedback.resolve", "5", '{"body":"still-here"}', now - DAY);
+
+    const report = runPurge(db, now);
+    expect(report.feedbackAuditCascade).toBe(2);
+    const left = db
+      .prepare<[], { target_id: string }>(
+        "SELECT target_id FROM audit_log WHERE target_type = 'feedback' ORDER BY target_id",
+      )
+      .all()
+      .map((r) => r.target_id);
+    expect(left).toEqual(["5", "890"]);
+  });
+
   it("custom feedback retention windows override the default", () => {
     db.prepare(
       "INSERT INTO accounts (id, email, password_hash, created_at) VALUES (11, 'fb-custom@test', 'x', ?)",
