@@ -138,6 +138,18 @@ impl FileTransferManager {
         if self.pending.len() + self.active.len() >= MAX_CONCURRENT_TRANSFERS {
             return Err("too-many-active");
         }
+        // Chunks are routed by the 32-bit hash, so a live id with the same
+        // hash is as much a clash as the same id: either would overwrite or
+        // feed the transfer that is already running.
+        let hash = fnv1a32(id);
+        if self
+            .pending
+            .keys()
+            .chain(self.active.keys())
+            .any(|k| fnv1a32(k) == hash)
+        {
+            return Err("duplicate-id");
+        }
         if size > MAX_FILE_SIZE_BYTES {
             return Err("file-too-large");
         }
@@ -327,17 +339,40 @@ impl FileTransferManager {
                 .get_mut(&key)
                 .expect("just resolved this key above");
 
-            let total_after = state.received_bytes.saturating_add(chunk_len);
+            // Parked bytes count too: otherwise withholding seq 0 lets a
+            // viewer park MAX_PENDING_OUT_OF_ORDER_CHUNKS chunks past the
+            // declared size.
+            let parked: u64 = state
+                .pending_chunks
+                .values()
+                .map(|c| c.len() as u64)
+                .sum();
+            let total_after = state
+                .received_bytes
+                .saturating_add(parked)
+                .saturating_add(chunk_len);
             let cap = state
                 .total_size
                 .saturating_add(SIZE_OVERRUN_TOLERANCE_BYTES);
-            if total_after > cap {
+            if payload.len() > CHUNK_SIZE {
+                Some(format!(
+                    "chunk payload {} exceeds the {CHUNK_SIZE}-byte frame limit",
+                    payload.len()
+                ))
+            } else if total_after > cap {
                 Some(format!(
                     "transfer exceeded declared size: {total_after} > {} (limit {cap})",
                     state.total_size
                 ))
+            } else if seq < state.next_seq {
+                Some(format!(
+                    "stale chunk seq {seq} (next expected {})",
+                    state.next_seq
+                ))
             } else if seq != state.next_seq {
-                if state.pending_chunks.len() >= MAX_PENDING_OUT_OF_ORDER_CHUNKS {
+                if state.pending_chunks.contains_key(&seq) {
+                    Some(format!("repeated chunk seq {seq}"))
+                } else if state.pending_chunks.len() >= MAX_PENDING_OUT_OF_ORDER_CHUNKS {
                     Some(format!(
                         "too many out-of-order chunks ({}); aborting transfer",
                         state.pending_chunks.len()
@@ -377,6 +412,16 @@ impl FileTransferManager {
         }
 
         Ok(())
+    }
+}
+
+/// Session teardown drops the manager mid-transfer; whatever was still being
+/// received is a partial file and must not stay behind in Downloads.
+impl Drop for FileTransferManager {
+    fn drop(&mut self) {
+        for (_, state) in self.active.drain() {
+            discard(state);
+        }
     }
 }
 
@@ -453,12 +498,25 @@ fn verify_complete(state: &mut ReceiveState) -> Result<(), String> {
 /// Insert ` (n)` before the last extension so a colliding download lands as
 /// `report (1).pdf` rather than overwriting `report.pdf` — matching browser
 /// behaviour. A leading dot (hidden file, no real extension) is not treated
-/// as an extension boundary.
+/// as an extension boundary. The stem is shortened so the result stays within
+/// the 255-byte filename limit — a maximal-length name would otherwise fail
+/// every retry with ENAMETOOLONG.
 fn dedupe_filename(filename: &str, n: u32) -> String {
-    match filename.rfind('.') {
-        Some(idx) if idx > 0 => format!("{} ({}){}", &filename[..idx], n, &filename[idx..]),
-        _ => format!("{filename} ({n})"),
+    const MAX_NAME_BYTES: usize = 255;
+    let suffix = format!(" ({n})");
+    let (stem, ext) = match filename.rfind('.') {
+        Some(idx) if idx > 0 && filename.len() - idx + suffix.len() < MAX_NAME_BYTES => {
+            filename.split_at(idx)
+        }
+        _ => (filename, ""),
+    };
+    let mut keep = stem
+        .len()
+        .min(MAX_NAME_BYTES - suffix.len() - ext.len());
+    while !stem.is_char_boundary(keep) {
+        keep -= 1;
     }
+    format!("{}{suffix}{ext}", &stem[..keep])
 }
 
 /// Returns the directory where received files are saved (`~/Downloads/Auffi/`).
@@ -954,6 +1012,40 @@ mod tests {
         assert!(!mgr.pending.contains_key("overflow-id"));
     }
 
+    // A second offer reusing a live id used to overwrite the first entry —
+    // for an accepted transfer that orphaned its open file handle and let
+    // the new offer's chunks append to the old file.
+    #[test]
+    fn duplicate_offer_id_is_refused_and_keeps_the_live_transfer() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("dup-id", "first.bin", 4).expect("admitted");
+        mgr.accept("dup-id");
+        assert_eq!(
+            mgr.admit_offer("dup-id", "second.bin", 4),
+            Err("duplicate-id")
+        );
+        assert_eq!(mgr.active.get("dup-id").expect("still active").name, "first.bin");
+
+        mgr.admit_offer("pending-id", "p.bin", 4).expect("admitted");
+        assert_eq!(
+            mgr.admit_offer("pending-id", "p2.bin", 4),
+            Err("duplicate-id")
+        );
+    }
+
+    // Chunks are routed by the 32-bit FNV hash; two live ids with the same
+    // hash would make every chunk of the second land in the first file.
+    #[test]
+    fn offer_whose_hash_collides_with_a_live_transfer_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        // Classic FNV-1a-32 collision pair.
+        assert_eq!(fnv1a32("costarring"), fnv1a32("liquid"));
+        mgr.admit_offer("costarring", "a.bin", 4).expect("admitted");
+        assert_eq!(mgr.admit_offer("liquid", "b.bin", 4), Err("duplicate-id"));
+    }
+
     #[test]
     fn oversized_offer_is_refused() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1206,6 +1298,126 @@ mod tests {
         assert!(
             !mgr.active.contains_key("ooo-id"),
             "aborted transfer must be removed from active map"
+        );
+    }
+
+    // Parked out-of-order chunks were not counted against the declared size:
+    // with seq 0 withheld, 256 parked chunks of any size slipped past the cap
+    // that is meant to bound memory to the offer.
+    #[test]
+    fn parked_chunks_count_against_the_declared_size() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.active
+            .insert("park-id".to_string(), make_active_state_with_size("park-id", 4));
+        let full = vec![0u8; CHUNK_SIZE];
+        let mut aborted = false;
+        for seq in 1..=8u32 {
+            if mgr
+                .handle_chunk(&build_chunk_frame("park-id", seq, &full))
+                .is_err()
+            {
+                aborted = true;
+                break;
+            }
+        }
+        assert!(aborted, "parked bytes beyond the declared size must abort");
+        assert!(!mgr.active.contains_key("park-id"));
+    }
+
+    #[test]
+    fn chunk_payload_larger_than_the_wire_chunk_size_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.active.insert(
+            "big-id".to_string(),
+            make_active_state_with_size("big-id", 1024 * 1024),
+        );
+        let result = mgr.handle_chunk(&build_chunk_frame("big-id", 1, &vec![0u8; CHUNK_SIZE + 1]));
+        assert!(result.is_err(), "a 16 KiB+1 payload is a protocol violation");
+        assert!(!mgr.active.contains_key("big-id"));
+    }
+
+    #[test]
+    fn stale_or_repeated_sequence_numbers_abort_the_transfer() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.active
+            .insert("st-id".to_string(), make_active_state_with_size("st-id", 64));
+        mgr.handle_chunk(&build_chunk_frame("st-id", 0, b"abcd"))
+            .expect("seq 0");
+        assert!(
+            mgr.handle_chunk(&build_chunk_frame("st-id", 0, b"abcd"))
+                .is_err(),
+            "an already-written seq must not be parked forever"
+        );
+        assert!(!mgr.active.contains_key("st-id"));
+
+        mgr.active
+            .insert("rep-id".to_string(), make_active_state_with_size("rep-id", 64));
+        mgr.handle_chunk(&build_chunk_frame("rep-id", 2, b"abcd"))
+            .expect("parked");
+        assert!(
+            mgr.handle_chunk(&build_chunk_frame("rep-id", 2, b"abcd"))
+                .is_err(),
+            "a repeated parked seq must not silently replace the first"
+        );
+    }
+
+    // ─── long colliding names (ENAMETOOLONG) ─────────────────────────────────
+
+    #[test]
+    fn dedupe_keeps_a_long_name_within_the_filename_limit() {
+        let long = format!("{}.pdf", "a".repeat(251));
+        let deduped = dedupe_filename(&long, 1);
+        assert!(deduped.len() <= 255, "len {}", deduped.len());
+        assert!(deduped.ends_with(" (1).pdf"), "{deduped}");
+
+        let wide = format!("{}.txt", "\u{00E4}".repeat(125));
+        let deduped = dedupe_filename(&wide, 12);
+        assert!(deduped.len() <= 255);
+        assert!(deduped.ends_with(" (12).txt"), "{deduped}");
+
+        // An extension too long to keep is folded into the stem.
+        let all_ext = format!("a.{}", "x".repeat(253));
+        assert!(dedupe_filename(&all_ext, 3).len() <= 255);
+        assert!(dedupe_filename(&all_ext, 3).ends_with(" (3)"));
+    }
+
+    #[test]
+    fn accepting_a_long_colliding_name_creates_a_shortened_copy() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        let long = format!("{}.pdf", "b".repeat(251));
+        std::fs::write(dir.path().join(&long), b"old").expect("pre-create");
+        mgr.admit_offer("long-id", &long, 4).expect("admitted");
+        let ev = mgr.accept("long-id");
+        assert!(matches!(ev, FileEvent::FileAccept { .. }), "{ev:?}");
+    }
+
+    // ─── teardown ─────────────────────────────────────────────────────────────
+
+    // disconnect_streaming drops the manager mid-transfer; the half-written
+    // file stayed in ~/Downloads/Auffi under its final name.
+    #[test]
+    fn dropping_the_manager_removes_partial_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut mgr = mgr_in(&dir);
+        mgr.admit_offer("td-id", "half.bin", 64).expect("admitted");
+        mgr.accept("td-id");
+        mgr.handle_chunk(&build_chunk_frame("td-id", 0, b"partial"))
+            .expect("chunk");
+        mgr.admit_offer("done-id", "done.bin", 4).expect("admitted");
+        mgr.accept("done-id");
+        mgr.handle_chunk(&build_chunk_frame("done-id", 0, b"abcd"))
+            .expect("chunk");
+        mgr.complete("done-id").expect("known").expect("complete");
+
+        drop(mgr);
+        assert!(!dir.path().join("half.bin").exists());
+        assert!(
+            dir.path().join("done.bin").exists(),
+            "a completed file is the user's, not a partial"
         );
     }
 
