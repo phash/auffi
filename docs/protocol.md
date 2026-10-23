@@ -28,9 +28,24 @@ On "No":
 ```json
 { "type": "confirm", "accepted": false }
 ```
+- `accepted: true` only takes effect while a viewer is attached **and** its
+  socket is still open; an accept that races the viewer's Abbrechen leaves the
+  session unconfirmed (the pending close delivers the synthesized `bye`).
+- `accepted: false` on an unconfirmed session sends the viewer `peer-rejected`
+  `"declined"`, closes **both** sockets and drops the code — a declined code is
+  gone, the sharer starts over with `register` on a new socket.
+- `accepted: false` against an already **confirmed** session is ignored (a
+  stray decline must not tear down a running stream). A viewer swapped in after
+  a drop is unconfirmed again, so a decline aimed at it works normally.
 
 ### `relay` (any peer → any peer)
-Used for WebRTC signaling messages relayed by the backend without inspection.
+Used for WebRTC signaling messages relayed by the backend. The payload body is
+forwarded opaquely, but **not** without inspection: the backend checks that
+`payload` is an object whose `kind` is in its `RELAY_KINDS` allow-list
+(`sdp`, `ice`, `hello`, `bye`) and answers anything else with `bad-message`
+`"invalid relay payload"` (socket stays open). A relay sent **before** the
+session is confirmed (ad-hoc: sharer's `confirm`; unattended: `pw-check-result`
+`ok`) is dropped silently — no error, no forward.
 The `payload` field is a discriminated union on `kind`:
 
 **SDP offer / answer:**
@@ -142,6 +157,30 @@ Forwarded `relay` message from the other peer.
 ```json
 { "type": "error", "code": "invalid-code" | "rate-limit" | "bad-message", "message": "human readable" }
 ```
+`message` is free text, with two exceptions the viewer keys on
+(`viewer/src/connect-messages.ts`): `invalid-code` carries either
+`"session full"` (another viewer holds the session, ad-hoc or unattended) or
+`"no such session"`. Keep those strings stable.
+
+Some errors are followed by a server-side close of the socket (default close
+code, no reason the clients rely on); the rest leave it open:
+
+| `code` / `message`                                             | Socket closed? |
+|----------------------------------------------------------------|----------------|
+| `rate-limit` `message rate exceeded` (per-socket frame cap, below) | yes |
+| `rate-limit` `too many registrations` (5 `register`/min/IP)    | yes            |
+| `rate-limit` `too many attempts` (`join` budget per IP, 5/min) | yes            |
+| `bad-message` `invalid code format` (on `join`)                | yes            |
+| `invalid-code` `session full` / `no such session`              | yes            |
+| `bad-message` `invalid JSON` / `expected a JSON object` / `invalid relay payload` / `unexpected message` | no |
+| `bad-message` on `pw-attempt` (`no pw-check expected`, `password missing`, `password too long`) | no |
+| `bad-message` `wait for unattended-hello before sending` (bearer path) | no (but the sharer treats any `error` as fatal) |
+
+**Per-socket frame cap.** Every `/signal` socket — ad-hoc and bearer — may send
+at most **50 frames per 10 s** (`DEFAULT_PER_PEER_LIMIT`); the next frame gets
+`rate-limit` `message rate exceeded` and the socket is closed. Per-IP limits
+(`join`, `register`, bearer auth, socket count) key IPv6 clients by their /64
+(`backend/src/rate-limit.ts::rateLimitKey`).
 
 ## State Machine (Backend)
 
@@ -187,7 +226,9 @@ verbinden", which fetches a fresh code; a live P2P stream keeps running).
 | 1011 | `internal error`   | A server-side fault while handling this socket's frame (e.g. a failing DB); also used on the bearer path. Ordinary disconnect for every client. |
 | 4400 | `no register or join` | The socket sent neither `register` nor `join` within **15 s** of opening (`SIGNAL_ROLE_DEADLINE_MS`). Clients send their first frame right after open, so only idle sockets hit this. |
 | 4410 | `code expired`     | → sharer: its session was dropped (TTL / reconnect grace over). Get a new code. |
-| 4429 | `too many connections` | The client address (IPv6: its /64) already holds **20** open ad-hoc sockets (`SIGNAL_MAX_SOCKETS_PER_IP`); closed right after the upgrade. Bearer-authenticated sockets are not counted. | If the viewer vanished **before** confirmation,
+| 4429 | `too many connections` | The client address (IPv6: its /64) already holds **20** open ad-hoc sockets (`SIGNAL_MAX_SOCKETS_PER_IP`); closed right after the upgrade. Bearer-authenticated sockets are not counted. |
+
+If the viewer vanished **before** confirmation,
 the backend synthesizes a `bye` to the sharer so its confirm dialog does not
 point at a gone peer; a confirmed viewer's drop deliberately sends nothing, so
 a Wi-Fi blip keeps the sharer's ICE grace / reconnect window alive. The
@@ -271,11 +312,18 @@ immediately, the backend prompts the viewer for the device password.
 ```
 The backend rejects passwords longer than 256 characters with a
 `bad-message` error before forwarding (Sec H-4 — matches the account-password
-upper bound; anything longer is pure relay abuse).
+upper bound; anything longer is pure relay abuse). An empty password, and a
+second `pw-attempt` while the previous one is still in flight (session state
+`pw-in-flight`), get `bad-message` too (`password missing` /
+`no pw-check expected`); the socket stays open and the attempt is not
+forwarded. After a `wrong-password` the session is back in `awaiting-pw` and
+the next attempt is accepted.
 
 ### `pw-check` (→ sharer)
 Backend forwards the attempt to the sharer, which argon2-verifies it **locally**
-(the backend never sees the device password hash). `autoAccept` mirrors
+(the backend never sees the device password hash). The backend **does** see the
+plaintext attempt in transit — TLS ends at the reverse proxy and the frame is
+re-serialised to the sharer — but neither stores nor logs it. `autoAccept` mirrors
 `devices.auto_accept` and is sent on every check so a dashboard toggle takes
 effect without a sharer reconnect.
 `attemptId` is a backend-minted correlation id, unique per attempt on this
@@ -290,9 +338,16 @@ Result of the local verify (and the optional manual-confirm dialog when
 ```json
 { "type": "pw-check-result", "attemptId": 7, "result": "ok" | "fail" | "rejected" }
 ```
-- `ok` → backend pairs the peers and sends `peer-confirmed` to the viewer; SDP/ICE relay proceeds as in the ad-hoc flow.
-- `fail` → argon2 rejected; backend increments the per-device lockout counter and sends `wrong-password`.
-- `rejected` → verify succeeded but the user clicked *ablehnen*; backend sends `rejected-by-user`.
+- `ok` → backend resets the lockout counter, marks the session confirmed, sends `peer-confirmed` to the viewer **and mirrors `peer-joined` to the sharer** (with the viewer's `ipPrefix` + `country` captured at join time), so the sharer's WebRTC path matches the ad-hoc one; SDP/ICE relay proceeds as in the ad-hoc flow.
+- `fail` → argon2 rejected; backend increments the per-device lockout counter and sends `wrong-password` (or `locked` + close once the 5th fail trips the lockout).
+- `rejected` → verify succeeded but the user clicked *ablehnen*; backend sends `rejected-by-user`, closes the viewer socket and drops the session.
+- Any **other** `result` value is counted as `fail` (it increments the lockout counter) — there is no error frame for it.
+
+**Sharer-side gate.** Sharers ≥ 0.7.2 accept a forwarded `peer-joined` only
+within **30 s** after they themselves sent `pw-check-result` `ok`
+(`unattended_cmd.rs::PEER_JOINED_WINDOW`, one per `ok`); any other
+`peer-joined` on the bearer socket is logged and dropped, so a backend fault
+cannot start a stream the device never authorised.
 
 > A late `pw-check-result` (sharer took a slow manual-confirm path after the
 > viewer already gave up) is **silently dropped**, not error-reported — a
@@ -361,7 +416,9 @@ degradation to a failed REST fetch).
 > REST endpoint with the device-id as `code` — the gate accepts any code
 > whose device currently holds a live bearer-authenticated WSS
 > (`UnattendedRegistry`), which is already true during the viewer's
-> pre-join fetch.
+> pre-join fetch. Neither this in-band request nor the device-id path of the
+> REST endpoint is subject to the per-code credential budget (see
+> § `POST /turn-credentials`).
 
 ### `connection-started` (sharer → server)
 
@@ -558,11 +615,49 @@ signal completion.
 
 ## REST Endpoints Shared Across Components
 
-The WSS frames above are the bulk of the cross-component surface, but three
+The WSS frames above are the bulk of the cross-component surface, but these
 REST routes are called from more than one codebase and are therefore part of
 this contract too. Account / device management (`/api/auth/*`, `/api/me`,
-`/api/devices/*`, `/api/admin/*`) is dashboard-only and documented in the
-handler modules.
+`/api/admin/*`) is dashboard-only and documented in the handler modules
+(`backend/src/<area>/handlers.ts`, mirrored by `dashboard/src/api.ts`).
+
+`/api/devices/*` is mostly dashboard-only too, with two sharer callers
+(`sharer/src-tauri/src/account.rs`): `POST /api/devices/redeem`
+(`{code, alias}` → `200 {deviceId, token}`, no auth, 5/min/IP; errors
+`400 bad-code|bad-alias`, `410 code-invalid|code-used`, `503 id-collision`;
+new devices start with `auto_accept = 1`) and the self-revoke
+`DELETE /api/devices/:id` with `Authorization: Bearer <token>` +
+`X-Auffi-Device-Id` (`204`; `403 forbidden` if the token's device is not
+`:id`, `401 bad-token` if it does not verify; the live WSS is evicted with
+4401). Without `X-Auffi-Device-Id` the bearer is "malformed" and the route
+falls back to the session-cookie gate.
+
+### `POST /turn-credentials` (viewer, ad-hoc sharer → backend)
+
+Handler: `backend/src/turn-credentials.ts`. Callers:
+`viewer/src/turn-config.ts`, `sharer/src-tauri/src/turn_config.rs`. Only
+registered when `TURN_SHARED_SECRET` is set (otherwise 404).
+
+Request: `Origin` header in the backend's allow-list (the sharer sets it
+explicitly) + JSON body `{ "code": "284-915-073" }`.
+
+```json
+{ "urls": ["turn:turn.auffi.app:3478", "turns:turn.auffi.app:5349"], "username": "1715000000:uuid", "credential": "base64==", "ttl": 3600 }
+```
+
+| Status | Body | When |
+|--------|------|------|
+| 200 | credentials above | live ad-hoc session with budget left, or a live unattended session / connected unattended device for that id |
+| 403 | `{"error":"origin not allowed"}` | `Origin` missing or not allow-listed |
+| 403 | `{"error":"no active session"}` | code unknown / malformed and no unattended match |
+| 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`) |
+| 429 | `@fastify/rate-limit` default body | more than 10 requests/min/IP |
+
+Errors use `{ "error": "<text>" }` without a `message` field (unlike `/api/*`).
+Both clients treat **any** non-2xx as "no ICE servers" and build their peer
+without STUN/TURN — host / mDNS candidates only, no third-party STUN fallback
+(DSGVO). A 429 therefore silently costs NAT traversal, which is why the budget
+must stay generous enough for one fetch per side per (re)join plus retries.
 
 ### `POST /api/feedback` (dashboard, viewer, sharer → backend)
 
