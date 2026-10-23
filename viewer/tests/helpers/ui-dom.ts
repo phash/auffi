@@ -106,10 +106,6 @@ export function buildUiTestDOM(): void {
   pwToast.appendChild(pwCancel);
   app.appendChild(pwToast);
 
-  const freeTierToast = document.createElement("div");
-  freeTierToast.id = "free-tier-warning-toast";
-  app.appendChild(freeTierToast);
-
   const cardToggle = document.createElement("button");
   cardToggle.id = "card-toggle";
   app.appendChild(cardToggle);

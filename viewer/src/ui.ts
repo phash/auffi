@@ -3,7 +3,6 @@ import { ViewerPeer } from "./webrtc-client.js";
 import type { ConnectionType } from "./webrtc-client.js";
 import type { RelayBye, RelayIce, RelaySdp } from "./protocol.js";
 import { fetchIceServers } from "./turn-config.js";
-import { createConnectionTypeHandler } from "./connection-type-handler.js";
 import { InputCapture } from "./input-capture.js";
 import { FileTransferManager } from "./file-transfer.js";
 import type { FileOffer } from "./file-transfer.js";
@@ -187,16 +186,6 @@ function wsUrlToHttpUrl(wsUrl: string): string {
     .replace(/^wss:\/\//, "https://")
     .replace(/^ws:\/\//, "http://")
     .replace(/\/signal$/, "");
-}
-
-function showFreeTierWarning(): void {
-  const el = document.getElementById("free-tier-warning-toast");
-  if (el) el.classList.add("active");
-}
-
-function hideFreeTierWarning(): void {
-  const el = document.getElementById("free-tier-warning-toast");
-  if (el) el.classList.remove("active");
 }
 
 export function bindUI(backendWsUrl: string): void {
@@ -474,16 +463,6 @@ export function bindUI(backendWsUrl: string): void {
   });
   const clearIceGraceTimer = (): void => iceState.clear();
 
-  // Detached, unit-testable handler for relay ⇄ p2p switches: owns the
-  // free-tier timer so a relay→p2p switch stops the cutoff (and clears the
-  // warning), and a relay re-entry can never leak a replaced timer whose
-  // onCutoff would kill a later session.
-  const connectionTypeHandler = createConnectionTypeHandler({
-    onWarning: () => showFreeTierWarning(),
-    onCutoff: () => teardown(t("teardown.relayLimit"), "info"),
-    onLeftRelay: () => hideFreeTierWarning(),
-  });
-
   // The sharer sends the next file-offer without waiting for our answer to
   // the previous one, so offers are shown one at a time from a FIFO. A bare
   // "current offer" slot would drop the earlier resolver (that offer is
@@ -609,8 +588,6 @@ export function bindUI(backendWsUrl: string): void {
     clearIceGraceTimer();
     clearConnectTimeout();
     hideConnectingControls();
-    connectionTypeHandler.stop();
-    hideFreeTierWarning();
     capture?.disable();
     capture = null;
     fileManager?.cancelAll();
@@ -867,7 +844,6 @@ export function bindUI(backendWsUrl: string): void {
       peer.onConnectionType((type) => {
         setConnectionType(type);
         sessionTracker.setConnectionType(type);
-        connectionTypeHandler.handle(type);
       });
 
       signaling.onRelay((payload) => {

@@ -52,7 +52,7 @@ function statsReport(entries: StatsEntry[]): RTCStatsReport {
 
 // Pure twin of the sharer's connection-type resolution: the active pair is
 // the nominated + succeeded candidate-pair, and either side being a TURN
-// relay makes the whole connection "relay" (the free-tier timer keys off it).
+// relay makes the whole connection "relay" (the "Über Relay" badge keys off it).
 describe("resolveConnectionType", () => {
   const pair = (local: string, remote: string, extra: Partial<StatsEntry> = {}): StatsEntry => ({
     type: "candidate-pair",

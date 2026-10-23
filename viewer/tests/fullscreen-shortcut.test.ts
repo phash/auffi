@@ -82,10 +82,6 @@ function buildDOM(): void {
   fileOfferToast.appendChild(rejectBtn);
   app.appendChild(fileOfferToast);
 
-  const freeTierToast = document.createElement("div");
-  freeTierToast.id = "free-tier-warning-toast";
-  app.appendChild(freeTierToast);
-
   document.body.replaceChildren(app);
 }
 
