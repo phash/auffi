@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 // the user never enters unattended mode.
 import "./unattended.js";
 import { refreshFeedbackFab } from "./feedback-fab.js";
-import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { load } from "@tauri-apps/plugin-store";
 import type { TrustedPeer } from "./trusted-peers.js";
 import { matchesTrustedPeer, addPeerToList, removePeerFromList } from "./trusted-peers.js";

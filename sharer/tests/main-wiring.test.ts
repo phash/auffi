@@ -23,7 +23,7 @@ vi.mock("@tauri-apps/api/event", () => ({
     return Promise.resolve(() => {});
   },
 }));
-vi.mock("@tauri-apps/plugin-shell", () => ({ open: () => Promise.resolve() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: () => Promise.resolve() }));
 vi.mock("@tauri-apps/plugin-store", () => ({
   load: () =>
     Promise.resolve({

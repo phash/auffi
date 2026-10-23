@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the Auffi sharer webview — minimum set actually invoked from JS: core IPC/events, the settings store, and https:// links to the project's About-page targets via the shell plugin. The file dialog and the pause hotkey are driven purely from Rust (DialogExt / GlobalShortcutExt), which does not go through this ACL, so no dialog/global-shortcut grants are needed here.",
+  "description": "Default capabilities for the Auffi sharer webview — minimum set actually invoked from JS: core IPC/events, the settings store, and opening exactly the https:// links the webview uses (About page, update banner) via the opener plugin's enforced URL scope. The file dialog, the pause hotkey and opening the debug log are driven purely from Rust (DialogExt / GlobalShortcutExt / OpenerExt), which does not go through this ACL, so no further grants are needed here.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -11,7 +11,7 @@
     "core:app:default",
     "store:default",
     {
-      "identifier": "shell:allow-open",
+      "identifier": "opener:allow-open-url",
       "allow": [
         { "url": "https://buymeacoffee.com/phash" },
         { "url": "https://phash.de" },

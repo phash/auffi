@@ -1825,7 +1825,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         // Unattended-mode autostart: registered but defaults to off — the
         // settings UI flips it via the `enable_autostart` /
@@ -1990,6 +1989,51 @@ pub fn run() {
 mod tests {
     use super::reportable_relay_bytes;
     use std::sync::{Arc, Mutex};
+
+    // The shell plugin's `open` ignores the capability's `allow` URLs, so the
+    // old allow-list was decorative: the webview could open any URL. The
+    // opener plugin enforces its scope; pin the exact set the webview uses
+    // (About links + the update banner's download page) and that no shell
+    // permission comes back.
+    #[test]
+    fn webview_may_open_exactly_the_links_it_uses_and_nothing_via_shell() {
+        let caps: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).expect("json");
+        let perms = caps["permissions"].as_array().expect("permissions");
+        let ids: Vec<&str> = perms
+            .iter()
+            .map(|p| p.as_str().or_else(|| p["identifier"].as_str()).expect("id"))
+            .collect();
+        assert!(
+            ids.iter().all(|id| !id.starts_with("shell:")),
+            "no shell permission: {ids:?}"
+        );
+        assert!(
+            !ids.contains(&"opener:default"),
+            "opener:default allows every http(s) URL"
+        );
+        let scoped: Vec<&serde_json::Value> = perms
+            .iter()
+            .filter(|p| p["identifier"] == "opener:allow-open-url")
+            .collect();
+        assert_eq!(scoped.len(), 1);
+        let mut urls: Vec<&str> = scoped[0]["allow"]
+            .as_array()
+            .expect("allow list")
+            .iter()
+            .map(|e| e["url"].as_str().expect("url"))
+            .collect();
+        urls.sort_unstable();
+        assert_eq!(
+            urls,
+            [
+                "https://auffi.app/**",
+                "https://buymeacoffee.com/phash",
+                "https://mr-development.de",
+                "https://phash.de",
+            ]
+        );
+    }
 
     // gh #109 follow-up: bytes_relayed is a TURN-traffic figure. Filling it
     // with the track total on a direct path made every p2p session read as

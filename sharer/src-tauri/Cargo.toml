@@ -47,9 +47,8 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["rustls",
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
 uuid = { version = "=1.28.0", features = ["v4"] }
 tauri-plugin-store = "=2.5.0"
-tauri-plugin-shell = "=2.3.5"
-# Open the diagnostic log file in the OS default handler (diagnostics). The
-# blessed replacement for the now-deprecated `tauri_plugin_shell::Shell::open`.
+# Opens the diagnostic log (Rust side) and the About/update links (webview).
+# Unlike the shell plugin's `open`, it enforces the capability's URL scope.
 tauri-plugin-opener = "=2.7.2"
 # UPnP IGD client for discovering the home router's external IP without
 # round-tripping our STUN server. See `nat_traversal.rs` and issue #89.

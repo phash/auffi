@@ -31,7 +31,7 @@ export function hideBanner(banner: HTMLElement): void {
 /**
  * Verdrahtet Dismiss-Button + Download-Button.
  * Der Download-Callback wird mit der gesetzten URL aufgerufen; in
- * Production ist das `shell.open(...)` aus `@tauri-apps/plugin-shell`.
+ * Production ist `openUrl(...)` aus `@tauri-apps/plugin-opener`.
  * Der Test darf einen einfachen Spy injizieren.
  */
 export function attachBannerHandlers(opts: {
