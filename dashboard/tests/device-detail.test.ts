@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { _setApiClientForTests } from "../src/api.js";
+import { _setApiClientForTests, type Device } from "../src/api.js";
 import { renderDeviceDetail } from "../src/views/device-detail.js";
 
 function makeRoot(): HTMLElement {
@@ -20,7 +20,7 @@ function flush(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
 }
 
-const SEED = {
+const SEED: Device = {
   id: "111-222-333",
   alias: "Manuels Laptop",
   autoAccept: true,
@@ -247,5 +247,151 @@ describe("renderDeviceDetail", () => {
     renderDeviceDetail(root, ctx("any"));
     await flush();
     expect(window.location.pathname).toMatch(/\/dashboard\/login$/);
+  });
+});
+
+// ── error paths + status variants ───────────────────────────────────
+
+/** GET /api/devices answers with `items`; PATCH/DELETE answer with `mutate()`. */
+function deviceBackend(
+  items: typeof SEED[],
+  mutate: (method: string, body: unknown) => Response,
+): Array<{ method: string; body: unknown }> {
+  const calls: Array<{ method: string; body: unknown }> = [];
+  _setApiClientForTests({
+    base: "",
+    fetch: vi.fn(async (_input: unknown, init?: RequestInit) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET") return jsonResponse({ items });
+      const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, body });
+      return mutate(method, body);
+    }) as unknown as typeof fetch,
+  });
+  return calls;
+}
+
+function aliasStatus(root: HTMLElement): HTMLElement {
+  return root.querySelector("form [role=status]") as HTMLElement;
+}
+
+describe("renderDeviceDetail — error paths", () => {
+  afterEach(() => _setApiClientForTests(null));
+
+  it("shows an error without a network call when the route has no id", () => {
+    const fetchSpy = vi.fn();
+    _setApiClientForTests({ base: "", fetch: fetchSpy as unknown as typeof fetch });
+    const root = makeRoot();
+    renderDeviceDetail(root, { ...ctx(""), params: {} });
+    expect((root.querySelector(".error") as HTMLElement).textContent).toBe("Geräte-ID fehlt.");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a non-401 list failure", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ error: "internal", message: "DB down" }, 500),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    expect((root.querySelector(".error") as HTMLElement).textContent).toBe(
+      "Gerät konnte nicht geladen werden: DB down",
+    );
+  });
+
+  it("does not PATCH an unchanged alias", async () => {
+    const calls = deviceBackend([SEED], () => jsonResponse({ ok: true }));
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    (root.querySelector("#dev-alias") as HTMLInputElement).value = `  ${SEED.alias} `;
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush();
+    expect(calls).toHaveLength(0);
+    expect(aliasStatus(root).textContent).toBe("Keine Änderung.");
+  });
+
+  it("keeps the old header and shows the error when the alias PATCH fails", async () => {
+    deviceBackend([SEED], () => jsonResponse({ error: "bad-alias", message: "alias rejected" }, 400));
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    (root.querySelector("#dev-alias") as HTMLInputElement).value = "Neuer Name";
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush();
+    expect(root.querySelector("h1")!.textContent).toBe(SEED.alias);
+    expect(aliasStatus(root).textContent).toBe("Fehler: alias rejected");
+    const submit = root.querySelector("form button[type=submit]") as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    expect(submit.textContent).toBe("Name speichern");
+  });
+
+  it("re-enables the toggle and shows the error copy after a failed auto-accept PATCH", async () => {
+    deviceBackend([SEED], () => jsonResponse({ error: "internal", message: "DB down" }, 500));
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    const toggle = root.querySelector("#dev-auto-accept") as HTMLInputElement;
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event("change"));
+    expect(toggle.disabled).toBe(true);
+    await flush();
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.checked).toBe(true);
+    expect(root.textContent).toContain("Fehler: DB down");
+  });
+
+  it("re-arms the danger button and shows the error when the DELETE fails", async () => {
+    deviceBackend([SEED], () => jsonResponse({ error: "internal", message: "revoke failed" }, 500));
+    window.history.pushState({}, "", `/dashboard/devices/${SEED.id}`);
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    const deleteBtn = Array.from(root.querySelectorAll("button")).find(
+      (b) => b.textContent === "Gerät entkoppeln",
+    ) as HTMLButtonElement;
+    deleteBtn.click();
+    await flush();
+    (document.querySelector("#admin-modal-backdrop .btn.danger") as HTMLButtonElement).click();
+    await flush();
+    expect(window.location.pathname).toBe(`/dashboard/devices/${SEED.id}`);
+    expect(deleteBtn.disabled).toBe(false);
+    expect(deleteBtn.textContent).toBe("Gerät entkoppeln");
+    expect(root.textContent).toContain("Fehler: revoke failed");
+  });
+});
+
+describe("renderDeviceDetail — status variants", () => {
+  afterEach(() => _setApiClientForTests(null));
+
+  it.each([
+    [true, "Auto-Akzeptieren aktiviert."],
+    [false, "Auto-Akzeptieren deaktiviert."],
+  ])("PATCHes auto_accept=%s and confirms it", async (next, expected) => {
+    const calls = deviceBackend([{ ...SEED, autoAccept: !next }], () => jsonResponse({ ok: true }));
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    const toggle = root.querySelector("#dev-auto-accept") as HTMLInputElement;
+    toggle.checked = next;
+    toggle.dispatchEvent(new Event("change"));
+    await flush();
+    expect(calls).toEqual([{ method: "PATCH", body: { auto_accept: next } }]);
+    expect(toggle.checked).toBe(next);
+    expect(root.textContent).toContain(expected);
+  });
+
+  it("shows Offline with a dash for a device that was never seen", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: listOnlyFetch([{ ...SEED, online: false, lastSeenAt: null }]),
+    });
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    expect(root.textContent).toContain("Offline · Zuletzt: —");
   });
 });

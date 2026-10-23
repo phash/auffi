@@ -68,6 +68,33 @@ describe("renderForgot", () => {
     expect(success.textContent).toContain("Mail mit einem Reset-Link unterwegs");
     expect((root.querySelector("#forgot-email") as HTMLInputElement).disabled).toBe(true);
   });
+
+  it("shows the rate-limit copy on 429 and leaves the form usable for a retry", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () =>
+        jsonResponse({ statusCode: 429, error: "Too Many Requests", message: "Rate limit exceeded" }, 429),
+      ) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderForgot(root, {
+      path: "/forgot",
+      segments: ["forgot"],
+      params: {},
+      query: new URLSearchParams(),
+    });
+    (root.querySelector("#forgot-email") as HTMLInputElement).value = "a@b.test";
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush();
+    expect((root.querySelector('[role="alert"]') as HTMLElement).textContent).toBe(
+      "Zu viele Versuche. Bitte später erneut versuchen.",
+    );
+    expect((root.querySelector('[role="status"]') as HTMLElement).textContent).toBe("");
+    expect((root.querySelector("#forgot-email") as HTMLInputElement).disabled).toBe(false);
+    const submit = root.querySelector("button[type=submit]") as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    expect(submit.textContent).toBe("Reset-Link schicken");
+  });
 });
 
 describe("renderReset", () => {

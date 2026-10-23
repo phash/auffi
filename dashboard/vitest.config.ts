@@ -12,10 +12,8 @@ export default defineConfig({
       // as the viewer's ui.ts/main.ts exclusion.
       exclude: ["src/main.ts", "src/components/feedback-fab.ts"],
       thresholds: {
-        // Both at the project's 70% standard (gh #107). Every view except
-        // the two static pages admin-403.ts and not-found.ts has a test
-        // file; the two static pages are what keeps the numbers from
-        // being higher. Do NOT lower these two numbers.
+        // Both at the project's 70% standard (gh #107). Do NOT lower
+        // these two numbers.
         lines: 70,
         branches: 70,
       },
