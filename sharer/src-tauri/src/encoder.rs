@@ -211,6 +211,11 @@ unsafe extern "C" fn collect_packet(
     is_keyframe: c_int,
     user_data: *mut c_void,
 ) {
+    // from_raw_parts on null is UB even for size 0; an empty packet carries
+    // nothing the track could use anyway.
+    if data.is_null() || size == 0 {
+        return;
+    }
     let packets = &mut *(user_data as *mut Vec<EncodedPacket>);
     let bytes = std::slice::from_raw_parts(data, size).to_vec();
     packets.push(EncodedPacket {
@@ -295,6 +300,24 @@ fn bgra_to_i420(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // `slice::from_raw_parts` on a null pointer is UB even for size 0, and
+    // the shim forwards whatever libvpx hands it.
+    #[test]
+    fn collect_packet_ignores_a_null_or_empty_packet() {
+        let mut packets: Vec<EncodedPacket> = Vec::new();
+        let user = &mut packets as *mut Vec<EncodedPacket> as *mut c_void;
+        let byte = 7u8;
+        unsafe {
+            collect_packet(std::ptr::null(), 0, 1, user);
+            collect_packet(std::ptr::null(), 16, 1, user);
+            collect_packet(&byte, 0, 1, user);
+        }
+        assert!(packets.is_empty());
+        unsafe { collect_packet(&byte, 1, 1, user) };
+        assert_eq!(packets.len(), 1);
+        assert_eq!(packets[0].data, vec![7]);
+    }
 
     #[test]
     fn encoder_new_succeeds() {
