@@ -381,6 +381,61 @@ describe("DELETE /api/me", () => {
     expect(after.statusCode).toBe(401);
   });
 
+  it("deletes an account that once replied to feedback — the reply stays, its author goes", async () => {
+    h.db
+      .prepare(
+        "INSERT INTO accounts (id, email, password_hash, created_at) VALUES (2, 'asker@example.com', 'x', ?)",
+      )
+      .run(Date.now());
+    h.db
+      .prepare(
+        `INSERT INTO feedback (id, account_id, source, category, rating, body, created_at,
+                               reply_body, replied_at, replied_by)
+         VALUES (70, 2, 'dashboard', 'bug', 3, 'kaputt', ?, 'danke', ?, 1)`,
+      )
+      .run(Date.now(), Date.now());
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(
+      h.db.prepare("SELECT reply_body, replied_by FROM feedback WHERE id = 70").get(),
+    ).toEqual({ reply_body: "danke", replied_by: null });
+  });
+
+  it("leaves the account's sharers connected when the delete itself fails", async () => {
+    h.db
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, created_at)
+         VALUES ('111-222-444', 1, 'Wohnzimmer-PC', 'dummy', ?)`,
+      )
+      .run(Date.now());
+    let closed = false;
+    const peer = {
+      close() {
+        closed = true;
+      },
+    };
+    h.registry.register("111-222-444", peer as unknown as WebSocket);
+    h.db.exec(
+      "CREATE TRIGGER refuse_delete BEFORE DELETE ON accounts BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    );
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(closed).toBe(false);
+    expect(h.registry.has("111-222-444")).toBe(true);
+  });
+
   it("evicts the account's live unattended sharer connections (WSS 4401)", async () => {
     h.db
       .prepare(

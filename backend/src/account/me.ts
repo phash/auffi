@@ -12,10 +12,8 @@ import {
 } from "../auth/account_lockout.js";
 import { countActiveAdmins } from "../admin/active_admins.js";
 import { mailErrorInfo } from "../email/log_safe.js";
-import {
-  evictAccountDevices,
-  type UnattendedRegistry,
-} from "../unattended.js";
+import type { UnattendedRegistry } from "../unattended.js";
+import { deleteAccount } from "./delete.js";
 
 const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -33,8 +31,8 @@ export interface MeDeps {
   mailer: AccountMailer;
   /**
    * Live-WSS registry. When provided, DELETE /api/me force-closes the
-   * account's unattended sharers before the row is cascade-deleted so
-   * revocation is immediate (see `evictAccountDevices`).
+   * account's unattended sharers once the row is deleted so revocation
+   * is immediate (see `deleteAccount`).
    */
   registry?: UnattendedRegistry;
 }
@@ -266,15 +264,7 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         );
       }
 
-      // Force-close any live unattended sharers BEFORE the cascade removes
-      // their device rows — otherwise a deleted account's sharers keep
-      // relaying on their already-authenticated WSS until the next reconnect.
-      if (registry) evictAccountDevices(db, registry, account.id);
-
-      // Hard-delete. Foreign-key cascades on sessions, email_verifications,
-      // password_resets, pending_email_changes, devices and connection_log
-      // take everything related with it.
-      db.prepare("DELETE FROM accounts WHERE id = ?").run(account.id);
+      deleteAccount(db, registry, account.id);
 
       clearSessionCookie(reply);
       return reply.status(204).send();

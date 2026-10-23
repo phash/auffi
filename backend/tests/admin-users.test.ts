@@ -472,6 +472,54 @@ describe("DELETE /api/admin/users/:id", () => {
     expect(audit?.after_json).toContain('"reason":"manual abuse-report cleanup"');
   });
 
+  it("deletes an admin who once replied to feedback — the reply stays, its author goes", async () => {
+    const targetId = 2;
+    h.db.prepare("UPDATE accounts SET admin = 1 WHERE id = ?").run(targetId);
+    h.db
+      .prepare(
+        `INSERT INTO feedback (id, account_id, source, category, rating, body, created_at,
+                               reply_body, replied_at, replied_by)
+         VALUES (50, 3, 'dashboard', 'bug', 3, 'kaputt', ?, 'danke', ?, ?)`,
+      )
+      .run(Date.now(), Date.now(), targetId);
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/admin/users/${targetId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { reason: "offboarding" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(
+      h.db.prepare("SELECT reply_body, replied_by FROM feedback WHERE id = 50").get(),
+    ).toEqual({ reply_body: "danke", replied_by: null });
+  });
+
+  it("leaves the target's sharers connected when the delete itself fails", async () => {
+    const targetId = 2;
+    h.db
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, created_at)
+         VALUES ('444-555-777', ?, 'X', 'dummy', ?)`,
+      )
+      .run(targetId, Date.now());
+    const peer = { close: vi.fn() };
+    h.registry.register("444-555-777", peer as unknown as WebSocket);
+    h.db.exec(
+      "CREATE TRIGGER refuse_delete BEFORE DELETE ON accounts BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    );
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: `/api/admin/users/${targetId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { reason: "cleanup" },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(peer.close).not.toHaveBeenCalled();
+    expect(h.registry.has("444-555-777")).toBe(true);
+  });
+
   it("evicts the target's live unattended sharer connections (WSS 4401)", async () => {
     const targetId = 2;
     h.db

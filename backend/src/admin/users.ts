@@ -8,6 +8,7 @@ import {
   evictAccountDevices,
   type UnattendedRegistry,
 } from "../unattended.js";
+import { deleteAccount } from "../account/delete.js";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -355,12 +356,10 @@ export function registerAdminUsersRoutes(
           )
           .get(id)?.c ?? 0;
 
-      // Force-close the target's live unattended sharers before the cascade
-      // removes their device rows. An admin deleting an abusive account must
-      // cut its sharers off immediately, not at their next reconnect.
-      if (registry) evictAccountDevices(db, registry, id);
-
-      const tx = db.transaction(() => {
+      // An admin deleting an abusive account cuts its sharers off
+      // immediately (deleteAccount evicts after the commit), not at their
+      // next reconnect.
+      deleteAccount(db, registry, id, () => {
         // Snapshot what's about to vanish — audit_log row survives the cascade
         // because target_id is just a string column with no FK back.
         writeAudit(
@@ -372,9 +371,7 @@ export function registerAdminUsersRoutes(
           { id: target.id, email: target.email, admin: target.admin, device_count: deviceCount },
           { reason },
         );
-        db.prepare("DELETE FROM accounts WHERE id = ?").run(id);
       });
-      tx();
 
       return reply.status(204).send();
     },
