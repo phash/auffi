@@ -51,6 +51,14 @@ pub enum Button {
     Middle,
 }
 
+/// Upper bound on simultaneously held keys — far above any keyboard's
+/// rollover, low enough that the held map stays trivially small.
+const MAX_HELD_KEYS: usize = 32;
+
+/// Longest DOM `KeyboardEvent.code` we accept ("IntlBackslash",
+/// "AudioVolumeMute" and friends are well under it).
+const MAX_CODE_LEN: usize = 32;
+
 /// Something the viewer pressed that has not been released yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Held {
@@ -85,6 +93,29 @@ impl HeldState {
         } else {
             self.buttons.remove(&button);
         }
+    }
+
+    /// Gate a press before it reaches the OS. The layout `key` makes any
+    /// `code` resolvable, so without this a viewer inventing a fresh code per
+    /// press grows `keys` without bound. A code already held (auto-repeat)
+    /// always passes.
+    fn check_key_press(&self, code: &str) -> Result<(), String> {
+        let plausible = (1..=MAX_CODE_LEN).contains(&code.len())
+            && code.bytes().all(|b| b.is_ascii_alphanumeric());
+        if !plausible {
+            return Err("invalid key code".to_string());
+        }
+        if !self.keys.contains_key(code) && self.keys.len() >= MAX_HELD_KEYS {
+            return Err(format!("more than {MAX_HELD_KEYS} keys held"));
+        }
+        Ok(())
+    }
+
+    /// The Key still held under `code` when a re-press resolves to a
+    /// different one (Shift changed during auto-repeat): it has to be
+    /// released first, or overwriting it leaves that keysym stuck.
+    fn replaced_key(&self, code: &str, key: Key) -> Option<Key> {
+        self.keys.get(code).copied().filter(|held| *held != key)
     }
 
     fn key_pressed(&mut self, code: String, key: Key) {
@@ -265,6 +296,13 @@ impl InputController {
                 if pressed {
                     let resolved = resolve_key(&code, key.as_deref())
                         .ok_or_else(|| format!("unknown key: {code}"))?;
+                    self.held.check_key_press(&code)?;
+                    if let Some(previous) = self.held.replaced_key(&code, resolved) {
+                        self.enigo
+                            .key(previous, Direction::Release)
+                            .map_err(|e| e.to_string())?;
+                        self.held.key_released(&code);
+                    }
                     self.enigo
                         .key(resolved, Direction::Press)
                         .map_err(|e| e.to_string())?;
@@ -668,6 +706,48 @@ mod tests {
         held.key_pressed("KeyA".to_string(), Key::Unicode('A'));
         assert_eq!(held.key_released("KeyA"), Some(Key::Unicode('A')));
         assert_eq!(held.key_released("KeyA"), None, "released once, forgotten");
+    }
+
+    // Auto-repeat after Shift changed: press "KeyA"/"a", then press
+    // "KeyA"/"A" again. Overwriting the stored Key made the release send 'A'
+    // and left the 'a' keysym stuck down.
+    #[test]
+    fn re_press_with_a_different_key_hands_back_the_one_to_release() {
+        let mut held = HeldState::default();
+        held.key_pressed("KeyA".to_string(), Key::Unicode('a'));
+        assert_eq!(
+            held.replaced_key("KeyA", Key::Unicode('A')),
+            Some(Key::Unicode('a'))
+        );
+        assert_eq!(held.replaced_key("KeyA", Key::Unicode('a')), None);
+        assert_eq!(held.replaced_key("KeyB", Key::Unicode('b')), None);
+    }
+
+    // `key` makes any `code` resolvable, so every press with a fresh made-up
+    // code grew the held map without bound.
+    #[test]
+    fn implausible_codes_are_refused() {
+        let held = HeldState::default();
+        assert!(held.check_key_press("KeyA").is_ok());
+        assert!(held.check_key_press("IntlBackslash").is_ok());
+        assert!(held.check_key_press("").is_err());
+        assert!(held.check_key_press("Key A").is_err());
+        assert!(held.check_key_press(&"K".repeat(33)).is_err());
+    }
+
+    #[test]
+    fn held_keys_are_capped_but_a_held_code_may_repeat() {
+        let mut held = HeldState::default();
+        for i in 0..MAX_HELD_KEYS {
+            let code = format!("Key{i}");
+            held.check_key_press(&code).expect("under the cap");
+            held.key_pressed(code, Key::Unicode('x'));
+        }
+        assert!(held.check_key_press("KeyOver").is_err());
+        assert!(
+            held.check_key_press("Key0").is_ok(),
+            "auto-repeat of a held key"
+        );
     }
 
     #[test]
