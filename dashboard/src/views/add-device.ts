@@ -8,7 +8,8 @@
 // The user closes the modal manually and refreshes /devices.
 
 import { mintPairingCode } from "../api.js";
-import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 const COUNTDOWN_TICK_MS = 1_000;
 
@@ -39,7 +40,7 @@ export const renderAddDevice: RouteRenderer = (root: HTMLElement, _ctx: RouteCon
     if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
-        navigate("/login");
+        redirectToLogin();
         return;
       }
       status.className = "error";

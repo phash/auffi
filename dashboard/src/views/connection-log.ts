@@ -11,7 +11,8 @@ import {
   type ConnectionLogRow,
 } from "../api.js";
 import { formatAbsolute, formatBytes, formatDuration } from "../format.js";
-import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -84,7 +85,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
     if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
-        navigate("/login");
+        redirectToLogin();
         return;
       }
       status.className = "error";

@@ -12,7 +12,8 @@ import {
   type AdminStats,
 } from "../api.js";
 import { formatBytes, formatUptime } from "../format.js";
-import { navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 export const renderAdminStats: RouteRenderer = (
   root: HTMLElement,
@@ -50,7 +51,7 @@ export const renderAdminStats: RouteRenderer = (
       (!statsRes.ok && statsRes.status === 401) ||
       (!codesRes.ok && codesRes.status === 401)
     ) {
-      navigate("/login");
+      redirectToLogin();
       return;
     }
 

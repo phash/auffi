@@ -13,7 +13,8 @@ import {
   type AdminStats,
 } from "../api.js";
 import { formatBytes } from "../format.js";
-import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 export const renderAdminOverview: RouteRenderer = (
   root: HTMLElement,
@@ -45,7 +46,7 @@ export const renderAdminOverview: RouteRenderer = (
       (!statsRes.ok && statsRes.status === 401) ||
       (!codesRes.ok && codesRes.status === 401)
     ) {
-      navigate("/login");
+      redirectToLogin();
       return;
     }
 

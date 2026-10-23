@@ -23,6 +23,7 @@ import {
 import { formatAbsolute } from "../format.js";
 import { confirmDialog } from "../components/confirm-dialog.js";
 import { type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 type Tab = "open" | "resolved" | "all";
 
@@ -123,6 +124,10 @@ export const renderAdminFeedback: RouteRenderer = (
     const res = await listAdminFeedback({ status: activeTab, limit: PAGE_SIZE });
     if (myGeneration !== generation) return;
     if (!res.ok) {
+      if (res.status === 401) {
+        redirectToLogin();
+        return;
+      }
       status.textContent =
         res.status === 403
           ? "Du musst Admin sein, um Feedback zu sehen."
@@ -162,6 +167,10 @@ export const renderAdminFeedback: RouteRenderer = (
     more.disabled = false;
     more.textContent = "Mehr laden";
     if (!res.ok) {
+      if (res.status === 401) {
+        redirectToLogin();
+        return;
+      }
       // Fehler sichtbar machen und den Button als Retry-Pfad stehen lassen.
       status.textContent = `Fehler: ${res.message}`;
       status.className = "error";

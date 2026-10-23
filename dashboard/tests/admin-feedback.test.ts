@@ -158,6 +158,25 @@ describe("renderAdminFeedback — cursor pagination", () => {
     await flush();
     expect(root.querySelectorAll(".feedback-admin-card").length).toBe(2);
   });
+
+  it("redirects to /login when the session expires between pages", async () => {
+    let call = 0;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async () => {
+        call += 1;
+        if (call === 1) return jsonResponse({ items: [feedbackItem(1)], nextCursor: 55 });
+        return jsonResponse({ error: "unauthorized", message: "no session" }, 401);
+      }) as unknown as typeof fetch,
+    });
+    window.history.pushState({}, "", "/dashboard/admin/feedback");
+    const root = makeRoot();
+    renderAdminFeedback(root, ctx());
+    await flush();
+    findButton(root, "Mehr laden").click();
+    await flush();
+    expect(window.location.pathname).toBe("/dashboard/login");
+  });
 });
 
 describe("renderAdminFeedback — lifecycle + error surfaces", () => {

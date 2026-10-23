@@ -11,8 +11,7 @@
 //      The user is always sent to login so they can confirm they're out.
 
 import { logout } from "./api.js";
-import { navigate } from "./router.js";
-import { refreshSession } from "./session.js";
+import { redirectToLogin } from "./session.js";
 
 /**
  * Mount an "Abmelden" ghost-pill button inside `container` (expected to be
@@ -30,11 +29,7 @@ export function mountLogoutButton(container: HTMLElement): HTMLButtonElement {
   btn.textContent = "Abmelden";
 
   btn.addEventListener("click", () => {
-    void logout().finally(() => {
-      navigate("/login");
-      // Re-probe so nav/admin-gate/FAB drop the ended session.
-      void refreshSession();
-    });
+    void logout().finally(redirectToLogin);
   });
 
   const actions = container.querySelector<HTMLElement>(".topbar-actions");

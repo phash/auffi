@@ -19,6 +19,7 @@ import {
 import { formatRelative } from "../format.js";
 import { confirmDialog } from "../components/confirm-dialog.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -47,7 +48,7 @@ export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteC
     if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
-        navigate("/login");
+        redirectToLogin();
         return;
       }
       status.className = "error";

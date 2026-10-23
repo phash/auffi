@@ -28,6 +28,7 @@ import {
   type RouteContext,
   type RouteRenderer,
 } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 export const renderAdminUserDetail: RouteRenderer = (
   root: HTMLElement,
@@ -62,7 +63,7 @@ export const renderAdminUserDetail: RouteRenderer = (
     if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
-        navigate("/login");
+        redirectToLogin();
         return;
       }
       while (root.firstChild) root.removeChild(root.firstChild);

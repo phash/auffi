@@ -13,8 +13,8 @@
 import { deleteMe, getMe, patchMe, type ApiErr, type Me } from "../api.js";
 import { wrapPasswordField } from "../components/password-field.js";
 import { formatAbsolute } from "../format.js";
-import { navigate, type RouteContext, type RouteRenderer } from "../router.js";
-import { refreshSession } from "../session.js";
+import { type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 /**
  * German copy for the current_password-gated forms. PATCH/DELETE /api/me
@@ -74,7 +74,7 @@ export const renderAccount: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
     if (unmounted) return;
     if (!res.ok) {
       if (res.status === 401) {
-        navigate("/login");
+        redirectToLogin();
         return;
       }
       status.className = "error";
@@ -279,10 +279,8 @@ function renderEditor(root: HTMLElement, me: Me): void {
       new_password: pwNewInput.value,
     });
     if (res.ok) {
-      // Backend revoked our session — bounce to /login and re-probe so
-      // nav/admin-gate/FAB drop the ended session.
-      navigate("/login");
-      void refreshSession();
+      // Backend revoked our session.
+      redirectToLogin();
       return;
     }
     pwSubmit.disabled = false;
@@ -376,9 +374,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
       confirm: dConfirmInput.value,
     });
     if (res.ok) {
-      navigate("/login");
-      // Account weg → Session weg; Nav/FAB entsprechend zurücksetzen.
-      void refreshSession();
+      redirectToLogin();
       return;
     }
     dSubmit.disabled = false;

@@ -23,6 +23,7 @@ import {
   type RouteContext,
   type RouteRenderer,
 } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 type Filter = AdminUserStatus | "alle";
 
@@ -161,7 +162,7 @@ export const renderAdminUsers: RouteRenderer = (
         // Only navigate if this view is still mounted. Cancelling the debounce
         // alone left an already-dispatched request able to yank the user off
         // whatever page they opened next.
-        if (!unmounted) navigate("/login");
+        if (!unmounted) redirectToLogin();
         return;
       }
       status.className = "error";
@@ -305,7 +306,7 @@ export const renderAdminUsers: RouteRenderer = (
   void fetchPage(true);
 
   // Router-invoked cleanup: a debounce that survives the unmount fires against
-  // a view the user already left, and its 401 branch calls navigate("/login")
+  // a view the user already left, and its 401 branch calls redirectToLogin()
   // — a global history mutation they never asked for.
   return () => {
     unmounted = true;

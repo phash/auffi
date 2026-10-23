@@ -13,6 +13,7 @@
 // requireAdmin stays the real gate.
 
 import { getMe } from "./api.js";
+import { navigate } from "./router.js";
 
 export interface SessionState {
   loggedIn: boolean;
@@ -73,6 +74,16 @@ export async function refreshSession(): Promise<SessionState> {
     for (const listener of listeners) listener(next);
   }
   return next;
+}
+
+/**
+ * Send the user to /login after the backend ended their session (401,
+ * logout, password change, account deletion) and re-probe, so nav, the
+ * admin gate, "Abmelden" and the FAB stop showing the stale session.
+ */
+export function redirectToLogin(): void {
+  navigate("/login");
+  void refreshSession();
 }
 
 /** Test seam — reset to the unresolved anonymous boot state and drop listeners. */

@@ -9,7 +9,8 @@
 
 import { listDevices, type Device } from "../api.js";
 import { formatRelative } from "../format.js";
-import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
+import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { redirectToLogin } from "../session.js";
 
 export const renderDevices: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -36,7 +37,7 @@ export const renderDevices: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
       if (res.status === 401) {
         // Cookie expired or never logged in — bounce to /login
         // without a full reload.
-        navigate("/login");
+        redirectToLogin();
         return;
       }
       status.className = "error";
@@ -47,7 +48,7 @@ export const renderDevices: RouteRenderer = (root: HTMLElement, _ctx: RouteConte
   })();
 
   // Router-invoked cleanup. The router's per-render container already
-  // isolates late DOM writes, but the 401 branch's navigate("/login") is a
+  // isolates late DOM writes, but the 401 branch's redirectToLogin() is a
   // global history mutation: landing after the user moved on (and maybe
   // logged in again) would yank them back to the login form.
   return () => {
