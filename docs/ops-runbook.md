@@ -62,7 +62,7 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 #    (Portable baut die CI seit v0.6.4 mit — aber `?tag=vX.Y.Z`-Pin nicht vergessen, s. unten)
 # 5) ./ops/deploy.sh --yes
 # Windows-Builds laufen jetzt im CI (release.yml / build-sharer.yml auf
-# windows-latest, seit PR #117). Die separate Windows-Box / das gh-Issue-
+# windows-2025, seit PR #117; Runner-Image gepinnt, nicht windows-latest). Die separate Windows-Box / das gh-Issue-
 # Template ist nur noch Fallback, falls die CI mal klemmt.
 ```
 
@@ -102,18 +102,38 @@ node .win-test/live-connect.mjs NNN-NNN-NNN [--wait 40]   # Browser-Seite: auffi
 
 ## Admin-Promote auf prod
 
-`sqlite3`-Binary ist NICHT im backend-Image, also via Node + better-sqlite3 (ist schon installiert) auf der DB unter `/var/lib/auffi/auffi.db`. SQLite-WAL ist sicher fuer einen einzelnen Live-Writer, der UPDATE ist atomic; Backend muss NICHT gestoppt werden.
+`sqlite3`-Binary ist NICHT im backend-Image, also via Node + better-sqlite3 (ist schon installiert) auf der DB unter `/var/lib/auffi/auffi.db`. SQLite-WAL ist sicher fuer einen einzelnen Live-Writer; Backend muss NICHT gestoppt werden.
+
+Wie der Admin-Handler (`PATCH /api/admin/users/:id`, `backend/src/admin/users.ts` + `writeAudit` in `admin/middleware.ts`) schreibt das Skript UPDATE **und** eine `audit_log`-Row in **einer** Transaktion — sonst taucht die Promotion im Audit-Trail der User-Detail-Seite nie auf. `admin_id` bleibt `NULL` (kein Admin-Session-Kontext; die Spalte ist seit Migration 0011 nullable), `viewer_ip_prefix` ebenfalls. Skript lokal schreiben und per stdin reinreichen — `node -e` im `ssh '…'` bricht an den SQL-Literalen (Quoting):
+
+```js
+// promote.js — lokal anlegen, EMAIL anpassen
+const Database = require("better-sqlite3");
+const db = new Database("/var/lib/auffi/auffi.db");
+const EMAIL = "EMAIL_HIER";
+const row = () =>
+  db.prepare("SELECT id, email, admin, suspended_at FROM accounts WHERE email = ?").get(EMAIL);
+db.transaction(() => {
+  const before = row();
+  if (!before) throw new Error("no such account");
+  db.prepare("UPDATE accounts SET admin = 1 WHERE id = ?").run(before.id);
+  const after = row();
+  db.prepare(
+    `INSERT INTO audit_log
+       (admin_id, action, target_type, target_id, before_json, after_json, created_at, viewer_ip_prefix)
+     VALUES (NULL, 'user.promote', 'account', ?, ?, ?, ?, NULL)`,
+  ).run(String(before.id), JSON.stringify(before),
+        JSON.stringify({ ...after, reason: "manual promote via ssh" }), Date.now());
+  console.log("before:", JSON.stringify(before));
+  console.log("after :", JSON.stringify(after));
+})();
+```
 
 ```bash
-ssh musikersuche@musikersuche.org 'docker exec auffi-backend node -e "
-const Database = require(\"better-sqlite3\");
-const db = new Database(\"/var/lib/auffi/auffi.db\");
-const before = db.prepare(\"SELECT id, email, admin FROM accounts WHERE email = ?\").get(\"EMAIL_HIER\");
-console.log(\"before:\", JSON.stringify(before));
-db.prepare(\"UPDATE accounts SET admin = 1 WHERE email = ?\").run(\"EMAIL_HIER\");
-const after = db.prepare(\"SELECT id, email, admin FROM accounts WHERE email = ?\").get(\"EMAIL_HIER\");
-console.log(\"after :\", JSON.stringify(after));"'
+ssh musikersuche@musikersuche.org 'docker exec -i -w /app auffi-backend node -' < promote.js
 ```
+
+`-w /app` ist nötig, damit `require("better-sqlite3")` die `node_modules` des Images findet (stdin-Skripte lösen relativ zum CWD auf).
 
 ## Docker Conventions
 
@@ -122,6 +142,7 @@ console.log(\"after :\", JSON.stringify(after));"'
 - Root `docker-compose.prod.yml` for production (backend + coturn + reverse proxy + Let's Encrypt + optional DB).
 - Use **pinned image tags** (e.g. `node:22.23.4-alpine3.24` in `backend/Dockerfile`), never `latest`.
 - **Node 22 reaches end of life on 2027-04-30.** The backend stays on the 22 major for now (patch bumps only); the next move is Node 24 (Active LTS) — bump `backend/Dockerfile` and the CI `node-version` together, well before April 2027.
+- **Dependabot** (`.github/dependabot.yml`) opens weekly PRs for npm (backend, viewer, dashboard, sharer, scripts), cargo (`sharer/src-tauri`), the Dockerfiles (`backend/`, `caddy/`), the compose files (coturn, nginx, alpine, busybox) and the GitHub Actions — minor+patch grouped per ecosystem, majors as single PRs, exact pins kept. The Node major is ignored on purpose (see the EOL note above).
 - Health checks defined for every long-running service.
 - No secrets in `Dockerfile` or images. Configuration via env vars from `.env` (gitignored).
 
@@ -131,6 +152,8 @@ console.log(\"after :\", JSON.stringify(after));"'
 
 - **Standalone** — `docker-compose.prod.yml` brings up our own Caddy on :80/:443.
 - **Cluster** (current prod) — `docker-compose.prod.yml` + `docker-compose.cluster.yml` overlay. Our Caddy is disabled; the cluster's shared Caddy at `/opt/caddyserver/Caddyfile` reverse-proxies `auffi.app` to `auffi-backend:8080` via the external `caddy-proxy` network. The `viewer` runs as a small nginx-alpine sidecar serving the static dist.
+
+**Cluster Caddyfile hand-sync covers the security headers too.** `caddy/Caddyfile` is the reference; after any change replay it into `/opt/caddyserver/Caddyfile` by hand (`deploy.sh` does not ship it in cluster mode). Current set, pinned by `ops/tests/caddyfile-headers.test.sh`: `Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"`, `X-Frame-Options "DENY"`, `X-Content-Type-Options "nosniff"`, `X-XSS-Protection "0"`, `Referrer-Policy "no-referrer"`, `Permissions-Policy "geolocation=(), microphone=(), camera=(), display-capture=(), usb=(), payment=()"`, `Cross-Origin-Opener-Policy "same-origin"`, the CSP (incl. `frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none';` — hashes via `npm run csp:sync`), plus outside the `header {}` block `Cross-Origin-Resource-Policy "same-origin"` for everything except `/og-image.png` (link previews) and `header -Via`. Validate, then `docker restart caddy-proxy` (§ Cluster-Ops Footguns).
 
 TURN certs are shared via the long-running `turn-cert-stage` sidecar (`coturn/cert-stage.sh`) copying from the Caddy cert volume to `turn-certs-staged` every 6 h when changed; coturn hot-reloads them (SIGUSR2, see docs/footguns.md § Cluster-Ops).
 
@@ -232,15 +255,15 @@ the build immediately (no walk-back).
 
 `./ops/deploy.sh` (Refactor 2026-05-20) macht weit mehr als rsync + compose up. Was passiert in welcher Reihenfolge:
 
-1. **flock auf `/tmp/auffi-deploy.lock`** — verhindert parallele Deploys.
+1. **flock auf `/tmp/auffi-deploy.lock`** — verhindert parallele Deploys. **Dirty Tree wird verweigert** (`git status --porcelain`, untracked Files zählen mit): sonst fände der Backend-Build `auffi-backend:<sha>` evtl. schon auf prod (skip) während die Frontends aus dem dirty Tree gebaut würden — geloggt unter einem SHA, der zu keinem passt. Override `--allow-dirty` (Guard: `ops/tests/deploy-dirty-tree.test.sh`).
 2. **Trap-Cleanup** für lokale Image-Tarballs auch bei Abort.
 3. **Pre-flight nginx -t** auf `nginx/auffi-viewer.conf` + `auffi-dashboard.conf` via ephemerem nginx-Container, **caddy validate** auf `caddy/Caddyfile` (standalone only). Kaputte Configs scheitern HIER, nicht erst beim Container-Start.
-4. **Pre-deploy Tests**: viewer + backend (~25s). Sharer-Tests bewusst draußen (Desktop-App, separater Release-Flow, cargo cold-build dauert ~5min). Override via `--skip-tests`.
+4. **Pre-deploy Tests**: viewer + backend + dashboard (`npm test` je Paket). Sharer-Tests bewusst draußen (Desktop-App, separater Release-Flow, cargo cold-build dauert ~5min). Override via `--skip-tests`.
 5. **Diff-Preview**: liest letzten SHA aus `/opt/screenie/.deploy-log`, zeigt `git log <last>..HEAD --oneline` + `git diff --stat <last>..HEAD`. Confirm vor dem Deploy (Skip mit `--yes`).
 6. **Build backend** — übersprungen wenn `auffi-backend:${SHA}` bereits remote existiert (`docker image inspect`-Check). Spart bei Re-Deploys den 60s-Build.
 7. **Build viewer + dashboard** — `npm ci` wird übersprungen wenn `package-lock.json`-Hash gleich dem letzten Build (`.deploy-cache-hash` in `node_modules/`). `npm run build` läuft immer (ist eh schnell).
 8. **Image-Transfer** (skipped wenn schon remote), Tarball-Cleanup via Trap.
-9. **Config-Hash-Diff**: sha256 von `nginx/*.conf`, `coturn/turnserver.conf.tmpl`, `caddy/Caddyfile` lokal vs prod. Geänderte Configs → Service-Restart-Liste.
+9. **Config-Hash-Diff**: lokal vs prod für `nginx/auffi-viewer.conf` (nur Cluster → `auffi-viewer`), `nginx/auffi-dashboard.conf` (→ `auffi-dashboard`), `coturn/turnserver.conf.tmpl` **oder** `coturn/entrypoint.sh` (→ `auffi-coturn`), `coturn/cert-stage.sh` (nur Cluster → `auffi-turn-cert-stage`), `caddy/Caddyfile` (nur standalone → `auffi-caddy`). Geänderte Configs → Service-Restart-Liste.
 10. **rsync** der Configs + Compose + Dist + ops/backup.sh.
 11. **`docker compose up -d --remove-orphans`** — recreatet bei Image-/Compose-Spec-Änderung.
 12. **Service-Restart** für die in Schritt 9 markierten Container — **fixt den Single-File-Bind-Mount-Stale-Bug**, wo nginx-Config-Updates ohne Container-Restart nicht aktiv werden (kennen wir aus dem 2026-05-19-Soft-404-Fix).
