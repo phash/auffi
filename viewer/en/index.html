@@ -114,7 +114,7 @@
             "name": "Can the server see what I'm sharing?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "No. WebRTC encrypts every stream end-to-end with DTLS-SRTP. The signaling server only brokers the initial handshake — pixels, mouse movements and files flow directly between the browsers."
+              "text": "No. WebRTC encrypts every stream end-to-end with DTLS-SRTP. The signaling server only brokers the initial handshake — pixels, mouse movements and files flow encrypted directly between the sharer app and the browser; only if firewalls block that does our TURN relay forward the still-encrypted packets."
             }
           },
           {
@@ -122,7 +122,7 @@
             "name": "Is Auffi GDPR-compliant?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. Servers in Germany (IONOS Frankfurt), no IP addresses stored in plaintext, no trackers, no logging of content. The full audit lives in the repo at docs/security-review-2026-05.md."
+              "text": "Yes. Servers in Germany (IONOS Frankfurt), no IP addresses stored in plaintext, no third-party trackers, no logging of content. The full audit lives in the repo at docs/security-review-2026-05.md."
             }
           },
           {
@@ -130,7 +130,7 @@
             "name": "Can I self-host Auffi?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Yes. The code is AGPL-3.0-licensed on GitHub. Backend, viewer and sharer all run in Docker Compose; the guide is in ops/README.md."
+              "text": "Yes. The code is AGPL-3.0-licensed on GitHub. Backend, viewer, dashboard and TURN server run in Docker Compose, the sharer is a desktop app for Windows and Linux; the guide is in ops/README.md."
             }
           }
         ]
@@ -344,8 +344,9 @@
       <section id="account-cta" class="account-cta" aria-labelledby="account-cta-heading">
         <h2 id="account-cta-heading" class="account-cta-heading">Using it regularly?</h2>
         <p class="account-cta-text">
-          Create an account and pair your devices once — the next
-          connection runs without a code, straight from the dashboard.
+          Create an account and pair your own devices once — after
+          that you connect any time with a fixed device ID and device
+          password, without anyone having to click on the device.
         </p>
         <div class="account-cta-actions">
           <a href="/dashboard/login" class="account-cta-btn account-cta-btn-secondary">
@@ -467,6 +468,17 @@
         <h2 id="news-heading">News</h2>
         <ul class="news-list">
           <li class="news-item">
+            <time class="news-date" datetime="2026-09-02">September 2, 2026</time>
+            <h3 class="news-title">Sharer 0.7.1: thoroughly reviewed</h3>
+            <p class="news-body">
+              Over 200 fixes after a complete code review: files only
+              arrive after “Accept”, no more stuck keys, more reliable
+              connection setup. Since 0.7.0 the picture adapts to your
+              connection.
+              <a href="/en/download/">To the download</a>.
+            </p>
+          </li>
+          <li class="news-item">
             <time class="news-date" datetime="2026-05-14">May 14, 2026</time>
             <h3 class="news-title">Sharer download for Windows</h3>
             <p class="news-body">
@@ -482,7 +494,7 @@
             <p class="news-body">
               Pair once, connect anytime: the new dashboard
               manages your own devices with auto-accept and a
-              device password. Create an account and skip the code.
+              device password. A fixed device ID instead of a throwaway code.
             </p>
           </li>
           <li class="news-item">
@@ -529,7 +541,7 @@
         <ul class="download-features">
           <li><strong>No installation</strong> — double-click the file and it runs.</li>
           <li><strong>No data with us</strong> — no account needed, screen data flows directly P2P.</li>
-          <li><strong>GDPR-compliant</strong> — servers in Germany, no trackers, no IPs in plaintext.</li>
+          <li><strong>GDPR-compliant</strong> — servers in Germany, no third-party trackers, no IPs in plaintext.</li>
           <li><strong>Open source (AGPL-3.0)</strong> — source code on GitHub, auditable.</li>
         </ul>
 
@@ -570,11 +582,11 @@
         <p class="download-meta">
           Standalone .exe (~30 MB) for Windows 10/11 with WebView2
           pre-installed — standard on modern systems. If you see an
-          error on launch, use the setup installer (~150 MB), which
+          error on launch, use the setup installer (~260 MB), which
           installs the WebView2 runtime for you. Linux packages
           (Debian/Ubuntu, Fedora, Arch) are on the
           <a href="/en/download/">dedicated download page</a>;
-          macOS is coming later.
+          there is currently no macOS version.
         </p>
       </section>
 
@@ -588,7 +600,9 @@
             <p class="trust-body">
               WebRTC with DTLS-SRTP. The server only brokers the
               initial handshake — screen content, input and
-              files flow directly between the browsers.
+              files flow encrypted directly between the sharer app and
+              the browser; only if firewalls block that does our TURN
+              relay forward the still-encrypted packets.
             </p>
           </article>
           <article class="trust-item">
@@ -641,15 +655,15 @@
           </article>
           <article class="faq-item">
             <h3 class="faq-question">Can the server see what I'm sharing?</h3>
-            <p class="faq-answer">No. WebRTC encrypts every stream end-to-end with DTLS-SRTP. The signaling server only brokers the initial handshake — pixels, mouse movements and files flow directly between the browsers.</p>
+            <p class="faq-answer">No. WebRTC encrypts every stream end-to-end with DTLS-SRTP. The signaling server only brokers the initial handshake — pixels, mouse movements and files flow encrypted directly between the sharer app and the browser; only if firewalls block that does our TURN relay forward the still-encrypted packets.</p>
           </article>
           <article class="faq-item">
             <h3 class="faq-question">Is Auffi GDPR-compliant?</h3>
-            <p class="faq-answer">Yes. Servers in Germany (IONOS Frankfurt), no IP addresses stored in plaintext, no trackers, no logging of content. The full audit lives in the repo at docs/security-review-2026-05.md.</p>
+            <p class="faq-answer">Yes. Servers in Germany (IONOS Frankfurt), no IP addresses stored in plaintext, no third-party trackers, no logging of content. The full audit lives in the repo at docs/security-review-2026-05.md.</p>
           </article>
           <article class="faq-item">
             <h3 class="faq-question">Can I self-host Auffi?</h3>
-            <p class="faq-answer">Yes. The code is AGPL-3.0-licensed on GitHub. Backend, viewer and sharer all run in Docker Compose; the guide is in ops/README.md.</p>
+            <p class="faq-answer">Yes. The code is AGPL-3.0-licensed on GitHub. Backend, viewer, dashboard and TURN server run in Docker Compose, the sharer is a desktop app for Windows and Linux; the guide is in ops/README.md.</p>
           </article>
         </div>
       </section>

@@ -111,7 +111,7 @@
             "name": "Sieht der Server, was ich teile?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Nein. WebRTC verschlüsselt jeden Stream Ende-zu-Ende mit DTLS-SRTP. Der Signaling-Server vermittelt nur den initialen Handshake — Pixel, Mausbewegungen und Dateien fließen direkt zwischen den Browsern."
+              "text": "Nein. WebRTC verschlüsselt jeden Stream Ende-zu-Ende mit DTLS-SRTP. Der Signaling-Server vermittelt nur den initialen Handshake — Pixel, Mausbewegungen und Dateien fließen verschlüsselt direkt zwischen Sharer-App und Browser; nur wenn Firewalls das blockieren, leitet unser TURN-Relay die weiterhin verschlüsselten Pakete weiter."
             }
           },
           {
@@ -119,7 +119,7 @@
             "name": "Ist Auffi DSGVO-konform?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Ja. Server in Deutschland (IONOS Frankfurt), keine IPs im Klartext gespeichert, keine Tracker, kein Logging von Inhalten. Der vollständige Audit liegt im Repo unter docs/security-review-2026-05.md."
+              "text": "Ja. Server in Deutschland (IONOS Frankfurt), keine IPs im Klartext gespeichert, keine Drittanbieter-Tracker, kein Logging von Inhalten. Der vollständige Audit liegt im Repo unter docs/security-review-2026-05.md."
             }
           },
           {
@@ -127,7 +127,7 @@
             "name": "Kann ich Auffi selbst hosten?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Ja. Der Code ist AGPL-3.0-lizenziert auf GitHub. Backend, Viewer und Sharer laufen in Docker Compose; die Anleitung steht in ops/README.md."
+              "text": "Ja. Der Code ist AGPL-3.0-lizenziert auf GitHub. Backend, Viewer, Dashboard und TURN-Server laufen in Docker Compose, der Sharer ist eine Desktop-App für Windows und Linux; die Anleitung steht in ops/README.md."
             }
           }
         ]
@@ -341,8 +341,9 @@
       <section id="account-cta" class="account-cta" aria-labelledby="account-cta-heading">
         <h2 id="account-cta-heading" class="account-cta-heading">Regelmäßig im Einsatz?</h2>
         <p class="account-cta-text">
-          Lege ein Konto an und paire deine Geräte einmalig — die nächste
-          Verbindung läuft ohne Code, direkt aus dem Dashboard.
+          Lege ein Konto an und kopple deine eigenen Geräte einmalig —
+          danach verbindest du dich jederzeit mit fester Geräte-ID und
+          Geräte-Passwort, ohne dass am Gerät jemand klicken muss.
         </p>
         <div class="account-cta-actions">
           <a href="/dashboard/login" class="account-cta-btn account-cta-btn-secondary">
@@ -464,6 +465,17 @@
         <h2 id="news-heading">Aktuelles</h2>
         <ul class="news-list">
           <li class="news-item">
+            <time class="news-date" datetime="2026-09-02">2. September 2026</time>
+            <h3 class="news-title">Sharer 0.7.1: gründlich durchgesehen</h3>
+            <p class="news-body">
+              Gut 200 Korrekturen nach einer kompletten Code-Durchsicht:
+              Dateien kommen erst nach „Annehmen“ an, keine klemmenden
+              Tasten mehr, stabilerer Verbindungsaufbau. Seit 0.7.0 passt
+              sich das Bild der Leitung an.
+              <a href="/download/">Zum Download</a>.
+            </p>
+          </li>
+          <li class="news-item">
             <time class="news-date" datetime="2026-05-14">14. Mai 2026</time>
             <h3 class="news-title">Sharer-Download für Windows</h3>
             <p class="news-body">
@@ -479,7 +491,7 @@
             <p class="news-body">
               Einmal pairen, dauerhaft verbinden: das neue Dashboard
               verwaltet deine eigenen Geräte mit Auto-Accept und
-              Geräte-Passwort. Konto anlegen, Code-Frage entfällt.
+              Geräte-Passwort. Feste Geräte-ID statt Wegwerf-Code.
             </p>
           </li>
           <li class="news-item">
@@ -526,7 +538,7 @@
         <ul class="download-features">
           <li><strong>Keine Installation</strong> — Datei doppelklicken, läuft.</li>
           <li><strong>Keine Daten bei uns</strong> — kein Konto nötig, Bildschirm-Daten fließen direkt P2P.</li>
-          <li><strong>DSGVO-konform</strong> — Server in Deutschland, keine Tracker, keine IPs im Klartext.</li>
+          <li><strong>DSGVO-konform</strong> — Server in Deutschland, keine Drittanbieter-Tracker, keine IPs im Klartext.</li>
           <li><strong>Open Source (AGPL-3.0)</strong> — Quellcode auf GitHub einsehbar und auditierbar.</li>
         </ul>
 
@@ -567,10 +579,10 @@
         <p class="download-meta">
           Standalone-.exe (~30 MB) für Windows 10/11 mit vorinstalliertem
           WebView2 — auf modernen Systemen Standard. Falls beim Start eine
-          Fehlermeldung erscheint, nutze den Setup-Installer (~150 MB), der
+          Fehlermeldung erscheint, nutze den Setup-Installer (~260 MB), der
           die WebView2-Runtime mitinstalliert. Linux-Pakete (Debian/Ubuntu,
           Fedora, Arch) findest du auf der <a href="/download/">eigenen Download-Seite</a>;
-          macOS kommt später.
+          eine macOS-Version gibt es derzeit nicht.
         </p>
       </section>
 
@@ -584,7 +596,9 @@
             <p class="trust-body">
               WebRTC mit DTLS-SRTP. Der Server vermittelt nur den
               initialen Handshake — Bildschirminhalte, Eingaben und
-              Dateien fließen direkt zwischen den Browsern.
+              Dateien fließen verschlüsselt direkt zwischen Sharer-App und
+              Browser; nur wenn Firewalls das blockieren, leitet unser
+              TURN-Relay die weiterhin verschlüsselten Pakete weiter.
             </p>
           </article>
           <article class="trust-item">
@@ -637,15 +651,15 @@
           </article>
           <article class="faq-item">
             <h3 class="faq-question">Sieht der Server, was ich teile?</h3>
-            <p class="faq-answer">Nein. WebRTC verschlüsselt jeden Stream Ende-zu-Ende mit DTLS-SRTP. Der Signaling-Server vermittelt nur den initialen Handshake — Pixel, Mausbewegungen und Dateien fließen direkt zwischen den Browsern.</p>
+            <p class="faq-answer">Nein. WebRTC verschlüsselt jeden Stream Ende-zu-Ende mit DTLS-SRTP. Der Signaling-Server vermittelt nur den initialen Handshake — Pixel, Mausbewegungen und Dateien fließen verschlüsselt direkt zwischen Sharer-App und Browser; nur wenn Firewalls das blockieren, leitet unser TURN-Relay die weiterhin verschlüsselten Pakete weiter.</p>
           </article>
           <article class="faq-item">
             <h3 class="faq-question">Ist Auffi DSGVO-konform?</h3>
-            <p class="faq-answer">Ja. Server in Deutschland (IONOS Frankfurt), keine IPs im Klartext gespeichert, keine Tracker, kein Logging von Inhalten. Der vollständige Audit liegt im Repo unter docs/security-review-2026-05.md.</p>
+            <p class="faq-answer">Ja. Server in Deutschland (IONOS Frankfurt), keine IPs im Klartext gespeichert, keine Drittanbieter-Tracker, kein Logging von Inhalten. Der vollständige Audit liegt im Repo unter docs/security-review-2026-05.md.</p>
           </article>
           <article class="faq-item">
             <h3 class="faq-question">Kann ich Auffi selbst hosten?</h3>
-            <p class="faq-answer">Ja. Der Code ist AGPL-3.0-lizenziert auf GitHub. Backend, Viewer und Sharer laufen in Docker Compose; die Anleitung steht in ops/README.md.</p>
+            <p class="faq-answer">Ja. Der Code ist AGPL-3.0-lizenziert auf GitHub. Backend, Viewer, Dashboard und TURN-Server laufen in Docker Compose, der Sharer ist eine Desktop-App für Windows und Linux; die Anleitung steht in ops/README.md.</p>
           </article>
         </div>
       </section>
