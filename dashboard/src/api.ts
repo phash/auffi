@@ -103,9 +103,10 @@ async function request<T>(
   if (res.ok) {
     return { ok: true, data: (body as T) ?? (undefined as unknown as T) };
   }
-  // Every per-route cap uses @fastify/rate-limit's default response, whose
-  // body is { error: "Too Many Requests", message: "Rate limit exceeded,
-  // retry in …" } — normalise by status so views see one code and German copy.
+  // 429 bodies differ by source: the per-route caps answer with
+  // @fastify/rate-limit's default { error: "Too Many Requests", … }, while
+  // /api/feedback's Bearer-auth cap sends { error: "rate-limited", … }.
+  // Normalise by status so views see one code and German copy.
   if (res.status === 429) {
     return { ok: false, status: 429, code: "rate-limit", message: RATE_LIMIT_MESSAGE };
   }
