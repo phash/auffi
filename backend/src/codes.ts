@@ -16,12 +16,27 @@ export function normalizeCode(input: string): string | null {
 
 export type Peer = object;
 
+/**
+ * TURN credentials a code may mint before any viewer joined it, and how many
+ * more each join adds. Every credential is a distinct TURN username and
+ * coturn caps allocations server-wide, while anyone can get a code by
+ * registering as a sharer — unbudgeted, one code minted credentials without
+ * end. The legitimate pattern is one fetch per side per (re)join: the viewer
+ * fetches BEFORE its join, the sharer after accepting it. The up-front
+ * allowance covers the viewer's pre-join fetch plus a few retries that never
+ * reached a join; each join refills exactly the pair it causes.
+ */
+export const TURN_CREDENTIALS_UP_FRONT = 4;
+export const TURN_CREDENTIALS_PER_JOIN = 2;
+
 export type Session = {
   code: string;
   sharer: Peer;
   viewer: Peer | null;
   expiresAt: number;
   confirmed: boolean;
+  turnCredentialsIssued: number;
+  turnCredentialBudget: number;
 };
 
 export type StoreConfig = {
@@ -74,6 +89,8 @@ export class SessionStore {
       viewer: null,
       expiresAt: Date.now() + this.cfg.ttlMs,
       confirmed: false,
+      turnCredentialsIssued: 0,
+      turnCredentialBudget: TURN_CREDENTIALS_UP_FRONT,
     };
     this.sessions.set(code, session);
     this.byPeer.set(sharer, code);
@@ -85,8 +102,22 @@ export class SessionStore {
     const session = this.getJoinableSession(code);
     if (!session) return null;
     session.viewer = viewer;
+    session.turnCredentialBudget += TURN_CREDENTIALS_PER_JOIN;
     this.byPeer.set(viewer, code);
     return session;
+  }
+
+  /**
+   * Gate for POST /turn-credentials: "unknown" when no live session holds
+   * the code, "exhausted" when its budget (see TURN_CREDENTIALS_UP_FRONT) is
+   * spent, otherwise "ok" with one credential counted against it.
+   */
+  claimTurnCredential(code: string): "ok" | "exhausted" | "unknown" {
+    const session = this.getSession(code);
+    if (!session) return "unknown";
+    if (session.turnCredentialsIssued >= session.turnCredentialBudget) return "exhausted";
+    session.turnCredentialsIssued += 1;
+    return "ok";
   }
 
   /**

@@ -206,15 +206,21 @@ describe("POST /turn-credentials — rate limiting", () => {
   });
 
   it("rate-limits to 10 requests per minute per IP", async () => {
-    const { code, ws } = await obtainSessionCode(app);
+    // Spread over three codes so no code's own issuance budget runs out
+    // first — the per-IP limit is what is under test here.
+    const sessions = [
+      await obtainSessionCode(app),
+      await obtainSessionCode(app),
+      await obtainSessionCode(app),
+    ];
     const statuses: number[] = [];
     for (let i = 0; i < 11; i++) {
-      const res = await turnPost(app, { code });
+      const res = await turnPost(app, { code: sessions[i % 3].code });
       statuses.push(res.status);
     }
     expect(statuses.slice(0, 10).every((s) => s === 200)).toBe(true);
     expect(statuses[10]).toBe(429);
-    ws.close();
+    for (const { ws } of sessions) ws.close();
   });
 });
 
@@ -276,6 +282,67 @@ describe("POST /turn-credentials — unattended session gate", () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("session");
+  });
+});
+
+// Every credential is a distinct TURN username, and coturn caps allocations
+// server-wide. A live ad-hoc code was enough to mint them without end — and
+// anyone gets a code by registering as a sharer. Issuance per code is
+// therefore budgeted: a few up front (the viewer fetches BEFORE it joins),
+// plus one pair (viewer + sharer) for every viewer that actually joins.
+describe("POST /turn-credentials — per-code issuance budget", () => {
+  let app: FastifyInstance;
+  let store: SessionStore;
+
+  beforeAll(async () => {
+    store = new SessionStore({ ttlMs: 600_000 });
+    app = Fastify();
+    await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
+    registerTurnEndpoint(app, {
+      sharedSecret: "test-secret-32-chars-minimum",
+      urls: ["turn:turn.auffi.local:3478"],
+      ttlSec: 3600,
+      allowedOrigins: ["http://localhost:5173"],
+      sessionStore: store,
+    });
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  // A fresh source address per request keeps the route's own 10/min/IP
+  // limiter out of the picture — the per-code budget is what is under test.
+  let nextIp = 1;
+  async function status(code: string): Promise<number> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/turn-credentials",
+      remoteAddress: `10.9.0.${nextIp++}`,
+      headers: { origin: "http://localhost:5173" },
+      payload: { code },
+    });
+    return res.statusCode;
+  }
+
+  it("refuses a code that nobody joins once its up-front budget is spent", async () => {
+    const { code } = store.registerSharer({});
+    const statuses: number[] = [];
+    for (let i = 0; i < 5; i++) statuses.push(await status(code));
+    expect(statuses).toEqual([200, 200, 200, 200, 429]);
+  });
+
+  it("serves a session with repeated viewer reconnects (viewer pre-join + sharer per join)", async () => {
+    const { code } = store.registerSharer({});
+    for (let round = 0; round < 6; round++) {
+      const viewer = {};
+      expect(await status(code), `viewer fetch, round ${round}`).toBe(200);
+      store.attachViewer(code, viewer);
+      store.markConfirmed(code);
+      expect(await status(code), `sharer fetch, round ${round}`).toBe(200);
+      store.detachViewer(viewer);
+    }
   });
 });
 

@@ -11,7 +11,8 @@ export type TurnConfig = {
   /**
    * Optional: when provided, /turn-credentials requires the caller to
    * include the 9-digit session code in the JSON body and only issues
-   * credentials if `store.getSession(code)` finds a live session. This
+   * credentials if a live session holds the code and its issuance budget
+   * is not spent (`SessionStore.claimTurnCredential`; 429 otherwise). This
    * ties credential issuance to an active session and prevents harvesting
    * by non-browser callers that have figured out a working Origin header
    * (gh #60).
@@ -72,12 +73,15 @@ export function registerTurnEndpoint(
         const body = (req.body ?? {}) as { code?: unknown };
         const raw = typeof body.code === "string" ? body.code : "";
         const normalized = normalizeCode(raw);
-        const hasAdHoc = normalized !== null && cfg.sessionStore.getSession(normalized) !== null;
+        const adHoc = normalized === null ? "unknown" : cfg.sessionStore.claimTurnCredential(normalized);
+        if (adHoc === "exhausted") {
+          return reply.status(429).send({ error: "turn credential budget exhausted" });
+        }
         const hasUnattended =
           normalized !== null &&
           ((cfg.unattendedSessions?.findByDeviceId(normalized) ?? null) !== null ||
             (cfg.unattendedRegistry?.has(normalized) ?? false));
-        if (!hasAdHoc && !hasUnattended) {
+        if (adHoc === "unknown" && !hasUnattended) {
           return reply.status(403).send({ error: "no active session" });
         }
       }
