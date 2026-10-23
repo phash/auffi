@@ -17,6 +17,11 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # @types/node tracks the Node runtime major (22 in the backend image and
+      # CI), not the newest Node release.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: cargo
     directory: /sharer/src-tauri
