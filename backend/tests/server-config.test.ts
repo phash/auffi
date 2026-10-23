@@ -44,6 +44,33 @@ describe("code-TTL hard cap", () => {
   });
 });
 
+describe("ad-hoc socket limits from the environment", () => {
+  let app: FastifyInstance | null = null;
+  afterEach(async () => {
+    if (app) await app.close();
+    app = null;
+  });
+
+  it("applies SIGNAL_MAX_SOCKETS_PER_IP and SIGNAL_ROLE_DEADLINE_MS", async () => {
+    process.env.SIGNAL_MAX_SOCKETS_PER_IP = "1";
+    process.env.SIGNAL_ROLE_DEADLINE_MS = "100";
+    app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const addr = app.server.address();
+    if (typeof addr === "string" || !addr) throw new Error("no address");
+    const url = `ws://127.0.0.1:${addr.port}/signal`;
+    const closeOf = (ws: WebSocket) =>
+      new Promise<number>((r) => ws.once("close", (code) => r(code)));
+
+    const first = new WebSocket(url, { headers: { origin: "http://127.0.0.1" } });
+    const firstClosed = closeOf(first);
+    await new Promise((r) => first.once("open", r));
+    const second = new WebSocket(url, { headers: { origin: "http://127.0.0.1" } });
+    expect(await closeOf(second)).toBe(4429);
+    expect(await firstClosed).toBe(4400);
+  });
+});
+
 describe("production CORS fail-closed", () => {
   it("refuses to start in production without ALLOWED_ORIGINS", async () => {
     process.env.NODE_ENV = "production";

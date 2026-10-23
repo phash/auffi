@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import websocketPlugin from "@fastify/websocket";
 import WebSocket from "ws";
-import { registerSignaling } from "../src/signaling.js";
+import { registerSignaling, type SocketLimits } from "../src/signaling.js";
 import { RECONNECT_GRACE_MS, SessionStore } from "../src/codes.js";
 import { UnattendedRegistry } from "../src/unattended.js";
 import { UnattendedSessions } from "../src/unattended_sessions.js";
@@ -31,7 +31,9 @@ afterEach(async () => {
   }
 });
 
-async function start(opts: { country?: CountryLookup; ttlMs?: number } = {}): Promise<Harness> {
+async function start(
+  opts: { country?: CountryLookup; ttlMs?: number; limits?: SocketLimits } = {},
+): Promise<Harness> {
   const db = openDb(":memory:");
   applyMigrations(db, defaultMigrationsDir());
   db.prepare(
@@ -56,6 +58,8 @@ async function start(opts: { country?: CountryLookup; ttlMs?: number } = {}): Pr
     GENEROUS,
     undefined,
     opts.country ?? null,
+    undefined,
+    opts.limits,
   );
   await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
@@ -231,5 +235,52 @@ describe("ad-hoc reconnect after the code TTL", () => {
     const gone = closed(sharer);
     h.store.sweepExpired(Date.now() + 1_000);
     expect(await gone).toEqual({ code: 4410, reason: "code expired" });
+  });
+});
+
+// Role-less sockets used to live forever (the keepalive even kept them
+// alive), and nothing capped how many one address could hold open.
+describe("socket limits on the ad-hoc path", () => {
+  it("closes a socket that neither registers nor joins within the deadline", async () => {
+    const h = await start({ limits: { roleDeadlineMs: 100, maxSocketsPerIp: 20 } });
+    const idle = await openViewer(h.url);
+    expect(await closed(idle)).toEqual({ code: 4400, reason: "no register or join" });
+  });
+
+  it("leaves a registered sharer alone past the deadline", async () => {
+    const h = await start({ limits: { roleDeadlineMs: 100, maxSocketsPerIp: 20 } });
+    const sharer = await openViewer(h.url);
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    await recv(sharer);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(sharer.readyState).toBe(WebSocket.OPEN);
+    sharer.close();
+  });
+
+  it("caps concurrent sockets per address and frees the slot on close", async () => {
+    const h = await start({ limits: { roleDeadlineMs: 15_000, maxSocketsPerIp: 2 } });
+    const a = await openViewer(h.url);
+    const b = await openViewer(h.url);
+    const c = await openViewer(h.url);
+    expect(await closed(c)).toEqual({ code: 4429, reason: "too many connections" });
+
+    const aGone = closed(a);
+    a.close();
+    await aGone;
+    const d = await openViewer(h.url);
+    d.send(JSON.stringify({ type: "register", role: "sharer" }));
+    expect(await recv(d)).toMatchObject({ type: "code-assigned" });
+    b.close();
+    d.close();
+  });
+
+  it("does not count bearer-authenticated sharers — a NAT may host many devices", async () => {
+    const h = await start({ limits: { roleDeadlineMs: 15_000, maxSocketsPerIp: 1 } });
+    const sharer = await openUnattendedSharer(h.url);
+    const viewer = await openViewer(h.url);
+    viewer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    expect(await recv(viewer)).toMatchObject({ type: "code-assigned" });
+    viewer.close();
+    sharer.close();
   });
 });

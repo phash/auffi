@@ -27,6 +27,7 @@ import { startConnectionLog, endConnectionLog } from "./connection_log.js";
 import { redactIp } from "./lib/redact-ip.js";
 import {
   checkIpRateLimit as checkRateLimit,
+  rateLimitKey,
   stripIpv4Mapped,
   type RateLimitConfig,
   type RateLimitEntry,
@@ -70,8 +71,12 @@ const CLOSE_INTERNAL_ERROR = 1011;
  * path has its own set (`WS_CLOSE` in unattended.ts).
  */
 export const SIGNAL_CLOSE = {
+  /** No register / join within the role deadline. */
+  ROLE_TIMEOUT: 4400,
   /** The sharer's session was dropped: code TTL / reconnect grace over. */
   CODE_EXPIRED: 4410,
+  /** The client address already holds the maximum of concurrent sockets. */
+  TOO_MANY_SOCKETS: 4429,
 } as const;
 
 type RawFrame = Buffer | ArrayBuffer | Buffer[];
@@ -148,6 +153,22 @@ export const DEFAULT_KEEPALIVE: KeepaliveConfig = {
   pongDeadlineMs: 90_000,
 };
 
+export type SocketLimits = {
+  /** A socket still without a role (no register / join) after this is closed. */
+  roleDeadlineMs: number;
+  /** Concurrent ad-hoc sockets one client address (IPv6: its /64) may hold. */
+  maxSocketsPerIp: number;
+};
+
+/// A browser viewer sends `join` and a sharer `register` right after the
+/// socket opens, so 15 s only ever catches sockets opened to sit idle — the
+/// keepalive answered their pings and kept them alive forever. 20 per
+/// address leaves room for an office NAT full of helpers and sharers.
+export const DEFAULT_SOCKET_LIMITS: SocketLimits = {
+  roleDeadlineMs: 15_000,
+  maxSocketsPerIp: 20,
+};
+
 export interface UnattendedDeps {
   db: Db;
   registry: UnattendedRegistry;
@@ -189,7 +210,15 @@ export function registerSignaling(
   bearerCounts: Map<string, RateLimitEntry> = new Map(),
   countryLookup: CountryLookup | null = null,
   keepalive: KeepaliveConfig = DEFAULT_KEEPALIVE,
+  /**
+   * Role deadline + per-address concurrency cap for the ad-hoc path.
+   * Bearer-authenticated sockets are exempt: they are gated by the bearer
+   * rate limit and argon2, and one NAT may host many paired devices.
+   */
+  socketLimits: SocketLimits = DEFAULT_SOCKET_LIMITS,
 ): Map<string, RateLimitEntry> {
+  const openSocketsPerIp = new Map<string, number>();
+
   function send(peer: WebSocket, msg: OutgoingMessage): void {
     if (peer.readyState === peer.OPEN) peer.send(JSON.stringify(msg));
   }
@@ -542,6 +571,23 @@ export function registerSignaling(
       });
       return;
     }
+
+    const ipKey = rateLimitKey(req.ip ?? "unknown");
+    const openFromIp = openSocketsPerIp.get(ipKey) ?? 0;
+    if (openFromIp >= socketLimits.maxSocketsPerIp) {
+      peer.close(SIGNAL_CLOSE.TOO_MANY_SOCKETS, "too many connections");
+      return;
+    }
+    openSocketsPerIp.set(ipKey, openFromIp + 1);
+    const roleDeadline = setTimeout(() => {
+      if (role === null) peer.close(SIGNAL_CLOSE.ROLE_TIMEOUT, "no register or join");
+    }, socketLimits.roleDeadlineMs);
+    peer.on("close", () => {
+      clearTimeout(roleDeadline);
+      const left = (openSocketsPerIp.get(ipKey) ?? 1) - 1;
+      if (left > 0) openSocketsPerIp.set(ipKey, left);
+      else openSocketsPerIp.delete(ipKey);
+    });
 
     peer.on("message", guarded(peer, req.log, (raw) => {
       if (!checkPerPeerLimit(peerMsgEntry, perPeerCfg)) {

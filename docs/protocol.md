@@ -185,7 +185,9 @@ verbinden", which fetches a fresh code; a live P2P stream keeps running).
 | Code | Reason (free text) | Meaning                                                   |
 |------|--------------------|-----------------------------------------------------------|
 | 1011 | `internal error`   | A server-side fault while handling this socket's frame (e.g. a failing DB); also used on the bearer path. Ordinary disconnect for every client. |
-| 4410 | `code expired`     | → sharer: its session was dropped (TTL / reconnect grace over). Get a new code. | If the viewer vanished **before** confirmation,
+| 4400 | `no register or join` | The socket sent neither `register` nor `join` within **15 s** of opening (`SIGNAL_ROLE_DEADLINE_MS`). Clients send their first frame right after open, so only idle sockets hit this. |
+| 4410 | `code expired`     | → sharer: its session was dropped (TTL / reconnect grace over). Get a new code. |
+| 4429 | `too many connections` | The client address (IPv6: its /64) already holds **20** open ad-hoc sockets (`SIGNAL_MAX_SOCKETS_PER_IP`); closed right after the upgrade. Bearer-authenticated sockets are not counted. | If the viewer vanished **before** confirmation,
 the backend synthesizes a `bye` to the sharer so its confirm dialog does not
 point at a gone peer; a confirmed viewer's drop deliberately sends nothing, so
 a Wi-Fi blip keeps the sharer's ICE grace / reconnect window alive. The

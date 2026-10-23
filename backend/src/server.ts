@@ -3,7 +3,7 @@ import websocketPlugin from "@fastify/websocket";
 import rateLimitPlugin from "@fastify/rate-limit";
 import corsPlugin from "@fastify/cors";
 import { SessionStore } from "./codes.js";
-import { registerSignaling } from "./signaling.js";
+import { DEFAULT_SOCKET_LIMITS, registerSignaling } from "./signaling.js";
 import type { RateLimitEntry } from "./signaling.js";
 import { makeCredentials, registerTurnEndpoint, type TurnConfig } from "./turn-credentials.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "./db.js";
@@ -93,6 +93,10 @@ function readEnvConfig() {
     // POST /api/feedback. A human submits feedback a handful of times at most.
     feedbackBearerRateLimitWindowMs: envNumber("FEEDBACK_BEARER_RATE_LIMIT_WINDOW_MS", 60_000),
     feedbackBearerRateLimitMax: envNumber("FEEDBACK_BEARER_RATE_LIMIT_MAX", 5),
+    // Ad-hoc /signal sockets: deadline for register/join, and how many one
+    // address may hold open at once (signaling.ts DEFAULT_SOCKET_LIMITS).
+    signalRoleDeadlineMs: envNumber("SIGNAL_ROLE_DEADLINE_MS", DEFAULT_SOCKET_LIMITS.roleDeadlineMs),
+    signalMaxSocketsPerIp: envNumber("SIGNAL_MAX_SOCKETS_PER_IP", DEFAULT_SOCKET_LIMITS.maxSocketsPerIp),
     allowedOrigins: envList("ALLOWED_ORIGINS", [
       "http://localhost:5173",
       "http://localhost:5174",
@@ -289,6 +293,8 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
     { windowMs: env.bearerAuthRateLimitWindowMs, max: env.bearerAuthRateLimitMax },
     bearerCounts,
     countryLookup,
+    undefined,
+    { roleDeadlineMs: env.signalRoleDeadlineMs, maxSocketsPerIp: env.signalMaxSocketsPerIp },
   );
 
   const sweepHandle = setInterval(() => {
