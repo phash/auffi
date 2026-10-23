@@ -165,10 +165,7 @@ fn backend_http_base() -> Result<String, String> {
 #[tauri::command]
 pub async fn unattended_pair(app: AppHandle, code: String, alias: String) -> CmdResult<String> {
     let dir = app_data_dir(&app)?;
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
+    let http = crate::tls_roots::http_client(std::time::Duration::from_secs(10))?;
     let store = KeyringTokenStore::default_for_auffi();
     account::pair(&http, &store, &backend_http_base()?, &code, &alias, &dir)
         .await
@@ -179,10 +176,7 @@ pub async fn unattended_pair(app: AppHandle, code: String, alias: String) -> Cmd
 #[tauri::command]
 pub async fn unattended_unpair(app: AppHandle) -> CmdResult<()> {
     let dir = app_data_dir(&app)?;
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
+    let http = crate::tls_roots::http_client(std::time::Duration::from_secs(5))?;
     let store = KeyringTokenStore::default_for_auffi();
     account::unpair(&http, &store, &backend_http_base()?, &dir)
         .await
@@ -575,10 +569,7 @@ pub async fn unattended_submit_feedback(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Token fehlt im Keyring".to_string())?;
 
-    let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
+    let http = crate::tls_roots::http_client(std::time::Duration::from_secs(10))?;
 
     let payload = serde_json::json!({
         "source": "sharer",

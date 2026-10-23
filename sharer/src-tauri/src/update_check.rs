@@ -77,13 +77,13 @@ struct GhRelease {
 /// this launch). The `User-Agent` is mandatory — GitHub-API rejects
 /// requests without one with HTTP 403.
 async fn fetch_latest_tag() -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .user_agent(format!("auffi-sharer/{}", env!("CARGO_PKG_VERSION")))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = crate::tls_roots::http_client(std::time::Duration::from_secs(5))?;
     let response = client
         .get(GITHUB_LATEST)
+        .header(
+            "User-Agent",
+            format!("auffi-sharer/{}", env!("CARGO_PKG_VERSION")),
+        )
         .header("Accept", "application/vnd.github+json")
         .send()
         .await

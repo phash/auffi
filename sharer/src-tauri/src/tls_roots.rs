@@ -1,4 +1,4 @@
-//! TLS trust anchors for the signaling WebSocket connections.
+//! TLS trust anchors for the signaling WebSockets and the REST clients.
 //!
 //! `tokio-tungstenite`'s `rustls-tls-native-roots` feature builds its
 //! connector from the OS certificate store alone, read once at process start.
@@ -47,12 +47,28 @@ where
 }
 
 /// Shared connector for every signaling WebSocket.
-///
-/// Built once: reading the OS store on every reconnect would be wasted work,
-/// and the heartbeat reconnects on a backoff. Loading the OS store can fail
-/// wholesale (no permission, no store) — that degrades to the bundled roots,
-/// which still reach the public service, and is logged once here.
 pub(crate) fn connector() -> Connector {
+    Connector::Rustls(client_config())
+}
+
+/// HTTP client for every REST call the sharer makes (pairing, feedback,
+/// TURN credentials, update check), on the same merged trust anchors as the
+/// WebSockets. reqwest's own rustls setup trusts one source only, which is
+/// the Windows `UnknownIssuer` failure this module exists for.
+pub(crate) fn http_client(timeout: std::time::Duration) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .use_preconfigured_tls(ClientConfig::clone(&client_config()))
+        .timeout(timeout)
+        .build()
+        .map_err(|e| format!("http client: {e}"))
+}
+
+/// The merged-roots rustls config, built once: reading the OS store on every
+/// reconnect would be wasted work, and the heartbeat reconnects on a backoff.
+/// Loading the OS store can fail wholesale (no permission, no store) — that
+/// degrades to the bundled roots, which still reach the public service, and
+/// is logged once here.
+fn client_config() -> Arc<ClientConfig> {
     static CONFIG: OnceLock<Arc<ClientConfig>> = OnceLock::new();
     let config = CONFIG.get_or_init(|| {
         let loaded = rustls_native_certs::load_native_certs();
@@ -78,7 +94,7 @@ pub(crate) fn connector() -> Connector {
                 .with_no_client_auth(),
         )
     });
-    Connector::Rustls(Arc::clone(config))
+    Arc::clone(config)
 }
 
 #[cfg(test)]
@@ -138,6 +154,30 @@ mod tests {
                 .any(|w| w == b"ISRG Root X2")
         });
         assert!(found, "bundled roots must carry ISRG Root X2");
+    }
+
+    // The REST clients (pairing, feedback, TURN fetch, update check) built
+    // their own reqwest client on the OS store alone — the same Windows
+    // UnknownIssuer failure the WSS fix closed, one layer over. They must run
+    // on the merged config; reqwest only accepts a preconfigured rustls
+    // config of the exact rustls version it links, so building is the check.
+    #[tokio::test]
+    async fn the_rest_client_runs_on_the_merged_config() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/ping")
+            .with_status(204)
+            .create_async()
+            .await;
+        let client = http_client(std::time::Duration::from_secs(5)).expect("client builds");
+        let status = client
+            .get(format!("{}/ping", server.url()))
+            .send()
+            .await
+            .expect("request")
+            .status();
+        assert_eq!(status.as_u16(), 204);
+        mock.assert_async().await;
     }
 
     /// Minimal self-signed DER used only to prove the merge path accepts a

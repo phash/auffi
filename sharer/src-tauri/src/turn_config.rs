@@ -45,10 +45,7 @@ pub async fn fetch_ice_servers(
     // Backend enforces an Origin allow-list on /turn-credentials. reqwest
     // does not send Origin by default (it's a browser concept), so the
     // caller supplies one via `backend_urls::origin_from_ws`.
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3))
-        .build()
-    {
+    let client = match crate::tls_roots::http_client(std::time::Duration::from_secs(3)) {
         Ok(c) => c,
         Err(e) => {
             log::warn!("TURN fetch: failed to build HTTP client: {e}");
