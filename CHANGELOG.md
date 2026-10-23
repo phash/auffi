@@ -5,6 +5,100 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.7.2] — 2026-10-23
+
+Sicherheits- und Zuverlässigkeits-Release für Sharer und Server. Einzige
+Produktänderung: Relay-Sitzungen haben kein Zeitlimit mehr.
+
+**Update empfohlen:** Sharer bis 0.7.1 zeigen in Relay-Sitzungen nach
+8 Minuten weiterhin den alten Hinweis „Übertragung endet in ca. 2 Minuten“
+und nach 10 Minuten „Zeitlimit … erreicht“. Beendet hat die Sitzung immer der
+Viewer — der aktuelle Viewer tut das nicht mehr, die Sitzung läuft also
+weiter; der Hinweis ist nur veraltet.
+
+### Geändert
+
+- **10-Minuten-Limit für Relay-Verbindungen entfällt** (Sharer und Viewer).
+  Die Anzeige „Verbindung: über Relay“ bleibt.
+- Dateiübertragung im Viewer: eine Statusliste zeigt jede Übertragung
+  (wartet auf Annahme / wird gesendet bzw. empfangen … % / angekommen /
+  abgelehnt / fehlgeschlagen). Empfangene Dateien werden nicht mehr
+  automatisch heruntergeladen, sondern per „Speichern“ gesichert — auch nach
+  dem Sitzungsende.
+- Statustexte im Viewer sprechen von „der anderen Seite“ statt vom „Sharer“.
+- Sharer: Fehler beim Koppeln und beim Feedback erscheinen deutsch statt als
+  rohe Server-Antwort; ein abgelaufener Code (Server-Close 4410) bietet
+  „Neuer Code“ statt eines aussichtslosen „Neu verbinden“.
+- Abhängigkeiten aktualisiert: Tauri 2.12 samt Plugins, rustls 0.23.46,
+  webpki-roots 1.0.10, fastify 5.12.7, nodemailer 10.2.1, vite 8.3.5,
+  coturn 4.18.0, nginx 1.30.6, Node 22.23.4, Caddy 2.11.7. Dependabot
+  überwacht npm, Cargo, Docker-Images und CI-Actions; CI pinnt Rust 1.99.1
+  und `windows-2025`.
+
+### Sicherheit
+
+- **Sharer wartet vor dem Senden einer Datei auf die Zustimmung des Helfers.**
+  Bisher streamte er direkt nach dem Angebot und ignorierte eine Ablehnung;
+  ein unbeantwortetes Angebot wird nach 60 s zurückgezogen.
+- **Unbeaufsichtigter Zugriff:** der Sharer startet eine Sitzung nur noch,
+  wenn er selbst innerhalb der letzten 30 s eine Passwortprüfung mit „ok“
+  beantwortet hat; ein Heartbeat-Abbruch verwirft offene Bestätigungen.
+- **Sharer öffnet Links nur noch über das Opener-Plugin mit fester
+  Allow-List** (vier URLs). Das entfernte Shell-Plugin hatte die Liste nicht
+  geprüft.
+- Sharer: Dateinamen werden zusätzlich von Bidi-, Zero-Width- und
+  C1-Steuerzeichen bereinigt (`Rechnung<U+202E>fdp.exe`); doppelte
+  Transfer-IDs, übergroße Chunks und geparkte Bytes jenseits der angesagten
+  Größe brechen den Empfang ab; Teil-Dateien werden beim Sitzungsende
+  gelöscht; gehaltene Tasten sind begrenzt und lösen sich bei geänderter
+  Belegung korrekt.
+- Sharer: alle REST-Clients (Pairing, Feedback, TURN-Credentials,
+  Update-Check) nutzen die zusammengeführten Vertrauensanker (OS +
+  mitgelieferte Roots) wie bisher nur die WSS-Verbindung; Backend-URL ohne
+  Query/Userinfo; rustls-, webpki-roots-, quinn-proto- und ctutils-Advisories
+  (RUSTSEC-2026-0385) geschlossen.
+- Viewer prüft empfangene Dateien auf Vollständigkeit und Größe
+  (`incomplete-transfer`, `size-exceeded`) statt abgeschnittene Dateien zu
+  speichern.
+- **Backend:** TURN-Credentials sind pro Ad-hoc-Code budgetiert (429 danach);
+  `/signal`-Sockets ohne Rolle werden nach 15 s geschlossen (4400), höchstens
+  20 Sockets pro Adresse (4429); die eigenen Per-IP-Limits bündeln IPv6 je
+  /64; Mail-Token (Verify, Reset, E-Mail-Wechsel) erscheinen nicht mehr in
+  Request-Logs; ein Fehler in einem Signaling-Handler schließt nur diesen
+  Socket (1011) statt den Prozess zu beenden; ein Gerät, das während der
+  Bearer-Prüfung gelöscht oder gesperrt wird, wird nicht mehr registriert.
+- Backend-Abhängigkeiten: fastify (vier High-Advisories), nodemailer
+  (ReDoS, Empfänger-Validierung), vite-Dev-Server, vitest.
+- **TURN-Server:** coturn 4.18.0 (22 Advisories seit 4.6.3), kein TCP-Relay,
+  TLS ≥ 1.2. Erneuerte TURNS-Zertifikate werden ohne Neustart geladen — auf
+  prod lief von 2026-10-09 bis 2026-10-22 ein abgelaufenes TURNS-Zertifikat.
+- **Website:** CSP um `base-uri`, `form-action`, `object-src` ergänzt;
+  Cross-Origin-Opener-/Resource-Policy, strengere Permissions-Policy, kein
+  `Via`-Header.
+
+### Behoben
+
+- **Backend:** ein Helfer, dessen WLAN nach mehr als 10 Minuten Sitzung kurz
+  aussetzt, kann binnen 30 s wieder beitreten (der Code-TTL sperrte ihn
+  aus); Konten, die je Feedback beantwortet hatten, lassen sich löschen
+  (Migration 0015); Audit-Einträge mit Feedback-Inhalt werden mit dem
+  Feedback gelöscht; ein Passwort-Reset hebt die Login-Sperre auf; das
+  unbeaufsichtigte `peer-joined` trägt das Land des Helfers.
+- **Viewer:** ein einzelner nicht lesbarer ICE-Kandidat beendet die Sitzung
+  nicht mehr; ICE-Fehler vor dem ersten Bild zeigen den Firewall-Hinweis;
+  ein Datei-Angebot während aktiver Steuerung lässt keine Taste mehr auf dem
+  geteilten Rechner hängen; „Abbrechen“ während des Verbindungsaufbaus
+  meldet „Verbindung abgebrochen.“; Feedback-Fehler in der Seitensprache.
+- **Sharer:** der ICE-Grace-Timer überlebt „Beenden“ nicht mehr; Fehler nach
+  „Akzeptieren“ zeigen den passenden Text und „Neuer Code“; der Start-Resume
+  wiederholt keine Ablehnungen, die ein Retry nicht beheben kann; nur noch
+  ein Feedback-Button.
+- **Dashboard:** abgelaufene Sitzungen führen überall zum Login (auch in der
+  Feedback-Verwaltung); „Abmelden“ nur mit Sitzung; „Mehr laden“ in der
+  Benutzerliste verliert bei Fehlern die geladenen Zeilen nicht mehr;
+  deutsche Fehlertexte für alle Konto-Fehler.
+- **Downloads:** große Installer brachen nach 15 s Übertragung ab.
+
 ## [0.7.1] — 2026-09-02
 
 Wartungs-Release nach einer vollständigen Durchsicht des Codes (Review mit
