@@ -18,8 +18,8 @@ realm=${TURN_REALM}
 total-quota=100
 user-quota=5000000
 max-bps=5000000
-lifetime=600
 no-multicast-peers
 no-tls
-no-dtls
+# No `no-dtls`: 4.18 rejects it ("Bad configuration format", WARN only) —
+# DTLS listeners are off by default there, same as in turnserver.conf.tmpl.
 log-file=stdout
