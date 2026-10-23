@@ -78,6 +78,57 @@ mod tests {
         }
     }
 
+    // Outgoing frames must keep the exact wire shape docs/protocol.md
+    // specifies; the backend validates `type` against an allow-list.
+    #[test]
+    fn outgoing_frames_serialize_to_the_documented_shapes() {
+        let as_json = |o: &Outgoing| serde_json::to_value(o).expect("serialize");
+        assert_eq!(
+            as_json(&Outgoing::Register { role: "sharer" }),
+            serde_json::json!({ "type": "register", "role": "sharer" })
+        );
+        assert_eq!(
+            as_json(&Outgoing::Confirm { accepted: false }),
+            serde_json::json!({ "type": "confirm", "accepted": false })
+        );
+        assert_eq!(
+            as_json(&Outgoing::Relay {
+                payload: serde_json::json!({ "kind": "bye" })
+            }),
+            serde_json::json!({ "type": "relay", "payload": { "kind": "bye" } })
+        );
+    }
+
+    #[test]
+    fn incoming_relay_and_error_round_trip() {
+        let relay = r#"{"type":"relay","payload":{"kind":"ice","candidate":null}}"#;
+        match serde_json::from_str::<Incoming>(relay).expect("parse") {
+            Incoming::Relay { payload } => assert_eq!(payload["kind"], "ice"),
+            other => panic!("expected Relay, got {other:?}"),
+        }
+        let error = r#"{"type":"error","code":"bad-code","message":"nope"}"#;
+        match serde_json::from_str::<Incoming>(error).expect("parse") {
+            Incoming::Error { code, message } => {
+                assert_eq!(code, "bad-code");
+                assert_eq!(message, "nope");
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    // A newer backend may add frame types or fields. Extra fields must not
+    // break a known frame; an unknown type fails to parse, which
+    // `signaling::handle_incoming` treats as "ignore", never as fatal.
+    #[test]
+    fn newer_backends_extra_fields_and_unknown_types_are_tolerated() {
+        let extra = r#"{"type":"code-assigned","code":"1","expiresInSec":5,"region":"eu"}"#;
+        assert!(matches!(
+            serde_json::from_str::<Incoming>(extra),
+            Ok(Incoming::CodeAssigned { .. })
+        ));
+        assert!(serde_json::from_str::<Incoming>(r#"{"type":"future-frame"}"#).is_err());
+    }
+
     #[test]
     fn peer_joined_deserializes_with_country_null_or_absent() {
         for json in [

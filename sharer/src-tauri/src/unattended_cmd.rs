@@ -232,11 +232,7 @@ pub fn unattended_get_mode(app: AppHandle) -> CmdResult<String> {
 
 #[tauri::command]
 pub fn unattended_set_mode(app: AppHandle, mode: String) -> CmdResult<()> {
-    let normalised = if mode == "unattended" {
-        "unattended"
-    } else {
-        "adhoc"
-    };
+    let normalised = normalise_mode(&mode);
     let dir = app_data_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create dir: {e}"))?;
     let path = mode_path(&app)?;
@@ -244,7 +240,37 @@ pub fn unattended_set_mode(app: AppHandle, mode: String) -> CmdResult<()> {
     Ok(())
 }
 
+/// Only the exact "unattended" persists as such; everything else is ad-hoc,
+/// so a garbage value can never resume a bearer WSS at the next launch.
+pub(crate) fn normalise_mode(mode: &str) -> &'static str {
+    if mode == "unattended" {
+        "unattended"
+    } else {
+        "adhoc"
+    }
+}
+
 // ── Heartbeat lifecycle ──────────────────────────────────────────────
+
+/// `start_heartbeat` refusals that retrying at launch cannot fix. Named so
+/// the resume loop and the refusal sites cannot drift apart.
+pub(crate) const ERR_ALREADY_ACTIVE: &str = "unattended bereits aktiv";
+pub(crate) const ERR_NOT_PAIRED: &str = "Gerät nicht gepaart";
+pub(crate) const ERR_PASSWORD_NOT_SET: &str = "Geräte-Passwort nicht gesetzt";
+pub(crate) const ERR_ADHOC_RUNNING: &str = "Eine Ad-hoc-Sitzung läuft noch — bitte zuerst beenden.";
+
+/// Whether the launch resume should try `start_heartbeat` again after it
+/// failed with `err`. Only transient failures (keyring still unlocking,
+/// backend URL/env hiccups) are worth another round.
+pub(crate) fn resume_retry_should_continue(err: &str) -> bool {
+    ![
+        ERR_ALREADY_ACTIVE,
+        ERR_NOT_PAIRED,
+        ERR_PASSWORD_NOT_SET,
+        ERR_ADHOC_RUNNING,
+    ]
+    .contains(&err)
+}
 
 /// Payload of the `unattended-event` Tauri event.
 ///
@@ -331,12 +357,12 @@ pub(crate) async fn start_heartbeat(
     // session's slots.
     let mut cmd_guard = state.commands.lock().await;
     if cmd_guard.is_some() {
-        return Err("unattended bereits aktiv".to_string());
+        return Err(ERR_ALREADY_ACTIVE.to_string());
     }
     let dir = app_data_dir(app)?;
     let device_id = account::read_device_id(&dir)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Gerät nicht gepaart".to_string())?;
+        .ok_or_else(|| ERR_NOT_PAIRED.to_string())?;
     let store = KeyringTokenStore::default_for_auffi();
     let token = store
         .read()
@@ -344,7 +370,7 @@ pub(crate) async fn start_heartbeat(
         .ok_or_else(|| "Token fehlt im Keyring".to_string())?;
     let pw_path = device_password_path(app)?;
     if !device_password::is_set(&pw_path) {
-        return Err("Geräte-Passwort nicht gesetzt".to_string());
+        return Err(ERR_PASSWORD_NOT_SET.to_string());
     }
 
     let ws_url = backend_ws_url_secure()?;
@@ -357,7 +383,7 @@ pub(crate) async fn start_heartbeat(
     let (commands, events) = {
         let mut sink_guard = outbound_state.0.lock().await;
         if sink_guard.as_ref().is_some_and(OutboundSink::is_live_adhoc) {
-            return Err("Eine Ad-hoc-Sitzung läuft noch — bitte zuerst beenden.".to_string());
+            return Err(ERR_ADHOC_RUNNING.to_string());
         }
         let cfg = heartbeat::HeartbeatConfig::production(ws_url, device_id, token);
         let (commands, events) = heartbeat::start(cfg);
@@ -445,6 +471,9 @@ pub(crate) fn resume_on_launch(app: AppHandle) {
                     crate::dbg_log(&format!(
                         "[unattended] resume attempt {attempt}/{RESUME_ATTEMPTS} failed: {e}"
                     ));
+                    if !resume_retry_should_continue(&e) {
+                        return;
+                    }
                     tokio::time::sleep(RESUME_RETRY_DELAY).await;
                 }
             }
@@ -996,6 +1025,32 @@ async fn forwarder_loop<R: Runtime>(ctx: ForwarderCtx<R>) {
 
 #[cfg(test)]
 mod tests {
+
+    // Anything but the exact "unattended" persists as ad-hoc, so a garbage
+    // value can never resume a bearer WSS at the next launch.
+    #[test]
+    fn set_mode_normalises_to_the_two_known_modes() {
+        assert_eq!(super::normalise_mode("unattended"), "unattended");
+        assert_eq!(super::normalise_mode("adhoc"), "adhoc");
+        assert_eq!(super::normalise_mode("Unattended"), "adhoc");
+        assert_eq!(super::normalise_mode(""), "adhoc");
+    }
+
+    // The launch resume retried every failure ten times. "bereits aktiv"
+    // means someone (Aktivieren, a second resume) already started the
+    // heartbeat — retrying only logs nine pointless failures; a missing
+    // pairing/password or a running ad-hoc session will not fix itself
+    // within the retry window either. Keyring/backend hiccups still retry.
+    #[test]
+    fn resume_retries_only_transient_failures() {
+        use super::resume_retry_should_continue as retry;
+        assert!(!retry(super::ERR_ALREADY_ACTIVE));
+        assert!(!retry(super::ERR_NOT_PAIRED));
+        assert!(!retry(super::ERR_PASSWORD_NOT_SET));
+        assert!(!retry(super::ERR_ADHOC_RUNNING));
+        assert!(retry("Token fehlt im Keyring"));
+        assert!(retry("Schlüsselbund-Zugriff fehlgeschlagen: locked"));
+    }
 
     // Autostart used to deliver a sharer that sat "Inaktiv" until someone
     // clicked Aktivieren. Only the persisted "unattended" choice resumes;
