@@ -12,6 +12,8 @@ class MockDataChannel {
   readyState: RTCDataChannelState = "connecting";
   bufferedAmount = 0;
   bufferedAmountLowThreshold = 0;
+  // The spec default is "blob" in browsers that support Blob messages.
+  binaryType: BinaryType = "blob";
   onopen: OpenHandler | null = null;
   onmessage: MessageHandler | null = null;
 
@@ -97,6 +99,14 @@ describe("DataChannelHub", () => {
     expect(labels).toContain("input");
     expect(labels).toContain("files");
     expect(pc.channels).toHaveLength(2);
+  });
+
+  // ev.data is only an ArrayBuffer when binaryType says so; with the
+  // "blob" default every chunk frame would fail the instanceof check and be
+  // fed to JSON.parse instead, so received files would never complete.
+  it("sets binaryType to arraybuffer on the files channel", () => {
+    const files = pc.channels.find((c) => c.label === "files")!;
+    expect(files.binaryType).toBe("arraybuffer");
   });
 
   it("creates the input channel ordered + reliable (protocol.md: buttons/keys must not be lost)", () => {

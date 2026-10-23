@@ -32,6 +32,9 @@ export class DataChannelHub {
       };
     } else if (ch.label === "files") {
       this.filesChannel = ch;
+      // Chrome happens to default to "arraybuffer", but the spec default is
+      // "blob" — there a chunk frame fails the instanceof check below.
+      ch.binaryType = "arraybuffer";
       ch.onopen = () => {
         this.filesReady = true;
         this.checkReady();
