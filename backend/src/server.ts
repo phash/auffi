@@ -111,11 +111,19 @@ const REDACT_PATHS = [
   "req.headers.authorization",
 ];
 
-const REQ_SERIALIZER = {
-  req(request: { method: string; url: string }) {
-    return { method: request.method, url: request.url };
-  },
-};
+// The mailed one-shot tokens (verify, reset, email-change) travel in the
+// path. Logged verbatim, every line is a live account-takeover link for
+// anyone who can read the logs while the token is unexpired.
+const TOKEN_IN_PATH = /^(\/api\/(?:auth\/(?:verify|reset)|me\/email-change)\/)[^/?#]+/;
+
+export function serializeRequest(request: { method: string; url: string }): {
+  method: string;
+  url: string;
+} {
+  return { method: request.method, url: request.url.replace(TOKEN_IN_PATH, "$1[redacted]") };
+}
+
+const REQ_SERIALIZER = { req: serializeRequest };
 
 function buildLoggerOptions(nodeEnv: string | undefined) {
   const redact = { paths: REDACT_PATHS, remove: true };
