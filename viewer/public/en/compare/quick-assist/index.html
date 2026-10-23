@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quick Assist alternative: no Microsoft account, not just Windows — Auffi</title>
+    <meta name="description" content="Quick Assist alternative compared honestly: Microsoft Quick Assist only works between Windows PCs and requires a Microsoft account. With Auffi the helper only needs a browser — on any operating system, no account. Free, open source, servers in Germany." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/compare/quick-assist/" />
+
+    <!-- hreflang alternates -->
+    <link rel="alternate" hreflang="de" href="https://auffi.app/vergleich/quick-assist/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/compare/quick-assist/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/vergleich/quick-assist/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Quick Assist alternative: no Microsoft account, not just Windows — Auffi" />
+    <meta property="og:description" content="An honest comparison: Quick Assist needs Windows on both ends and a Microsoft account. With Auffi the helper only needs a browser — no account, open source." />
+    <meta property="og:url" content="https://auffi.app/en/compare/quick-assist/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Quick Assist alternative: no Microsoft account, not just Windows — Auffi" />
+    <meta name="twitter:description" content="Quick Assist: Windows on both ends + a Microsoft account. Auffi: a browser is enough, no account, open source." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <link rel="stylesheet" href="/compare.css" />
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Auffi",
+            "item": "https://auffi.app/en/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Compare",
+            "item": "https://auffi.app/en/compare/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "Auffi vs Quick Assist",
+            "item": "https://auffi.app/en/compare/quick-assist/"
+          }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "inLanguage": "en-US",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the difference between Auffi and Microsoft Quick Assist?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Quick Assist is built into Windows and works only between two Windows PCs; the person helping has to sign in with a Microsoft account. With Auffi the helper just opens auffi.app in a browser, on any operating system and without an account. The person sharing their screen installs a small sharer app for Windows or Linux."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Quick Assist work on a Mac or on Linux?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "According to Microsoft, Quick Assist for macOS is only available during interactions with Microsoft Support, not for general use. There is no Linux version. With Auffi the helper can use any current browser, including on a Mac or on Linux; the shared screen can be Windows or Linux."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Auffi need an account?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Not for ad-hoc help. The helper types a 9-digit code and the person sharing confirms the connection. You only need an account for unattended access to your own paired devices."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Why do some companies block Quick Assist?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Quick Assist has repeatedly been abused in scam calls where attackers pose as IT support. Microsoft recommends that organizations disable or uninstall Quick Assist if they use a different remote support tool. Where Quick Assist is blocked, you need an alternative."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is Auffi free like Quick Assist?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Auffi is free for personal and commercial use and open source under the AGPL-3.0. If you prefer, you can run all of Auffi on your own server with Docker Compose."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download the sharer</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/vergleich/quick-assist/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in (account)">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create account">
+          <span class="topbar-btn-label">Create account</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Quick Assist alternative: Auffi compared head-to-head</h1>
+
+      <p class="vs-lead">
+        <strong>Microsoft Quick Assist is handy as long as both sides run
+        Windows</strong> — it is free and already part of the system. But the
+        person helping has to sign in with a <strong>Microsoft
+        account</strong>, and there is no everyday Quick Assist for Mac or
+        Linux. With <strong>Auffi the helper just opens
+        <code>auffi.app</code> in a browser and types a 9-digit code — on any
+        operating system, no installation, no account</strong>. The person
+        sharing their screen installs a small sharer app for Windows or Linux.
+      </p>
+
+      <section>
+        <h2>Comparison table</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr><th scope="col">Feature</th><th scope="col">Auffi</th><th scope="col">Microsoft Quick Assist</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Price</th><td class="vs-yes">Free (personal &amp; commercial)</td><td class="vs-yes">Free (included in Windows)</td></tr>
+              <tr><th scope="row">License / open source</th><td class="vs-yes">AGPL-3.0, open source</td><td class="vs-no">Proprietary (Microsoft)</td></tr>
+              <tr><th scope="row">Self-hostable</th><td class="vs-yes">Yes (Docker Compose)</td><td class="vs-no">No, Microsoft service only</td></tr>
+              <tr><th scope="row">Person helping needs</th><td class="vs-yes">Just a browser, any operating system</td><td class="vs-no">A Windows PC with Quick Assist</td></tr>
+              <tr><th scope="row">Account needed (ad-hoc)</th><td class="vs-yes">No</td><td class="vs-no">Yes, Microsoft account or Entra ID for the helper</td></tr>
+              <tr><th scope="row">Shared screen</th><td>Windows, Linux (no macOS)</td><td>Windows (macOS only with Microsoft Support)</td></tr>
+              <tr><th scope="row">Person sharing installs</th><td>A small sharer app</td><td>Nothing if Quick Assist is present (otherwise Microsoft Store)</td></tr>
+              <tr><th scope="row">Encryption</th><td>DTLS-SRTP (WebRTC)</td><td>TLS 1.2, RDP via Microsoft relay</td></tr>
+              <tr><th scope="row">Server location (public service)</th><td class="vs-yes">Germany (Frankfurt)</td><td>Microsoft cloud</td></tr>
+              <tr><th scope="row">Unattended access</th><td class="vs-yes">Yes, for paired devices (with account)</td><td>Not intended</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">As of October 2026</p>
+      </section>
+
+      <section>
+        <h2>When Auffi is the better choice</h2>
+        <ul>
+          <li>The <strong>person helping is not on a Windows PC</strong> — say on a Mac, on Linux, or on a borrowed computer.</li>
+          <li>Nobody should have to <strong>create or sign in to a Microsoft account</strong> for a quick bit of help.</li>
+          <li>The screen in question <strong>runs Linux</strong>.</li>
+          <li>Quick Assist is <strong>blocked or uninstalled</strong> at your company, and you still need a way to help.</li>
+          <li>You want to <strong>self-host</strong> the service, or you care about servers in Germany and open code.</li>
+        </ul>
+        <h2>When Quick Assist is the better choice</h2>
+        <ul>
+          <li><strong>Both sides run Windows</strong> and the helper already has a Microsoft account.</li>
+          <li>The person sharing should <strong>install nothing at all</strong> — Quick Assist is usually already on current Windows PCs.</li>
+          <li>You want to <strong>draw on the screen</strong> (annotations) to point something out.</li>
+          <li>Microsoft Support is helping you directly — Quick Assist is the tool they use.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Quick Assist alternative: where the difference shows up day to day</h2>
+        <p>
+          Quick Assist and Auffi solve the same job: someone needs help at
+          their computer right now, and a second person should see the screen
+          and take over if needed. Both use a short code you read out over the
+          phone, and with both the person at the shared computer confirms every
+          connection. The difference lies in what each side has to bring.
+        </p>
+        <p>
+          <strong>Who has which device.</strong> Quick Assist assumes Windows
+          on both ends. Microsoft only hands out the Mac version as part of its
+          own support cases. If you are on a MacBook and want to help a relative
+          on her Windows laptop, Quick Assist will not get you there. With
+          Auffi the helping side is a browser tab — Windows, macOS or Linux.
+        </p>
+        <p>
+          <strong>Who has to sign in.</strong> With Quick Assist the helper
+          signs in with a Microsoft account or a work account (Entra ID);
+          according to Microsoft, a local Active Directory account is not
+          enough. For family help that is often where things stall: forgotten
+          password, two-factor code on the other phone. Auffi needs no account
+          at all for ad-hoc help.
+        </p>
+        <p>
+          <strong>Who has to install something.</strong> Here Quick Assist has
+          a real advantage: on current Windows PCs it is usually already there
+          (otherwise it comes from the Microsoft Store). With Auffi the person
+          sharing their screen installs a small sharer app for Windows or
+          Linux. In return, the helping side stays install-free.
+        </p>
+      </section>
+
+      <section>
+        <h2>When Quick Assist is blocked</h2>
+        <p>
+          Over the past few years Quick Assist has repeatedly been abused in
+          scam calls: attackers pose as IT support and talk victims into
+          starting a session. Microsoft therefore advises organizations to
+          disable or uninstall Quick Assist if they use a different tool. Many
+          companies have blocked Quick Assist by now.
+        </p>
+        <p>
+          If you still need to help, you need a Quick Assist alternative that
+          is not tied to Microsoft services. Auffi can also run entirely on
+          your own infrastructure: with Docker Compose the whole service,
+          including signaling and TURN, runs on your own server. The ground
+          rule is the same for every tool: never give access to your computer
+          to anyone you did not ask for help yourself. Auffi shows a
+          confirmation dialog before every ad-hoc session for exactly that
+          reason.
+        </p>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>What is the difference between Auffi and Microsoft Quick Assist?</h3>
+        <p>Quick Assist is built into Windows and works only between two Windows PCs; the person helping has to sign in with a Microsoft account. With Auffi the helper just opens auffi.app in a browser, on any operating system and without an account. The person sharing their screen installs a small sharer app for Windows or Linux.</p>
+        <h3>Does Quick Assist work on a Mac or on Linux?</h3>
+        <p>According to Microsoft, Quick Assist for macOS is only available during interactions with Microsoft Support, not for general use. There is no Linux version. With Auffi the helper can use any current browser, including on a Mac or on Linux; the shared screen can be Windows or Linux.</p>
+        <h3>Does Auffi need an account?</h3>
+        <p>Not for ad-hoc help. The helper types a 9-digit code and the person sharing confirms the connection. You only need an account for unattended access to your own paired devices.</p>
+        <h3>Why do some companies block Quick Assist?</h3>
+        <p>Quick Assist has repeatedly been abused in scam calls where attackers pose as IT support. Microsoft recommends that organizations disable or uninstall Quick Assist if they use a different remote support tool. Where Quick Assist is blocked, you need an alternative.</p>
+        <h3>Is Auffi free like Quick Assist?</h3>
+        <p>Yes. Auffi is free for personal and commercial use and open source under the AGPL-3.0. If you prefer, you can run all of Auffi on your own server with Docker Compose.</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          <a href="/en/#code">Share your screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/">Remote support software compared</a>
+          · <a href="/en/screen-sharing-without-install/">Screen sharing without installation</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

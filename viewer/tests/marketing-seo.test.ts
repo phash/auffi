@@ -38,6 +38,16 @@ const PAGES: Page[] = [
   { file: "viewer/public/en/screen-sharing-without-install/index.html", url: `${BASE}/en/screen-sharing-without-install/`, twin: `${BASE}/bildschirm-teilen-ohne-installation/`, lang: "en", faqSync: true },
   { file: "viewer/public/fernwartung-open-source/index.html", url: `${BASE}/fernwartung-open-source/`, twin: `${BASE}/en/open-source-remote-support/`, lang: "de", faqSync: true },
   { file: "viewer/public/en/open-source-remote-support/index.html", url: `${BASE}/en/open-source-remote-support/`, twin: `${BASE}/fernwartung-open-source/`, lang: "en", faqSync: true },
+  { file: "viewer/public/vergleich/quick-assist/index.html", url: `${BASE}/vergleich/quick-assist/`, twin: `${BASE}/en/compare/quick-assist/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/quick-assist/index.html", url: `${BASE}/en/compare/quick-assist/`, twin: `${BASE}/vergleich/quick-assist/`, lang: "en", faqSync: true },
+  { file: "viewer/public/vergleich/gotoassist/index.html", url: `${BASE}/vergleich/gotoassist/`, twin: `${BASE}/en/compare/gotoassist/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/gotoassist/index.html", url: `${BASE}/en/compare/gotoassist/`, twin: `${BASE}/vergleich/gotoassist/`, lang: "en", faqSync: true },
+  { file: "viewer/public/vergleich/splashtop/index.html", url: `${BASE}/vergleich/splashtop/`, twin: `${BASE}/en/compare/splashtop/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/splashtop/index.html", url: `${BASE}/en/compare/splashtop/`, twin: `${BASE}/vergleich/splashtop/`, lang: "en", faqSync: true },
+  { file: "viewer/public/vergleich/zoho-assist/index.html", url: `${BASE}/vergleich/zoho-assist/`, twin: `${BASE}/en/compare/zoho-assist/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/zoho-assist/index.html", url: `${BASE}/en/compare/zoho-assist/`, twin: `${BASE}/vergleich/zoho-assist/`, lang: "en", faqSync: true },
+  { file: "viewer/public/vergleich/fixme-it/index.html", url: `${BASE}/vergleich/fixme-it/`, twin: `${BASE}/en/compare/fixme-it/`, lang: "de", faqSync: true },
+  { file: "viewer/public/en/compare/fixme-it/index.html", url: `${BASE}/en/compare/fixme-it/`, twin: `${BASE}/vergleich/fixme-it/`, lang: "en", faqSync: true },
   { file: "viewer/public/fernwartung-kostenlos/index.html", url: `${BASE}/fernwartung-kostenlos/`, twin: `${BASE}/en/free-remote-support/`, lang: "de", faqSync: true },
   { file: "viewer/public/en/free-remote-support/index.html", url: `${BASE}/en/free-remote-support/`, twin: `${BASE}/fernwartung-kostenlos/`, lang: "en", faqSync: true },
 ];
@@ -64,6 +74,11 @@ describe("llms.txt lists the comparison surface (GEO)", () => {
     "https://auffi.app/vergleich/chrome-remote-desktop/",
     "https://auffi.app/vergleich/teamviewer-kommerzielle-nutzung/",
     "https://auffi.app/bildschirm-teilen-ohne-installation/",
+    "https://auffi.app/vergleich/quick-assist/",
+    "https://auffi.app/vergleich/gotoassist/",
+    "https://auffi.app/vergleich/splashtop/",
+    "https://auffi.app/vergleich/zoho-assist/",
+    "https://auffi.app/vergleich/fixme-it/",
   ];
   for (const url of mustContain) {
     it(`mentions ${url}`, () => expect(llms).toContain(url));
@@ -90,6 +105,11 @@ const TARGETS: Target[] = [
   { path: "/vergleich/rustdesk/", lang: "de", role: "spoke", keyword: "rustdesk alternative" },
   { path: "/vergleich/chrome-remote-desktop/", lang: "de", role: "spoke", keyword: "chrome remote desktop alternative" },
   { path: "/vergleich/teamviewer-kommerzielle-nutzung/", lang: "de", role: "spoke", keyword: "teamviewer kommerzielle nutzung" },
+  { path: "/vergleich/quick-assist/", lang: "de", role: "spoke", keyword: "quick assist alternative" },
+  { path: "/vergleich/gotoassist/", lang: "de", role: "spoke", keyword: "gotoassist alternative" },
+  { path: "/vergleich/splashtop/", lang: "de", role: "spoke", keyword: "splashtop alternative" },
+  { path: "/vergleich/zoho-assist/", lang: "de", role: "spoke", keyword: "zoho assist alternative" },
+  { path: "/vergleich/fixme-it/", lang: "de", role: "spoke", keyword: "fixme it alternative" },
   { path: "/bildschirm-teilen-ohne-installation/", lang: "de", role: "spoke", keyword: "bildschirm teilen ohne installation" },
   { path: "/fernwartung-open-source/", lang: "de", role: "spoke", keyword: "fernwartung open source" },
   { path: "/fernwartung-kostenlos/", lang: "de", role: "spoke", keyword: "fernwartung kostenlos" },
@@ -99,6 +119,11 @@ const TARGETS: Target[] = [
   { path: "/en/compare/rustdesk/", lang: "en", role: "spoke", keyword: "rustdesk alternative" },
   { path: "/en/compare/chrome-remote-desktop/", lang: "en", role: "spoke", keyword: "chrome remote desktop alternative" },
   { path: "/en/compare/teamviewer-commercial-use/", lang: "en", role: "spoke", keyword: "teamviewer commercial use" },
+  { path: "/en/compare/quick-assist/", lang: "en", role: "spoke", keyword: "quick assist alternative" },
+  { path: "/en/compare/gotoassist/", lang: "en", role: "spoke", keyword: "gotoassist alternative" },
+  { path: "/en/compare/splashtop/", lang: "en", role: "spoke", keyword: "splashtop alternative" },
+  { path: "/en/compare/zoho-assist/", lang: "en", role: "spoke", keyword: "zoho assist alternative" },
+  { path: "/en/compare/fixme-it/", lang: "en", role: "spoke", keyword: "fixme it alternative" },
   { path: "/en/screen-sharing-without-install/", lang: "en", role: "spoke", keyword: "screen sharing without installation" },
   { path: "/en/open-source-remote-support/", lang: "en", role: "spoke", keyword: "open source remote support" },
   { path: "/en/free-remote-support/", lang: "en", role: "spoke", keyword: "free remote support" },
@@ -205,6 +230,15 @@ const CROSS_LINKS: Array<{ from: string; to: string }> = [
   { from: "viewer/en/index.html", to: "/en/screen-sharing-without-install/" },
   { from: "viewer/en/index.html", to: "/en/open-source-remote-support/" },
   { from: "viewer/en/index.html", to: "/en/free-remote-support/" },
+  // Search Console (2026-10-23): the EN RustDesk and AnyDesk spokes sat at position
+  // 16–21 for their head terms and Quick Assist had demand at 9–35 without any page —
+  // the landing page, the only page with click signal, linked none of them.
+  { from: "viewer/index.html", to: "/vergleich/rustdesk/" },
+  { from: "viewer/index.html", to: "/vergleich/anydesk/" },
+  { from: "viewer/index.html", to: "/vergleich/quick-assist/" },
+  { from: "viewer/en/index.html", to: "/en/compare/rustdesk/" },
+  { from: "viewer/en/index.html", to: "/en/compare/anydesk/" },
+  { from: "viewer/en/index.html", to: "/en/compare/quick-assist/" },
   { from: "viewer/public/vergleich/rustdesk/index.html", to: "/fernwartung-open-source/" },
   { from: "viewer/public/en/compare/rustdesk/index.html", to: "/en/open-source-remote-support/" },
 ];
@@ -216,6 +250,24 @@ describe("intent spokes receive equity from outside the cluster", () => {
       const d = new JSDOM(readFileSync(f(from), "utf-8")).window.document;
       const texts = Array.from(d.querySelectorAll(`a[href="${to}"]`)).map((a) => norm(a.textContent ?? ""));
       expect(texts.some((x) => x.includes(keyword)), `anchor texts: ${texts.join(" | ") || "(none)"}`).toBe(true);
+    });
+  }
+});
+
+// Search Console (2026-10-23): the brand query "auffi" sat at position 4 — homonyms
+// (Aufi, Uffi, AFFI) compete for the name. A WebSite node tells Google the site's
+// name is the brand, which also feeds the site-name line in the SERP.
+describe("landing pages declare the brand as the site name", () => {
+  for (const file of ["viewer/index.html", "viewer/en/index.html"]) {
+    it(`${file} carries a WebSite node named Auffi for https://auffi.app/`, () => {
+      const d = new JSDOM(readFileSync(f(file), "utf-8")).window.document;
+      const nodes = Array.from(d.querySelectorAll('script[type="application/ld+json"]'))
+        .map((s) => JSON.parse(s.textContent ?? "{}"))
+        .flatMap((j) => (Array.isArray(j["@graph"]) ? j["@graph"] : [j]));
+      const site = nodes.find((n) => n["@type"] === "WebSite");
+      expect(site, "WebSite node present").toBeTruthy();
+      expect(site.name).toBe("Auffi");
+      expect(site.url).toBe("https://auffi.app/");
     });
   }
 });

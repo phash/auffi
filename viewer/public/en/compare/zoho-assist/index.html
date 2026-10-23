@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zoho Assist alternative: no technician account, open source — Auffi</title>
+    <meta name="description" content="Zoho Assist alternative compared honestly: with Auffi you help straight from the browser without an account — open source (AGPL-3.0), self-hostable, free for business too, servers in Germany. Zoho Assist is the stronger helpdesk suite with mobile apps. Table + FAQ." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/compare/zoho-assist/" />
+
+    <!-- hreflang alternates -->
+    <link rel="alternate" hreflang="de" href="https://auffi.app/vergleich/zoho-assist/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/compare/zoho-assist/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/vergleich/zoho-assist/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Zoho Assist alternative: no technician account, open source — Auffi" />
+    <meta property="og:description" content="An honest comparison: Auffi helps from the browser with no account, is open source (AGPL-3.0), self-hostable and free for business. Zoho Assist wins on helpdesk features and mobile apps." />
+    <meta property="og:url" content="https://auffi.app/en/compare/zoho-assist/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Zoho Assist alternative: no technician account, open source — Auffi" />
+    <meta name="twitter:description" content="Help from the browser with no account, AGPL-3.0, self-hostable, free for business — servers in Germany." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <link rel="stylesheet" href="/compare.css" />
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Auffi", "item": "https://auffi.app/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://auffi.app/en/compare/" },
+          { "@type": "ListItem", "position": 3, "name": "Auffi vs Zoho Assist", "item": "https://auffi.app/en/compare/zoho-assist/" }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "inLanguage": "en-US",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the difference between Auffi and Zoho Assist?",
+            "acceptedAnswer": { "@type": "Answer", "text": "In both, the person helping works in the browser and the person getting help starts a small program. The difference: Zoho Assist is a commercial helpdesk suite in which every helper needs a Zoho account. Auffi is open source (AGPL-3.0), needs no account at all for ad-hoc help and is free for business use too." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is Zoho Assist free?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Zoho Assist has a free plan with one technician and one concurrent session. For more technicians, parallel sessions and features such as session recording you need one of the paid plans, which are billed per technician. Auffi costs nothing in any case, businesses included." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does the person being helped have to install anything with Zoho Assist?",
+            "acceptedAnswer": { "@type": "Answer", "text": "On Windows, according to Zoho's help pages, they download and run ZA_Connect.exe after entering the session ID; on a phone an app is required. Auffi is similar: the person sharing their screen starts the small Auffi sharer for Windows or Linux. On the helper's side Auffi needs nothing but a browser." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I self-host Zoho Assist or Auffi?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Zoho Assist is a cloud-only service run by Zoho. Auffi can be run entirely on your own server: signaling server, TURN server and web front end all start via Docker Compose." }
+          },
+          {
+            "@type": "Question",
+            "name": "When is Zoho Assist the better choice?",
+            "acceptedAnswer": { "@type": "Answer", "text": "When you run a helpdesk with several technicians and need features such as session recording, queues, branding, reports or remote access to smartphones and Macs. Auffi deliberately does not offer these." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download the sharer</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/vergleich/zoho-assist/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in (account)">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create account">
+          <span class="topbar-btn-label">Create account</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Zoho Assist alternative: Auffi compared head-to-head</h1>
+
+      <p class="vs-lead">
+        <strong>Of all the commercial remote support tools, Zoho Assist is the
+        one closest to Auffi</strong>: in both, the person helping works in the
+        browser and the person getting help starts a small program. So the
+        difference is less about technology and more about the model.
+        <strong>Zoho Assist is a commercial helpdesk suite with technician
+        accounts and plans. Auffi is open source (AGPL-3.0), needs no account
+        for ad-hoc help, is free for business use too and can be
+        self-hosted</strong> — with servers in Germany.
+      </p>
+
+      <section>
+        <h2>Comparison table</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr><th scope="col">Feature</th><th scope="col">Auffi</th><th scope="col">Zoho Assist</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Price</th><td class="vs-yes">Free (private &amp; commercial)</td><td>Free plan (1 technician, 1 session), otherwise paid per technician</td></tr>
+              <tr><th scope="row">License / open source</th><td class="vs-yes">AGPL-3.0, open source</td><td class="vs-no">Proprietary (SaaS)</td></tr>
+              <tr><th scope="row">Self-hostable</th><td class="vs-yes">Yes (Docker Compose)</td><td class="vs-no">No, Zoho cloud only</td></tr>
+              <tr><th scope="row">Person helping needs</th><td class="vs-yes">Browser only, no account</td><td>Browser or app + Zoho account</td></tr>
+              <tr><th scope="row">Person being helped</th><td>Small sharer (Windows, Linux)</td><td>ZA_Connect.exe, plugin or mobile app</td></tr>
+              <tr><th scope="row">Account for ad-hoc help</th><td class="vs-yes">No (9-digit code)</td><td>Yes, on the technician side</td></tr>
+              <tr><th scope="row">Encryption</th><td>End-to-end, DTLS-SRTP (WebRTC)</td><td>TLS/AES per vendor</td></tr>
+              <tr><th scope="row">Company / servers</th><td class="vs-yes">Germany (Frankfurt)</td><td>Zoho (India/USA), EU data centers available</td></tr>
+              <tr><th scope="row">Platforms (remote control of …)</th><td>Windows, Linux (no macOS)</td><td class="vs-yes">Windows, macOS, Linux, Android, iOS</td></tr>
+              <tr><th scope="row">Helpdesk features</th><td>None (deliberately lean)</td><td class="vs-yes">Recording, queue, branding, reports</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">As of October 2026</p>
+      </section>
+
+      <section>
+        <h2>When Auffi is the better choice</h2>
+        <ul>
+          <li>You want to <strong>help without an account</strong> — neither you nor the other person signs up for anything.</li>
+          <li>You help <strong>commercially but without a budget</strong>: Auffi has no technician licenses and no limit on parallel sessions.</li>
+          <li><strong>Open source and self-hosting</strong> matter to you, for example because your company may not route screen data through third-party clouds.</li>
+          <li>You need a <strong>German service without third-party trackers</strong>, without first reviewing a data processing agreement with a non-European corporation.</li>
+        </ul>
+        <h2>When Zoho Assist is the better choice</h2>
+        <ul>
+          <li>You run a <strong>helpdesk with several technicians</strong> and need session recording, queues, reports or your own branding.</li>
+          <li>You need to control or view <strong>Macs, Android devices or iPhones</strong> — Auffi cannot do that.</li>
+          <li>You already use <strong>Zoho Desk or other Zoho apps</strong> and want to start remote sessions straight from a ticket.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Zoho Assist alternative: where the difference shows up day to day</h2>
+        <p>
+          On paper the two tools look alike: help from the browser, a small
+          program on the other end, a session number to connect. So people
+          looking for a Zoho Assist alternative rarely want a completely
+          different way of working — they want a different business model.
+        </p>
+        <p>
+          <strong>The account.</strong> In Zoho Assist every session starts in
+          the technician console, and that only exists with a Zoho account.
+          For a company with a fixed support team that is no problem. For the
+          neighbor who wants to help her father over the phone, it is: she has
+          to sign up before she sees a single screen. With Auffi she opens
+          <code>auffi.app</code>, types the 9-digit code her father reads out,
+          and is connected.
+        </p>
+        <p>
+          <strong>The cost.</strong> Zoho Assist has an honest free plan: one
+          technician, one session at a time, with no time limit on desktop
+          computers. As soon as a second colleague wants to help, or you want
+          to run two sessions in parallel, the paid plans begin, billed per
+          technician. Auffi has no plans at all — not for individuals, not for
+          businesses, and the number of helpers does not matter.
+        </p>
+        <p>
+          <strong>The data.</strong> Zoho offers data centers in the EU, but it
+          remains a corporation headquartered in India and the US whose privacy
+          policy allows processing outside the EU as well. Auffi runs on a
+          server in Frankfurt, stores no IP addresses in clear text and sends
+          video and input end-to-end encrypted over WebRTC. If you need to be
+          strict about it, run Auffi on your own server — the source code is
+          public on GitHub.
+        </p>
+        <p>
+          <strong>Consent.</strong> With Auffi the person sharing their screen
+          confirms every ad-hoc session with a click. Without that
+          confirmation nobody sees anything. For your own machines there is
+          unattended access with an account and a per-device password — but
+          that is an add-on, not a requirement.
+        </p>
+      </section>
+
+      <section>
+        <h2>To be honest: what Auffi cannot do</h2>
+        <p>
+          Auffi is deliberately lean and not a helpdesk suite. There is no
+          session recording, no queue for incoming requests, no reports for
+          team leads and no ticketing integration. The Auffi sharer runs only
+          on Windows and Linux; Macs, Android devices and iPhones cannot be
+          controlled. You can transfer files during a session; beyond that
+          there are no extras.
+        </p>
+        <p>
+          If your day consists of many tickets, several technicians and a
+          mixed device fleet, Zoho Assist is the better-suited tool. If, on the
+          other hand, you are looking for a Zoho Assist alternative for the
+          moment someone needs help unexpectedly and nobody wants to deal with
+          sign-ups, plans or cloud contracts, Auffi is built exactly for that.
+          The two do not exclude each other: many IT teams use a suite for the
+          helpdesk and a lean tool for everything that comes up unplanned.
+        </p>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>What is the difference between Auffi and Zoho Assist?</h3>
+        <p>In both, the person helping works in the browser and the person getting help starts a small program. The difference: Zoho Assist is a commercial helpdesk suite in which every helper needs a Zoho account. Auffi is open source (AGPL-3.0), needs no account at all for ad-hoc help and is free for business use too.</p>
+        <h3>Is Zoho Assist free?</h3>
+        <p>Zoho Assist has a free plan with one technician and one concurrent session. For more technicians, parallel sessions and features such as session recording you need one of the paid plans, which are billed per technician. Auffi costs nothing in any case, businesses included.</p>
+        <h3>Does the person being helped have to install anything with Zoho Assist?</h3>
+        <p>On Windows, according to Zoho's help pages, they download and run ZA_Connect.exe after entering the session ID; on a phone an app is required. Auffi is similar: the person sharing their screen starts the small Auffi sharer for Windows or Linux. On the helper's side Auffi needs nothing but a browser.</p>
+        <h3>Can I self-host Zoho Assist or Auffi?</h3>
+        <p>Zoho Assist is a cloud-only service run by Zoho. Auffi can be run entirely on your own server: signaling server, TURN server and web front end all start via Docker Compose.</p>
+        <h3>When is Zoho Assist the better choice?</h3>
+        <p>When you run a helpdesk with several technicians and need features such as session recording, queues, branding, reports or remote access to smartphones and Macs. Auffi deliberately does not offer these.</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          <a href="/en/#code">Share your screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/">Remote support software compared</a>
+          · <a href="/en/open-source-remote-support/">Open source remote support</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>

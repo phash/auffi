@@ -28,6 +28,16 @@ URLS=(
   "https://auffi.app/fernwartung-kostenlos/"
   "https://auffi.app/en/open-source-remote-support/"
   "https://auffi.app/en/free-remote-support/"
+  "https://auffi.app/vergleich/quick-assist/"
+  "https://auffi.app/en/compare/quick-assist/"
+  "https://auffi.app/vergleich/gotoassist/"
+  "https://auffi.app/en/compare/gotoassist/"
+  "https://auffi.app/vergleich/splashtop/"
+  "https://auffi.app/en/compare/splashtop/"
+  "https://auffi.app/vergleich/zoho-assist/"
+  "https://auffi.app/en/compare/zoho-assist/"
+  "https://auffi.app/vergleich/fixme-it/"
+  "https://auffi.app/en/compare/fixme-it/"
 )
 body=$(printf '{"host":"%s","key":"%s","keyLocation":"https://%s/%s.txt","urlList":[%s]}' \
   "$HOST" "$KEY" "$HOST" "$KEY" \

@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Splashtop alternative: no per-technician license — Auffi</title>
+    <meta name="description" content="Splashtop alternative compared honestly: Splashtop SOS is a polished, paid helpdesk tool licensed per technician per year. Auffi is free (for business too), open source (AGPL-3.0) and self-hostable — the person helping only needs a browser, no account. Servers in Germany." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://auffi.app/en/compare/splashtop/" />
+
+    <!-- hreflang alternates -->
+    <link rel="alternate" hreflang="de" href="https://auffi.app/vergleich/splashtop/" />
+    <link rel="alternate" hreflang="en" href="https://auffi.app/en/compare/splashtop/" />
+    <link rel="alternate" hreflang="x-default" href="https://auffi.app/vergleich/splashtop/" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Auffi" />
+    <meta property="og:title" content="Splashtop alternative: no per-technician license — Auffi" />
+    <meta property="og:description" content="An honest comparison: Splashtop SOS costs an annual license per technician. Auffi is free, open source and the helper only needs a browser." />
+    <meta property="og:url" content="https://auffi.app/en/compare/splashtop/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://auffi.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Auffi — Screen Sharing, Open Source, GDPR-Compliant" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Splashtop alternative: no per-technician license — Auffi" />
+    <meta name="twitter:description" content="Splashtop SOS: annual license per technician. Auffi: free, AGPL-3.0, helper only needs a browser." />
+    <meta name="twitter:image" content="https://auffi.app/og-image.png" />
+
+    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
+    <link rel="preload" href="/fonts/IBMPlexSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/topbar-footer.css" />
+    <link rel="stylesheet" href="/legal/style.css" />
+    <link rel="stylesheet" href="/compare.css" />
+    <!-- Matomo Consent + Loader (DSGVO/TTDSG opt-in) -->
+    <link rel="stylesheet" href="/matomo-consent.css" />
+    <script src="/matomo-consent.js" defer></script>
+    <script src="/help-overlay.js" defer></script>
+    <!-- End Matomo -->
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Auffi",
+            "item": "https://auffi.app/en/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Compare",
+            "item": "https://auffi.app/en/compare/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "Auffi vs Splashtop",
+            "item": "https://auffi.app/en/compare/splashtop/"
+          }
+        ]
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "inLanguage": "en-US",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is the difference between Auffi and Splashtop?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Splashtop SOS is a paid helpdesk product with an annual license per concurrent technician, a technician account and an app on both ends. Auffi is free, open source (AGPL-3.0) and self-hostable; the person helping just opens auffi.app in a browser and needs no account."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is Auffi a free Splashtop alternative for businesses?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Auffi is free for commercial use too, with no per-technician license and no subscription. If you want more control, run Auffi on your own server with Docker Compose."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does the person being helped have to install anything with Splashtop?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. With Splashtop SOS the person downloads the SOS app and reads a 9-digit code to the technician. With Auffi the person sharing their screen also installs a small sharer (Windows or Linux); the helping side, however, only needs a browser."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does Auffi support Mac, iPhone and Android like Splashtop?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. With Auffi you can share a screen from Windows and Linux only, and there are no mobile apps. Splashtop supports far more platforms, including macOS, iOS and Android. Helping with Auffi, on the other hand, works from any device with a current browser."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Where is the data stored with Auffi and with Splashtop?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Splashtop is a US company and says it has additionally run a data center in Germany since 2020. Auffi's public service runs in Frankfurt, uses no third-party trackers and stores no clear-text IP addresses; when self-hosted, all data stays on your own server."
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" role="banner">
+      <div class="topbar-left">
+        <a href="/en/" class="topbar-wordmark" aria-label="Auffi — Go to home page">Auffi</a>
+        <span class="topbar-tagline" aria-hidden="true">Screen sharing — Open Source</span>
+      </div>
+
+      <div class="topbar-center">
+        <a class="topbar-cta topbar-cta-connect" href="/en/#code" aria-label="Go to the connection code on the home page">Connect</a>
+        <a id="topbar-sharer" class="topbar-cta topbar-cta-sharer" href="/en/download/" aria-label="Download the sharer">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/>
+            <path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.97a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.779a.749.749 0 1 1 1.06-1.06l1.97 1.97Z"/>
+          </svg>
+          <span class="topbar-cta-label">Download the sharer</span>
+        </a>
+      </div>
+
+      <nav class="topbar-actions" aria-label="Links">
+        <a id="lang-switch" href="/vergleich/splashtop/" class="topbar-btn" aria-label="Auf Deutsch ansehen" hreflang="de">DE</a>
+        <a id="topbar-login" href="/dashboard/login" class="topbar-btn" aria-label="Log in (account)">
+          <span class="topbar-btn-label">Log in</span>
+        </a>
+        <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Create account">
+          <span class="topbar-btn-label">Create account</span>
+        </a>
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (opens buymeacoffee.com in a new tab)">
+          ☕ <span class="topbar-btn-label">Buy me a coffee</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h1>Splashtop alternative: Auffi compared head-to-head</h1>
+
+      <p class="vs-lead">
+        <strong>Splashtop SOS is a polished, paid helpdesk tool</strong>: an
+        annual license per concurrent technician, a technician account and an
+        app on both ends — in return you get broad platform coverage and team
+        features. <strong>Auffi is free, open source (AGPL-3.0) and
+        self-hostable. The person helping just opens <code>auffi.app</code>
+        in a browser and types a 9-digit code — no installation, no
+        account.</strong> If you are looking for a Splashtop alternative for
+        ad-hoc help without managing licenses, this is the honest comparison.
+      </p>
+
+      <section>
+        <h2>Comparison table</h2>
+        <div class="vs-table-wrap">
+          <table class="vs-table">
+            <thead>
+              <tr><th scope="col">Feature</th><th scope="col">Auffi</th><th scope="col">Splashtop SOS</th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">Price</th><td class="vs-yes">Free (private &amp; commercial)</td><td class="vs-no">Annual license per concurrent technician (from $259/year according to the vendor), no monthly plan</td></tr>
+              <tr><th scope="row">Free to try</th><td class="vs-yes">Yes, without limit</td><td>Free trial</td></tr>
+              <tr><th scope="row">License / open source</th><td class="vs-yes">AGPL-3.0, open source</td><td class="vs-no">Proprietary</td></tr>
+              <tr><th scope="row">Self-hostable</th><td class="vs-yes">Yes (Docker Compose)</td><td>Only with the separate Splashtop On-Prem product</td></tr>
+              <tr><th scope="row">Installation (person helping)</th><td class="vs-yes">None — browser only</td><td class="vs-no">Splashtop Business app (or Chrome browser) plus subscription</td></tr>
+              <tr><th scope="row">Installation (person with the problem)</th><td>Small sharer (Windows, Linux)</td><td>SOS app, reads out a 9-digit code</td></tr>
+              <tr><th scope="row">Account needed (ad-hoc)</th><td class="vs-yes">No</td><td class="vs-no">Yes, licensed technician account</td></tr>
+              <tr><th scope="row">Encryption</th><td>End-to-end, DTLS-SRTP (WebRTC)</td><td>TLS / AES-256</td></tr>
+              <tr><th scope="row">Origin / servers</th><td class="vs-yes">Germany (Frankfurt)</td><td>USA (Silicon Valley); data center in Germany available</td></tr>
+              <tr><th scope="row">Platforms (sharing a screen)</th><td>Windows, Linux (no macOS)</td><td class="vs-yes">Windows, macOS, Linux, iOS, Android</td></tr>
+              <tr><th scope="row">Team features</th><td>None (no ticketing, no recording)</td><td class="vs-yes">Chat, recording, PSA/ITSM integrations, several technicians per session</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="vs-updated">As of October 2026 · Prices according to the vendor, billed annually</p>
+      </section>
+
+      <section>
+        <h2>When Auffi is the better choice</h2>
+        <ul>
+          <li>You help <strong>occasionally</strong> — family, a club, a few customers — and do not want to pay a <strong>license per technician</strong>.</li>
+          <li>The <strong>person helping should not install anything</strong> or create an account: a browser is enough.</li>
+          <li>You want to <strong>run the service yourself</strong>, or you care about <strong>open source and servers in Germany</strong>.</li>
+        </ul>
+        <h2>When Splashtop is the better choice</h2>
+        <ul>
+          <li>You run a <strong>professional IT helpdesk</strong> with several technicians and need recording, chat and ticketing integrations.</li>
+          <li>You have to support <strong>Macs, iPhones or Android devices</strong> — Auffi cannot do that.</li>
+          <li>You want <strong>vendor support and a contract</strong> rather than an open-source service you are responsible for yourself.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Splashtop alternative: where the difference shows up day to day</h2>
+        <p>
+          Splashtop is not a bad product — quite the opposite. Splashtop SOS
+          is well made, fast and built for IT departments. That is exactly
+          where the reasons for looking at a Splashtop alternative come from.
+        </p>
+        <p>
+          <strong>The licensing model.</strong> Splashtop charges per
+          concurrent technician, billed a year in advance — according to the
+          vendor there is no monthly plan. For a helpdesk team running sessions
+          every day that is a fair, predictable cost. If you only help someone
+          a few times a month, though, you pay a whole year's license for a
+          handful of sessions. Auffi costs nothing, for business use too, and
+          there is no license that expires.
+        </p>
+        <p>
+          <strong>Who installs what.</strong> With Splashtop SOS the
+          technician installs the Splashtop Business app (or uses the Chrome
+          browser) and signs in with their account; the person on the other
+          end downloads the SOS app and reads out a code. With Auffi only the
+          person showing their screen downloads a small sharer. The helping
+          side opens a website, types nine digits and is connected — on any
+          device with a current browser, without signing in.
+        </p>
+        <p>
+          <strong>Control over the infrastructure.</strong> Splashtop is a
+          cloud service run by a US company. It says it has additionally
+          operated a data center in Germany since 2020, and for organizations
+          that cannot use the cloud at all it sells a separate On-Prem
+          product. Auffi is open source from the ground up: signaling, the
+          TURN server and the web interface run on your own server via Docker
+          Compose, and the source code is public on GitHub.
+        </p>
+      </section>
+
+      <section>
+        <h2>What Auffi cannot do — and why that can be fine</h2>
+        <p>
+          To be honest: Auffi covers only part of what Splashtop offers. There
+          are no mobile apps, no Mac sharer, no ticketing, no session recording
+          and no management of large device fleets. Unattended access to your
+          own devices is possible, but it needs an account and a password per
+          device.
+        </p>
+        <p>
+          In exchange, Auffi is hard to beat for ad-hoc help: the person on
+          the phone does not need to understand anything beyond "open the
+          website and type the code". The sharing person has to confirm every
+          ad-hoc session explicitly, and the connection is encrypted with
+          DTLS-SRTP. That is why plenty of teams combine both — Splashtop for
+          the managed fleet, Auffi for everything unplanned that comes up in
+          between.
+        </p>
+      </section>
+
+      <section>
+        <h2>Frequently asked questions</h2>
+        <h3>What is the difference between Auffi and Splashtop?</h3>
+        <p>Splashtop SOS is a paid helpdesk product with an annual license per concurrent technician, a technician account and an app on both ends. Auffi is free, open source (AGPL-3.0) and self-hostable; the person helping just opens auffi.app in a browser and needs no account.</p>
+        <h3>Is Auffi a free Splashtop alternative for businesses?</h3>
+        <p>Yes. Auffi is free for commercial use too, with no per-technician license and no subscription. If you want more control, run Auffi on your own server with Docker Compose.</p>
+        <h3>Does the person being helped have to install anything with Splashtop?</h3>
+        <p>Yes. With Splashtop SOS the person downloads the SOS app and reads a 9-digit code to the technician. With Auffi the person sharing their screen also installs a small sharer (Windows or Linux); the helping side, however, only needs a browser.</p>
+        <h3>Does Auffi support Mac, iPhone and Android like Splashtop?</h3>
+        <p>No. With Auffi you can share a screen from Windows and Linux only, and there are no mobile apps. Splashtop supports far more platforms, including macOS, iOS and Android. Helping with Auffi, on the other hand, works from any device with a current browser.</p>
+        <h3>Where is the data stored with Auffi and with Splashtop?</h3>
+        <p>Splashtop is a US company and says it has additionally run a data center in Germany since 2020. Auffi's public service runs in Frankfurt, uses no third-party trackers and stores no clear-text IP addresses; when self-hosted, all data stays on your own server.</p>
+      </section>
+
+      <section>
+        <h2>Try it now</h2>
+        <p>
+          <a href="/en/#code">Share your screen — enter a code &amp; connect</a>
+          · <a href="/en/download/">Download the sharer</a>
+          · <a href="/en/compare/">Remote support software compared</a>
+        </p>
+      </section>
+    </main>
+
+    <footer id="site-footer" role="contentinfo">
+      <span>
+        powered by
+        <a href="https://phash.de" target="_blank" rel="noopener noreferrer">phash.de</a>
+        and
+        <a href="https://mr-development.de" target="_blank" rel="noopener noreferrer">mr-development.de</a>
+      </span>
+      <span class="legal-links">
+        <a href="/impressum/">Impressum</a>
+        ·
+        <a href="/datenschutz/">Datenschutz</a>
+        ·
+        <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
+        ·
+        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+    </footer>
+  </body>
+</html>
