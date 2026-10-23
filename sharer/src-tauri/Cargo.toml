@@ -11,21 +11,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
-cc = "=1.4.4"
+cc = "=1.9.0"
 
 [dependencies]
-tauri = { version = "=2.11.5", features = ["tray-icon"] }
-tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "sync"] }
+tauri = { version = "=2.11.6", features = ["tray-icon"] }
+tokio = { version = "=1.53.3", features = ["rt-multi-thread", "macros", "sync"] }
 # The `rustls-tls-native-roots` feature is kept for the Connector type and the
 # rustls-native-certs dependency, but we do NOT use its default connector: it
 # trusts the OS store alone, which on Windows is populated lazily and left the
 # sharer unable to connect on machines whose store had not cached ISRG Root X2.
 # See src/tls_roots.rs — the anchors are merged with the bundled set instead.
 tokio-tungstenite = { version = "=0.30.0", features = ["rustls-tls-native-roots"] }
-rustls-native-certs = "=0.8.4"
+rustls-native-certs = "=0.8.5"
 webpki-roots = "=1.0.10"
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.151"
+serde_json = "=1.0.154"
 futures-util = "=0.3.34"
 # Held on the 0.17 line: 0.20 is the sans-io full rewrite (no 0.18/0.19
 # exist) that rearchitects the load-bearing connectivity settings from
@@ -35,22 +35,22 @@ webrtc = "=0.17.2"
 enigo = "=0.6.1"
 log = "=0.4.34"
 tauri-plugin-global-shortcut = "=2.3.2"
-tauri-plugin-dialog = "=2.7.2"
+tauri-plugin-dialog = "=2.7.3"
 dirs = "=6.0.0"
 bytes = "=1.12.1"
-reqwest = { version = "=0.13.4", default-features = false, features = ["rustls", "json"] }
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json"] }
 # rustls 0.23+ refuses to auto-pick a CryptoProvider when both 'ring'
 # (via webrtc-rs) and 'aws-lc-rs' (via rustls-platform-verifier) are in
 # the graph. We install ring explicitly at process startup in lib.rs.
 # The version is pinned to the same release the rest of the graph
 # resolves to (see Cargo.lock).
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
-uuid = { version = "=1.26.0", features = ["v4"] }
-tauri-plugin-store = "=2.4.4"
-tauri-plugin-shell = "=2.3.5"
+uuid = { version = "=1.28.0", features = ["v4"] }
+tauri-plugin-store = "=2.4.5"
+tauri-plugin-shell = "=2.3.6"
 # Open the diagnostic log file in the OS default handler (diagnostics). The
 # blessed replacement for the now-deprecated `tauri_plugin_shell::Shell::open`.
-tauri-plugin-opener = "=2.5.4"
+tauri-plugin-opener = "=2.5.5"
 # UPnP IGD client for discovering the home router's external IP without
 # round-tripping our STUN server. See `nat_traversal.rs` and issue #89.
 # The `aio_tokio` feature drives the SSDP/SOAP traffic on our existing
@@ -118,7 +118,7 @@ windows = { version = "=0.62.2", features = [
 
 [target.'cfg(unix)'.dependencies]
 # O_NOFOLLOW for the diagnostic log open on the world-writable Unix temp dir.
-libc = "=0.2.189"
+libc = "=0.2.191"
 
 [target.'cfg(windows)'.build-dependencies]
 vcpkg = "=0.2.15"
