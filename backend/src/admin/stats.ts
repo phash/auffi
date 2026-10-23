@@ -40,16 +40,6 @@ interface AdminStats {
   };
 }
 
-let cache: { stats: AdminStats; expiresAt: number } | null = null;
-
-/**
- * Visible for testing — flushes the in-process cache so successive tests
- * don't observe stale numbers.
- */
-export function _clearStatsCache(): void {
-  cache = null;
-}
-
 function dbFilePathOf(db: Db): string | null {
   // sqlite3's pragma returns the database file path; ":memory:" returns ""
   // (or an empty string).
@@ -153,6 +143,9 @@ export function computeAdminStats(db: Db, now: number = Date.now()): AdminStats 
 }
 
 export function registerAdminStatsRoutes(app: FastifyInstance, db: Db): void {
+  // Per registration, not per module: two servers in one process (tests, a
+  // future multi-tenant setup) must never serve each other's numbers.
+  let cache: { stats: AdminStats; expiresAt: number } | null = null;
   app.get(
     "/api/admin/stats",
     { preHandler: [app.requireSession, app.requireAdmin] },

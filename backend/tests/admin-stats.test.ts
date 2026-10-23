@@ -5,7 +5,7 @@ import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/d
 import { decorateRequireSession } from "../src/auth/middleware.js";
 import { decorateRequireAdmin } from "../src/admin/middleware.js";
 import { registerAuthRoutes } from "../src/auth/handlers.js";
-import { registerAdminStatsRoutes, _clearStatsCache } from "../src/admin/stats.js";
+import { registerAdminStatsRoutes } from "../src/admin/stats.js";
 import { captureTransport } from "../src/email/transport.js";
 import { buildAuthMailer } from "../src/email/mailer.js";
 import { recordCodeCreated } from "../src/tracking/code_events.js";
@@ -16,7 +16,6 @@ async function build(): Promise<{
   adminCookie: () => Promise<string>;
   plainCookie: () => Promise<string>;
 }> {
-  _clearStatsCache();
   const db = openDb(":memory:");
   applyMigrations(db, defaultMigrationsDir());
   const transport = captureTransport();
@@ -125,7 +124,6 @@ describe("GET /api/admin/stats", () => {
   it("reflects seeded counts across users/devices/connections", async () => {
     const c = await h.adminCookie();
     seedData(h.db);
-    _clearStatsCache();
 
     const res = await h.app.inject({
       method: "GET",
@@ -143,6 +141,39 @@ describe("GET /api/admin/stats", () => {
     expect(body.connections.p2p_today).toBe(1);
     expect(body.connections.relay_today).toBe(1);
     expect(body.connections.relay_bytes_today).toBe(1000);
+  });
+
+  it("keeps the cache per server instance — another DB never sees these numbers", async () => {
+    const other = await build();
+    try {
+      other.db
+        .prepare(
+          `INSERT INTO accounts (email, password_hash, created_at)
+           VALUES ('only-in-other@example.com', 'dummy', ?)`,
+        )
+        .run(Date.now());
+      const c = await h.adminCookie();
+      const oc = await other.adminCookie();
+      const mine = (
+        await h.app.inject({
+          method: "GET",
+          url: "/api/admin/stats",
+          headers: { cookie: `__Host-auffi_session=${c}` },
+        })
+      ).json();
+      const theirs = (
+        await other.app.inject({
+          method: "GET",
+          url: "/api/admin/stats",
+          headers: { cookie: `__Host-auffi_session=${oc}` },
+        })
+      ).json();
+      expect(mine.users.total).toBe(1);
+      expect(theirs.users.total).toBe(2);
+    } finally {
+      await other.app.close();
+      other.db.close();
+    }
   });
 
   it("caches results for 30 s — second call inside window returns identical object", async () => {
