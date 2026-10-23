@@ -1,5 +1,6 @@
 import type { WebSocket } from "ws";
 import type { Db } from "./db.js";
+import type { ViewerInfo } from "./protocol.js";
 
 /**
  * Per-device lockout: 5 cumulative wrong password attempts → the bucket
@@ -147,12 +148,12 @@ export interface UnattendedSession {
    */
   attemptId: number | null;
   /**
-   * The viewer's IP prefix at JOIN time (e.g. "84.xxx"). Stored on
-   * the session because the mirrored `peer-joined` to the sharer is
-   * sent from the SHARER's connection handler, where the viewer's
-   * request object is no longer accessible.
+   * The viewer's redacted IP prefix (e.g. "84.xxx") and country, resolved
+   * at JOIN time. Stored on the session because the mirrored `peer-joined`
+   * to the sharer is sent from the SHARER's connection handler, where the
+   * viewer's request object is no longer accessible.
    */
-  viewerIpPrefix: string;
+  viewerInfo: ViewerInfo;
   /**
    * connection_log row id once the sharer reported `connection-started`, so
    * `connection-ended` finalises the same row. Null until then, and for
@@ -232,7 +233,7 @@ export class UnattendedSessions {
     deviceId: string,
     viewer: WebSocket,
     sharer: WebSocket,
-    viewerIpPrefix: string,
+    viewerInfo: ViewerInfo,
     now: number = Date.now(),
   ): "ok" | "busy" {
     if (this.byDevice.has(deviceId)) return "busy";
@@ -243,7 +244,7 @@ export class UnattendedSessions {
       state: "awaiting-pw",
       attemptId: null,
       logId: null,
-      viewerIpPrefix,
+      viewerInfo,
       createdAt: now,
     });
     this.viewerToDevice.set(viewer, deviceId);

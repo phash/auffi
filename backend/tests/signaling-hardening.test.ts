@@ -8,6 +8,7 @@ import { UnattendedRegistry } from "../src/unattended.js";
 import { UnattendedSessions } from "../src/unattended_sessions.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { hashPassword } from "../src/auth/argon.js";
+import type { CountryLookup } from "../src/geoip.js";
 
 const TOKEN = "5678abcd".repeat(8);
 const DEVICE_ID = "321-654-987";
@@ -93,6 +94,24 @@ async function viewerAwaitingPassword(url: string): Promise<WebSocket> {
   expect(await recv(viewer)).toEqual({ type: "needs-password" });
   return viewer;
 }
+
+describe("unattended peer-joined carries the viewer's country", () => {
+  it("resolves the country at join time, like the ad-hoc path", async () => {
+    const h = await start({ country: { get: () => ({ country: { iso_code: "AT" } }) } });
+    const sharer = await openUnattendedSharer(h.url);
+    const viewer = await viewerAwaitingPassword(h.url);
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "pw" }));
+    expect(await recv(sharer)).toMatchObject({ type: "pw-check" });
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    const joined = await recv(sharer);
+    expect(joined).toEqual({
+      type: "peer-joined",
+      viewerInfo: { ipPrefix: expect.any(String), country: "AT" },
+    });
+    viewer.close();
+    sharer.close();
+  });
+});
 
 // A throw inside a ws "message" listener is an uncaughtException that takes
 // the whole process — every live session — down. A DB in a failing state

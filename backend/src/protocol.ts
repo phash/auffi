@@ -84,9 +84,10 @@ export type CodeAssigned = {
   code: string;
   expiresInSec: number;
 };
+export type ViewerInfo = { ipPrefix: string; country: string | null };
 export type PeerJoined = {
   type: "peer-joined";
-  viewerInfo: { ipPrefix: string; country: string | null };
+  viewerInfo: ViewerInfo;
 };
 export type PeerConfirmed = { type: "peer-confirmed" };
 export type PeerRejected = {

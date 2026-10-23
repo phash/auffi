@@ -7,6 +7,7 @@ import type {
   IncomingMessage,
   OutgoingMessage,
   TurnCredentialsPayload,
+  ViewerInfo,
 } from "./protocol.js";
 import type { Db } from "./db.js";
 import {
@@ -259,6 +260,12 @@ export function registerSignaling(
     const peer = socket;
     let role: "sharer" | "viewer" | "unattended-sharer" | null = null;
     const peerMsgEntry = newPerPeerEntry(perPeerCfg);
+    // What the sharer's confirm dialog shows about a joining viewer — the
+    // same on the ad-hoc and the unattended path.
+    const viewerInfo = (): ViewerInfo => ({
+      ipPrefix: redactIp(req.ip),
+      country: lookupCountry(countryLookup, stripIpv4Mapped(req.ip ?? "")),
+    });
     lastPong.set(peer, Date.now());
     peer.on("pong", () => lastPong.set(peer, Date.now()));
 
@@ -400,10 +407,10 @@ export function registerSignaling(
             // matches the ad-hoc one (the viewer creates the offer once
             // confirmed; the sharer waits for it). NB: `req` here is
             // the SHARER's own upgrade request — the viewer's redacted
-            // IP was captured at join time on the session.
+            // IP and country were captured at join time on the session.
             send(peer, {
               type: "peer-joined",
-              viewerInfo: { ipPrefix: sess.viewerIpPrefix, country: null },
+              viewerInfo: sess.viewerInfo,
             });
             return;
           }
@@ -446,7 +453,7 @@ export function registerSignaling(
             sess.logId = startConnectionLog(
               db,
               sess.deviceId,
-              sess.viewerIpPrefix,
+              sess.viewerInfo.ipPrefix,
               msg.connectionType,
             );
           } catch (e) {
@@ -585,7 +592,7 @@ export function registerSignaling(
                 normalized,
                 peer,
                 live,
-                redactIp(req.ip),
+                viewerInfo(),
               );
               if (begin === "busy") {
                 send(peer, { type: "error", code: "invalid-code", message: "session full" });
@@ -608,13 +615,7 @@ export function registerSignaling(
         }
         role = "viewer";
         store.attachViewer(normalized, peer as Peer);
-        send(session.sharer as WebSocket, {
-          type: "peer-joined",
-          viewerInfo: {
-            ipPrefix: redactIp(req.ip),
-            country: lookupCountry(countryLookup, stripIpv4Mapped(req.ip ?? "")),
-          },
-        });
+        send(session.sharer as WebSocket, { type: "peer-joined", viewerInfo: viewerInfo() });
         return;
       }
 

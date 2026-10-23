@@ -143,13 +143,13 @@ describe("UnattendedSessions", () => {
 
   it("begin returns 'busy' on a second attempt for the same device", () => {
     const ss = new UnattendedSessions();
-    expect(ss.begin("123-456-789", v, s, "84.xxx")).toBe("ok");
-    expect(ss.begin("123-456-789", {} as WebSocket, s, "84.xxx")).toBe("busy");
+    expect(ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null })).toBe("ok");
+    expect(ss.begin("123-456-789", {} as WebSocket, s, { ipPrefix: "84.xxx", country: null })).toBe("busy");
   });
 
   it("transitions state through awaiting-pw → pw-in-flight → confirmed", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, "84.xxx");
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
     expect(ss.findByViewer(v)?.state).toBe("awaiting-pw");
     ss.transition("123-456-789", "pw-in-flight");
     expect(ss.findByViewer(v)?.state).toBe("pw-in-flight");
@@ -159,7 +159,7 @@ describe("UnattendedSessions", () => {
 
   it("detachViewer removes the session but detachSharer is needed to clear by sharer-key", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, "84.xxx");
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
     expect(ss.detachViewer(v)?.deviceId).toBe("123-456-789");
     expect(ss.findByViewer(v)).toBeNull();
     expect(ss.size()).toBe(0);
@@ -167,13 +167,13 @@ describe("UnattendedSessions", () => {
 
   it("findBySharer returns the session by sharer ref", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, "84.xxx");
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
     expect(ss.findBySharer(s)?.deviceId).toBe("123-456-789");
   });
 
   it("sweepStale frees a slot stuck in awaiting-pw past PW_ENTRY_TIMEOUT_MS", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, "84.xxx", 1_000);
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, 1_000);
     // Not yet stale — nothing reaped.
     expect(ss.sweepStale(1_000 + PW_ENTRY_TIMEOUT_MS - 1)).toEqual([]);
     expect(ss.size()).toBe(1);
@@ -182,16 +182,16 @@ describe("UnattendedSessions", () => {
     expect(stale.map((x) => x.deviceId)).toEqual(["123-456-789"]);
     expect(ss.size()).toBe(0);
     // The device slot is free again for the next viewer.
-    expect(ss.begin("123-456-789", v, s, "84.xxx")).toBe("ok");
+    expect(ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null })).toBe("ok");
   });
 
   it("sweepStale reaps pw-in-flight sessions but never confirmed ones", () => {
     const ss = new UnattendedSessions();
     const v2 = {} as unknown as WebSocket;
     const s2 = {} as unknown as WebSocket;
-    ss.begin("111-111-111", v, s, "84.xxx", 0);
+    ss.begin("111-111-111", v, s, { ipPrefix: "84.xxx", country: null }, 0);
     ss.transition("111-111-111", "pw-in-flight");
-    ss.begin("222-222-222", v2, s2, "84.xxx", 0);
+    ss.begin("222-222-222", v2, s2, { ipPrefix: "84.xxx", country: null }, 0);
     ss.transition("222-222-222", "confirmed");
 
     const stale = ss.sweepStale(PW_ENTRY_TIMEOUT_MS + 1);

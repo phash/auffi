@@ -111,10 +111,9 @@ Viewer has connected. Sharer must show confirmation dialog and reply with `confi
 ```
 `viewerInfo.country` is the viewer's ISO-3166-1-alpha-2 country code (e.g. `"DE"`) or `null` when the
 lookup returns no result. Resolved server-side via a local MMDB lookup (no third-party call; the full
-viewer IP never leaves the VPS). Set **only** on the ad-hoc path; the unattended mirror (sent to the
-sharer after `pw-check-result: ok`) carries the redacted `ipPrefix` captured at join time and always
-`country: null` — no GeoIP lookup runs on that path, access is gated by the device password (plus the
-manual confirm when `autoAccept` is off) instead of the ad-hoc IP-hint dialog.
+viewer IP never leaves the VPS). Both paths fill it: the unattended mirror (sent to the sharer after
+`pw-check-result: ok`) carries the redacted `ipPrefix` and the `country` resolved at join time
+(backends ≤ 0.7.1 always sent `country: null` there).
 
 ### `peer-confirmed` (→ viewer)
 After sharer accepted.
