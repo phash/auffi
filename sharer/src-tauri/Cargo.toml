@@ -124,6 +124,9 @@ libc = "=0.2.189"
 vcpkg = "=0.2.15"
 
 [dev-dependencies]
+# The `test` feature adds tauri's MockRuntime so the unattended forwarder
+# loop runs against a mock app in unit tests. Same pin as the main dep.
+tauri = { version = "=2.11.5", features = ["tray-icon", "test"] }
 tempfile = "=3.27.0"
 # In-process HTTP server for testing reqwest-based clients without
 # spinning up the real backend. Used by account.rs tests for the

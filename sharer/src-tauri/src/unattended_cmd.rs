@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::account::{self, KeyringTokenStore, TokenStore};
@@ -353,16 +353,23 @@ pub(crate) async fn start_heartbeat(
         return Err("Geräte-Passwort nicht gesetzt".to_string());
     }
 
-    let cfg = heartbeat::HeartbeatConfig::production(backend_ws_url_secure()?, device_id, token);
-    let (commands, events) = heartbeat::start(cfg);
+    let ws_url = backend_ws_url_secure()?;
 
     // gh #20: install the outbound sink BEFORE the forwarder runs so
     // the very first inbound SDP/ICE relays can immediately answer
-    // back through the same heartbeat WSS.
-    {
+    // back through the same heartbeat WSS. Check and install under one
+    // guard: overwriting a running ad-hoc session's sink would route its
+    // answers into the heartbeat and kill the helper's handshake.
+    let (commands, events) = {
         let mut sink_guard = outbound_state.0.lock().await;
+        if sink_guard.as_ref().is_some_and(OutboundSink::is_live_adhoc) {
+            return Err("Eine Ad-hoc-Sitzung läuft noch — bitte zuerst beenden.".to_string());
+        }
+        let cfg = heartbeat::HeartbeatConfig::production(ws_url, device_id, token);
+        let (commands, events) = heartbeat::start(cfg);
         *sink_guard = Some(OutboundSink::Unattended(commands.clone()));
-    }
+        (commands, events)
+    };
 
     // Spawn the event forwarder: routes BackendFrames into the
     // pw-check decision + emits status events to the Tauri webview.
@@ -692,8 +699,8 @@ pub(crate) fn relay_is_bye(payload: &serde_json::Value) -> bool {
 
 /// Everything one forwarder run needs. Bundled so the spawn site stays
 /// readable and clippy's argument-count lint has nothing to say.
-struct ForwarderCtx {
-    app: AppHandle,
+struct ForwarderCtx<R: Runtime> {
+    app: AppHandle<R>,
     events: mpsc::Receiver<HeartbeatEvent>,
     /// THIS session's heartbeat sender — doubles as the generation
     /// token for the compare-and-clear teardown below.
@@ -736,7 +743,25 @@ pub(crate) async fn clear_session_state(
     }
 }
 
-async fn forwarder_loop(ctx: ForwarderCtx) {
+/// How long after our `pw-check-result: ok` the backend's mirrored
+/// `peer-joined` may arrive. The backend sends it in the same handler, so a
+/// generous window only absorbs scheduling delay.
+pub(crate) const PEER_JOINED_WINDOW: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Whether an unattended `peer-joined` may start a session: only within
+/// [`PEER_JOINED_WINDOW`] after this sharer itself answered a pw-check with
+/// ok. The webview starts streaming on the forwarded event, so the backend
+/// frame alone must not be enough to open the screen.
+pub(crate) fn admit_peer_joined(last_ok: Option<Instant>, now: Instant) -> bool {
+    last_ok.is_some_and(|at| now.saturating_duration_since(at) <= PEER_JOINED_WINDOW)
+}
+
+/// Remember that we just said ok, for [`admit_peer_joined`].
+fn record_ok(authorized_at: &std::sync::Mutex<Option<Instant>>) {
+    *authorized_at.lock().unwrap_or_else(|p| p.into_inner()) = Some(Instant::now());
+}
+
+async fn forwarder_loop<R: Runtime>(ctx: ForwarderCtx<R>) {
     let ForwarderCtx {
         app,
         mut events,
@@ -749,6 +774,9 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
         cmd_slot,
         outbound_slot,
     } = ctx;
+    // Set when we send `pw-check-result: ok`, consumed by the one
+    // `peer-joined` it authorises.
+    let authorized_at: Arc<std::sync::Mutex<Option<Instant>>> = Arc::default();
     while let Some(event) = events.recv().await {
         match event {
             HeartbeatEvent::Connected { device_id } => {
@@ -800,6 +828,7 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                 };
                 match pw_outcome_to_action(&outcome) {
                     PwAction::ReplyOk => {
+                        record_ok(&authorized_at);
                         let _ = cmds
                             .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
                                 attempt_id,
@@ -839,6 +868,7 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                         let cmds_for_waiter = cmds.clone();
                         let pending_for_waiter = pending_confirms.clone();
                         let app_for_waiter = app.clone();
+                        let authorized_for_waiter = Arc::clone(&authorized_at);
                         tauri::async_runtime::spawn(async move {
                             let outcome =
                                 await_confirm(rx, std::time::Duration::from_secs(60)).await;
@@ -858,6 +888,9 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                                 );
                             }
                             if let Some(result) = confirm_reply(&outcome) {
+                                if result == heartbeat::PwResult::Ok {
+                                    record_ok(&authorized_for_waiter);
+                                }
                                 let _ = cmds_for_waiter
                                     .send(HeartbeatCommand::Send(SharerFrame::PwCheckResult {
                                         attempt_id,
@@ -884,7 +917,17 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                 }
             }
             HeartbeatEvent::PeerJoined => {
-                let _ = app.emit("unattended-event", UnattendedEvent::kind("peer-joined"));
+                let last_ok = authorized_at
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .take();
+                if admit_peer_joined(last_ok, Instant::now()) {
+                    let _ = app.emit("unattended-event", UnattendedEvent::kind("peer-joined"));
+                } else {
+                    crate::dbg_log(
+                        "[unattended] peer-joined without a preceding local ok — ignored",
+                    );
+                }
             }
             HeartbeatEvent::Relay { payload } => {
                 // Pre-confirm the backend synthesises the bye a closed tab
@@ -899,6 +942,14 @@ async fn forwarder_loop(ctx: ForwarderCtx) {
                 );
             }
             HeartbeatEvent::Disconnected { reason } => {
+                // The backend forgets every pending attempt with the link;
+                // a prompt left open would answer an attempt nobody holds,
+                // and an ok given before the drop authorises nobody.
+                evict_pending_confirms(&pending_confirms).await;
+                authorized_at
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .take();
                 let _ = app.emit("unattended-event", disconnected_event(&reason));
             }
             HeartbeatEvent::Reconnecting { after, attempt } => {
@@ -1390,5 +1441,178 @@ mod tests {
     fn feedback_body_is_trimmed_and_must_not_be_blank() {
         assert_eq!(validate_feedback_body("  hallo \n"), Ok("hallo"));
         assert!(validate_feedback_body("   \n").is_err());
+    }
+
+    // ── peer-joined gate (local proof of a pw-check ok) ───────────────
+    //
+    // The webview starts streaming on every forwarded `peer-joined`. The
+    // backend sends that frame right after our `pw-check-result: ok`; a
+    // peer-joined that no local ok preceded must not open the screen.
+
+    #[test]
+    fn peer_joined_needs_a_recent_local_ok() {
+        let now = Instant::now();
+        assert!(!admit_peer_joined(None, now));
+        assert!(admit_peer_joined(Some(now), now));
+        assert!(admit_peer_joined(
+            Some(now - std::time::Duration::from_secs(29)),
+            now
+        ));
+        assert!(!admit_peer_joined(
+            Some(now - PEER_JOINED_WINDOW - std::time::Duration::from_millis(1)),
+            now
+        ));
+    }
+
+    mod forwarder {
+        use super::super::*;
+        use std::sync::Mutex as StdMutex;
+        use std::time::Duration;
+        use tauri::Listener;
+
+        struct Harness {
+            events: mpsc::Sender<HeartbeatEvent>,
+            sent: mpsc::Receiver<HeartbeatCommand>,
+            seen: Arc<StdMutex<Vec<String>>>,
+            pending_confirms: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<bool>>>>,
+            _app: tauri::App<tauri::test::MockRuntime>,
+            _dir: tempfile::TempDir,
+        }
+
+        fn harness() -> Harness {
+            let app = tauri::test::mock_app();
+            let handle = app.handle().clone();
+            let seen = Arc::new(StdMutex::new(Vec::new()));
+            let sink = Arc::clone(&seen);
+            handle.listen("unattended-event", move |e| {
+                let v: serde_json::Value = serde_json::from_str(e.payload()).expect("json");
+                sink.lock()
+                    .unwrap()
+                    .push(v["kind"].as_str().unwrap_or_default().to_string());
+            });
+            let dir = tempfile::tempdir().expect("tempdir");
+            let pw_path = dir.path().join("device_password.phc");
+            device_password::set("richtig-geheim", &pw_path).expect("set password");
+            let (ev_tx, ev_rx) = mpsc::channel(16);
+            let (cmd_tx, cmd_rx) = mpsc::channel(16);
+            let state = UnattendedState::default();
+            tokio::spawn(forwarder_loop(ForwarderCtx {
+                app: handle,
+                events: ev_rx,
+                cmds: cmd_tx,
+                lockout: state.lockout.clone(),
+                pending_confirms: state.pending_confirms.clone(),
+                next_confirm_id: state.next_confirm_id.clone(),
+                pending_turn: state.pending_turn.clone(),
+                pw_path,
+                cmd_slot: state.commands.clone(),
+                outbound_slot: Arc::new(Mutex::new(None)),
+            }));
+            Harness {
+                events: ev_tx,
+                sent: cmd_rx,
+                seen,
+                pending_confirms: state.pending_confirms.clone(),
+                _app: app,
+                _dir: dir,
+            }
+        }
+
+        impl Harness {
+            async fn feed(&self, event: HeartbeatEvent) {
+                self.events.send(event).await.expect("forwarder alive");
+                // Let the forwarder drain the queue before asserting.
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+
+            fn peer_joined_count(&self) -> usize {
+                self.seen
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|k| *k == "peer-joined")
+                    .count()
+            }
+
+            async fn next_pw_result(&mut self) -> heartbeat::PwResult {
+                let cmd = tokio::time::timeout(Duration::from_secs(30), self.sent.recv())
+                    .await
+                    .expect("a reply within the argon2 budget")
+                    .expect("channel open");
+                match cmd {
+                    HeartbeatCommand::Send(SharerFrame::PwCheckResult { result, .. }) => result,
+                    other => panic!("unexpected command {other:?}"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn peer_joined_without_a_local_ok_is_not_forwarded() {
+            let h = harness();
+            h.feed(HeartbeatEvent::PeerJoined).await;
+            assert_eq!(h.peer_joined_count(), 0);
+        }
+
+        #[tokio::test]
+        async fn peer_joined_after_an_ok_is_forwarded_exactly_once() {
+            let mut h = harness();
+            h.feed(HeartbeatEvent::PwCheck {
+                attempt: "richtig-geheim".into(),
+                auto_accept: true,
+                attempt_id: Some(1),
+            })
+            .await;
+            assert_eq!(h.next_pw_result().await, heartbeat::PwResult::Ok);
+            h.feed(HeartbeatEvent::PeerJoined).await;
+            assert_eq!(h.peer_joined_count(), 1);
+            h.feed(HeartbeatEvent::PeerJoined).await;
+            assert_eq!(h.peer_joined_count(), 1, "one ok admits one viewer");
+        }
+
+        #[tokio::test]
+        async fn a_failed_check_does_not_admit_a_peer() {
+            let mut h = harness();
+            h.feed(HeartbeatEvent::PwCheck {
+                attempt: "falsch".into(),
+                auto_accept: true,
+                attempt_id: Some(2),
+            })
+            .await;
+            assert_eq!(h.next_pw_result().await, heartbeat::PwResult::Fail);
+            h.feed(HeartbeatEvent::PeerJoined).await;
+            assert_eq!(h.peer_joined_count(), 0);
+        }
+
+        // A confirm prompt raised before the link dropped belongs to a viewer
+        // the backend forgot on reconnect; it must not stay answerable.
+        #[tokio::test]
+        async fn a_dropped_link_evicts_open_confirm_prompts() {
+            let mut h = harness();
+            h.feed(HeartbeatEvent::PwCheck {
+                attempt: "richtig-geheim".into(),
+                auto_accept: false,
+                attempt_id: Some(3),
+            })
+            .await;
+            for _ in 0..600 {
+                if !h.pending_confirms.lock().await.is_empty() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            assert_eq!(h.pending_confirms.lock().await.len(), 1);
+            h.feed(HeartbeatEvent::Disconnected {
+                reason: "io".into(),
+            })
+            .await;
+            assert!(h.pending_confirms.lock().await.is_empty());
+            assert!(
+                tokio::time::timeout(Duration::from_millis(300), h.sent.recv())
+                    .await
+                    .is_err(),
+                "an evicted prompt sends nothing for the stale attempt"
+            );
+            let _ = &mut h;
+        }
     }
 }

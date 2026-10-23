@@ -39,6 +39,12 @@ impl OutboundSink {
         matches!(self, Self::AdHoc(_))
     }
 
+    /// True for an ad-hoc sink whose WS task is still running — the one
+    /// thing the heartbeat must not overwrite (`start_heartbeat`).
+    pub fn is_live_adhoc(&self) -> bool {
+        matches!(self, Self::AdHoc(tx) if !tx.is_closed())
+    }
+
     /// True iff this is the Unattended variant AND it feeds the same
     /// heartbeat command channel as `tx`. Lets a (possibly stale)
     /// forwarder/stop path clear only its OWN registration instead of
@@ -154,6 +160,20 @@ mod tests {
         let (hb_tx, _rx2) = mpsc::channel::<HeartbeatCommand>(1);
         assert!(OutboundSink::AdHoc(adhoc_tx).is_adhoc());
         assert!(!OutboundSink::Unattended(hb_tx).is_adhoc());
+    }
+
+    // Installing the heartbeat's sink over a running ad-hoc session routed
+    // that session's answers into the heartbeat — the helper's handshake
+    // died. A dead ad-hoc channel (WS task gone) must not block, though.
+    #[test]
+    fn is_live_adhoc_only_for_an_open_adhoc_channel() {
+        let (adhoc_tx, adhoc_rx) = mpsc::channel::<Outgoing>(1);
+        let (hb_tx, _rx2) = mpsc::channel::<HeartbeatCommand>(1);
+        let adhoc = OutboundSink::AdHoc(adhoc_tx);
+        assert!(adhoc.is_live_adhoc());
+        assert!(!OutboundSink::Unattended(hb_tx).is_live_adhoc());
+        drop(adhoc_rx);
+        assert!(!adhoc.is_live_adhoc());
     }
 
     #[test]
