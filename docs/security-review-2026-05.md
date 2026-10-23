@@ -1,5 +1,17 @@
 # Auffi Security & Quality Review — 2026-05
 
+> **Snapshot vom Mai 2026, nicht fortgeschrieben.** Zahlen, Zeilennummern und Befund-Status unten geben den Stand von damals wieder.
+> Der aktuelle Security-Header-Satz steht in [`caddy/Caddyfile`](../caddy/Caddyfile) (Referenz für den Cluster-Block) und wird von
+> [`ops/tests/caddyfile-headers.test.sh`](../ops/tests/caddyfile-headers.test.sh) festgenagelt: HSTS (2 Jahre, preload), `X-Frame-Options DENY`,
+> `nosniff`, `X-XSS-Protection 0`, `Referrer-Policy no-referrer`, `Permissions-Policy`, COOP `same-origin`, CORP `same-origin` (außer
+> `og-image.png`), `Via` entfernt, CSP mit `frame-ancestors 'none'`, `base-uri 'none'`, `form-action 'self'`, `object-src 'none'`.
+> Spätere Fixes (Auswahl, Details in [`CHANGELOG.md`](../CHANGELOG.md)): coturn-SSRF-Deny-Liste (`denied-peer-ip`, `no-tcp-relay`) und
+> TURNS-Zertifikat-Hot-Reload (`coturn/cert-stage.sh` + `coturn/entrypoint.sh`, nach dem abgelaufenen Zertifikat vom 2026-10-09 bis 2026-10-22);
+> Sharer-TLS auf zusammengeführte OS- + Mozilla-Roots für WSS und alle REST-Clients; Signaling-Limits (Socket-Cap pro IP,
+> 15-s-Rollen-Deadline, 50 Frames / 10 s pro Socket), TURN-Credential-Budget pro Code, In-House-Rate-Limits auf IPv6-/64 geschlüsselt,
+> gemailte Tokens aus Request-Logs geschwärzt; im Sharer `plugin-shell` durch den auf vier URLs begrenzten `plugin-opener` ersetzt,
+> Datei-Versand erst nach Zustimmung des Helfers.
+
 Scope: `backend/`, `sharer/`, `viewer/`. Conducted after the unattended-backend (#9-#15) and admin-backend (#41-#52) phases shipped and before any frontend/dashboard work begins. References `commit 4f4b6ad` and earlier.
 
 ## 1. Quality / Test coverage
