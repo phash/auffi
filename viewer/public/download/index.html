@@ -56,7 +56,7 @@
               {
                 "@type": "Question",
                 "name": "Auf welchen Plattformen läuft der Auffi-Sharer?",
-                "acceptedAnswer": { "@type": "Answer", "text": "Windows 10/11 (.exe-Installer, portable .exe, MSI) und Linux (.deb, .rpm, AppImage, Arch-PKGBUILD). macOS folgt — bis dahin per Source-Build." }
+                "acceptedAnswer": { "@type": "Answer", "text": "Windows 10/11 (.exe-Installer, portable .exe, MSI) und Linux (.deb, .rpm, AppImage, Arch-PKGBUILD). Eine macOS-Version gibt es derzeit nicht." }
               },
               {
                 "@type": "Question",
@@ -151,7 +151,7 @@
               <p>
                 Empfohlen für die meisten Nutzer. Doppelklick startet die
                 Installation, der Sharer landet im Startmenü.<br />
-                <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
+                <span class="size">~ 260 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
             <a class="download-btn" href="/api/downloads/file/Auffi_0.7.1_x64-setup.exe?tag=v0.7.1">
@@ -177,7 +177,7 @@
               <p>
                 Für Domain-Deployment via GPO / Intune. Silent-Install per
                 <code>msiexec /i Auffi_0.7.1_x64_en-US.msi /qn</code>.<br />
-                <span class="size">~ 200 MB · x86_64 · Windows 10/11</span>
+                <span class="size">~ 260 MB · x86_64 · Windows 10/11</span>
               </p>
             </div>
             <a class="download-btn" href="/api/downloads/file/Auffi_0.7.1_x64_en-US.msi?tag=v0.7.1">
@@ -218,7 +218,7 @@
               <h3>AppImage (distroübergreifend)</h3>
               <p>
                 <code>chmod +x Auffi_0.7.1_amd64.AppImage &amp;&amp; ./Auffi_0.7.1_amd64.AppImage</code><br />
-                <span class="size">~ 117 MB · x86_64 · läuft auf jeder glibc-Distro mit PipeWire.</span>
+                <span class="size">~ 85 MB · x86_64 · läuft auf jeder glibc-Distro mit PipeWire.</span>
               </p>
             </div>
             <a class="download-btn" href="/api/downloads/file/Auffi_0.7.1_amd64.AppImage?tag=v0.7.1">
@@ -242,29 +242,8 @@
           </li>
         </ul>
 
-        <h3 class="platform-heading">Source-Build (jede Plattform)</h3>
-        <ul class="download-list">
-          <li class="download-item">
-            <div class="download-meta">
-              <h3>Quellcode auf GitHub</h3>
-              <p>
-                <code>git clone https://github.com/phash/auffi.git</code><br />
-                <span class="size">
-                  macOS-Pakete sind noch nicht gebaut — bis dahin nur per
-                  Source-Build. Anleitung pro Distro in
-                  <a href="https://github.com/phash/auffi/blob/main/INSTALL.md" rel="noopener noreferrer">INSTALL.md</a>.
-                </span>
-              </p>
-            </div>
-            <a class="download-btn" href="https://github.com/phash/auffi" rel="noopener noreferrer">
-              Repository öffnen
-            </a>
-          </li>
-        </ul>
-
         <p class="hint">
-          Tipp: macOS-Binaries kommen mit einem späteren Release. Bis dahin
-          läuft der Sharer dort über den Source-Build (Tauri + Rust + Node).
+          Eine macOS-Version gibt es derzeit nicht.
         </p>
       </section>
 
@@ -345,6 +324,13 @@
             Vergleichsseiten und die Fehlerseite erscheinen wieder mit ihrem
             Design, das der Browser bisher wegen der Sicherheitsregeln
             blockierte.
+          </li>
+          <li>
+            <strong>Code-Raten wirksam gebremst</strong> — jeder
+            Verbindungsversuch im Browser zählt jetzt auf das Limit von fünf
+            Versuchen pro Minute und IP-Adresse, auch ein Treffer. Wer sein
+            Kontingent mit Raten verbraucht hat, kommt vorerst auch mit dem
+            richtigen Code nicht mehr durch.
           </li>
         </ul>
         <h3>0.7.0 (2026-08-31)</h3>
@@ -573,8 +559,9 @@
         <ul class="release-list">
           <li>
             <strong>Unattended Access</strong> — Geräte einmal pairen, dann
-            ohne Code aus dem Dashboard verbinden. Auto-Accept oder Geräte-
-            Passwort konfigurierbar pro Gerät.
+            jederzeit mit fester Geräte-ID und Pflicht-Geräte-Passwort
+            verbinden. Auto-Accept (Standard, pro Gerät abschaltbar) spart
+            nur den Klick am Gerät.
           </li>
           <li>
             <strong>Wayland-native Capture</strong> — Plasma 6 und GNOME 47+
@@ -609,17 +596,19 @@
         <h2 id="about-heading">Was ist Auffi?</h2>
         <p>
           Auffi ist ein Open-Source-Bildschirm-Sharing-Tool mit Fernsteuerung
-          — TeamViewer-Funktionalität ohne Konto-Pflicht, ohne Tracker, ohne
-          US-Cloud. Der Sharer (diese Desktop-App) teilt einen Bildschirm
-          oder ein Fenster, der Viewer (im Browser) verbindet sich peer-to-
-          peer.
+          — TeamViewer-Funktionalität ohne Konto-Pflicht, ohne Drittanbieter-Tracker, ohne
+          US-Cloud. Der Sharer (diese Desktop-App) teilt einen ganzen
+          Bildschirm (bei mehreren Monitoren wählst du einen aus), der
+          Viewer (im Browser) verbindet sich peer-to-peer.
         </p>
         <div class="trust-grid">
           <article>
             <h3>🔒 Ende-zu-Ende verschlüsselt</h3>
             <p>WebRTC mit DTLS-SRTP. Der Server vermittelt nur den
               initialen Handshake — Pixel und Eingaben fließen direkt
-              zwischen den Geräten.</p>
+              zwischen den Geräten; nur wenn Firewalls das blockieren,
+              leitet unser TURN-Relay die weiterhin verschlüsselten Pakete
+              weiter.</p>
           </article>
           <article>
             <h3>🇩🇪 Server in Deutschland</h3>
