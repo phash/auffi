@@ -116,3 +116,42 @@ describe("feedback modal focus trap", () => {
     expect(document.activeElement).toBe(closeBtn);
   });
 });
+
+// The backend answers errors with English `message` strings
+// ("login or device-bearer required"); showing those verbatim put English
+// protocol wording on the German pages.
+describe("feedback send errors are shown in the page language", () => {
+  async function submitWith(lang: "de" | "en", status: number, body: unknown): Promise<string> {
+    const modal = openModal(await mountFab(lang));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status, json: () => Promise.resolve(body) }),
+    );
+    modal.querySelector<HTMLTextAreaElement>("textarea")!.value = "Geht nicht";
+    modal.querySelector<HTMLFormElement>("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    const statusEl = modal.querySelector<HTMLElement>(".feedback-modal-status")!;
+    await vi.waitFor(() => expect(statusEl.className).toContain("err"));
+    return statusEl.textContent ?? "";
+  }
+
+  it("401 explains that feedback needs a login (DE)", async () => {
+    const text = await submitWith("de", 401, { error: "no-auth", message: "login or device-bearer required" });
+    expect(text).not.toContain("login or device-bearer");
+    expect(text).toBe("Feedback geht nur mit einem Auffi-Konto. Bitte zuerst im Dashboard anmelden.");
+  });
+
+  it("429 asks to wait (DE)", async () => {
+    const text = await submitWith("de", 429, { error: "rate-limited", message: "too many auth attempts, slow down" });
+    expect(text).toBe("Zu viele Versuche. Bitte einen Moment warten und erneut senden.");
+  });
+
+  it("any other failure falls back to sendFailed, never the raw message", async () => {
+    const text = await submitWith("de", 400, { error: "bad-body", message: "body cannot be empty" });
+    expect(text).toBe("Konnte nicht gesendet werden.");
+  });
+
+  it("401 in English on English pages", async () => {
+    const text = await submitWith("en", 401, { error: "no-auth", message: "login or device-bearer required" });
+    expect(text).toBe("Feedback needs an Auffi account. Please log in on the dashboard first.");
+  });
+});

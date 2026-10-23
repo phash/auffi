@@ -39,6 +39,8 @@
       sending: "Sende …",
       networkError: "Netzwerkfehler. Bitte später erneut.",
       sendFailed: "Konnte nicht gesendet werden.",
+      needsLogin: "Feedback geht nur mit einem Auffi-Konto. Bitte zuerst im Dashboard anmelden.",
+      rateLimited: "Zu viele Versuche. Bitte einen Moment warten und erneut senden.",
       thanks: "Danke für dein Feedback!",
     },
     en: {
@@ -54,6 +56,8 @@
       sending: "Sending …",
       networkError: "Network error. Please try again later.",
       sendFailed: "Could not send your feedback.",
+      needsLogin: "Feedback needs an Auffi account. Please log in on the dashboard first.",
+      rateLimited: "Too many attempts. Please wait a moment and send again.",
       thanks: "Thanks for your feedback!",
     },
   };
@@ -279,20 +283,13 @@
             showToast(copy.thanks);
             return;
           }
-          return r.json().then(
-            function (j) {
-              submitBtn.disabled = false;
-              cancelBtn.disabled = false;
-              status.textContent = (j && j.message) || copy.sendFailed;
-              status.className = "feedback-modal-status err";
-            },
-            function () {
-              submitBtn.disabled = false;
-              cancelBtn.disabled = false;
-              status.textContent = copy.sendFailed;
-              status.className = "feedback-modal-status err";
-            },
-          );
+          // The backend's `message` is English protocol wording for
+          // developers; the helper gets page-language copy by status.
+          submitBtn.disabled = false;
+          cancelBtn.disabled = false;
+          status.textContent =
+            r.status === 401 ? copy.needsLogin : r.status === 429 ? copy.rateLimited : copy.sendFailed;
+          status.className = "feedback-modal-status err";
         });
     });
   }
