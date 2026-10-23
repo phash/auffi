@@ -110,6 +110,10 @@ export function friendlyAuthError(code: string, fallback: string): string {
       return "Zu viele Versuche. Bitte später erneut versuchen.";
     case "network-error":
       return "Backend nicht erreichbar.";
+    case "bad-token":
+      return "Der Link ist unvollständig. Bitte öffne ihn vollständig aus der Mail.";
+    case "email-taken":
+      return "Diese E-Mail ist bereits registriert.";
     default:
       return fallback;
   }

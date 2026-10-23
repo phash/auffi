@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { _setApiClientForTests } from "../src/api.js";
-import { renderLogin } from "../src/views/login.js";
+import { friendlyAuthError, renderLogin } from "../src/views/login.js";
 import { renderSignup } from "../src/views/signup.js";
 import { renderVerify } from "../src/views/verify.js";
 import { renderVerifyEmailChange } from "../src/views/verify-email-change.js";
@@ -27,6 +27,26 @@ function flush(): Promise<void> {
   // any follow-up state update (queueMicrotask focus(), etc.).
   return new Promise((r) => setTimeout(r, 0));
 }
+
+describe("friendlyAuthError", () => {
+  it.each([
+    ["bad-credentials", "E-Mail oder Passwort falsch."],
+    ["bad-email", "E-Mail-Format ungültig."],
+    ["bad-password", "Passwort muss 8-256 Zeichen lang sein."],
+    ["account-suspended", "Dieser Account ist gesperrt. Wende dich an den Support."],
+    ["signup-disabled", "Die Registrierung ist derzeit deaktiviert."],
+    ["rate-limit", "Zu viele Versuche. Bitte später erneut versuchen."],
+    ["network-error", "Backend nicht erreichbar."],
+    ["bad-token", "Der Link ist unvollständig. Bitte öffne ihn vollständig aus der Mail."],
+    ["email-taken", "Diese E-Mail ist bereits registriert."],
+  ])("maps %s to German copy", (code, expected) => {
+    expect(friendlyAuthError(code, "english diagnostic")).toBe(expected);
+  });
+
+  it("falls back to the given message for unknown codes", () => {
+    expect(friendlyAuthError("internal", "kaputt")).toBe("kaputt");
+  });
+});
 
 describe("renderLogin", () => {
   // Collect ALL requests: a successful login fires a follow-up
