@@ -52,7 +52,7 @@ The script:
 |---------|-------------|
 | **backend** | Builds image locally (`auffi-backend:smoke`). Exposes port 8081 on localhost for the WS test. All env vars injected inline (no `.env.prod` needed at runtime). |
 | **caddy** | Mounts `caddy/Caddyfile.local` (site address = `localhost`, `tls internal`). Uses `caddy-data-smoke` volume to isolate Caddy's local-CA material. Ports remapped to `8080` (HTTP) / `8443` (HTTPS) via `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` env vars. |
-| **coturn** | Mounts `coturn/turnserver.conf.notls.tmpl` (no TLS, no-dtls) so it works without certificates. `TURN_REALM=localhost`. |
+| **coturn** | Same image as prod (`coturn/coturn:4.18.0-alpine`, from `docker-compose.prod.yml`). Mounts `coturn/turnserver.conf.notls.tmpl` (no TLS, no DTLS) so it works without certificates. `TURN_REALM=localhost`. |
 | **viewer-build** | One-shot `busybox` container that copies `./viewer/dist` into the `viewer-static` volume for Caddy to serve. |
 
 ---
@@ -93,8 +93,9 @@ In the smoke test, coturn uses `coturn/turnserver.conf.notls.tmpl` which disable
 
 ```
 no-tls
-no-dtls
 ```
+
+DTLS needs no line: coturn 4.18 (the pinned image since 2026-10) has DTLS listeners off by default and rejects the old `no-dtls` spelling with a `Bad configuration format` warning, so the template no longer carries it (nor the `lifetime=600` no-op the production template also dropped). After a coturn image bump, start the smoke stack and grep `docker logs auffi-coturn` for `Bad configuration format` — coturn only warns about unknown options.
 
 This avoids the need for a certificate at test time. On the real VPS, coturn uses the production template (`coturn/turnserver.conf.tmpl`) which requires a real cert (see `ops/README.md` for the certbot procedure).
 
@@ -106,7 +107,7 @@ This avoids the need for a certificate at test time. On the real VPS, coturn use
 |-------|-------|-------------|
 | Backend healthcheck failed | `wget localhost:8080` resolved `localhost` to `::1` (IPv6) on Alpine; backend only bound to IPv4 `127.0.0.1` initially (then `0.0.0.0`) | Changed healthcheck to `http://127.0.0.1:8080/healthz` in `docker-compose.prod.yml` |
 | Port 80/443 conflicts | Other local containers occupied 80 on the dev box | Added `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` env-var ports in `docker-compose.prod.yml`; smoke script sets them to 8080/8443 |
-| coturn crashing (`envsubst: not found`) | `envsubst` (from gettext) is not present in `coturn/coturn:4.6.3-alpine` | Replaced `envsubst` with `sed` substitution in `coturn/entrypoint.sh` |
+| coturn crashing (`envsubst: not found`) | `envsubst` (from gettext) is not present in `coturn/coturn:4.6.3-alpine` (the image at the time; still true for 4.18.0) | Replaced `envsubst` with `sed` substitution in `coturn/entrypoint.sh` |
 
 ---
 
