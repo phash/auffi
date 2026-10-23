@@ -57,7 +57,7 @@
             "description": "Open-Source-Bildschirm-Sharing mit aktiver Bestätigung, DSGVO-konform und Ende-zu-Ende DTLS-SRTP-verschlüsselt.",
             "url": "https://auffi.app/",
             "inLanguage": "de-DE",
-            "softwareVersion": "0.7.1",
+            "softwareVersion": "0.7.2",
             "license": "https://github.com/phash/auffi/blob/main/LICENSE",
             "downloadUrl": "https://auffi.app/download/",
             "sameAs": ["https://github.com/phash/auffi"],
@@ -465,13 +465,12 @@
         <h2 id="news-heading">Aktuelles</h2>
         <ul class="news-list">
           <li class="news-item">
-            <time class="news-date" datetime="2026-09-02">2. September 2026</time>
-            <h3 class="news-title">Sharer 0.7.1: gründlich durchgesehen</h3>
+            <time class="news-date" datetime="2026-10-23">23. Oktober 2026</time>
+            <h3 class="news-title">Sharer 0.7.2: kein Relay-Zeitlimit</h3>
             <p class="news-body">
-              Gut 200 Korrekturen nach einer kompletten Code-Durchsicht:
-              Dateien kommen erst nach „Annehmen“ an, keine klemmenden
-              Tasten mehr, stabilerer Verbindungsaufbau. Seit 0.7.0 passt
-              sich das Bild der Leitung an.
+              Verbindungen über unser Relay laufen jetzt ohne 10-Minuten-Grenze.
+              Dazu: Datei senden wartet auf „Annehmen“, mehr Sicherheit beim
+              unbeaufsichtigten Zugriff, verständlichere Fehlermeldungen.
               <a href="/download/">Zum Download</a>.
             </p>
           </li>
@@ -545,7 +544,7 @@
         <div class="download-buttons">
           <a
             class="download-btn-primary"
-            href="/api/downloads/file/Auffi_0.7.1_x64_portable.exe?tag=v0.7.1"
+            href="/api/downloads/file/Auffi_0.7.2_x64_portable.exe?tag=v0.7.2"
             rel="noopener"
             aria-label="Auffi Sharer für Windows herunterladen (.exe, ca. 30 MB)"
           >
@@ -558,7 +557,7 @@
 
           <a
             class="download-btn-secondary"
-            href="/api/downloads/file/Auffi_0.7.1_x64-setup.exe?tag=v0.7.1"
+            href="/api/downloads/file/Auffi_0.7.2_x64-setup.exe?tag=v0.7.2"
             rel="noopener"
             aria-label="Setup-Installer für Windows (Fallback mit WebView2-Offline)"
           >

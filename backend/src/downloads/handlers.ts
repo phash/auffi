@@ -14,6 +14,16 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.7.2 — released 2026-10-23. Security and reliability release from a
+  // full review: no relay time limit any more, sharer-to-helper file sends
+  // wait for Annehmen, the unattended sharer checks its own password result,
+  // merged TLS roots for every REST call, Tauri 2.12 and patched TLS crates.
+  "Auffi_0.7.2_amd64.deb",
+  "Auffi-0.7.2-1.x86_64.rpm",
+  "Auffi_0.7.2_amd64.AppImage",
+  "Auffi_0.7.2_x64-setup.exe",
+  "Auffi_0.7.2_x64_en-US.msi",
+  "Auffi_0.7.2_x64_portable.exe",
   // 0.7.1 — released 2026-09-02. Maintenance release from a full review of the
   // code: file transfers wait for Annehmen, ICE candidates that overtake the
   // answer no longer abort a connect, held keys are released on window blur,
