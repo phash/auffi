@@ -957,7 +957,9 @@ export function bindUI(backendWsUrl: string): void {
       signaling
         .join(code)
         .then(async () => {
-          if (!peer || !signaling) return;
+          // Checked by generation, not by peer/signaling being non-null: a
+          // reconnect may already have put a newer session's objects there.
+          if (connectGen !== connectGeneration || !peer) return;
           // Sharer confirmed. Switch the backstop from the (generous)
           // confirmation window to the shorter media window: we now expect a
           // decoded frame promptly, or it's a relay/firewall problem.
@@ -965,6 +967,8 @@ export function bindUI(backendWsUrl: string): void {
           armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
           hidePwPrompt();
           const offer = await peer.start();
+          // Abbrechen / a teardown during offer creation: that session is gone.
+          if (connectGen !== connectGeneration || !signaling) return;
           signaling.sendRelay({ kind: "sdp", sdp: offer } satisfies RelaySdp);
           // Spec gh #82: green dot only AFTER the first frame is composited;
           // until then the spinner overlay is still up so the status must
@@ -973,6 +977,9 @@ export function bindUI(backendWsUrl: string): void {
           setStatus(t("status.connectedReceiving"), "info");
         })
         .catch((e: unknown) => {
+          // A stale attempt failing (e.g. start() on a peer the cancel closed)
+          // must not overwrite the status of what replaced it.
+          if (connectGen !== connectGeneration) return;
           hidePwPrompt();
           const msg = e instanceof Error ? e.message : String(e);
           // Map every terminal failure (wrong/expired code, decline, lockout,

@@ -30,6 +30,31 @@ describe("connection failures after the sharer confirmed", () => {
     expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("setRemoteDescription"), expect.anything());
   });
 
+  // Abbrechen while ViewerPeer.start() was still creating the offer: the
+  // continuation then hit the nulled signaling client, threw, and its catch
+  // replaced "Verbindung abgebrochen." with "Verbindung fehlgeschlagen".
+  it("a cancel during offer creation keeps the cancel message and sends no offer", async () => {
+    const { MockPC } = await import("./helpers/ui-session.js");
+    let releaseOffer: () => void = () => {};
+    vi.spyOn(MockPC.prototype, "createOffer").mockImplementation(
+      () =>
+        new Promise<RTCSessionDescriptionInit>((resolve) => {
+          releaseOffer = () => resolve({ type: "offer", sdp: "v=0\r\n" });
+        }),
+    );
+    const session = await startUiSession();
+    session.ws.fakeMessage({ type: "peer-confirmed" });
+    await flush();
+
+    (document.getElementById("cancel-connect") as HTMLButtonElement).click();
+    expect(document.getElementById("status")!.textContent).toBe("Verbindung abgebrochen.");
+    releaseOffer();
+    await flush();
+
+    expect(document.getElementById("status")!.textContent).toBe("Verbindung abgebrochen.");
+    expect(session.ws.sentOfType("relay").filter((m) => (m.payload as { kind: string }).kind === "sdp")).toEqual([]);
+  });
+
   it("peer-rejected: sharer-gone after confirm tears down with the sharer-gone copy at once", async () => {
     vi.useFakeTimers();
     try {
