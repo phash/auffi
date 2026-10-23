@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { generateCode, normalizeCode, SessionStore } from "../src/codes.js";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import {
+  generateCode,
+  normalizeCode,
+  RECONNECT_CONFIRM_WINDOW_MS,
+  RECONNECT_GRACE_MS,
+  SessionStore,
+} from "../src/codes.js";
 
 describe("generateCode", () => {
   it("produces 11-character code in format DDD-DDD-DDD", () => {
@@ -265,5 +271,78 @@ describe("SessionStore", () => {
     store.sweepExpired(Date.now() + 700_000);
     expect(store.findByPeer(sharer)).toBeNull();
     expect(store.findByPeer(viewer)).toBeNull();
+  });
+});
+
+// Product goal: "reuses the same session on reconnect within 30 s". The
+// code TTL caps NEW joins at 10 min, but a helper whose Wi-Fi blipped 40 min
+// into a confirmed session must get back in — the expired code used to
+// refuse them, and the sweep then dropped the session under the sharer.
+describe("SessionStore reconnect grace after the code TTL", () => {
+  const TTL = 600_000;
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function confirmedThenExpired(): {
+    store: SessionStore;
+    code: string;
+    viewer: object;
+    dropped: string[];
+  } {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const store = new SessionStore({ ttlMs: TTL });
+    const dropped: string[] = [];
+    store.setOnExpiredDrop((s) => dropped.push(s.code));
+    const { code } = store.registerSharer({});
+    const viewer = {};
+    store.attachViewer(code, viewer);
+    store.markConfirmed(code);
+    vi.setSystemTime(1_000_000 + TTL + 30 * 60_000);
+    return { store, code, viewer, dropped };
+  }
+
+  it("a confirmed session whose viewer dropped stays joinable for the grace window", () => {
+    const { store, code, viewer } = confirmedThenExpired();
+    store.detachViewer(viewer);
+    vi.advanceTimersByTime(RECONNECT_GRACE_MS - 1_000);
+    store.sweepExpired();
+    expect(store.getJoinableSession(code)).not.toBeNull();
+    expect(store.attachViewer(code, {})).not.toBeNull();
+  });
+
+  it("the returning viewer keeps the session while the sharer re-confirms", () => {
+    const { store, code, viewer, dropped } = confirmedThenExpired();
+    store.detachViewer(viewer);
+    vi.advanceTimersByTime(RECONNECT_GRACE_MS - 1_000);
+    const returning = {};
+    store.attachViewer(code, returning);
+    vi.advanceTimersByTime(RECONNECT_CONFIRM_WINDOW_MS - 1_000);
+    store.sweepExpired();
+    expect(dropped).toEqual([]);
+    expect(store.markConfirmed(code)).toBe(true);
+    expect(store.findByPeer(returning)).not.toBeNull();
+  });
+
+  it("drops the session once the grace window passes without a rejoin", () => {
+    const { store, code, viewer, dropped } = confirmedThenExpired();
+    store.detachViewer(viewer);
+    vi.advanceTimersByTime(RECONNECT_GRACE_MS + 1);
+    store.sweepExpired();
+    expect(dropped).toEqual([code]);
+    expect(store.getSession(code)).toBeNull();
+  });
+
+  it("an expired code that never had a confirmed viewer stays unjoinable", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const store = new SessionStore({ ttlMs: TTL });
+    const { code } = store.registerSharer({});
+    const viewer = {};
+    store.attachViewer(code, viewer);
+    store.detachViewer(viewer);
+    vi.advanceTimersByTime(TTL + 1);
+    expect(store.getJoinableSession(code)).toBeNull();
   });
 });

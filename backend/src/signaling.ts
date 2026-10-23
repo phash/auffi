@@ -64,6 +64,16 @@ function isMessageObject(value: unknown): value is IncomingMessage {
 /// Standard WebSocket close code "Internal Error" (RFC 6455 §7.4.1).
 const CLOSE_INTERNAL_ERROR = 1011;
 
+/**
+ * Application close codes on the ad-hoc path, documented in
+ * docs/protocol.md § WebSocket close codes on the ad-hoc path. The bearer
+ * path has its own set (`WS_CLOSE` in unattended.ts).
+ */
+export const SIGNAL_CLOSE = {
+  /** The sharer's session was dropped: code TTL / reconnect grace over. */
+  CODE_EXPIRED: 4410,
+} as const;
+
 type RawFrame = Buffer | ArrayBuffer | Buffer[];
 
 /**
@@ -218,12 +228,21 @@ export function registerSignaling(
   // server.ts — so every signaling setup (tests included) gets the
   // wiring for free. Only unconfirmed sessions ever reach this
   // callback; confirmed ones are exempt from expiry (see SessionStore).
+  //
+  // The sharer's socket is closed either way: a dropped session leaves it a
+  // dead registration (no re-register on the same socket, nothing can join
+  // it), and without the close a sharer whose helper did not make it back
+  // inside the reconnect grace was never told. Every sharer treats a close
+  // as "signaling lost" and offers a fresh code.
   store.setOnExpiredDrop((session) => {
-    if (!session.viewer) return;
-    const viewer = session.viewer as WebSocket;
-    send(viewer, { type: "peer-rejected", reason: "expired" });
-    viewer.close();
-    send(session.sharer as WebSocket, { type: "relay", payload: { kind: "bye" } });
+    const sharer = session.sharer as WebSocket;
+    if (session.viewer) {
+      const viewer = session.viewer as WebSocket;
+      send(viewer, { type: "peer-rejected", reason: "expired" });
+      viewer.close();
+      send(sharer, { type: "relay", payload: { kind: "bye" } });
+    }
+    sharer.close(SIGNAL_CLOSE.CODE_EXPIRED, "code expired");
   });
 
   // Same idea for the unattended pre-confirm timeout: when the 60 s

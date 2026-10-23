@@ -162,7 +162,30 @@ Only the **sharer** ends a session (`removeBySharer`; the viewer gets
 viewer slot is cleared, `confirmed` is reset and the code stays joinable until
 its TTL. This is what lets the same helper reconnect within the 30-s grace (or
 a replacement helper attach) — and why every returning viewer has to be
-confirmed by the sharer again. If the viewer vanished **before** confirmation,
+confirmed by the sharer again.
+
+**Reconnect grace past the TTL.** The 10-minute TTL caps the code for *new*
+joins only. When a **confirmed** viewer drops, the session stays joinable for
+**30 s** (`RECONNECT_GRACE_MS`, `backend/src/codes.ts`) even if the code has
+long expired; a viewer re-joining inside that window holds the session for
+another **60 s** (`RECONNECT_CONFIRM_WINDOW_MS`) while the sharer re-confirms.
+Backends ≤ 0.7.1 refused that re-join once the code was older than 10 minutes.
+
+**Session dropped → sharer socket closed.** Whenever an unconfirmed session
+is dropped for expiry (code TTL over, reconnect grace over), the backend
+closes the sharer's WS with **4410** `code expired` (after the
+`peer-rejected` / synthesized `bye` above, if a viewer was attached). The
+socket cannot register again, so it is closed rather than left as a dead
+registration. Sharers ≤ 0.7.1 have no special case for 4410: they treat it
+like any lost signaling link ("Verbindung zum Server getrennt" + „Neu
+verbinden", which fetches a fresh code; a live P2P stream keeps running).
+
+#### WebSocket close codes on the ad-hoc path
+
+| Code | Reason (free text) | Meaning                                                   |
+|------|--------------------|-----------------------------------------------------------|
+| 1011 | `internal error`   | A server-side fault while handling this socket's frame (e.g. a failing DB); also used on the bearer path. Ordinary disconnect for every client. |
+| 4410 | `code expired`     | → sharer: its session was dropped (TTL / reconnect grace over). Get a new code. | If the viewer vanished **before** confirmation,
 the backend synthesizes a `bye` to the sharer so its confirm dialog does not
 point at a gone peer; a confirmed viewer's drop deliberately sends nothing, so
 a Wi-Fi blip keeps the sharer's ICE grace / reconnect window alive. The

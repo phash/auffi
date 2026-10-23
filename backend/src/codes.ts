@@ -29,12 +29,33 @@ export type Peer = object;
 export const TURN_CREDENTIALS_UP_FRONT = 4;
 export const TURN_CREDENTIALS_PER_JOIN = 2;
 
+/**
+ * How long a session whose CONFIRMED viewer dropped stays joinable, even
+ * past the code TTL — the product goal's "reuses the same session on
+ * reconnect within 30 s". The TTL caps the code for NEW helpers; it must
+ * not lock out the helper of a session that has been running for an hour.
+ * The returning viewer is still confirmed by the sharer afresh.
+ */
+export const RECONNECT_GRACE_MS = 30_000;
+/**
+ * Once a viewer re-joined inside the grace window, how long the session is
+ * held for the sharer's re-confirm. Matches the viewer's own 60 s
+ * confirm backstop (viewer/src/ui.ts).
+ */
+export const RECONNECT_CONFIRM_WINDOW_MS = 60_000;
+
 export type Session = {
   code: string;
   sharer: Peer;
   viewer: Peer | null;
   expiresAt: number;
   confirmed: boolean;
+  /**
+   * Set when a CONFIRMED viewer drops (RECONNECT_GRACE_MS) or re-joins
+   * inside that grace (RECONNECT_CONFIRM_WINDOW_MS): until then the
+   * session is joinable and not reaped, whatever the code TTL says.
+   */
+  reconnectUntil: number | null;
   turnCredentialsIssued: number;
   turnCredentialBudget: number;
 };
@@ -49,6 +70,12 @@ export type StoreConfig = {
    */
   onCodeCreated?: () => void;
 };
+
+function isJoinable(session: Session, now: number): boolean {
+  return (
+    now <= session.expiresAt || (session.reconnectUntil !== null && now <= session.reconnectUntil)
+  );
+}
 
 export class SessionStore {
   private sessions = new Map<string, Session>();
@@ -89,6 +116,7 @@ export class SessionStore {
       viewer: null,
       expiresAt: Date.now() + this.cfg.ttlMs,
       confirmed: false,
+      reconnectUntil: null,
       turnCredentialsIssued: 0,
       turnCredentialBudget: TURN_CREDENTIALS_UP_FRONT,
     };
@@ -101,6 +129,12 @@ export class SessionStore {
   attachViewer(code: string, viewer: Peer): Session | null {
     const session = this.getJoinableSession(code);
     if (!session) return null;
+    const now = Date.now();
+    if (now > session.expiresAt) {
+      // Joined on the reconnect grace alone: hold the session while the
+      // sharer re-confirms instead of reaping it at the grace's end.
+      session.reconnectUntil = now + RECONNECT_CONFIRM_WINDOW_MS;
+    }
     session.viewer = viewer;
     session.turnCredentialBudget += TURN_CREDENTIALS_PER_JOIN;
     this.byPeer.set(viewer, code);
@@ -132,7 +166,7 @@ export class SessionStore {
   getSession(code: string): Session | null {
     const session = this.sessions.get(code);
     if (!session) return null;
-    if (Date.now() > session.expiresAt && !session.confirmed) {
+    if (!session.confirmed && !isJoinable(session, Date.now())) {
       this.dropExpired(session);
       return null;
     }
@@ -140,14 +174,14 @@ export class SessionStore {
   }
 
   /**
-   * Join-gate lookup: an expired code is never joinable again, even
-   * while its confirmed session is still streaming.
+   * Join-gate lookup: an expired code is not joinable again — even while
+   * its confirmed session is still streaming — except inside the reconnect
+   * grace of a session whose confirmed viewer dropped.
    */
   getJoinableSession(code: string): Session | null {
     const session = this.getSession(code);
     if (!session) return null;
-    if (Date.now() > session.expiresAt) return null;
-    return session;
+    return isJoinable(session, Date.now()) ? session : null;
   }
 
   findByPeer(peer: Peer): Session | null {
@@ -159,6 +193,7 @@ export class SessionStore {
     const session = this.sessions.get(code);
     if (!session) return false;
     session.confirmed = true;
+    session.reconnectUntil = null;
     return true;
   }
 
@@ -181,7 +216,9 @@ export class SessionStore {
     // Akzeptieren, and the sharer's decline (`confirm:false`, guarded by
     // "if (found.confirmed) return") would be silently swallowed — both
     // break "the sharer confirms every incoming peer". It also makes the
-    // session expirable again.
+    // session expirable again — after the reconnect grace, if this viewer
+    // had been accepted.
+    if (session.confirmed) session.reconnectUntil = Date.now() + RECONNECT_GRACE_MS;
     session.confirmed = false;
   }
 
@@ -190,11 +227,12 @@ export class SessionStore {
    * without bound when sharers disconnect without closing cleanly.
    * Called from the server's periodic sweep. CONFIRMED sessions are
    * exempt (see `getSession`) — they are torn down by the peers'
-   * close handlers, never mid-stream by the sweep.
+   * close handlers, never mid-stream by the sweep — and so are sessions
+   * inside their reconnect grace.
    */
   sweepExpired(now: number = Date.now()): void {
     for (const session of this.sessions.values()) {
-      if (session.expiresAt < now && !session.confirmed) {
+      if (!session.confirmed && !isJoinable(session, now)) {
         this.dropExpired(session);
       }
     }

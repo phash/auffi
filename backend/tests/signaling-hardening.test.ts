@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import websocketPlugin from "@fastify/websocket";
 import WebSocket from "ws";
 import { registerSignaling } from "../src/signaling.js";
-import { SessionStore } from "../src/codes.js";
+import { RECONNECT_GRACE_MS, SessionStore } from "../src/codes.js";
 import { UnattendedRegistry } from "../src/unattended.js";
 import { UnattendedSessions } from "../src/unattended_sessions.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
@@ -62,6 +62,14 @@ async function start(opts: { country?: CountryLookup; ttlMs?: number } = {}): Pr
   if (typeof addr === "string" || !addr) throw new Error("no address");
   open = { app, url: `ws://127.0.0.1:${addr.port}/signal`, db, store };
   return open;
+}
+
+async function waitFor(cond: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 10));
+  }
 }
 
 function recv(ws: WebSocket): Promise<any> {
@@ -155,5 +163,73 @@ describe("a failing DB inside a socket handler", () => {
     sharer.send(JSON.stringify({ type: "pw-check-result", result: "fail" }));
     expect((await gone).code).toBe(1011);
     viewer.close();
+  });
+});
+
+describe("ad-hoc reconnect after the code TTL", () => {
+  async function confirmedPairPastTtl(h: Harness): Promise<{
+    sharer: WebSocket;
+    viewer: WebSocket;
+    code: string;
+  }> {
+    const sharer = await openViewer(h.url);
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+    const viewer = await openViewer(h.url);
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    expect(await recv(sharer)).toMatchObject({ type: "peer-joined" });
+    sharer.send(JSON.stringify({ type: "confirm", accepted: true }));
+    expect(await recv(viewer)).toEqual({ type: "peer-confirmed" });
+    await new Promise((r) => setTimeout(r, 300));
+    return { sharer, viewer, code };
+  }
+
+  it("lets the dropped helper re-join the confirmed session although the code expired", async () => {
+    const h = await start({ ttlMs: 200 });
+    const { sharer, viewer, code } = await confirmedPairPastTtl(h);
+    viewer.close();
+    await waitFor(() => h.store.getSession(code)?.viewer === null, "viewer detach");
+
+    const back = await openViewer(h.url);
+    back.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    expect(await recv(sharer)).toMatchObject({ type: "peer-joined" });
+    back.close();
+    sharer.close();
+  });
+
+  it("still refuses a brand-new join on an expired code nobody was confirmed on", async () => {
+    const h = await start({ ttlMs: 200 });
+    const sharer = await openViewer(h.url);
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    const { code } = await recv(sharer);
+    await new Promise((r) => setTimeout(r, 300));
+    const late = await openViewer(h.url);
+    late.send(JSON.stringify({ type: "join", role: "viewer", code }));
+    expect(await recv(late)).toMatchObject({ type: "error", code: "invalid-code" });
+    sharer.close();
+  });
+
+  // Once the session is gone the sharer's socket is a dead registration: it
+  // cannot re-register on it and nobody can join it. Closing it with a
+  // dedicated code is what tells a 0.7.1 sharer (it offers "Neu verbinden"
+  // on any close) to fetch a new code.
+  it("closes the sharer socket with 4410 when the session is dropped after the grace", async () => {
+    const h = await start({ ttlMs: 200 });
+    const { sharer, viewer, code } = await confirmedPairPastTtl(h);
+    viewer.close();
+    await waitFor(() => h.store.getSession(code)?.viewer === null, "viewer detach");
+    const gone = closed(sharer);
+    h.store.sweepExpired(Date.now() + RECONNECT_GRACE_MS + 1);
+    expect(await gone).toEqual({ code: 4410, reason: "code expired" });
+  });
+
+  it("closes an idle sharer's socket with 4410 when its code expires", async () => {
+    const h = await start({ ttlMs: 200 });
+    const sharer = await openViewer(h.url);
+    sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
+    await recv(sharer);
+    const gone = closed(sharer);
+    h.store.sweepExpired(Date.now() + 1_000);
+    expect(await gone).toEqual({ code: 4410, reason: "code expired" });
   });
 });
