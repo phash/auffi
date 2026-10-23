@@ -229,6 +229,15 @@ function setStatusText(text: string): void {
 }
 
 /**
+ * Heartbeat link state (connected / reconnecting / …). The P2P session does
+ * not depend on the heartbeat once it is up, so while one is live the status
+ * line keeps describing the session instead of the link's reconnect.
+ */
+function setHeartbeatStatusText(text: string): void {
+  if (!signalBuffer.hasActivity()) setStatusText(text);
+}
+
+/**
  * Log the raw error for diagnosis but return a user-presentable string.
  * Tauri command rejections are German message strings (shown as-is); any
  * other thrown value collapses to a generic German fallback instead of
@@ -244,7 +253,11 @@ async function refresh(): Promise<void> {
   // feedback FAB cares about (mode change, pair, unpair, password
   // set). Dispatch a custom event so the FAB can re-evaluate
   // visibility without polling.
-  window.dispatchEvent(new CustomEvent("auffi-unattended-state-changed"));
+  window.dispatchEvent(
+    new CustomEvent("auffi-unattended-state-changed", {
+      detail: { sessionLive: signalBuffer.hasActivity() },
+    }),
+  );
 
   if (!modeSelect) return;
   const mode = ((await invoke<string>("unattended_get_mode").catch(() => "adhoc")) as ModeChoice);
@@ -280,7 +293,7 @@ async function refresh(): Promise<void> {
   // Resync from the Rust-side truth — the local flag lies after a
   // webview reload while the heartbeat keeps running.
   active = await invoke<boolean>("unattended_is_active").catch(() => active);
-  setStatusText(active ? "Verbunden" : "Inaktiv");
+  setHeartbeatStatusText(active ? "Verbunden" : "Inaktiv");
   if (active) {
     hide(startBtn);
     show(stopBtn);
@@ -399,17 +412,17 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
   const ev = e.payload;
   switch (ev.kind) {
     case "connected":
-      setStatusText(`Verbunden${ev.deviceId ? ` (${ev.deviceId})` : ""}`);
+      setHeartbeatStatusText(`Verbunden${ev.deviceId ? ` (${ev.deviceId})` : ""}`);
       active = true;
       void refresh();
       break;
     case "disconnected":
       // The raw reason stays in the Rust debug log; the heartbeat follows up
       // with a `reconnecting` event carrying the countdown.
-      setStatusText("Getrennt — Verbindung wird neu aufgebaut…");
+      setHeartbeatStatusText("Getrennt — Verbindung wird neu aufgebaut…");
       break;
     case "reconnecting":
-      setStatusText(
+      setHeartbeatStatusText(
         `Neuer Verbindungsversuch in ${Math.round((ev.after_ms ?? 0) / 1000)} s (Versuch ${ev.attempt ?? "?"})`,
       );
       break;

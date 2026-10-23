@@ -154,4 +154,28 @@ describe("unattended.ts settings wiring", () => {
     expect(calls("disconnect_streaming")).toHaveLength(0);
     expect(calls("unattended_unpair")).toHaveLength(1);
   });
+
+  // The P2P session survives a heartbeat blip, but the reconnect's
+  // disconnected → reconnecting → connected events rewrote "Helfer
+  // verbunden" to "Verbunden" while the helper was still on screen.
+  it("keeps the session status through a heartbeat reconnect", async () => {
+    await startSession();
+    expect(byId("unattended-status").textContent).toBe("Helfer verbunden");
+    const changes: unknown[] = [];
+    window.addEventListener("auffi-unattended-state-changed", (e) =>
+      changes.push((e as CustomEvent).detail),
+    );
+    await emit({ kind: "disconnected" });
+    await emit({ kind: "reconnecting", after_ms: 2000, attempt: 1 });
+    await emit({ kind: "connected", deviceId: "dev-1234" });
+    expect(byId("unattended-status").textContent).toBe("Helfer verbunden");
+    expect(changes.at(-1)).toEqual({ sessionLive: true });
+  });
+
+  it("reports heartbeat state normally when no session is live", async () => {
+    await emit({ kind: "disconnected" });
+    expect(byId("unattended-status").textContent).toContain("Getrennt");
+    await emit({ kind: "connected", deviceId: "dev-1234" });
+    expect(byId("unattended-status").textContent).toBe("Verbunden");
+  });
 });

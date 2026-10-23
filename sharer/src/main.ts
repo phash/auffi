@@ -440,6 +440,11 @@ function hideStreamingActions(): void {
   resetSessionIndicators(sessionIndicatorEls);
   // Clear buffered SDP/ICE — the next session starts fresh
   signalBuffer.reset();
+  // Every teardown path runs through here; a grace window armed for the old
+  // peer would otherwise fire later and tear down whatever came next.
+  clearIceGrace();
+  // Offers of the ended session died with its FileTransferManager.
+  dropFileOffers();
 }
 
 // Close the "Verbindungsanfrage" and forget the helper it was about. A null
@@ -509,53 +514,69 @@ acceptBtn.addEventListener("click", () => {
   acceptBtn.disabled = true;
   declineBtn.disabled = true;
 
-  invoke("confirm_peer", { accepted: true })
-    .then(async () => {
-      // A bye or disconnect withdrew the request while confirm_peer was in
-      // flight: the helper is gone and the backend ignores the stale accept
-      // — starting a stream for nobody would only strand the portal dialog.
-      if (currentIpPrefix === null) return;
-      confirmEl.classList.remove("visible");
-
-      if (rememberIt && ip) {
-        await addTrustedPeer(ip, "Helfer");
-      }
-      rememberPeerCheckbox.checked = false;
-
-      // On Wayland the compositor's portal dialog handles monitor selection;
-      // our own monitor-list step is redundant and confusing. Skip it.
-      const usesPortal = await invoke<boolean>("capture_backend_uses_portal");
-      if (usesPortal) {
-        setStatus("Wähle den Bildschirm im System-Dialog…", "waiting");
-        streamBtn.disabled = true;
-        invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" })
-          .then(async () => {
-            await signalBuffer.ready();
-            setStatus("Streaming läuft.", "success");
-            showStreamingActions();
-          })
-          .catch((err: unknown) => {
-            showFriendlyError("Streamen konnte nicht gestartet werden. Bitte erneut versuchen.", err);
-            streamBtn.disabled = false;
-          });
-        return;
-      }
-
-      setStatus("Verbindung akzeptiert — Bildschirm auswählen…", "waiting");
-      const monitors = await invoke<DisplayInfo[]>("list_monitors");
-      renderMonitorChoices(monitors);
-      // After a viewer-swap the button may still be disabled from the
-      // previous session's start — the streaming-stopped listener
-      // deliberately leaves keepSignaling teardowns alone.
-      streamBtn.disabled = false;
-      openMonitorPicker("start");
-    })
-    .catch((err: unknown) => {
+  invoke("confirm_peer", { accepted: true }).then(
+    () => startAcceptedSession(ip, rememberIt),
+    (err: unknown) => {
+      // The request is still open (the dialog never closed) — retry works.
       showFriendlyError("Verbindung konnte nicht akzeptiert werden. Bitte erneut versuchen.", err);
       acceptBtn.disabled = false;
       declineBtn.disabled = false;
-    });
+    },
+  );
 });
+
+/**
+ * Everything after a successful confirm_peer. The request dialog is gone by
+ * now, so a failure here must not read as "nicht akzeptiert" with a retry
+ * button nobody can see: it gets the start-failure copy and Neuer Code.
+ */
+async function startAcceptedSession(ip: string, rememberIt: boolean): Promise<void> {
+  // A bye or disconnect withdrew the request while confirm_peer was in
+  // flight: the helper is gone and the backend ignores the stale accept
+  // — starting a stream for nobody would only strand the portal dialog.
+  if (currentIpPrefix === null) return;
+  confirmEl.classList.remove("visible");
+
+  if (rememberIt && ip) {
+    // A convenience — failing to remember the helper must not cost the
+    // session the user just accepted.
+    await addTrustedPeer(ip, "Helfer").catch((e: unknown) => {
+      console.warn("[trusted-peers] could not remember the helper:", e);
+    });
+  }
+  rememberPeerCheckbox.checked = false;
+
+  try {
+    // On Wayland the compositor's portal dialog handles monitor selection;
+    // our own monitor-list step is redundant and confusing. Skip it.
+    const usesPortal = await invoke<boolean>("capture_backend_uses_portal");
+    if (usesPortal) {
+      setStatus("Wähle den Bildschirm im System-Dialog…", "waiting");
+      streamBtn.disabled = true;
+      await invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" });
+      await signalBuffer.ready();
+      setStatus("Streaming läuft.", "success");
+      showStreamingActions();
+      return;
+    }
+
+    setStatus("Verbindung akzeptiert — Bildschirm auswählen…", "waiting");
+    const monitors = await invoke<DisplayInfo[]>("list_monitors");
+    renderMonitorChoices(monitors);
+    // After a viewer-swap the button may still be disabled from the
+    // previous session's start — the streaming-stopped listener
+    // deliberately leaves keepSignaling teardowns alone.
+    streamBtn.disabled = false;
+    openMonitorPicker("start");
+  } catch (err) {
+    showFriendlyError(
+      "Streamen konnte nicht gestartet werden. Klicke „Neuer Code“, um es noch einmal zu versuchen.",
+      err,
+    );
+    streamBtn.disabled = false;
+    newCodeBtn.classList.add("visible");
+  }
+}
 
 function renderMonitorChoices(monitors: DisplayInfo[]): void {
   const nodes: Node[] = monitors.map((m, idx) => {
@@ -803,18 +824,42 @@ linkMrd.addEventListener("click", () => {
 
 // ── Settings toggles ─────────────────────────────────────────────────────────
 
+// A toggle that silently failed would show a state that is neither applied
+// nor persisted; roll it back and say so instead.
+const SETTING_NOT_SAVED = "Einstellung konnte nicht gespeichert werden.";
+
 largeCodeToggle.addEventListener("change", async () => {
   const enabled = largeCodeToggle.checked;
   applyLargeCode(enabled);
-  const store = await getStore();
-  await store.set("largeCode", enabled);
+  try {
+    const store = await getStore();
+    await store.set("largeCode", enabled);
+  } catch (e) {
+    largeCodeToggle.checked = !enabled;
+    applyLargeCode(!enabled);
+    showFriendlyError(SETTING_NOT_SAVED, e);
+  }
 });
 
 debugLogToggle.addEventListener("change", async () => {
   const enabled = debugLogToggle.checked;
-  await invoke("set_debug_logging", { enabled });
-  const store = await getStore();
-  await store.set("debugLogging", enabled);
+  try {
+    await invoke("set_debug_logging", { enabled });
+  } catch (e) {
+    debugLogToggle.checked = !enabled;
+    showFriendlyError(SETTING_NOT_SAVED, e);
+    return;
+  }
+  try {
+    const store = await getStore();
+    await store.set("debugLogging", enabled);
+  } catch (e) {
+    // Rust already switched; put it back so the session matches what the
+    // next launch will load.
+    await invoke("set_debug_logging", { enabled: !enabled }).catch(() => {});
+    debugLogToggle.checked = !enabled;
+    showFriendlyError(SETTING_NOT_SAVED, e);
+  }
 });
 
 openLogBtn.addEventListener("click", () => {
@@ -1057,17 +1102,33 @@ listen<string>("connection-type", (e) => {
   }
 });
 
+// The offer on screen and the ones waiting behind it. A second offer used to
+// overwrite the first's id while its dialog was up, so Annehmen answered the
+// wrong transfer and the first stayed pending in Rust. Rust caps concurrent
+// transfers, which bounds this queue too.
 let pendingFileOfferId: string | null = null;
+const queuedFileOffers: FileOfferPayload[] = [];
 
-function showFileOfferDialog(id: string, name: string, size: number): void {
-  pendingFileOfferId = id;
-  const human = formatBytes(size);
-  fileOfferText.textContent = `Der Helfer möchte dir „${name}“ (${human}) senden.`;
+function showFileOfferDialog(offer: FileOfferPayload): void {
+  pendingFileOfferId = offer.id;
+  const human = formatBytes(offer.size);
+  fileOfferText.textContent = `Der Helfer möchte dir „${offer.name}“ (${human}) senden.`;
   fileOfferDialog.classList.add("visible");
-  fileOfferAcceptBtn.focus();
+  // Gates a write into Downloads — initial focus on the safer choice, like
+  // the other gating dialogs.
+  fileOfferRejectBtn.focus();
 }
 
+/** Close the answered offer and bring up the next one, if any. */
 function hideFileOfferDialog(): void {
+  pendingFileOfferId = null;
+  fileOfferDialog.classList.remove("visible");
+  const next = queuedFileOffers.shift();
+  if (next) showFileOfferDialog(next);
+}
+
+function dropFileOffers(): void {
+  queuedFileOffers.length = 0;
   pendingFileOfferId = null;
   fileOfferDialog.classList.remove("visible");
 }
@@ -1098,8 +1159,11 @@ fileOfferRejectBtn.addEventListener("click", () => {
 });
 
 listen<FileOfferPayload>("file-offer", (e) => {
-  const { id, name, size } = e.payload;
-  showFileOfferDialog(id, name, size);
+  if (pendingFileOfferId === null) {
+    showFileOfferDialog(e.payload);
+  } else {
+    queuedFileOffers.push(e.payload);
+  }
 });
 
 listen<FileReceivedPayload>("file-received", (e) => {
@@ -1157,7 +1221,7 @@ async function unattendedStatusLine(): Promise<string> {
  * every "auffi-unattended-state-changed" the settings UI dispatches, and is
  * idempotent via adhocSurfaceActive.
  */
-async function reconcileAdhocSurface(): Promise<void> {
+async function reconcileAdhocSurface(sessionLive: boolean): Promise<void> {
   const mode = await invoke<string>("unattended_get_mode").catch(() => "adhoc");
   if (mode === "unattended") {
     if (adhocSurfaceActive) {
@@ -1169,7 +1233,9 @@ async function reconcileAdhocSurface(): Promise<void> {
     }
     resetCode();
     hideReconnect();
-    setStatus(await unattendedStatusLine(), "idle");
+    // A heartbeat reconnect fires this mid-session; the line then belongs
+    // to the live session (ICE grace, recovery) and must not be reset.
+    if (!sessionLive) setStatus(await unattendedStatusLine(), "idle");
     return;
   }
   if (adhocSurfaceActive) return;
@@ -1182,8 +1248,9 @@ async function reconcileAdhocSurface(): Promise<void> {
   }
 }
 
-window.addEventListener("auffi-unattended-state-changed", () => {
-  void reconcileAdhocSurface().catch(() => {});
+window.addEventListener("auffi-unattended-state-changed", (e) => {
+  const detail = (e as CustomEvent<{ sessionLive?: boolean } | null>).detail;
+  void reconcileAdhocSurface(detail?.sessionLive === true).catch(() => {});
 });
 
 loadSettings().catch(() => {});

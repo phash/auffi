@@ -11,9 +11,10 @@ import html from "../index.html?raw";
 
 type Handler = (e: { payload: unknown }) => void | Promise<void>;
 
-const { invokeMock, listeners } = vi.hoisted(() => ({
+const { invokeMock, listeners, storeSet } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   listeners: new Map<string, Handler[]>(),
+  storeSet: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -28,7 +29,7 @@ vi.mock("@tauri-apps/plugin-store", () => ({
   load: () =>
     Promise.resolve({
       get: () => Promise.resolve(undefined),
-      set: () => Promise.resolve(),
+      set: storeSet,
     }),
 }));
 
@@ -62,6 +63,8 @@ async function mount(overrides: Record<string, unknown> = {}): Promise<void> {
   const results = { ...INVOKE_RESULTS, ...overrides };
   listeners.clear();
   invokeMock.mockReset();
+  storeSet.mockReset();
+  storeSet.mockResolvedValue(undefined);
   invokeMock.mockImplementation((cmd: string) => Promise.resolve(results[cmd]));
   document.body.innerHTML = html.slice(html.indexOf("<body>") + "<body>".length, html.lastIndexOf("</body>"));
   vi.resetModules();
@@ -245,5 +248,151 @@ describe("main.ts ad-hoc wiring", () => {
     byId<HTMLButtonElement>("send-file-btn").click();
     await flush();
     expect(byId("status").textContent).toBe("Datei wurde gesendet.");
+  });
+  // ── ICE grace vs. other teardowns (finding 14) ──────────────────────────
+  // The 10 s grace armed on `disconnected` survived Beenden; it then fired
+  // against whatever came next and tore down with keepSignaling.
+  it("drops a pending ICE grace when the session ends another way", async () => {
+    await startStream();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      for (const h of listeners.get("ice-state") ?? []) await h({ payload: "disconnected" });
+      byId<HTMLButtonElement>("stop-confirm-yes").click();
+      invokeMock.mockClear();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(calls("disconnect_streaming")).toHaveLength(0);
+      expect(byId("status").textContent).toContain("Stream beendet");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // ── failures after Akzeptieren (finding 15) ─────────────────────────────
+  it("offers Neuer Code when the portal start fails after Akzeptieren", async () => {
+    await joinPeer();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "start_streaming"
+        ? Promise.reject("portal cancelled")
+        : Promise.resolve(INVOKE_RESULTS[cmd]),
+    );
+    byId<HTMLButtonElement>("accept").click();
+    await flush();
+    await flush();
+    expect(byId("confirm").classList.contains("visible")).toBe(false);
+    expect(byId("status").textContent).toContain("Streamen konnte nicht gestartet werden");
+    expect(byId("status").className).toBe("error");
+    expect(byId("new-code-btn").classList.contains("visible")).toBe(true);
+  });
+
+  it("offers Neuer Code when listing the monitors fails after Akzeptieren", async () => {
+    await joinPeer();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "capture_backend_uses_portal") return Promise.resolve(false);
+      if (cmd === "list_monitors") return Promise.reject("x11 gone");
+      return Promise.resolve(INVOKE_RESULTS[cmd]);
+    });
+    byId<HTMLButtonElement>("accept").click();
+    await flush();
+    await flush();
+    expect(byId("status").textContent).toContain("Streamen konnte nicht gestartet werden");
+    expect(byId("new-code-btn").classList.contains("visible")).toBe(true);
+    expect(byId("status").textContent).not.toContain("akzeptiert werden");
+  });
+
+  it("starts the stream even when remembering the helper fails", async () => {
+    await joinPeer();
+    storeSet.mockRejectedValue(new Error("store locked"));
+    byId<HTMLInputElement>("remember-peer").checked = true;
+    byId<HTMLButtonElement>("accept").click();
+    await flush();
+    await flush();
+    expect(calls("start_streaming")).toHaveLength(1);
+  });
+
+  // ── heartbeat reconnect during a live unattended session (finding 17) ──
+  it("keeps the main status while an unattended session is live", async () => {
+    await mount({
+      unattended_get_mode: "unattended",
+      unattended_is_paired: "dev-1",
+      unattended_is_password_set: true,
+      unattended_is_active: true,
+    });
+    for (const h of listeners.get("ice-state") ?? []) await h({ payload: "disconnected" });
+    expect(byId("status").textContent).toBe("Verbindung instabil …");
+    window.dispatchEvent(
+      new CustomEvent("auffi-unattended-state-changed", { detail: { sessionLive: true } }),
+    );
+    await flush();
+    await flush();
+    expect(byId("status").textContent).toBe("Verbindung instabil …");
+  });
+
+  // ── settings toggles roll back on failure (finding 18) ──────────────────
+  it("rolls the large-code toggle back when it cannot be saved", async () => {
+    storeSet.mockRejectedValue(new Error("disk full"));
+    const toggle = byId<HTMLInputElement>("large-code-toggle");
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event("change"));
+    await flush();
+    expect(toggle.checked).toBe(false);
+    expect(byId("code").style.fontSize).toBe("");
+    expect(byId("status").className).toBe("error");
+  });
+
+  it("rolls the debug-log toggle back when Rust refuses it", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "set_debug_logging" ? Promise.reject("nope") : Promise.resolve(undefined),
+    );
+    const toggle = byId<HTMLInputElement>("debug-log-toggle");
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event("change"));
+    await flush();
+    expect(toggle.checked).toBe(false);
+    expect(storeSet).not.toHaveBeenCalledWith("debugLogging", true);
+  });
+
+  it("restores Rust's debug-log state when the store write fails", async () => {
+    storeSet.mockRejectedValue(new Error("disk full"));
+    const toggle = byId<HTMLInputElement>("debug-log-toggle");
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event("change"));
+    await flush();
+    await flush();
+    expect(toggle.checked).toBe(false);
+    expect(calls("set_debug_logging")).toEqual([
+      ["set_debug_logging", { enabled: true }],
+      ["set_debug_logging", { enabled: false }],
+    ]);
+  });
+
+  // ── file-offer dialog (finding 19) ──────────────────────────────────────
+  it("focuses Ablehnen and queues a second offer instead of overwriting the first", async () => {
+    await startStream();
+    await emit("file-offer", { id: "a", name: "a.pdf", size: 10, mime: "application/pdf" });
+    expect(document.activeElement).toBe(byId("file-offer-reject"));
+    await emit("file-offer", { id: "b", name: "b.pdf", size: 20, mime: "application/pdf" });
+    expect(byId("file-offer-text").textContent).toContain("a.pdf");
+
+    byId<HTMLButtonElement>("file-offer-reject").click();
+    await flush();
+    expect(calls("reject_file")).toEqual([["reject_file", { id: "a" }]]);
+    expect(byId("file-offer-dialog").classList.contains("visible")).toBe(true);
+    expect(byId("file-offer-text").textContent).toContain("b.pdf");
+
+    byId<HTMLButtonElement>("file-offer-accept").click();
+    await flush();
+    expect(calls("accept_file")).toEqual([["accept_file", { id: "b" }]]);
+    expect(byId("file-offer-dialog").classList.contains("visible")).toBe(false);
+  });
+
+  it("drops open file offers when the session ends", async () => {
+    await startStream();
+    await emit("file-offer", { id: "a", name: "a.pdf", size: 10, mime: "application/pdf" });
+    await emit("file-offer", { id: "b", name: "b.pdf", size: 20, mime: "application/pdf" });
+    await emit("ice-state", "failed");
+    expect(byId("file-offer-dialog").classList.contains("visible")).toBe(false);
+    await startStream();
+    await emit("file-offer", { id: "c", name: "c.pdf", size: 10, mime: "application/pdf" });
+    expect(byId("file-offer-text").textContent).toContain("c.pdf");
   });
 });
