@@ -408,10 +408,10 @@ video track. The server sets `ended_at` and `bytes_relayed`.
 > only when ICE settled on a relay path and `0` otherwise.
 >
 > These rows are what `GET /api/devices/:id/log`, the admin connection stats
-> and the 30-day retention in `purge.ts` operate on. The free-tier relay
-> cutoff is **not** driven by them — it runs client-side in
-> `sharer/src-tauri/src/free_tier_timer.rs` and arms on a relay connection
-> regardless of mode.
+> and the 30-day retention in `purge.ts` operate on.
+>
+> There is no relay time limit (removed in v0.7.2). Sharers ≤ 0.7.1 still
+> show a stale banner at 8 min; the cutoff itself was enforced by the viewer.
 
 > **Manual-confirm routing (sharer-internal).** When `autoAccept` is false the
 > sharer Rust core raises a `needs-confirm` Tauri event to its own webview

@@ -77,7 +77,8 @@ export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
   "Auffi_0.6.5_x64_portable.exe",
   // 0.6.4 — released 2026-07-02, das derzeit EINZIGE Release auf GitHub
   // (ältere Releases wurden dort gelöscht). Sharer reliability: unattended
-  // multi-viewer fix, heartbeat reconnect-backoff reset, free-tier warning,
+  // multi-viewer fix, heartbeat reconnect-backoff reset, relay-time warning
+  // (the relay limit itself is gone since v0.7.2),
   // x11 capture logs via dbg_log. Linux + Windows via CI (release.yml).
   // Portable now also built by CI (build-sharer.yml stages
   // target/release/auffi-sharer.exe) — served ?tag=v0.6.4-pinned (the
