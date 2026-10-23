@@ -133,6 +133,8 @@ gzips it, prunes old copies, and can rsync off-host. Wire it into cron:
 0 3 * * * /opt/screenie/ops/backup.sh >> /opt/backup/auffi/backup.log 2>&1
 ```
 
+(Example schedule — current prod runs it at `15 4 * * *`, see `docs/ops-runbook.md` § Daily Backup.)
+
 For a one-off manual backup without the script, either run `ops/backup.sh`
 directly, or stop the backend, copy `auffi.db` out of the volume, and
 start it again (cold copy). Full restore steps are in
@@ -377,11 +379,10 @@ ssh musikersuche@musikersuche.org "sudo ss -tlnp | grep ':80\|:443'"
 
 ### coturn cert refresh
 
-coturn reads the cert at startup. After certbot renews the cert and copies it into the `turn-certs` volume, restart coturn:
+coturn's entrypoint polls the staged `cert.pem`/`key.pem` every 5 min and hot-reloads a changed pair via SIGUSR2 (no restart). In cluster mode the `turn-cert-stage` sidecar re-stages Caddy's renewed cert every 6 h; in standalone mode the certbot cron's `--deploy-hook` in [TLS for coturn](#tls-for-coturn) copies it into the `turn-certs` volume — neither restarts coturn. A restart is only needed when coturn started *without* a cert (the entrypoint then stops coturn itself once the pair appears, and the restart policy brings it back with TURNS) or to force it now:
 ```sh
 ./ops/maintenance.sh restart coturn
 ```
-The cron job in [TLS for coturn](#tls-for-coturn) does this automatically.
 
 ---
 
@@ -412,7 +413,7 @@ ls -t /opt/screenie/auffi-backend-*.tar.gz | tail -n +4 | xargs -r rm
 ./ops/maintenance.sh cert-info   # check expiry
 ```
 - Caddy auto-renews its own cert; if it has expired, restart Caddy and check its logs.
-- If the TURN cert has expired, run certbot manually and restart coturn.
+- TURN cert (5349) expired — **cluster mode**: Caddy renews `turn.auffi.app`, the `turn-cert-stage` sidecar copies it (every 6 h) and coturn hot-reloads it (SIGUSR2, polled every 5 min). If 5349 still serves an old cert, check `docker logs auffi-turn-cert-stage` (did it stage?) and `docker logs auffi-coturn` (`TLS cert changed — reloading via SIGUSR2`); `docker restart auffi-coturn` forces a reload. Before 2026-10-22 the sidecar was one-shot and prod served an expired TURNS cert for two weeks (docs/footguns.md § Cluster-Ops). **Standalone mode**: run certbot manually (see [TLS for coturn](#tls-for-coturn)); coturn picks the restaged pair up by itself.
 
 ---
 
@@ -422,7 +423,7 @@ Rotate the TURN shared secret without downtime:
 ```sh
 ./ops/maintenance.sh secret-rotate
 ```
-This generates a new 32-byte hex secret, writes it to `.env.prod` on the VPS, and restarts backend + coturn. Active TURN sessions drain naturally (coturn enforces `lifetime=600`).
+This generates a new 32-byte hex secret, writes it to `.env.prod` on the VPS, and recreates backend + coturn (`up -d --no-deps backend coturn`). Recreating coturn drops every live relay allocation, so relayed sessions break and have to reconnect — rotate at a quiet time. (The old `lifetime=600` claim is gone: the option was already a no-op on coturn 4.6.3 and is removed from both templates. Credentials minted with the old secret are rejected right away; their own TTL is `TURN_TTL_SEC`, ≤ 1 h.)
 
 ---
 
@@ -435,6 +436,8 @@ crontab -e
 # Add:
 # */5 * * * * /opt/screenie/ops/health-check.sh >> /var/log/screenie-health.log 2>&1
 ```
+
+(`screenie-health.log` keeps the pre-rebrand name on purpose — existing cron entries log there; see `docs/ops-runbook.md` § Rebrand Naming.)
 
 For MRD-API reporting, set these additional env vars in `/opt/screenie/.env.prod` (or in the crontab environment):
 ```
