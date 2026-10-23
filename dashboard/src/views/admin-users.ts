@@ -171,11 +171,18 @@ export const renderAdminUsers: RouteRenderer = (
         res.status === 403
           ? "Du musst Admin sein, um die Nutzerliste zu sehen."
           : `Fehler: ${res.message}`;
-      tableHost.style.display = "none";
+      if (reset) {
+        tableHost.style.display = "none";
+        return;
+      }
+      // A failed "Mehr laden" keeps the rows already shown and re-arms
+      // the button as the retry path.
+      renderTable();
       return;
     }
     state.items.push(...res.data.items);
     state.nextCursor = res.data.next_cursor;
+    status.className = "";
     status.style.display = "none";
     tableHost.style.display = "block";
     renderTable();

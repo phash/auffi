@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { _setApiClientForTests } from "../src/api.js";
+import { _setApiClientForTests, type AdminUserListItem } from "../src/api.js";
 import { renderAdminUsers } from "../src/views/admin-users.js";
 import type { RouteContext } from "../src/router.js";
 
@@ -188,5 +188,230 @@ describe("renderAdminUsers", () => {
     expect(link).toBeTruthy();
     expect(link.textContent).toBe("user@example.com");
     expect(link.getAttribute("href")).toBe("/dashboard/admin/users/7");
+  });
+});
+
+// ── filters, search, pagination, error surfaces ─────────────────────
+
+type Page = { items: AdminUserListItem[]; next_cursor: string | null };
+
+/** Records each request URL and answers from `respond` (default: one-row page). */
+function stubList(respond: (url: URL) => Response | Promise<Response>): URL[] {
+  const urls: URL[] = [];
+  _setApiClientForTests({
+    base: "",
+    fetch: vi.fn(async (input: unknown) => {
+      const url = new URL(String(input), "http://x");
+      urls.push(url);
+      return respond(url);
+    }) as unknown as typeof fetch,
+  });
+  return urls;
+}
+
+function page(items: AdminUserListItem[], next_cursor: string | null = null): Response {
+  const body: Page = { items, next_cursor };
+  return jsonResponse(body);
+}
+
+function chip(root: HTMLElement, filter: string): HTMLButtonElement {
+  return root.querySelector(`.admin-users-chip[data-filter="${filter}"]`) as HTMLButtonElement;
+}
+
+function emails(root: HTMLElement): string[] {
+  return Array.from(root.querySelectorAll("tbody a")).map((a) => a.textContent ?? "");
+}
+
+describe("renderAdminUsers — filter chips", () => {
+  afterEach(() => _setApiClientForTests(null));
+
+  it("moves aria-pressed to the clicked chip and does not refetch for the active one", async () => {
+    const urls = stubList(() => page([USER]));
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+    expect(chip(root, "alle").getAttribute("aria-pressed")).toBe("true");
+
+    chip(root, "alle").click();
+    await flush();
+    expect(urls).toHaveLength(1);
+
+    chip(root, "admin").click();
+    await flush();
+    expect(urls).toHaveLength(2);
+    expect(urls[1].searchParams.get("status")).toBe("admin");
+    expect(chip(root, "admin").getAttribute("aria-pressed")).toBe("true");
+    expect(chip(root, "admin").classList.contains("active")).toBe(true);
+    expect(chip(root, "alle").getAttribute("aria-pressed")).toBe("false");
+  });
+});
+
+describe("renderAdminUsers — debounced search", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    _setApiClientForTests(null);
+  });
+
+  it("fires one request 300 ms after the last keystroke with the trimmed query", async () => {
+    const urls = stubList((url) => (url.searchParams.get("q") ? page([]) : page([USER])));
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+    expect(urls).toHaveLength(1);
+
+    vi.useFakeTimers();
+    const input = root.querySelector(".admin-users-search") as HTMLInputElement;
+    input.value = "a";
+    input.dispatchEvent(new Event("input"));
+    await vi.advanceTimersByTimeAsync(200);
+    input.value = " ab ";
+    input.dispatchEvent(new Event("input"));
+    await vi.advanceTimersByTimeAsync(299);
+    expect(urls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    vi.useRealTimers();
+    await flush();
+
+    expect(urls).toHaveLength(2);
+    expect(urls[1].searchParams.get("q")).toBe("ab");
+    expect(urls[1].searchParams.get("cursor")).toBeNull();
+    expect(root.textContent).toContain("Keine Nutzer für „ab\".");
+  });
+
+  it("skips the request when the trimmed query did not change", async () => {
+    const urls = stubList(() => page([USER]));
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+
+    vi.useFakeTimers();
+    const input = root.querySelector(".admin-users-search") as HTMLInputElement;
+    input.value = "   ";
+    input.dispatchEvent(new Event("input"));
+    await vi.advanceTimersByTimeAsync(300);
+    vi.useRealTimers();
+    await flush();
+    expect(urls).toHaveLength(1);
+  });
+});
+
+describe("renderAdminUsers — cursor pagination", () => {
+  afterEach(() => _setApiClientForTests(null));
+
+  const SECOND = { ...USER, id: 8, email: "second@example.com" };
+
+  it("'Mehr laden' sends the cursor, appends the next page, and disappears on the last page", async () => {
+    let release: () => void = () => undefined;
+    const urls = stubList((url) =>
+      url.searchParams.get("cursor") === "c1"
+        ? new Promise<Response>((resolve) => {
+            release = () => resolve(page([SECOND]));
+          })
+        : page([USER], "c1"),
+    );
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+    const more = root.querySelector(".admin-users-load-more") as HTMLButtonElement;
+    expect(more.textContent).toBe("Mehr laden");
+
+    more.click();
+    expect(more.disabled).toBe(true);
+    expect(more.textContent).toBe("Lädt …");
+    await flush();
+    expect(urls[1].searchParams.get("cursor")).toBe("c1");
+    expect(urls[1].searchParams.get("limit")).toBe("50");
+
+    release();
+    await flush();
+    expect(emails(root)).toEqual(["user@example.com", "second@example.com"]);
+    expect(root.querySelector(".admin-users-load-more")).toBeNull();
+  });
+
+  it("keeps the loaded rows and a retry button when 'Mehr laden' fails", async () => {
+    let failNext = true;
+    stubList((url) => {
+      if (url.searchParams.get("cursor") !== "c1") return page([USER], "c1");
+      if (failNext) {
+        failNext = false;
+        return jsonResponse({ error: "internal", message: "kaputt" }, 500);
+      }
+      return page([SECOND]);
+    });
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+    (root.querySelector(".admin-users-load-more") as HTMLButtonElement).click();
+    await flush();
+
+    expect(emails(root)).toEqual(["user@example.com"]);
+    expect((root.querySelector("table")!.parentElement as HTMLElement).style.display).not.toBe("none");
+    expect((root.querySelector(".error") as HTMLElement).textContent).toBe("Fehler: kaputt");
+    const retry = root.querySelector(".admin-users-load-more") as HTMLButtonElement;
+    expect(retry.disabled).toBe(false);
+    expect(retry.textContent).toBe("Mehr laden");
+
+    retry.click();
+    await flush();
+    expect(emails(root)).toEqual(["user@example.com", "second@example.com"]);
+    expect(root.querySelector(".error")).toBeNull();
+  });
+});
+
+describe("renderAdminUsers — rows and errors", () => {
+  afterEach(() => _setApiClientForTests(null));
+
+  it.each([
+    [403, "Du musst Admin sein, um die Nutzerliste zu sehen."],
+    [500, "Fehler: kaputt"],
+  ])("HTTP %i shows its copy instead of a table", async (status, expected) => {
+    stubList(() => jsonResponse({ error: "x", message: "kaputt" }, status));
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+    expect((root.querySelector(".error") as HTMLElement).textContent).toBe(expected);
+    expect(root.querySelector("table")).toBeNull();
+  });
+
+  it("renders status badges, device count and last login per row", async () => {
+    stubList(() =>
+      page([
+        { ...USER, id: 1, email: "plain@x.test", device_count: 3, last_login_at: null },
+        {
+          ...USER,
+          id: 2,
+          email: "flags@x.test",
+          admin: true,
+          suspended_at: 5,
+          email_verified_at: null,
+          last_login_at: 1_700_000_000_000,
+        },
+      ]),
+    );
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+    const rows = Array.from(root.querySelectorAll("tbody tr")).map((tr) =>
+      Array.from(tr.querySelectorAll("td")),
+    );
+    expect(rows[0][1].textContent).toBe("Aktiv");
+    expect(rows[0][2].textContent).toBe("3");
+    expect(rows[0][3].textContent).toBe("—");
+    expect(Array.from(rows[1][1].querySelectorAll(".user-badge")).map((b) => b.textContent)).toEqual([
+      "Admin",
+      "Suspendiert",
+      "Unverifiziert",
+    ]);
+    expect(rows[1][3].textContent).not.toBe("—");
+  });
+
+  it("navigates to the detail route when a row (not the link) is clicked", async () => {
+    stubList(() => page([USER]));
+    window.history.pushState({}, "", "/dashboard/admin/users");
+    const root = makeRoot();
+    renderAdminUsers(root, ctx);
+    await flush();
+    (root.querySelector("tbody td:nth-child(3)") as HTMLElement).click();
+    expect(window.location.pathname).toBe("/dashboard/admin/users/7");
   });
 });
