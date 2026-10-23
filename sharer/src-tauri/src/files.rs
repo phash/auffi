@@ -488,9 +488,10 @@ pub fn fnv1a32(s: &str) -> u32 {
 /// - Strips path-traversal components (`..` and `.`).
 /// - Joins the remaining path components with `_` so that
 ///   `../etc/passwd` → `etc_passwd` and `/absolute/path` → `absolute_path`.
-/// - Replaces control characters (U+0000–U+001F, U+007F) and the Windows
-///   specials `: < > " | ? *` with `_` — `:` in particular would open an
-///   NTFS alternate data stream instead of a visible file.
+/// - Replaces control characters, bidi/zero-width characters and the Windows
+///   specials `: < > " | ? *` with `_` (see [`is_unsafe_filename_char`]) —
+///   `:` in particular would open an NTFS alternate data stream instead of a
+///   visible file.
 /// - Strips a leading dot (hidden-file convention on Unix) and trailing
 ///   dots/spaces (silently dropped by Win32, which would defeat dedupe).
 /// - Falls back to `"untitled"` if the result would be empty.
@@ -511,16 +512,7 @@ pub fn sanitize_filename(input: &str) -> String {
 
     let cleaned: String = joined
         .chars()
-        .map(|c| {
-            if (c as u32) < 0x20
-                || c == '\x7f'
-                || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*')
-            {
-                '_'
-            } else {
-                c
-            }
-        })
+        .map(|c| if is_unsafe_filename_char(c) { '_' } else { c })
         .collect();
 
     let stripped = cleaned.trim_start_matches('.').trim_end_matches(['.', ' ']);
@@ -551,6 +543,31 @@ pub fn sanitize_filename(input: &str) -> String {
         }
         result[..end].to_string()
     }
+}
+
+/// Characters that must never reach a filename on disk. Beyond the C0/C1
+/// controls and the Windows specials this covers the bidi overrides and
+/// isolates (U+202A–202E, U+2066–2069) and the zero-width characters plus BOM
+/// (U+200B–200D, U+FEFF): file managers render them, so
+/// `Rechnung<RLO>fdp.exe` displays as a harmless-looking PDF. Same set as the
+/// viewer's `sanitizeFilename` (`viewer/src/file-transfer.ts`).
+fn is_unsafe_filename_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0000}'..='\u{001F}'
+            | '\u{007F}'..='\u{009F}'
+            | '\u{200B}'..='\u{200D}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}'
+            | ':'
+            | '<'
+            | '>'
+            | '"'
+            | '|'
+            | '?'
+            | '*'
+    )
 }
 
 /// True if `name`'s stem matches a Windows reserved device name
@@ -703,6 +720,48 @@ mod tests {
         let input = "file\x01name.txt";
         let result = sanitize_filename(input);
         assert_eq!(result, "file_name.txt");
+    }
+
+    // `Rechnung<RLO>fdp.exe` renders as `Rechnungexe.pdf` in a file manager:
+    // the right-to-left override hides the real extension. The viewer's
+    // sanitizer already strips these; the sharer is the side that writes the
+    // file to disk, so it must too.
+    #[test]
+    fn sanitize_neutralises_bidi_overrides_and_isolates() {
+        assert_eq!(
+            sanitize_filename("Rechnung\u{202E}fdp.exe"),
+            "Rechnung_fdp.exe"
+        );
+        for c in [
+            '\u{202A}', '\u{202B}', '\u{202C}', '\u{202D}', '\u{2066}', '\u{2067}', '\u{2068}',
+            '\u{2069}',
+        ] {
+            assert_eq!(
+                sanitize_filename(&format!("a{c}b.txt")),
+                "a_b.txt",
+                "U+{:04X}",
+                c as u32
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_neutralises_zero_width_and_bom() {
+        for c in ['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'] {
+            assert_eq!(
+                sanitize_filename(&format!("a{c}b.txt")),
+                "a_b.txt",
+                "U+{:04X}",
+                c as u32
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_neutralises_c1_controls() {
+        assert_eq!(sanitize_filename("a\u{0080}b\u{009F}c.txt"), "a_b_c.txt");
+        // Printable Latin-1 right after the C1 block stays.
+        assert_eq!(sanitize_filename("caf\u{00E9}.txt"), "caf\u{00E9}.txt");
     }
 
     #[test]
