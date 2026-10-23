@@ -31,7 +31,7 @@ futures-util = "=0.3.34"
 # exist) that rearchitects the load-bearing connectivity settings from
 # docs/footguns.md — scheduled as its own migration project once 0.21
 # stabilizes.
-webrtc = "=0.17.2"
+webrtc = "=0.21.1"
 enigo = "=0.6.1"
 log = "=0.4.34"
 tauri-plugin-global-shortcut = "=2.4.1"
