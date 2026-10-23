@@ -18,14 +18,20 @@
 /// Map a backend WS URL to the matching HTTP base (`scheme://host[:port]`).
 pub fn http_base_from_ws(ws_url: &str) -> String {
     if let Some(rest) = ws_url.strip_prefix("wss://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return format!("https://{host}");
+        return format!("https://{}", authority_host(rest));
     }
     if let Some(rest) = ws_url.strip_prefix("ws://") {
-        let host = rest.split('/').next().unwrap_or(rest);
-        return format!("http://{host}");
+        return format!("http://{}", authority_host(rest));
     }
     "http://localhost:8080".to_string()
+}
+
+/// `host[:port]` of the part after `scheme://`: the authority ends at the
+/// first `/`, `?` or `#`, and any `user:pass@` is dropped — credentials have
+/// no place in an `Origin` header or a REST base.
+fn authority_host(rest: &str) -> &str {
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    authority.rsplit('@').next().unwrap_or(authority)
 }
 
 /// The `Origin` header value for requests to the backend (WS upgrade
@@ -79,6 +85,29 @@ mod tests {
         assert_eq!(http_base_from_ws("garbage://nope"), "http://localhost:8080");
         assert_eq!(
             http_base_from_ws("https://auffi.app"),
+            "http://localhost:8080"
+        );
+    }
+
+    // A query or fragment directly after the host stayed glued to it
+    // ("https://auffi.app?x=1"), and userinfo ended up in the Origin header
+    // and in every REST URL built on the base.
+    #[test]
+    fn query_fragment_and_userinfo_never_reach_the_base() {
+        assert_eq!(
+            http_base_from_ws("wss://auffi.app?v=2"),
+            "https://auffi.app"
+        );
+        assert_eq!(
+            http_base_from_ws("wss://auffi.app#frag"),
+            "https://auffi.app"
+        );
+        assert_eq!(
+            http_base_from_ws("wss://user:secret@auffi.app/signal"),
+            "https://auffi.app"
+        );
+        assert_eq!(
+            http_base_from_ws("ws://me@localhost:8080?x=1"),
             "http://localhost:8080"
         );
     }
