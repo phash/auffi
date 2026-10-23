@@ -210,7 +210,7 @@ rate_limit_buckets (
 2. Code eingeben → `POST /api/devices/redeem { code }`
 3. Backend: sha256-Lookup, validate, markiert Pairing als `used_at = now`
 4. Backend: generiert 9-stellige Device-ID (collision-check), 256-bit Device-Token, `argon2id` Hash → `devices` Row insert
-5. Backend antwortet: `{ device_id, token }` (Klartext-Token nur in dieser Response, danach nie wieder)
+5. Backend antwortet: `{ deviceId, token }` (Klartext-Token nur in dieser Response, danach nie wieder)
 6. Sharer speichert Token in Tauri Secure Storage; speichert Device-ID in normaler Config (nicht sensitiv)
 7. Sharer-UI prompt: "Geräte-Passwort festlegen" (min 8 Zeichen, keine Komplexitätsregeln über Min-Länge hinaus — Passphrasen sollen erlaubt sein)
 8. Sharer speichert `argon2id(device_password)` in lokaler Config-Datei (separater Pfad von Token, damit User PW-only-reset machen kann ohne Re-Pairing)
@@ -336,15 +336,15 @@ Sharer: argon2-verify lokal
 | `POST /api/auth/signup` | none | 3/h/IP | `{email, password}` → 202 |
 | `GET  /api/auth/verify/:token` | none | 10/h/IP | redirect |
 | `POST /api/auth/login` | none | 5/min/IP | `{email, password}` → 200 + Cookie |
-| `POST /api/auth/logout` | session | — | 204 |
-| `POST /api/auth/forgot` | none | 3/h/IP | `{email}` → 202 |
-| `POST /api/auth/reset/:token` | none | 5/h/IP | `{password}` → 204 |
+| `POST /api/auth/logout` | none (Cookie optional) | — | 200 `{ok:true}` |
+| `POST /api/auth/forgot` | none | 3/h/IP | `{email}` → 200 `{ok:true}` |
+| `POST /api/auth/reset/:token` | none | 5/h/IP | `{password}` → 200 `{ok:true}` |
 | `GET  /api/me` | session | — | `{email, created_at, …}` |
 | `PATCH /api/me` | session | 10/h | `{current_password, new_email?, new_password?}` |
 | `DELETE /api/me` | session | 3/h | `{current_password, confirm}` → 204 |
 | `GET  /api/devices` | session | — | `[{id, alias, online, last_seen_at, auto_accept}, …]` |
 | `POST /api/devices/pairing-code` | session | 5/h | → `{code, expires_at}` |
-| `POST /api/devices/redeem` | none (sharer) | 5/min/IP | `{code, alias}` → `{device_id, token}` |
+| `POST /api/devices/redeem` | none (sharer) | 5/min/IP | `{code, alias}` → `{deviceId, token}` |
 | `PATCH /api/devices/:id` | session + owner | — | `{alias?, auto_accept?}` |
 | `DELETE /api/devices/:id` | session + owner | — | 204 |
 | `GET  /api/devices/:id/log` | session + owner | — | `{items, next_cursor}` |
