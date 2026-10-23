@@ -112,6 +112,26 @@ function buildChunkFrame(id: string, seq: number, payload: Uint8Array): ArrayBuf
   return buf;
 }
 
+/**
+ * What the UI shows per transfer. `waiting` is send-only (offer out, no
+ * answer yet); `rejected` is send-only too — a receive the helper declined
+ * needs no feedback, they just clicked it.
+ */
+export type TransferStatus = {
+  id: string;
+  name: string;
+  direction: "send" | "receive";
+} & (
+  | { phase: "waiting" | "done" | "rejected" | "failed" }
+  | { phase: "progress"; percent: number }
+);
+
+class TransferRejectedError extends Error {
+  constructor() {
+    super("Transfer rejected");
+  }
+}
+
 type PendingSend = {
   acceptResolve: () => void;
   acceptReject: (err: Error) => void;
@@ -119,7 +139,7 @@ type PendingSend = {
 
 type IncomingReceive = {
   offer: FileOffer;
-  chunks: Map<number, Uint8Array>;
+  chunks: Map<number, Uint8Array<ArrayBuffer>>;
   /** Bytes accepted so far — abort if this ever exceeds `offer.size`. */
   receivedBytes: number;
   /**
@@ -128,11 +148,13 @@ type IncomingReceive = {
    * transfer is rejected and nothing it sent is kept.
    */
   accepted: boolean;
+  progress: (receivedBytes: number) => void;
 };
 
 export class FileTransferManager {
   private offerHandler: ((offer: FileOffer) => Promise<boolean>) | null = null;
   private completeHandler: ((file: File) => void) | null = null;
+  private statusHandler: ((status: TransferStatus) => void) | null = null;
 
   private pendingSend: Map<string, PendingSend> = new Map();
   private pendingReceive: Map<string, IncomingReceive> = new Map();
@@ -162,7 +184,18 @@ export class FileTransferManager {
       mime: file.type,
     });
 
-    return acceptPromise.then(() => this.streamFile(id, file));
+    this.emitStatus({ id, name: file.name, direction: "send", phase: "waiting" });
+
+    return acceptPromise
+      .then(() => this.streamFile(id, file))
+      .then(
+        () => this.emitStatus({ id, name: file.name, direction: "send", phase: "done" }),
+        (err: unknown) => {
+          const phase = err instanceof TransferRejectedError ? "rejected" : "failed";
+          this.emitStatus({ id, name: file.name, direction: "send", phase });
+          throw err;
+        },
+      );
   }
 
   private async streamFile(id: string, file: File): Promise<void> {
@@ -172,6 +205,8 @@ export class FileTransferManager {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       let seq = 0;
+      const progress = this.progressReporter(id, file.name, "send", bytes.byteLength);
+      progress(0);
 
       for (let offset = 0; offset < bytes.byteLength; offset += CHUNK_SIZE) {
         if (this.filesBufferedAmount() > BACKPRESSURE_THRESHOLD) {
@@ -186,6 +221,7 @@ export class FileTransferManager {
         const slice = bytes.slice(offset, offset + CHUNK_SIZE);
         this.sendChunk(buildChunkFrame(id, seq, slice));
         seq++;
+        progress(offset + slice.byteLength);
       }
 
       if (stream.aborted) throw new Error("Transfer aborted");
@@ -203,6 +239,31 @@ export class FileTransferManager {
     this.completeHandler = handler;
   }
 
+  onTransferStatus(handler: (status: TransferStatus) => void): void {
+    this.statusHandler = handler;
+  }
+
+  private emitStatus(status: TransferStatus): void {
+    this.statusHandler?.(status);
+  }
+
+  /** Reports progress only when the whole percent changes — a 2 GiB file
+   *  is ~131 000 chunks, the UI needs at most 101 updates. */
+  private progressReporter(
+    id: string,
+    name: string,
+    direction: TransferStatus["direction"],
+    total: number,
+  ): (done: number) => void {
+    let last = -1;
+    return (done) => {
+      const percent = total === 0 ? 100 : Math.floor((done * 100) / total);
+      if (percent === last) return;
+      last = percent;
+      this.emitStatus({ id, name, direction, phase: "progress", percent });
+    };
+  }
+
   handle(event: FileEvent): void {
     switch (event.kind) {
       case "file-accept": {
@@ -217,7 +278,7 @@ export class FileTransferManager {
         const pending = this.pendingSend.get(event.id);
         if (pending) {
           this.pendingSend.delete(event.id);
-          pending.acceptReject(new Error("Transfer rejected"));
+          pending.acceptReject(new TransferRejectedError());
         }
         break;
       }
@@ -231,7 +292,11 @@ export class FileTransferManager {
       }
       case "file-error": {
         // Receive side: drop the partial reassembly buffer.
-        this.pendingReceive.delete(event.id);
+        const receive = this.pendingReceive.get(event.id);
+        if (receive) {
+          this.pendingReceive.delete(event.id);
+          if (receive.accepted) this.failReceiveStatus(receive);
+        }
         // Send side: the sharer answers offers with file-error too
         // (too-many-active, file-too-large, cannot-open-file) — settle the
         // awaited send() promise and stop an already-running chunk stream.
@@ -267,13 +332,14 @@ export class FileTransferManager {
         // distinct-chunk count so sparse-seq fan-out can't bloat the Map.
         if (state.chunks.has(seq) || state.chunks.size >= MAX_CHUNKS) return;
         if (state.receivedBytes + payload.byteLength > state.offer.size) {
-          // Sharer is streaming more than it offered — abort and free the
-          // partial buffer rather than growing it unbounded.
-          this.pendingReceive.delete(id);
+          // Sharer is streaming more than it offered — abort, free the
+          // partial buffer and tell it to stop instead of streaming on.
+          this.failReceive(id, state, "size-exceeded");
           return;
         }
         state.chunks.set(seq, payload.slice());
         state.receivedBytes += payload.byteLength;
+        state.progress(state.receivedBytes);
         return;
       }
     }
@@ -293,6 +359,16 @@ export class FileTransferManager {
   }
 
   private handleIncomingOffer(offer: FileEvent & { kind: "file-offer" }): void {
+    // The event is JSON.parse output cast to FileEvent — nothing has checked
+    // its shape. Without an id there is nothing to answer; a bad name/mime
+    // would throw in sanitizeFilename/sanitizeMime and leave the sharer
+    // waiting for an answer that never comes.
+    if (typeof offer.id !== "string") return;
+    if (typeof offer.name !== "string" || typeof offer.mime !== "string") {
+      this.sendEvent({ kind: "file-reject", id: offer.id });
+      return;
+    }
+
     // Re-sanitise the sharer-supplied filename on the viewer side: the
     // sharer already strips path traversal locally, but it never echoes
     // its sanitised name back to us, so the value here is still
@@ -331,6 +407,7 @@ export class FileTransferManager {
       chunks: new Map(),
       receivedBytes: 0,
       accepted: false,
+      progress: this.progressReporter(offer.id, fileOffer.name, "receive", offer.size),
     };
     this.pendingReceive.set(offer.id, state);
 
@@ -342,6 +419,7 @@ export class FileTransferManager {
       if (accepted) {
         state.accepted = true;
         this.sendEvent({ kind: "file-accept", id: offer.id });
+        state.progress(0);
       } else {
         this.rejectReceive(offer.id);
       }
@@ -356,6 +434,17 @@ export class FileTransferManager {
     this.sendEvent({ kind: "file-reject", id });
   }
 
+  /** Drop an accepted receive and tell the sharer why it went nowhere. */
+  private failReceive(id: string, state: IncomingReceive, message: string): void {
+    this.pendingReceive.delete(id);
+    this.sendEvent({ kind: "file-error", id, message });
+    this.failReceiveStatus(state);
+  }
+
+  private failReceiveStatus(state: IncomingReceive): void {
+    this.emitStatus({ id: state.offer.id, name: state.offer.name, direction: "receive", phase: "failed" });
+  }
+
   private finalizeReceive(id: string): void {
     const state = this.pendingReceive.get(id);
     if (!state) return;
@@ -363,21 +452,29 @@ export class FileTransferManager {
       this.rejectReceive(id);
       return;
     }
+
+    // Seqs are distinct Map keys, so "every seq in 0..n-1 is present" is the
+    // whole contiguity check. A hole or a short stream would otherwise be
+    // saved as a silently truncated file.
+    const parts: Uint8Array<ArrayBuffer>[] = [];
+    for (let seq = 0; seq < state.chunks.size; seq++) {
+      const part = state.chunks.get(seq);
+      if (part === undefined) break;
+      parts.push(part);
+    }
+    if (parts.length !== state.chunks.size || state.receivedBytes !== state.offer.size) {
+      this.failReceive(id, state, "incomplete-transfer");
+      return;
+    }
     this.pendingReceive.delete(id);
 
-    const seqNums = Array.from(state.chunks.keys()).sort((a, b) => a - b);
-    const parts = seqNums.map((seq) => state.chunks.get(seq)!);
-    const total = parts.reduce((acc, p) => acc + p.byteLength, 0);
-    const merged = new Uint8Array(total);
-    let offset = 0;
-    for (const part of parts) {
-      merged.set(part, offset);
-      offset += part.byteLength;
-    }
-
+    // Built straight from the chunk list: merging into one Uint8Array first
+    // held the chunks, the merged copy and the Blob's copy at once (~6 GiB
+    // at the 2 GiB cap), which crashes the tab.
     const safeMime = sanitizeMime(state.offer.mime);
-    const blob = new Blob([merged], { type: safeMime });
-    const file = new File([blob], state.offer.name, { type: safeMime });
+    const file = new File(parts, state.offer.name, { type: safeMime });
+    state.chunks.clear();
+    this.emitStatus({ id, name: state.offer.name, direction: "receive", phase: "done" });
     this.completeHandler?.(file);
   }
 }

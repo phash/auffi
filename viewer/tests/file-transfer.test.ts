@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { FileTransferManager, sanitizeFilename, sanitizeMime } from "../src/file-transfer.js";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { FileTransferManager, sanitizeFilename, sanitizeMime, type FileOffer, type TransferStatus } from "../src/file-transfer.js";
 import type { FileEvent } from "../src/protocol.js";
 
 describe("sanitizeMime", () => {
@@ -676,5 +676,228 @@ describe("FileTransferManager — nothing lands before the helper accepts", () =
       expect(completedFiles).toHaveLength(1);
     });
     expect(completedFiles[0].name).toBe("ok.bin");
+  });
+});
+
+describe("FileTransferManager — receive integrity", () => {
+  let sentEvents: FileEvent[];
+  let manager: FileTransferManager;
+  let completedFiles: File[];
+
+  beforeEach(() => {
+    sentEvents = [];
+    completedFiles = [];
+    manager = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      () => {},
+      () => 0,
+      () => Promise.resolve(),
+    );
+    manager.onIncomingComplete((f) => completedFiles.push(f));
+    manager.onIncomingOffer(() => Promise.resolve(true));
+  });
+
+  async function accepted(id: string, size: number): Promise<void> {
+    manager.handle({ kind: "file-offer", id, name: "f.bin", size, mime: "application/octet-stream" });
+    await vi.waitFor(() => {
+      expect(sentEvents.some((e) => e.kind === "file-accept" && e.id === id)).toBe(true);
+    });
+  }
+
+  function errors(): Array<{ id: string; message: string }> {
+    return sentEvents.flatMap((e) => (e.kind === "file-error" ? [{ id: e.id, message: e.message }] : []));
+  }
+
+  // A file-done with a hole in the sequence used to save a silently
+  // truncated file — the helper would open a corrupt document.
+  it("a file-done with a missing chunk saves nothing and answers file-error", async () => {
+    await accepted("gap", 6);
+    manager.handleChunk(makeChunkBuffer("gap", 0, new Uint8Array([1, 2, 3])));
+    manager.handleChunk(makeChunkBuffer("gap", 2, new Uint8Array([4, 5, 6])));
+    manager.handle({ kind: "file-done", id: "gap" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(completedFiles).toHaveLength(0);
+    expect(errors()).toEqual([{ id: "gap", message: "incomplete-transfer" }]);
+  });
+
+  it("a file-done before the declared size arrived saves nothing and answers file-error", async () => {
+    await accepted("short", 10);
+    manager.handleChunk(makeChunkBuffer("short", 0, new Uint8Array([1, 2, 3])));
+    manager.handle({ kind: "file-done", id: "short" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(completedFiles).toHaveLength(0);
+    expect(errors()).toEqual([{ id: "short", message: "incomplete-transfer" }]);
+  });
+
+  // Silently dropping the transfer left the sharer streaming into the void.
+  it("streaming past the declared size answers file-error", async () => {
+    await accepted("over", 2);
+    manager.handleChunk(makeChunkBuffer("over", 0, new Uint8Array([1, 2, 3])));
+    expect(errors()).toEqual([{ id: "over", message: "size-exceeded" }]);
+  });
+
+  it("an empty file completes with no chunks at all", async () => {
+    await accepted("empty", 0);
+    manager.handle({ kind: "file-done", id: "empty" });
+    await vi.waitFor(() => expect(completedFiles).toHaveLength(1));
+    expect(completedFiles[0].size).toBe(0);
+    expect(errors()).toEqual([]);
+  });
+
+  // At the 2 GiB cap, chunks + a merged copy + the Blob's own copy was
+  // ~6 GiB and crashed the tab; the File is now built from the parts.
+  it("does not copy the chunks into one merged buffer before saving", async () => {
+    await accepted("big", 4);
+    manager.handleChunk(makeChunkBuffer("big", 0, new Uint8Array([1, 2])));
+    manager.handleChunk(makeChunkBuffer("big", 1, new Uint8Array([3, 4])));
+    const RealFile = File;
+    const fileParts: BlobPart[][] = [];
+    vi.stubGlobal(
+      "File",
+      class extends RealFile {
+        constructor(bits: BlobPart[], name: string, opts?: FilePropertyBag) {
+          fileParts.push(bits);
+          super(bits, name, opts);
+        }
+      },
+    );
+    try {
+      manager.handle({ kind: "file-done", id: "big" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    await vi.waitFor(() => expect(completedFiles).toHaveLength(1));
+    expect(fileParts).toHaveLength(1);
+    expect(fileParts[0].every((p) => p instanceof Uint8Array && p.byteLength === 2)).toBe(true);
+    expect(Array.from(new Uint8Array(await completedFiles[0].arrayBuffer()))).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("FileTransferManager — malformed offers", () => {
+  let sentEvents: FileEvent[];
+  let manager: FileTransferManager;
+  let offerHandler: Mock<(offer: FileOffer) => Promise<boolean>>;
+
+  beforeEach(() => {
+    sentEvents = [];
+    manager = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      () => {},
+      () => 0,
+      () => Promise.resolve(),
+    );
+    offerHandler = vi.fn<(offer: FileOffer) => Promise<boolean>>().mockResolvedValue(true);
+    manager.onIncomingOffer(offerHandler);
+  });
+
+  // JSON from the data channel is only cast to FileEvent, never checked; a
+  // non-string name made sanitizeFilename throw inside the hub's handler and
+  // the sharer never got an answer.
+  it.each([
+    ["name is a number", { name: 42, mime: "text/plain" }],
+    ["name is missing", { mime: "text/plain" }],
+    ["mime is an object", { name: "a.txt", mime: {} }],
+  ])("answers file-reject when the %s", (_label, fields) => {
+    const ev = { kind: "file-offer", id: "bad", size: 3, ...fields } as unknown as FileEvent;
+    expect(() => manager.handle(ev)).not.toThrow();
+    expect(sentEvents).toEqual([{ kind: "file-reject", id: "bad" }]);
+    expect(offerHandler).not.toHaveBeenCalled();
+  });
+
+  it("ignores an offer without a usable id (nothing to answer to)", () => {
+    const ev = { kind: "file-offer", id: 7, name: "a", size: 1, mime: "x" } as unknown as FileEvent;
+    expect(() => manager.handle(ev)).not.toThrow();
+    expect(sentEvents).toEqual([]);
+    expect(offerHandler).not.toHaveBeenCalled();
+  });
+});
+
+describe("FileTransferManager — transfer status for the UI", () => {
+  let sentEvents: FileEvent[];
+  let manager: FileTransferManager;
+  let statuses: TransferStatus[];
+
+  beforeEach(() => {
+    sentEvents = [];
+    statuses = [];
+    manager = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      () => {},
+      () => 0,
+      () => Promise.resolve(),
+    );
+    manager.onTransferStatus((s) => statuses.push(s));
+  });
+
+  function lastOfferId(): string {
+    const offer = sentEvents.find((e) => e.kind === "file-offer");
+    if (!offer) throw new Error("no offer sent");
+    return offer.id;
+  }
+
+  it("send: waiting → progress → done", async () => {
+    const p = manager.send(new File([new Uint8Array(40000)], "gross.bin"));
+    const id = lastOfferId();
+    expect(statuses).toEqual([{ id, name: "gross.bin", direction: "send", phase: "waiting" }]);
+    manager.handle({ kind: "file-accept", id });
+    await p;
+    expect(statuses.at(-1)).toEqual({ id, name: "gross.bin", direction: "send", phase: "done" });
+    const percents = statuses.flatMap((s) => (s.phase === "progress" ? [s.percent] : []));
+    expect(percents).toEqual([0, 40, 81, 100]);
+  });
+
+  it("send: the other side rejects", async () => {
+    const p = manager.send(new File([new Uint8Array(3)], "nein.txt"));
+    const id = lastOfferId();
+    manager.handle({ kind: "file-reject", id });
+    await expect(p).rejects.toThrow();
+    expect(statuses.at(-1)).toEqual({ id, name: "nein.txt", direction: "send", phase: "rejected" });
+  });
+
+  it("send: the other side answers file-error", async () => {
+    const p = manager.send(new File([new Uint8Array(3)], "kaputt.txt"));
+    const id = lastOfferId();
+    manager.handle({ kind: "file-error", id, message: "file-too-large" });
+    await expect(p).rejects.toThrow();
+    expect(statuses.at(-1)).toEqual({ id, name: "kaputt.txt", direction: "send", phase: "failed" });
+  });
+
+  it("receive: progress after accept, then done", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    manager.onIncomingComplete(() => {});
+    manager.handle({ kind: "file-offer", id: "r", name: "rein.bin", size: 4, mime: "x" });
+    await vi.waitFor(() => expect(sentEvents.some((e) => e.kind === "file-accept")).toBe(true));
+    manager.handleChunk(makeChunkBuffer("r", 0, new Uint8Array([1, 2])));
+    manager.handleChunk(makeChunkBuffer("r", 1, new Uint8Array([3, 4])));
+    manager.handle({ kind: "file-done", id: "r" });
+    expect(statuses).toEqual([
+      { id: "r", name: "rein.bin", direction: "receive", phase: "progress", percent: 0 },
+      { id: "r", name: "rein.bin", direction: "receive", phase: "progress", percent: 50 },
+      { id: "r", name: "rein.bin", direction: "receive", phase: "progress", percent: 100 },
+      { id: "r", name: "rein.bin", direction: "receive", phase: "done" },
+    ]);
+  });
+
+  it("receive: the sharer aborts with file-error", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    manager.handle({ kind: "file-offer", id: "r", name: "rein.bin", size: 4, mime: "x" });
+    await vi.waitFor(() => expect(sentEvents.some((e) => e.kind === "file-accept")).toBe(true));
+    manager.handle({ kind: "file-error", id: "r", message: "disk full" });
+    expect(statuses.at(-1)).toEqual({ id: "r", name: "rein.bin", direction: "receive", phase: "failed" });
+  });
+
+  it("receive: an incomplete transfer is reported as failed", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(true));
+    manager.handle({ kind: "file-offer", id: "r", name: "rein.bin", size: 4, mime: "x" });
+    await vi.waitFor(() => expect(sentEvents.some((e) => e.kind === "file-accept")).toBe(true));
+    manager.handle({ kind: "file-done", id: "r" });
+    expect(statuses.at(-1)).toEqual({ id: "r", name: "rein.bin", direction: "receive", phase: "failed" });
+  });
+
+  it("receive: a declined offer reports nothing (the helper chose it)", async () => {
+    manager.onIncomingOffer(() => Promise.resolve(false));
+    manager.handle({ kind: "file-offer", id: "r", name: "rein.bin", size: 4, mime: "x" });
+    await vi.waitFor(() => expect(sentEvents.some((e) => e.kind === "file-reject")).toBe(true));
+    expect(statuses).toEqual([]);
   });
 });
