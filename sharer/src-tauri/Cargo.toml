@@ -93,7 +93,7 @@ x11rb = { version = "=0.14.0", features = ["randr"] }
 # Held at 0.10: ashpd 0.13 splits every portal into its own feature and
 # moves the screencast API to options-structs — needs a gst_portal.rs
 # port that can only be compile-verified in a Linux build session.
-ashpd = { version = "=0.10.2", default-features = false, features = ["tokio"] }
+ashpd = { version = "=0.13.13", default-features = false, features = ["tokio"] }
 # GStreamer-based Wayland capture: `pipewiresrc` element handles the DMA-BUF
 # / SHM / VideoModifier negotiation that pipewire-rs's raw SPA pods don't
 # expose ergonomically.
