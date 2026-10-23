@@ -22,7 +22,8 @@ export interface CompactBarOpts {
   durationEl: HTMLElement | null;
   bytesEl: HTMLElement | null;
   statusTextEl: HTMLElement | null;
-  /** Liefert die aktuell empfangenen Bytes; Fehler => 0 zurückgeben. */
+  /** Liefert die aktuell empfangenen Bytes; darf rejecten (Peer schließt
+   *  gerade) — dann bleibt der zuletzt angezeigte Wert stehen. */
   getBytes: () => Promise<number>;
 }
 
@@ -30,6 +31,8 @@ export class CompactBarController {
   private opts: CompactBarOpts;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt: number | null = null;
+  /** Bumped by stop() (and so by every start()) to orphan in-flight polls. */
+  private generation = 0;
 
   constructor(opts: CompactBarOpts) {
     this.opts = opts;
@@ -66,6 +69,7 @@ export class CompactBarController {
       this.tickTimer = null;
     }
     this.startedAt = null;
+    this.generation++;
     if (this.opts.durationEl) this.opts.durationEl.textContent = "00:00";
     if (this.opts.bytesEl) this.opts.bytesEl.textContent = "0 B";
     // Card immer expanded zurückgeben — sonst wirkt der nächste
@@ -106,9 +110,19 @@ export class CompactBarController {
     if (this.opts.durationEl) {
       this.opts.durationEl.textContent = formatDuration(elapsedMs);
     }
-    void this.opts.getBytes().then((bytes) => {
-      if (this.opts.bytesEl) this.opts.bytesEl.textContent = formatBytes(bytes);
-    });
+    const generation = this.generation;
+    this.opts.getBytes().then(
+      (bytes) => {
+        // stop() (or a new start()) ran while getStats() was in flight —
+        // this value belongs to a session the bar no longer shows.
+        if (this.generation !== generation) return;
+        if (this.opts.bytesEl) this.opts.bytesEl.textContent = formatBytes(bytes);
+      },
+      () => {
+        // Stats of a peer closing mid-poll; the next tick tries again and
+        // the last shown value stays meanwhile.
+      },
+    );
   }
 }
 

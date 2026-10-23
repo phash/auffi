@@ -114,6 +114,33 @@ describe("CompactBarController", () => {
     expect(bytesEl.textContent).toBe("0 B");
   });
 
+  // getStats() of a peer that was closed mid-poll resolves after stop()
+  // reset the bar; its write used to leave the previous session's byte
+  // count on the start screen.
+  it("a poll that resolves after stop() does not write stale bytes", async () => {
+    let resolvePoll: (n: number) => void = () => {};
+    getBytesMock.mockImplementation(() => new Promise<number>((r) => { resolvePoll = r; }));
+    controller.start();
+    controller.stop();
+    resolvePoll(5 * 1024 * 1024);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(bytesEl.textContent).toBe("0 B");
+  });
+
+  it("a failing poll keeps the last value and raises no unhandled rejection", async () => {
+    getBytesMock.mockResolvedValueOnce(1024).mockRejectedValue(new Error("pc closed"));
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      controller.start();
+      await vi.advanceTimersByTimeAsync(2_100);
+      expect(bytesEl.textContent).toBe("1.0 KB");
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("setStatus() updates the text element", () => {
     controller.setStatus("Stream läuft.");
     expect(statusTextEl.textContent).toBe("Stream läuft.");
