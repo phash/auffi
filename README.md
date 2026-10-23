@@ -3,16 +3,15 @@
 **Sicheres, einfaches Screen-Sharing mit Fernsteuerung — wie TeamViewer, nur offen.**
 
 [![Latest Release](https://img.shields.io/github/v/release/phash/auffi?label=release)](https://github.com/phash/auffi/releases/latest)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/phash/auffi/actions)
+[![CI](https://github.com/phash/auffi/actions/workflows/ci.yml/badge.svg)](https://github.com/phash/auffi/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/phash/auffi)
 [![Changelog](https://img.shields.io/badge/changelog-keep--a--changelog-orange)](CHANGELOG.md)
 
 ---
 
 Auffi ermöglicht spontane Bildschirmhilfe: Der Hilfesuchende startet eine kleine Desktop-App,
 erhält einen 9-stelligen Code und gibt ihn dem Helfer — der öffnet einfach den Browser. Keine
-Accounts, keine Cloud-Daten, keine Tracker. Die eigentliche Verbindung läuft Peer-to-Peer und ist
+Accounts, keine Cloud-Daten, keine Drittanbieter-Tracker. Die eigentliche Verbindung läuft Peer-to-Peer und ist
 Ende-zu-Ende DTLS-SRTP-verschlüsselt. Das Backend sieht zu keinem Zeitpunkt Bildschirminhalte,
 Mausbewegungen oder Dateien — nur den initialen Handshake.
 
@@ -22,9 +21,9 @@ Mausbewegungen oder Dateien — nur den initialen Handshake.
 
 - 🖥️ Bildschirm teilen via WebRTC (Ende-zu-Ende verschlüsselt, DTLS-SRTP)
 - 🖱️ Maus + Tastatur fernsteuern (vom Viewer aus, mit aktiver Genehmigung)
-- 📁 Bidirektionaler Dateitransfer (Drag-and-Drop, WebRTC DataChannel)
+- 📁 Bidirektionaler Dateitransfer (Drag-and-Drop, WebRTC DataChannel; Dateien vom Sharer kommen erst nach Annahme durch den Helfer)
 - 🔢 9-stelliger Code + aktive Bestätigung — anonym, ohne Konto
-- 🛡️ DSGVO-konform — keine IPs im Klartext gespeichert, keine Tracker, kein Logging von Inhalten
+- 🛡️ DSGVO-konform — keine IPs im Klartext gespeichert, keine Drittanbieter-Tracker, kein Logging von Inhalten
 - 🌐 STUN + TURN für restriktive Netzwerke (hinter CGNAT, Firewalls)
 - 🪪 Optionale Account-Modus mit Geräte-Pairing (Unattended Access) — argon2id-Passwörter, geräte-spezifische Tokens, lokales + serverseitiges Lockout
 
@@ -193,8 +192,8 @@ Detaillierte Pläne und Spezifikationen: [`docs/superpowers/`](docs/superpowers/
 | Backend | Node.js 22 / Fastify 5 / better-sqlite3 |
 | Viewer | Vite 8 + TypeScript (Vanilla) |
 | Dashboard | Vite 8 + TypeScript (Vanilla SPA) |
-| Sharer | Tauri 2 / Rust 1.84+ |
-| WebRTC | webrtc-rs (libwebrtc) |
+| Sharer | Tauri 2 / Rust (CI pinnt 1.99.1) |
+| WebRTC | webrtc-rs (reines Rust, kein libwebrtc) |
 | Auth | argon2id (m=64 MiB, t=3, p=1), `__Host-` session cookies |
 | Wayland-Capture | GStreamer pipewiresrc (Plasma 6 kompatibel) |
 | TURN/STUN | coturn |
@@ -208,9 +207,9 @@ Detaillierte Pläne und Spezifikationen: [`docs/superpowers/`](docs/superpowers/
 - **Verschlüsselung:** WebRTC-Streams sind DTLS-SRTP-verschlüsselt (P2P oder via TURN)
 - **Keine Inhalte im Backend:** Signaling-Server sieht nur SDP/ICE-Handshake, nie Pixel oder Events
 - **IPs pseudonymisiert:** Nur das Prefix (`84.xxx`) wird im Bestätigungsdialog angezeigt — niemals die vollständige IP gespeichert
-- **Kein Tracking:** Keine externen Cookies, kein Analytics, keine Drittanbieter-CDNs
+- **Kein Drittanbieter-Tracking:** Keine externen Cookies, keine Drittanbieter-Analytics oder -CDNs. Einzige Ausnahme: ein selbst gehostetes Matomo auf demselben Server, cookieless und nur nach Opt-in im Consent-Banner (Details: [`docs/matomo-dsgvo.md`](docs/matomo-dsgvo.md))
 - **Code-TTL:** 9-stellige Codes verfallen nach 10 Minuten; Rateraten ist serverseitig durch ein Per-IP-Rate-Limit gebremst
-- **Aktive Bestätigung:** Sharer muss jede Verbindung explizit annehmen
+- **Aktive Bestätigung:** Ad-hoc muss der Sharer jede Verbindung explizit annehmen. Unattended-Modus: Zugriff nur mit Geräte-Token + geräte-spezifischem Passwort; ist „automatisch annehmen“ aktiv (Standard), entfällt nach korrektem Passwort nur der Klick
 - **Account-Sicherheit (Unattended-Modus):** argon2id für Passwörter, `__Host-`-Cookies (HttpOnly + Secure + SameSite=Strict), Per-IP-Rate-Limit auf WSS-Bearer-Auth (Sec H-1), Per-Account-Lockout (5 Fehlversuche / 15 min, Sec H-3), TLS-pinned Session-Tokens (nur sha256 in DB, Sec C-1)
 
 Vollständige Spezifikation: [`docs/superpowers/specs/`](docs/superpowers/specs/) — Audit: [`docs/security-review-2026-05.md`](docs/security-review-2026-05.md)
@@ -233,7 +232,7 @@ Vollständige Spezifikation: [`docs/superpowers/specs/`](docs/superpowers/specs/
 - ✅ Windows-Port: Capture (WGC + GDI-Fallback) + Installer (`.msi` / `.exe` / Portable)
 - ✅ CI/CD (GitHub Actions): Linux- + Windows-Builds + automatische Releases auf Tag-Push
 - ✅ Playwright-E2E-Suite für den Viewer (Connect / Input / Dateitransfer gegen Mock-Sharer)
-- ✅ Backend 441, Sharer 207 (Rust) + 46 (Webview), Dashboard 142, Viewer 350 Tests
+- ✅ Backend 579, Sharer 383 (Rust) + 155 (Webview), Dashboard 286, Viewer 743 Tests
 
 **Geplant / In Arbeit:**
 - ❌ Audio-Streaming
