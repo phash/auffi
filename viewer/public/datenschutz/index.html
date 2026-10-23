@@ -84,8 +84,10 @@
           gespeichert bleiben. Auffi ist Privacy-by-Design entworfen:
           Bildschirminhalte, Maus- und Tastatureingaben sowie übertragene
           Dateien fließen ausschließlich Ende-zu-Ende verschlüsselt
-          (DTLS-SRTP) direkt zwischen den verbundenen Browsern. Der
-          Auffi-Backend-Server bekommt davon nichts mit.
+          (DTLS-SRTP) direkt zwischen Sharer-App und Browser; nur wenn
+          Firewalls das blockieren, leitet unser TURN-Relay die weiterhin
+          verschlüsselten Pakete weiter. Der Auffi-Backend-Server kann
+          diese Inhalte weder lesen noch speichert er sie.
         </p>
       </section>
 
@@ -153,8 +155,8 @@
         <p>
           Beim Start einer Sharing-Session wird ein 9-stelliger Code
           generiert. Dieser dient ausschließlich als
-          Kurzzeit-Schlüssel, um die zwei Browser miteinander zu
-          verbinden:
+          Kurzzeit-Schlüssel, um die Sharer-App mit dem Browser der
+          helfenden Person zu verbinden:
         </p>
         <ul>
           <li>
@@ -164,16 +166,17 @@
           </li>
           <li>
             <strong>Vermittlung:</strong> Server tauscht SDP- und
-            ICE-Daten zwischen den Browsern aus. Diese enthalten
+            ICE-Daten zwischen Sharer-App und Browser aus. Diese enthalten
             technische Verbindungs-Metadaten (lokale Netzwerk-Hinweise),
             keine Inhaltsdaten.
           </li>
           <li>
-            <strong>Pixel und Eingaben:</strong> fließen niemals über den
-            Auffi-Server. WebRTC verbindet die Browser direkt; nur wenn
-            beide hinter strikten NATs sitzen, läuft der verschlüsselte
-            Stream durch unseren TURN-Relay (coturn) — auch dort nur
-            transportiert, nicht entschlüsselt.
+            <strong>Pixel und Eingaben:</strong> fließen nie über den
+            Signaling-Server. WebRTC verbindet Sharer-App und Browser
+            direkt; nur wenn Firewalls oder strikte NATs das blockieren,
+            läuft der verschlüsselte Stream durch unseren TURN-Relay
+            (coturn) — auch dort nur weitergeleitet, nicht entschlüsselt
+            und nicht gespeichert.
           </li>
           <li>
             <strong>IP-Pseudonymisierung:</strong> Im Bestätigungsdialog
@@ -188,7 +191,9 @@
             Zuschauers das Land (ISO-Ländercode, z.&nbsp;B. „DE"). Die
             Zuordnung erfolgt ausschließlich im Arbeitsspeicher unseres
             Servers gegen eine lokal hinterlegte Datenbank (IP-to-Country
-            Lite von DB-IP, CC-BY-4.0); es werden keine Daten an Dritte
+            Lite von DB-IP, CC-BY-4.0:
+            <a href="https://db-ip.com" rel="noopener noreferrer" target="_blank">IP Geolocation by DB-IP</a>);
+            es werden keine Daten an Dritte
             übertragen, das Ergebnis wird weder protokolliert noch
             gespeichert, sondern nur einmalig an den Sharer übermittelt.
             Bei Verbindungen zu gekoppelten Geräten (Fernzugriff, §6)
@@ -202,6 +207,43 @@
           lit. b DSGVO (Vertragserfüllung — du forderst aktiv eine
           Verbindung an).
         </p>
+      </section>
+
+      <section>
+        <h2>5a. Sharer-App (Desktop-Programm)</h2>
+        <p>
+          Die Sharer-App für Windows und Linux nimmt von sich aus nur
+          folgende Verbindungen auf:
+        </p>
+        <ul>
+          <li>
+            <strong>Update-Prüfung bei GitHub:</strong> Bei jedem Start
+            fragt die App unter <code>api.github.com</code> ab, ob es eine
+            neuere Version gibt. Dabei erhält GitHub (GitHub, Inc., USA)
+            deine IP-Adresse und die Kennung
+            <code>auffi-sharer/&lt;Version&gt;</code>; weitere Daten
+            werden nicht übertragen. Es handelt sich um eine Übermittlung
+            in die USA. Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO
+            (berechtigtes Interesse, dich auf Sicherheits- und
+            Fehlerkorrekturen hinzuweisen). Es gilt die
+            <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener noreferrer" target="_blank">Datenschutzerklärung von GitHub</a>.
+            Schlägt die Abfrage fehl, startet die App ganz normal.
+          </li>
+          <li>
+            <strong>Verbindungsaufbau über <code>auffi.app</code>:</strong>
+            Signaling (siehe §5) und kurzlebige TURN-Zugangsdaten laufen
+            ausschließlich über unsere Server in Deutschland. Im Modus
+            „Fernzugriff ohne Anwesenheit" hält die App zusätzlich eine
+            verschlüsselte Verbindung mit ihrem Geräte-Token offen (siehe
+            §6).
+          </li>
+          <li>
+            <strong>Lokales Diagnose-Protokoll:</strong> Die App schreibt
+            technische Meldungen in die Datei <code>auffi-debug.log</code>
+            im Temp-Ordner deines Rechners. Diese Datei bleibt auf deinem
+            Gerät und wird nicht an uns übertragen.
+          </li>
+        </ul>
       </section>
 
       <section>
@@ -219,8 +261,23 @@
           <li>Konto-Erstellungs-Zeitstempel</li>
           <li>Letzter Login-Zeitstempel</li>
           <li>
-            Geräte-Pairing-Daten: Geräte-ID, Alias, SHA-256-Hash des
-            Geräte-Tokens, Auto-Accept-Flag
+            Pro Login-Sitzung: Zeitpunkt der letzten Nutzung und die
+            Browser-/OS-Familie (z.&nbsp;B. „Chrome/Linux"), damit du
+            deine Sitzungen wiedererkennst
+          </li>
+          <li>
+            Geräte-Pairing-Daten: Geräte-ID, Alias, argon2id-Hash des
+            Geräte-Tokens, Auto-Accept-Flag, Zeitpunkt „zuletzt online"
+            (wird bei jeder Anmeldung des Geräts am Server aktualisiert).
+            Das Geräte-Passwort prüft die Sharer-App auf dem Gerät selbst;
+            unser Server speichert es nicht.
+          </li>
+          <li>
+            Zähler für Passwort-Fehlversuche je Konto und je Gerät: nach
+            5 Fehlversuchen wird für 15 Minuten gesperrt. Gespeichert
+            werden nur Zähler und Sperr-Ende, keine IP-Adresse; der
+            Eintrag wird nach Ablauf der Sperre bzw. nach erfolgreicher
+            Anmeldung gelöscht.
           </li>
           <li>
             Verbindungs-Log pro Gerät (Zeitpunkt, IP-Prefix, ob P2P oder
@@ -251,7 +308,11 @@
             automatisches Hard-Delete.
           </li>
           <li>
-            Audit-Log (admin-side): 1 Jahr.
+            Audit-Log (admin-side): 1 Jahr. Es protokolliert Eingriffe
+            von Admins (z.&nbsp;B. Konto sperren, Gerät oder Feedback
+            löschen) mit Zeitpunkt, betroffenem Datensatz, dessen Zustand
+            vorher/nachher und dem gekürzten IP-Prefix
+            (<code>84.xxx</code>) des handelnden Admins.
           </li>
           <li>
             Unbestätigte, nie genutzte Konten (keine Sitzung, kein
@@ -278,7 +339,10 @@
           Verarbeitungsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Die
           Empfänger-Adresse wird nach Versand nicht zusätzlich
           gespeichert; die zugehörige Konto-Spalte ist die einzige
-          Persistenz.
+          Persistenz. Ausnahme: Änderst du deine E-Mail-Adresse, speichern
+          wir die neue Adresse, bis du sie über den Link bestätigst —
+          höchstens 24 Stunden, danach wird der Eintrag automatisch
+          gelöscht.
         </p>
       </section>
 
@@ -388,7 +452,7 @@
           </li>
           <li>
             Inhalt der Bildschirm-Sitzungen — die werden Ende-zu-Ende
-            zwischen den Browsern verschlüsselt und tangieren weder
+            zwischen Sharer-App und Browser verschlüsselt und tangieren weder
             Matomo noch unseren Server
           </li>
           <li>
@@ -518,7 +582,11 @@
           mit deinem Text, dem Session-Cookie, und einem Hinweis auf die
           Quell-Seite (<code>source="viewer"</code> oder
           <code>source="dashboard"</code>) sowie der Browser-/OS-Familie
-          (z.&nbsp;B. <code>Chrome/Linux</code>). Verarbeitungsgrundlage:
+          (z.&nbsp;B. <code>Chrome/Linux</code>). Auch die Sharer-App bietet
+          im Modus „Fernzugriff ohne Anwesenheit" ein Feedback-Formular
+          (<code>source="sharer"</code>): Sie meldet sich dabei mit ihrem
+          Geräte-Token an, und das Feedback wird dem Konto zugeordnet, dem
+          das gekoppelte Gerät gehört. Verarbeitungsgrundlage:
           Art. 6 Abs. 1 lit. f DSGVO (Wartung + Verbesserung des Dienstes).
           Inhalt + Zeitpunkt der Einreichung werden gespeichert und sind
           nur fuer Admins sichtbar. Antwortet ein Admin, geht die Antwort
@@ -587,7 +655,7 @@
           aktuelle Version ist auf <code>auffi.app/datenschutz/</code>
           abrufbar.
         </p>
-        <p>Stand: September 2026.</p>
+        <p>Stand: Oktober 2026.</p>
       </section>
     </main>
 
