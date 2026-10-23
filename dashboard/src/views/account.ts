@@ -37,6 +37,20 @@ export function friendlyAccountError(res: ApiErr): string {
       const minutes = Math.ceil(res.retryAfterSec / 60);
       return `Zu viele Fehlversuche. Bitte in ${minutes} Min erneut versuchen.`;
     }
+    case "last-admin":
+      return "Du bist der letzte aktive Admin. Ernenne zuerst einen weiteren Admin, bevor du deinen Account löschst.";
+    case "bad-password":
+      return "Neues Passwort muss 8–256 Zeichen lang sein.";
+    case "no-changes":
+      return "Keine Änderung angegeben.";
+    case "bad-confirm":
+      return "Bitte exakt das Wort LÖSCHEN eingeben.";
+    case "not-found":
+      return "Account nicht gefunden. Bitte neu anmelden.";
+    // request() already puts German copy into these two messages.
+    case "rate-limit":
+    case "network-error":
+      return res.message;
     default:
       return `Fehler: ${res.message}`;
   }
@@ -140,6 +154,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   emailForm.appendChild(emailPwLabel);
   const emailPwInput = document.createElement("input");
   emailPwInput.type = "password";
+  emailPwInput.maxLength = 256;
   emailPwInput.id = "acc-email-current-pw";
   emailPwInput.autocomplete = "current-password";
   emailForm.appendChild(wrapPasswordField(emailPwInput));
@@ -214,6 +229,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   pwForm.appendChild(pwCurLabel);
   const pwCurInput = document.createElement("input");
   pwCurInput.type = "password";
+  pwCurInput.maxLength = 256;
   pwCurInput.id = "acc-current-pw";
   pwCurInput.autocomplete = "current-password";
   pwForm.appendChild(wrapPasswordField(pwCurInput));
@@ -224,6 +240,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   pwForm.appendChild(pwNewLabel);
   const pwNewInput = document.createElement("input");
   pwNewInput.type = "password";
+  pwNewInput.maxLength = 256;
   pwNewInput.id = "acc-new-pw";
   pwNewInput.autocomplete = "new-password";
   pwNewInput.minLength = 8;
@@ -315,6 +332,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
   dForm.appendChild(dPwLabel);
   const dPwInput = document.createElement("input");
   dPwInput.type = "password";
+  dPwInput.maxLength = 256;
   dPwInput.id = "acc-delete-pw";
   dPwInput.autocomplete = "current-password";
   dForm.appendChild(wrapPasswordField(dPwInput));

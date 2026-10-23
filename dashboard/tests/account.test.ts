@@ -45,6 +45,25 @@ describe("friendlyAccountError", () => {
     expect(friendlyAccountError(base)).toBe("Zu viele Fehlversuche. Bitte später erneut versuchen.");
   });
 
+  it.each([
+    ["last-admin", 409, "Du bist der letzte aktive Admin. Ernenne zuerst einen weiteren Admin, bevor du deinen Account löschst."],
+    ["bad-password", 400, "Neues Passwort muss 8–256 Zeichen lang sein."],
+    ["no-changes", 400, "Keine Änderung angegeben."],
+    ["bad-confirm", 400, "Bitte exakt das Wort LÖSCHEN eingeben."],
+    ["not-found", 404, "Account nicht gefunden. Bitte neu anmelden."],
+  ])("maps backend code %s to German copy", (code, status, expected) => {
+    expect(
+      friendlyAccountError({ ok: false, status, code, message: "english diagnostic" }),
+    ).toBe(expected);
+  });
+
+  it.each([
+    ["rate-limit", 429, "Zu viele Versuche. Bitte später erneut versuchen."],
+    ["network-error", 0, "Netzwerkfehler — bitte die Internetverbindung prüfen und erneut versuchen."],
+  ])("shows the already-German %s message without the Fehler: prefix", (code, status, message) => {
+    expect(friendlyAccountError({ ok: false, status, code, message })).toBe(message);
+  });
+
   it("falls back to the backend message for unknown codes", () => {
     expect(
       friendlyAccountError({ ok: false, status: 500, code: "internal", message: "kaputt" }),

@@ -35,6 +35,7 @@ export const renderSignup: RouteRenderer = (root: HTMLElement, _ctx: RouteContex
   pwLabel.textContent = "Passwort (8-256 Zeichen)";
   const pwInput = document.createElement("input");
   pwInput.type = "password";
+  pwInput.maxLength = 256;
   pwInput.id = "signup-password";
   pwInput.name = "password";
   pwInput.autocomplete = "new-password";

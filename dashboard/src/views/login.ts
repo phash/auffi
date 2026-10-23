@@ -34,6 +34,7 @@ export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext
   pwLabel.textContent = "Passwort";
   const pwInput = document.createElement("input");
   pwInput.type = "password";
+  pwInput.maxLength = 256;
   pwInput.id = "login-password";
   pwInput.name = "password";
   pwInput.autocomplete = "current-password";
