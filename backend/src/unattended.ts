@@ -184,18 +184,25 @@ export async function verifyBearerAuth(
   // Without this the device row alone was enough, so a suspended owner's
   // sharer re-authenticated on every reconnect and remote control stayed
   // usable — suspension only ever cut the dashboard sessions (gh #47).
-  const row = db
-    .prepare<[string], { token_hash: string; suspended_at: number | null }>(
-      `SELECT d.token_hash, a.suspended_at
-         FROM devices d
-         JOIN accounts a ON a.id = d.owner_account_id
-        WHERE d.id = ?`,
-    )
-    .get(auth.deviceId);
+  const readDevice = db.prepare<[string], { token_hash: string; suspended_at: number | null }>(
+    `SELECT d.token_hash, a.suspended_at
+       FROM devices d
+       JOIN accounts a ON a.id = d.owner_account_id
+      WHERE d.id = ?`,
+  );
+  const row = readDevice.get(auth.deviceId);
   if (!row) return false;
   if (row.suspended_at !== null) return false;
   const ok = await verifyPassword(row.token_hash, auth.token);
   if (!ok) return false;
+  // Re-read after the ~250 ms argon2: a device delete or owner suspension
+  // landing meanwhile evicted nothing (this socket is not registered yet),
+  // so the verdict must come from the row as it is NOW. The caller's
+  // registration runs in the same macrotask, leaving no window after this.
+  const current = readDevice.get(auth.deviceId);
+  if (!current || current.suspended_at !== null || current.token_hash !== row.token_hash) {
+    return false;
+  }
   if (opts.touchLastSeen ?? true) {
     db.prepare("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(
       now,

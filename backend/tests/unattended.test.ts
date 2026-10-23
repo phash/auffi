@@ -128,6 +128,28 @@ describe("verifyBearerAuth", () => {
     expect(row?.last_seen_at).toBe(1_000_000);
   });
 
+  // The DELETE / suspend routes evict the live socket from the registry,
+  // but a verify still inside its ~250 ms argon2 is not in the registry yet:
+  // evict finds nothing, then the verify resolves `true` from the row it
+  // read before and registers a revoked device.
+  it("refuses a device deleted while its token was being verified", async () => {
+    const pending = verifyBearerAuth(db, { deviceId: "123-456-789", token });
+    db.prepare("DELETE FROM devices WHERE id = '123-456-789'").run();
+    expect(await pending).toBe(false);
+  });
+
+  it("refuses a device whose owner was suspended while its token was being verified", async () => {
+    const pending = verifyBearerAuth(db, { deviceId: "123-456-789", token });
+    db.prepare("UPDATE accounts SET suspended_at = ? WHERE id = 1").run(Date.now());
+    expect(await pending).toBe(false);
+  });
+
+  it("refuses a device re-paired with a new token while the old one was being verified", async () => {
+    const pending = verifyBearerAuth(db, { deviceId: "123-456-789", token });
+    db.prepare("UPDATE devices SET token_hash = 'rotated' WHERE id = '123-456-789'").run();
+    expect(await pending).toBe(false);
+  });
+
   it("returns false when the device-id is unknown", async () => {
     const ok = await verifyBearerAuth(db, { deviceId: "000-000-000", token });
     expect(ok).toBe(false);
