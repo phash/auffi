@@ -42,17 +42,25 @@ The first run downloads the image (~1 GB). Subsequent runs reuse the cached imag
 
 ## Running Individual Jobs
 
+Job ids in `.github/workflows/ci.yml`: `ops`, `backend`, `viewer`, `dashboard`,
+`sharer-webview`, `sharer`, `e2e`.
+
 ```bash
+# Ops shell tests (deploy/rollback/headers/pins/coturn cert reload)
+act -j ops
+
 # Run just the backend job (fastest feedback for backend changes)
 act -j backend
 
-# Run just the viewer job
+# Viewer / dashboard / sharer webview (Node 22: type-check + tests with coverage + build)
 act -j viewer
+act -j dashboard
+act -j sharer-webview
 
-# Run the sharer compile-check job (slowest; Rust compile + clippy)
+# Run the sharer Rust job (slowest; fmt --check + clippy + cargo test --lib + release check)
 act -j sharer
 
-# Run the e2e job (requires backend + viewer to pass first)
+# Run the e2e job (needs backend, viewer and dashboard to pass first)
 act -j e2e
 ```
 
@@ -68,8 +76,8 @@ act pull_request
 # Run the build-sharer workflow manually (workflow_dispatch)
 act workflow_dispatch -W .github/workflows/build-sharer.yml
 
-# Run only the Linux matrix leg (Windows jobs are skipped under act)
-act workflow_dispatch -W .github/workflows/build-sharer.yml --matrix os:ubuntu-24.04
+# Run only the Linux build (build-sharer.yml has two separate jobs, no matrix)
+act workflow_dispatch -W .github/workflows/build-sharer.yml -j build-linux
 ```
 
 ## Providing Secrets Locally
@@ -109,21 +117,23 @@ act -j backend --interactive
 
 ## Known Limitations
 
-- **Windows jobs** (`windows-latest`) cannot run under act on Linux/macOS. Skip them
-  by targeting only the Linux job:
+- **Windows jobs** (`build-windows`, `runs-on: windows-2025`) cannot run under act on
+  Linux/macOS. Target only the Linux job:
   ```bash
-  act workflow_dispatch -W .github/workflows/build-sharer.yml --matrix os:ubuntu-24.04
+  act workflow_dispatch -W .github/workflows/build-sharer.yml -j build-linux
   ```
+  (The `--matrix os:…` hint in `.actrc`'s comment is stale — there is no matrix.)
 
 - **macOS jobs** are not supported by act at all.
 
-- **`actions-rust-lang/setup-rust-toolchain`** installs Rust inside the container.
-  The first run is slow (downloads toolchain). Reuse the container to skip re-downloads:
+- **`actions-rust-lang/setup-rust-toolchain`** installs the pinned toolchain
+  (`toolchain: "1.99.1"` in `ci.yml` and both `build-sharer.yml` jobs) inside the container.
+  To reproduce the CI clippy gate without act: `rustup toolchain install 1.99.1` once, then
+  `cd sharer/src-tauri && rustup run 1.99.1 cargo clippy --lib --tests --no-deps -- -D warnings`.
+  The first act run is slow (downloads toolchain). Reuse the container to skip re-downloads:
   ```bash
   act -j sharer --reuse
   ```
-
-- **Complex matrix** workflows: use `--matrix` to pin a single value when testing locally.
 
 - The E2E job starts background processes (`npm run dev &`). Under act, background
   processes may not be cleaned up between steps — this is generally harmless for CI.
