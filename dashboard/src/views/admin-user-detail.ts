@@ -279,7 +279,7 @@ export const renderAdminUserDetail: RouteRenderer = (
         const admin = document.createElement("span");
         admin.className = "muted";
         admin.style.fontSize = "0.8125rem";
-        admin.textContent = ` · Admin #${a.admin_id}`;
+        admin.textContent = a.admin_id === null ? " · gelöschter Admin" : ` · Admin #${a.admin_id}`;
         li.appendChild(time);
         li.appendChild(action);
         li.appendChild(admin);

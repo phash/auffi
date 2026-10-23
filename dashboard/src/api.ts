@@ -521,7 +521,7 @@ export interface AdminUserConnection {
 
 export interface AdminUserAudit {
   id: number;
-  admin_id: number;
+  admin_id: number | null;
   action: string;
   created_at: number;
   before_json: string | null;
