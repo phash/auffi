@@ -264,9 +264,10 @@ describe("socket limits on the ad-hoc path", () => {
     const c = await openViewer(h.url);
     expect(await closed(c)).toEqual({ code: 4429, reason: "too many connections" });
 
-    const aGone = closed(a);
     a.close();
-    await aGone;
+    // The server's own close handler (which frees the slot) runs in the
+    // same emit that drops the socket from the tracked client set.
+    await waitFor(() => h.app.websocketServer.clients.size === 1, "server-side close of a");
     const d = await openViewer(h.url);
     d.send(JSON.stringify({ type: "register", role: "sharer" }));
     expect(await recv(d)).toMatchObject({ type: "code-assigned" });
@@ -282,5 +283,85 @@ describe("socket limits on the ad-hoc path", () => {
     expect(await recv(viewer)).toMatchObject({ type: "code-assigned" });
     viewer.close();
     sharer.close();
+  });
+});
+
+/**
+ * Frames the sharer receives up to the reply of a `turn-credentials-request`
+ * sent now. The server answers frames in order, so anything it sent the
+ * sharer for an EARLIER event arrives before that reply — a deterministic
+ * "nothing else came" check instead of a sleep.
+ */
+async function sharerFramesUntilBarrier(sharer: WebSocket): Promise<unknown[]> {
+  const frames: unknown[] = [];
+  return new Promise((resolve) => {
+    const onMessage = (d: Buffer): void => {
+      const frame = JSON.parse(d.toString());
+      if (frame.type === "turn-credentials") {
+        sharer.off("message", onMessage);
+        resolve(frames);
+      } else {
+        frames.push(frame);
+      }
+    };
+    sharer.on("message", onMessage);
+    sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
+  });
+}
+
+describe("unattended password path guards", () => {
+  it("refuses a second pw-attempt while the first is still being checked", async () => {
+    const h = await start();
+    const sharer = await openUnattendedSharer(h.url);
+    const viewer = await viewerAwaitingPassword(h.url);
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "first" }));
+    expect(await recv(sharer)).toMatchObject({ type: "pw-check", attempt: "first" });
+
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "second" }));
+    expect(await recv(viewer)).toEqual({
+      type: "error",
+      code: "bad-message",
+      message: "no pw-check expected",
+    });
+    // Only one argon2 verify per attempt reaches the sharer.
+    expect(await sharerFramesUntilBarrier(sharer)).toEqual([]);
+    viewer.close();
+    sharer.close();
+  });
+
+  it.each([
+    ["missing", {}],
+    ["empty", { password: "" }],
+    ["not a string", { password: 1234 }],
+  ])("refuses a pw-attempt whose password is %s, without forwarding it", async (_label, extra) => {
+    const h = await start();
+    const sharer = await openUnattendedSharer(h.url);
+    const viewer = await viewerAwaitingPassword(h.url);
+    viewer.send(JSON.stringify({ type: "pw-attempt", ...extra }));
+    expect(await recv(viewer)).toEqual({
+      type: "error",
+      code: "bad-message",
+      message: "password missing",
+    });
+    expect(await sharerFramesUntilBarrier(sharer)).toEqual([]);
+    viewer.close();
+    sharer.close();
+  });
+
+  it("closes a bearer upgrade with 4401 when the server has no unattended wiring", async () => {
+    const app = Fastify();
+    await app.register(websocketPlugin);
+    registerSignaling(app, new SessionStore({ ttlMs: 600_000 }));
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    try {
+      const addr = app.server.address();
+      if (typeof addr === "string" || !addr) throw new Error("no address");
+      const ws = new WebSocket(`ws://127.0.0.1:${addr.port}/signal`, {
+        headers: { authorization: `Bearer ${TOKEN}`, "x-auffi-device-id": DEVICE_ID },
+      });
+      expect(await closed(ws)).toEqual({ code: 4401, reason: "unattended mode not configured" });
+    } finally {
+      await app.close();
+    }
   });
 });
