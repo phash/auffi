@@ -17,10 +17,10 @@
   },
   "devDependencies": {
     "@types/node": "25.9.3",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "jsdom": "30.0.1",
     "typescript": "7.0.2",
     "vite": "8.3.5",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }
