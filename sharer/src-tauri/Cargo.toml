@@ -15,7 +15,7 @@ cc = "=1.9.0"
 
 [dependencies]
 tauri = { version = "=2.12.5", features = ["tray-icon"] }
-tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "signal"] }
 # The `rustls-tls-native-roots` feature is kept for the Connector type and the
 # rustls-native-certs dependency, but we do NOT use its default connector: it
 # trusts the OS store alone, which on Windows is populated lazily and left the
@@ -77,6 +77,10 @@ keyring = { version = "=3.6.3", default-features = false, features = [
 # unattended-mode UI flips it via the `enable_autostart` /
 # `disable_autostart` Tauri commands.
 tauri-plugin-autostart = "=2.7.0"
+# A second launch (desktop icon while the autostarted sharer sits hidden in
+# the tray) must surface the running instance instead of starting another
+# heartbeat with the same device token.
+tauri-plugin-single-instance = "=2.5.4"
 # Direct dep for the unattended heartbeat's backoff jitter. Already in
 # the transitive graph (via reqwest/rustls); pinning it here is
 # documentation of the fact that heartbeat.rs reaches for it.

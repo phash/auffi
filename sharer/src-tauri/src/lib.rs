@@ -9,6 +9,7 @@ mod heartbeat;
 mod hotkey;
 mod input;
 mod ip_redact;
+mod lifecycle;
 mod local_lockout;
 mod nat_traversal;
 mod outbound;
@@ -1185,6 +1186,76 @@ fn release_input_on_exit(state: &Arc<tokio::sync::Mutex<Option<InputController>>
     state.blocking_lock().take().is_some()
 }
 
+fn show_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Rewrite an enabled autostart entry so it carries the current arguments.
+/// Entries registered before `--minimized` existed would otherwise keep
+/// opening the window at login until the user toggled autostart once.
+/// Disabled entries (incl. switched off in the Windows Task Manager, which
+/// `is_enabled` reports as off) stay untouched.
+fn refresh_autostart_entry(app: &tauri::AppHandle) {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if matches!(launcher.is_enabled(), Ok(true)) {
+        if let Err(e) = launcher.enable() {
+            dbg_log(&format!("[autostart] refresh failed: {e}"));
+        }
+    }
+}
+
+/// Session log-off on Linux ends the sharer with SIGTERM, which bypasses the
+/// event loop. Route it through `exit` so the `RunEvent::Exit` jobs still run.
+/// (Windows log-off arrives as `WM_ENDSESSION`, which tao already turns into
+/// `RunEvent::Exit`.)
+#[cfg(unix)]
+fn exit_on_sigterm(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        use tokio::signal::unix::{signal, SignalKind};
+        match signal(SignalKind::terminate()) {
+            Ok(mut term) => {
+                if term.recv().await.is_some() {
+                    dbg_log("[exit] SIGTERM — running exit jobs");
+                    app.exit(0);
+                }
+            }
+            Err(e) => dbg_log(&format!("[exit] SIGTERM handler unavailable: {e}")),
+        }
+    });
+}
+
+/// Main-thread exit hook: a `bye` to a live viewer and a clean heartbeat
+/// close, bounded by `SHUTDOWN_BUDGET` so a dead network never stalls exit.
+fn run_shutdown_jobs_on_exit(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let rtc = app.state::<WebRtcState>().0.clone();
+    let sink = app.state::<OutboundSinkState>().0.clone();
+    let heartbeat = app
+        .state::<unattended_cmd::UnattendedState>()
+        .commands
+        .clone();
+    let finished = tauri::async_runtime::block_on(async move {
+        let session_live = rtc.lock().await.is_some();
+        let sink = sink.lock().await.clone();
+        let heartbeat = heartbeat.lock().await.take();
+        tokio::time::timeout(
+            lifecycle::SHUTDOWN_BUDGET,
+            lifecycle::run_shutdown_jobs(session_live, sink, heartbeat),
+        )
+        .await
+        .is_ok()
+    });
+    if !finished {
+        dbg_log("[exit] shutdown jobs hit the time budget");
+    }
+}
+
 /// Consecutive `encoder.encode` failures the loop tolerates before it ends
 /// the stream with `streaming-failed` (reason `encode`). Roughly one second
 /// at 30 fps, the same threshold the track-write arm uses. A persistent
@@ -1822,6 +1893,11 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        // Must be the first plugin: a second launch exits before anything
+        // else initialises and surfaces the running sharer instead.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -1833,12 +1909,12 @@ pub fn run() {
         // webview). On macOS we use LaunchAgent (per-user, no privileged
         // install required); Linux ships a .desktop file under
         // `~/.config/autostart`; Windows uses
-        // `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. No
-        // extra args — the sharer's normal entry point handles
-        // unattended-mode bootstrap on its own.
+        // `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. The
+        // entry passes `--minimized` so an unattended sharer comes up in
+        // the tray instead of opening its window at every login.
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec![lifecycle::MINIMIZED_FLAG]),
         ))
         .manage(SignalingState(Mutex::new(None)))
         .manage(WebRtcState(Arc::new(tokio::sync::Mutex::new(None))))
@@ -1893,7 +1969,6 @@ pub fn run() {
         .setup(|app| {
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-            use tauri::Manager;
 
             let show_item =
                 MenuItem::with_id(app, "tray-show", "Auffi öffnen", true, None::<&str>)?;
@@ -1918,13 +1993,7 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "tray-show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
-                    }
+                    "tray-show" => show_main_window(app),
                     "tray-quit" => app.exit(0),
                     _ => {}
                 })
@@ -1935,14 +2004,20 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        if let Some(w) = tray.app_handle().get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
+
+            // The window is created hidden (tauri.conf.json) so an
+            // autostart launch never flashes it before going to the tray.
+            let mode = unattended_cmd::read_persisted_mode(app.handle());
+            if !lifecycle::starts_hidden(std::env::args(), mode.as_deref()) {
+                show_main_window(app.handle());
+            }
+            refresh_autostart_entry(app.handle());
+            #[cfg(unix)]
+            exit_on_sigterm(app.handle().clone());
 
             // Unattended mode must come up without a click — that is what
             // autostart + minimise-to-tray promise.
@@ -1959,14 +2034,9 @@ pub fn run() {
                 // text file under app_data_dir. Anything other than
                 // "unattended" falls through to the default close
                 // (quit) behaviour.
-                let unattended = window
-                    .app_handle()
-                    .path()
-                    .app_data_dir()
-                    .ok()
-                    .and_then(|dir| std::fs::read_to_string(dir.join("mode.txt")).ok())
-                    .map(|s| s.trim() == "unattended")
-                    .unwrap_or(false);
+                let unattended = unattended_cmd::resumes_on_launch(
+                    unattended_cmd::read_persisted_mode(window.app_handle()).as_deref(),
+                );
                 if unattended {
                     api.prevent_close();
                     let _ = window.hide();
@@ -1981,6 +2051,7 @@ pub fn run() {
                 if release_input_on_exit(&app.state::<InputControllerState>().0) {
                     dbg_log("[exit] released held input before quitting");
                 }
+                run_shutdown_jobs_on_exit(app);
             }
         });
 }

@@ -98,6 +98,13 @@ fn mode_path(app: &AppHandle) -> CmdResult<PathBuf> {
     Ok(app_data_dir(app)?.join(MODE_FILE))
 }
 
+/// Raw content of the persisted mode file; `None` when unset or unreadable.
+pub(crate) fn read_persisted_mode(app: &AppHandle) -> Option<String> {
+    mode_path(app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+}
+
 /// Validate that a backend URL is a WebSocket URL the sharer may send a
 /// Bearer token to: `wss://` always, `ws://` only with the development
 /// escape hatch `AUFFI_ALLOW_INSECURE=1`.
@@ -437,9 +444,7 @@ const RESUME_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(3
 /// it); every other failure is retried a few times because the keyring may
 /// not be unlocked yet this early in the session.
 pub(crate) fn resume_on_launch(app: AppHandle) {
-    let mode = mode_path(&app)
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok());
+    let mode = read_persisted_mode(&app);
     if !resumes_on_launch(mode.as_deref()) {
         return;
     }
