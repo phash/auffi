@@ -33,7 +33,7 @@ RUN npm prune --omit=dev --ignore-scripts
 # and a fixed month pin hard-blocked every build (incl. hotfix deploys)
 # once it rolled off (2026-08 incident). Pass --build-arg DBIP_MONTH=YYYY-MM
 # for a reproducible pinned build; a pinned month that 404s fails loudly.
-FROM alpine:3.24.3 AS geoip
+FROM alpine:3.24.4 AS geoip
 ARG DBIP_MONTH=auto
 WORKDIR /geoip
 RUN set -eu; \

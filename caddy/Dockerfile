@@ -12,8 +12,8 @@
 # docker-compose.prod.yml) und von ops/lib.sh::caddy_validate_local.
 # Nach einer Änderung an DIESER Datei auf einem laufenden Host:
 #   docker compose -f docker-compose.prod.yml build caddy
-FROM caddy:2.11.7-builder-alpine AS builder
+FROM caddy:2.11.8-builder-alpine AS builder
 RUN xcaddy build --with github.com/mholt/caddy-ratelimit
 
-FROM caddy:2.11.7-alpine
+FROM caddy:2.11.9-alpine
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
