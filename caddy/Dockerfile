@@ -15,13 +15,17 @@
 # Version (Stand docs/footguns.md § Cluster-Ops), bis er auf dem
 # Cluster-Host von Hand neu gebaut wird — Standalone und Cluster können
 # also auseinanderlaufen.
+# Das Plugin hat nur ein Release (v0.1.0, 2024); gepinnt ist der Commit
+# 5625512 (2026-06-12, Upstream-HEAD) als Go-Pseudo-Version. Dependabot sieht
+# das `--with`-Argument nicht — Bump von Hand
+# (Guard: ops/tests/caddy-toolchain-pinned.test.sh).
 #
 # Gebaut wird das Image von `docker compose up` (build:-Stanza in
 # docker-compose.prod.yml) und von ops/lib.sh::caddy_validate_local.
 # Nach einer Änderung an DIESER Datei auf einem laufenden Host:
 #   docker compose -f docker-compose.prod.yml build caddy
 FROM caddy:2.11.9-builder-alpine AS builder
-RUN xcaddy build --with github.com/mholt/caddy-ratelimit
+RUN xcaddy build --with github.com/mholt/caddy-ratelimit@v0.1.1-0.20260612195517-5625512f24f6
 
 FROM caddy:2.11.9-alpine
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
