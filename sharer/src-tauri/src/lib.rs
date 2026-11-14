@@ -1231,18 +1231,25 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-/// Rewrite an enabled autostart entry so it carries the current arguments.
-/// Entries registered before `--minimized` existed would otherwise keep
-/// opening the window at login until the user toggled autostart once.
-/// Disabled entries (incl. switched off in the Windows Task Manager, which
-/// `is_enabled` reports as off) stay untouched.
+/// One-time rewrite of an enabled autostart entry, see
+/// `lifecycle::refresh_autostart_once`. Disabled entries (incl. switched off
+/// in the Windows Task Manager, which `is_enabled` reports as off) stay
+/// untouched.
 fn refresh_autostart_entry(app: &tauri::AppHandle) {
+    use tauri::Manager;
     use tauri_plugin_autostart::ManagerExt;
-    let launcher = app.autolaunch();
-    if matches!(launcher.is_enabled(), Ok(true)) {
-        if let Err(e) = launcher.enable() {
-            dbg_log(&format!("[autostart] refresh failed: {e}"));
+    let data_dir = match app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            dbg_log(&format!("[autostart] refresh skipped, no data dir: {e}"));
+            return;
         }
+    };
+    let launcher = app.autolaunch();
+    if let Err(e) =
+        lifecycle::refresh_autostart_once(&data_dir, || launcher.is_enabled(), || launcher.enable())
+    {
+        dbg_log(&format!("[autostart] refresh failed: {e}"));
     }
 }
 

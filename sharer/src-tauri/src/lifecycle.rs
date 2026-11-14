@@ -6,6 +6,7 @@
 //! [`run_shutdown_jobs`] tells a live viewer the session ended and closes the
 //! heartbeat WSS cleanly before the process goes away.
 
+use std::path::Path;
 use std::time::Duration;
 
 use tokio::sync::Mutex;
@@ -31,6 +32,34 @@ const BYE_FLUSH: Duration = Duration::from_millis(80);
 /// hidden ad-hoc sharer would be unreachable.
 pub(crate) fn starts_hidden(mut args: impl Iterator<Item = String>, mode: Option<&str>) -> bool {
     crate::unattended_cmd::resumes_on_launch(mode) && args.any(|a| a == MINIMIZED_FLAG)
+}
+
+/// Marker in the app data dir: the autostart entry has been brought up to
+/// date with [`MINIMIZED_FLAG`].
+const AUTOSTART_REFRESHED_MARKER: &str = "autostart-refreshed";
+
+/// Rewrite an enabled autostart entry once, so entries registered before
+/// [`MINIMIZED_FLAG`] existed stop opening the window at login. Only once:
+/// a rewrite stores the binary that is running, so rewriting on every
+/// launch repointed login at whatever was started last — a portable copy or
+/// an AppImage in Downloads, and the device silently stopped coming up once
+/// that file was gone. A disabled entry needs no rewrite: enabling it later
+/// writes the current arguments. `Err` leaves the marker unset, so the next
+/// launch tries again.
+pub(crate) fn refresh_autostart_once<E: std::fmt::Display>(
+    data_dir: &Path,
+    is_enabled: impl FnOnce() -> Result<bool, E>,
+    enable: impl FnOnce() -> Result<(), E>,
+) -> Result<(), String> {
+    let marker = data_dir.join(AUTOSTART_REFRESHED_MARKER);
+    if marker.exists() {
+        return Ok(());
+    }
+    if is_enabled().map_err(|e| format!("autostart state: {e}"))? {
+        enable().map_err(|e| format!("autostart rewrite: {e}"))?;
+    }
+    std::fs::create_dir_all(data_dir).map_err(|e| format!("create data dir: {e}"))?;
+    std::fs::write(&marker, b"").map_err(|e| format!("write marker: {e}"))
 }
 
 /// Exit jobs, in order: for a live session the `connection-ended` telemetry
@@ -119,6 +148,83 @@ mod tests {
             Some("adhoc")
         ));
         assert!(!starts_hidden(args(&["auffi", "--minimized"]), None));
+    }
+
+    #[test]
+    fn enabled_autostart_entry_is_rewritten_once_and_never_again() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let rewrites = std::cell::Cell::new(0);
+        let enable = || {
+            rewrites.set(rewrites.get() + 1);
+            Ok::<(), String>(())
+        };
+        refresh_autostart_once(dir.path(), || Ok::<bool, String>(true), enable)
+            .expect("first launch");
+        refresh_autostart_once(dir.path(), || Ok::<bool, String>(true), enable)
+            .expect("second launch");
+        assert_eq!(
+            rewrites.get(),
+            1,
+            "a later launch of another binary must not repoint the entry"
+        );
+    }
+
+    #[test]
+    fn disabled_autostart_is_left_alone_and_needs_no_later_rewrite() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let rewrites = std::cell::Cell::new(0);
+        let enable = || {
+            rewrites.set(rewrites.get() + 1);
+            Ok::<(), String>(())
+        };
+        refresh_autostart_once(dir.path(), || Ok::<bool, String>(false), enable).expect("disabled");
+        refresh_autostart_once(dir.path(), || Ok::<bool, String>(true), enable)
+            .expect("enabled later with the current arguments");
+        assert_eq!(rewrites.get(), 0);
+    }
+
+    #[test]
+    fn failed_rewrite_is_retried_on_the_next_launch() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert!(refresh_autostart_once(
+            dir.path(),
+            || Ok::<bool, String>(true),
+            || Err("registry busy".to_string())
+        )
+        .is_err());
+        let rewrites = std::cell::Cell::new(0);
+        refresh_autostart_once(
+            dir.path(),
+            || Ok::<bool, String>(true),
+            || {
+                rewrites.set(rewrites.get() + 1);
+                Ok::<(), String>(())
+            },
+        )
+        .expect("retry");
+        assert_eq!(rewrites.get(), 1);
+    }
+
+    #[test]
+    fn unknown_autostart_state_is_retried_on_the_next_launch() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert!(refresh_autostart_once(
+            dir.path(),
+            || Err::<bool, String>("no home dir".to_string()),
+            || Ok::<(), String>(())
+        )
+        .is_err());
+        let rewrites = std::cell::Cell::new(0);
+        refresh_autostart_once(
+            dir.path(),
+            || Ok::<bool, String>(true),
+            || {
+                rewrites.set(rewrites.get() + 1);
+                Ok::<(), String>(())
+            },
+        )
+        .expect("retry");
+        assert_eq!(rewrites.get(), 1);
     }
 
     const LIVE: Option<()> = Some(());
