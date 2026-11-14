@@ -682,14 +682,16 @@ else
   log_step "Image- + Snapshot-Prune (keep last 3 unique SHAs aus deploy-log + :latest)"
   # Release-Snapshots hängen an derselben KEEP_LIST wie die Images, damit
   # "Image noch da" auch "Snapshot noch da" heißt und releases/ nicht
-  # unbegrenzt wächst.
+  # unbegrenzt wächst. Gezählt wird der JÜNGSTE Eintrag je SHA (Log rückwärts
+  # lesen): ein per --version erneut deployter älterer SHA stünde sonst mit
+  # seinem ersten Eintrag ganz hinten und verlöre Image + Snapshot, obwohl er
+  # gerade läuft. APP_VERSION ist deshalb zusätzlich immer gesetzt.
   maybe_run "Prune old backend images + release snapshots" \
     remote "set -e; \
       KEEP_LIST=\$(tail -n 20 '${DEPLOY_LOG_REMOTE}' 2>/dev/null \
-        | awk -F'\t' '{print \$2}' \
-        | awk '!seen[\$0]++' \
-        | tail -n 3); \
-      KEEP_REGEX='^latest$'; \
+        | awk -F'\t' '\$2 != \"\" {sha[++n] = \$2} END {for (i = n; i > 0; i--) if (!seen[sha[i]]++) print sha[i]}' \
+        | head -n 3); \
+      KEEP_REGEX='^latest$|^${APP_VERSION}$'; \
       for sha in \${KEEP_LIST}; do KEEP_REGEX=\"\${KEEP_REGEX}|^\${sha}$\"; done; \
       docker images --filter 'reference=auffi-backend' --format '{{.Tag}}' \
         | grep -E -v \"\${KEEP_REGEX}\" \

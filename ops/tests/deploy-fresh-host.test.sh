@@ -51,4 +51,18 @@ assert_eq "false" "$([[ -e "${REMOTE}/releases/stale111" ]] && echo true || echo
 assert_eq "false" "$([[ -e "${REMOTE}/releases/stale222" ]] && echo true || echo false)" "second stale snapshot pruned"
 assert_eq "clean" "$([[ -z "$(git -C "${TMP}/repo" status --porcelain)" ]] && echo clean || echo dirty)" "a deploy leaves the checkout clean"
 
+echo "# redeploying an older SHA keeps its own snapshot (prune counts its latest log entry)"
+: > "${REMOTE}/.deploy-log"
+for s in "${SHA}" old1111 old2222 old3333; do
+  printf '2026-09-01T00:00:00Z\t%s\tme@box\t\n' "${s}" >> "${REMOTE}/.deploy-log"
+  mkdir -p "${REMOTE}/releases/${s}/viewer-dist"
+done
+RC=0; OUT="$(run_deploy 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf '%s\n' "${OUT}"
+assert_eq 0 "${RC}" "redeploy exits 0"
+assert_eq "true" "$([[ -d "${REMOTE}/releases/${SHA}" ]] && echo true || echo false)" "snapshot of the SHA now running survives the prune"
+assert_eq "true" "$([[ -d "${REMOTE}/releases/old3333" ]] && echo true || echo false)" "most recent predecessor kept"
+assert_eq "true" "$([[ -d "${REMOTE}/releases/old2222" ]] && echo true || echo false)" "second predecessor kept"
+assert_eq "false" "$([[ -e "${REMOTE}/releases/old1111" ]] && echo true || echo false)" "oldest predecessor pruned (keep = 3)"
+
 finish
