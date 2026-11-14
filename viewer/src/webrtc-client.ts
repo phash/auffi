@@ -95,13 +95,20 @@ export class ViewerPeer {
     pc.oniceconnectionstatechange = () => {
       for (const h of this.stateHandlers) h(pc.iceConnectionState);
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-        void pc.getStats().then((report) => {
-          const type = resolveConnectionType(report);
-          if (type !== null && type !== this.lastConnectionType) {
-            this.lastConnectionType = type;
-            for (const h of this.connectionTypeHandlers) h(type);
-          }
-        });
+        // A teardown can close this pc while getStats() is pending: it then
+        // rejects, or resolves late and would light the Direkt/Relay badge
+        // on the start screen after the session already ended.
+        void pc.getStats().then(
+          (report) => {
+            if (this.pc !== pc) return;
+            const type = resolveConnectionType(report);
+            if (type !== null && type !== this.lastConnectionType) {
+              this.lastConnectionType = type;
+              for (const h of this.connectionTypeHandlers) h(type);
+            }
+          },
+          () => {},
+        );
       }
     };
 

@@ -338,6 +338,51 @@ describe("ViewerPeer", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it("a stats result that arrives after close() does not report a connection type", async () => {
+    const peer = new ViewerPeer({
+      pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
+    });
+    const handler = vi.fn();
+    peer.onConnectionType(handler);
+    await peer.start();
+    const pc = MockRTCPeerConnection.instances.at(-1)!;
+    let resolveStats: (r: RTCStatsReport) => void = () => {};
+    pc.getStats = () => new Promise((r) => { resolveStats = r; });
+    pc.iceConnectionState = "connected";
+    pc.oniceconnectionstatechange?.();
+    peer.close();
+    resolveStats(statsReport([
+      { type: "candidate-pair", id: "pair1", state: "succeeded", nominated: true, localCandidateId: "local1", remoteCandidateId: "remote1" },
+      { type: "local-candidate", id: "local1", candidateType: "relay" },
+      { type: "remote-candidate", id: "remote1", candidateType: "host" },
+    ]));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("a getStats() rejection on a closing peer is swallowed (no unhandled rejection)", async () => {
+    const peer = new ViewerPeer({
+      pcFactory: () => new MockRTCPeerConnection() as unknown as RTCPeerConnection,
+    });
+    const handler = vi.fn();
+    peer.onConnectionType(handler);
+    await peer.start();
+    const pc = MockRTCPeerConnection.instances.at(-1)!;
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      pc.getStats = () => Promise.reject(new DOMException("closed", "InvalidStateError"));
+      pc.iceConnectionState = "connected";
+      pc.oniceconnectionstatechange?.();
+      peer.close();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
 });
 
 describe("ViewerPeer: remote ICE candidates that overtake the answer", () => {
