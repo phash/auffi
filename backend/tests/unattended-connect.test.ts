@@ -443,22 +443,27 @@ describe("/signal unattended connect flow (gh #17)", () => {
    * Positive signal that the backend tore the previous viewer's session down:
    * a fresh join gets needs-password instead of "session full". Replaces a
    * fixed sleep, which under load passes before the teardown it waits for.
+   * Resolves with the probe still joined, so a caller can settle the sharer
+   * before the probe's own close sends it a bye.
    */
-  async function waitForDeviceSlotFree(): Promise<void> {
+  async function joinOnceSlotFree(): Promise<WebSocket> {
     const deadline = Date.now() + 5_000;
     for (;;) {
       const probe = openViewer();
       await new Promise<void>((r) => probe.once("open", () => r()));
       probe.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
       const reply = await once(probe, "message");
+      if (reply.type === "needs-password") return probe;
       probe.close();
-      if (reply.type === "needs-password") {
-        await waitFor(() => probe.readyState === probe.CLOSED, "probe viewer closed");
-        return;
-      }
       if (Date.now() > deadline) throw new Error("device slot never freed");
       await new Promise((r) => setTimeout(r, 20));
     }
+  }
+
+  async function waitForDeviceSlotFree(): Promise<void> {
+    const probe = await joinOnceSlotFree();
+    probe.close();
+    await waitFor(() => probe.readyState === probe.CLOSED, "probe viewer closed");
   }
 
   it("connection-started writes a connection_log row for the device", async () => {
@@ -1002,15 +1007,11 @@ describe("/signal unattended connect flow (gh #17)", () => {
     await once(viewer, "message"); // peer-confirmed
     await once(sharer, "message"); // peer-joined
 
-    const stray: unknown[] = [];
-    const onMessage = (data: Buffer): void => {
-      stray.push(JSON.parse(data.toString()));
-    };
-    sharer.on("message", onMessage);
+    const toSharer = watchUnattendedSharer(sharer);
     viewer.close();
-    await new Promise((r) => setTimeout(r, 80));
-    sharer.off("message", onMessage);
-    expect(stray).toEqual([]);
+    const probe = await joinOnceSlotFree();
+    expect(await toSharer.settle()).toEqual([]);
+    probe.close();
     sharer.close();
   });
 });

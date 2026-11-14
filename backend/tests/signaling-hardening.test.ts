@@ -245,7 +245,11 @@ describe("socket limits on the ad-hoc path", () => {
     const sharer = await openViewer(h.url);
     sharer.send(JSON.stringify({ type: "register", role: "sharer" }));
     await recv(sharer);
-    await new Promise((r) => setTimeout(r, 300));
+    // A role-less socket opened later has a later deadline: once it is
+    // closed, the sharer's deadline has fired too. A fixed sleep could end
+    // before that timer under load and pass without testing anything.
+    const idle = await openViewer(h.url);
+    expect(await closed(idle)).toEqual({ code: 4400, reason: "no register or join" });
     expect(sharer.readyState).toBe(WebSocket.OPEN);
     sharer.close();
   });
