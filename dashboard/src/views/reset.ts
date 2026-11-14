@@ -1,11 +1,15 @@
 // /dashboard/reset/:token — set new password form. On 200 the backend
 // revokes every session of the account (per spec §4.5 step 3) —
 // including this browser's, if the link was opened while still signed in.
+// The success notice lives on /login?reset=ok rather than here: the
+// re-probe can flip a signed-in admin to anonymous, main.ts then
+// re-renders the current route, and an in-place notice would vanish
+// behind an empty form whose token is already spent.
 
 import { resetPassword } from "../api.js";
 import { wrapPasswordField } from "../components/password-field.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
-import { refreshSession } from "../session.js";
+import { redirectToLogin } from "../session.js";
 import { friendlyAuthError } from "./login.js";
 
 export const renderReset: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
@@ -63,14 +67,7 @@ export const renderReset: RouteRenderer = (root: HTMLElement, ctx: RouteContext)
   errorBox.setAttribute("role", "alert");
   errorBox.setAttribute("aria-live", "polite");
 
-  const successBox = document.createElement("p");
-  successBox.setAttribute("role", "status");
-  successBox.setAttribute("aria-live", "polite");
-  successBox.style.color = "var(--success)";
-  successBox.style.fontSize = "0.9375rem";
-  successBox.style.marginTop = "0.5rem";
-
-  form.append(pwLabel, wrapPasswordField(pwInput), pw2Label, wrapPasswordField(pw2Input), submit, errorBox, successBox);
+  form.append(pwLabel, wrapPasswordField(pwInput), pw2Label, wrapPasswordField(pw2Input), submit, errorBox);
 
   const linksHolder = document.createElement("p");
   linksHolder.style.marginTop = "0.75rem";
@@ -78,7 +75,6 @@ export const renderReset: RouteRenderer = (root: HTMLElement, ctx: RouteContext)
   form.addEventListener("submit", async (e: SubmitEvent) => {
     e.preventDefault();
     errorBox.textContent = "";
-    successBox.textContent = "";
     if (pwInput.value !== pw2Input.value) {
       errorBox.textContent = "Die beiden Passwörter sind nicht identisch.";
       return;
@@ -93,18 +89,7 @@ export const renderReset: RouteRenderer = (root: HTMLElement, ctx: RouteContext)
     submit.disabled = false;
     submit.textContent = "Passwort speichern";
     if (res.ok) {
-      // Lock the form on success — fresh-login link below replaces
-      // the only action the user needs next.
-      pwInput.disabled = true;
-      pw2Input.disabled = true;
-      submit.disabled = true;
-      successBox.textContent = "Passwort gesetzt. Alle Sitzungen wurden abgemeldet.";
-      void refreshSession();
-      const link = document.createElement("a");
-      link.href = BASE_PATH + "/login";
-      link.textContent = "→ Anmelden";
-      while (linksHolder.firstChild) linksHolder.removeChild(linksHolder.firstChild);
-      linksHolder.appendChild(link);
+      redirectToLogin("?reset=ok");
       return;
     }
     if (res.code === "token-invalid" || res.code === "token-used") {

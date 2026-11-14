@@ -81,8 +81,8 @@ export async function refreshSession(): Promise<SessionState> {
  * logout, password change, account deletion) and re-probe, so nav, the
  * admin gate, "Abmelden" and the FAB stop showing the stale session.
  */
-export function redirectToLogin(): void {
-  navigate("/login");
+export function redirectToLogin(query: string = ""): void {
+  navigate("/login" + query);
   void refreshSession();
 }
 

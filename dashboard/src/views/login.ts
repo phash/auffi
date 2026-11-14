@@ -8,13 +8,23 @@ import { wrapPasswordField } from "../components/password-field.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 import { refreshSession } from "../session.js";
 
-export const renderLogin: RouteRenderer = (root: HTMLElement, _ctx: RouteContext) => {
+export const renderLogin: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   const card = document.createElement("section");
   card.className = "card";
 
   const h1 = document.createElement("h1");
   h1.textContent = "Anmelden";
   card.appendChild(h1);
+
+  if (ctx.query.get("reset") === "ok") {
+    const notice = document.createElement("p");
+    notice.setAttribute("role", "status");
+    notice.style.color = "var(--success)";
+    notice.style.fontSize = "0.9375rem";
+    notice.textContent =
+      "Passwort gesetzt. Alle Sitzungen wurden abgemeldet. Melde dich mit dem neuen Passwort an.";
+    card.appendChild(notice);
+  }
 
   const form = document.createElement("form");
   form.noValidate = true;

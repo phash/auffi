@@ -67,6 +67,22 @@ describe("renderLogin", () => {
   });
   afterEach(() => _setApiClientForTests(null));
 
+  it("shows the password-reset notice only when arriving with ?reset=ok", () => {
+    const root = makeRoot();
+    renderLogin(root, {
+      path: "/login",
+      segments: ["login"],
+      params: {},
+      query: new URLSearchParams("reset=ok"),
+    });
+    expect((root.querySelector('[role="status"]') as HTMLElement).textContent).toBe(
+      "Passwort gesetzt. Alle Sitzungen wurden abgemeldet. Melde dich mit dem neuen Passwort an.",
+    );
+    const plain = makeRoot();
+    renderLogin(plain, { path: "/login", segments: ["login"], params: {}, query: new URLSearchParams() });
+    expect(plain.querySelector('[role="status"]')).toBeNull();
+  });
+
   it("renders email + password fields and a submit button", () => {
     const root = makeRoot();
     renderLogin(root, { path: "/login", segments: ["login"], params: {}, query: new URLSearchParams() });

@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { _setApiClientForTests } from "../src/api.js";
 import { renderForgot } from "../src/views/forgot.js";
 import { renderReset } from "../src/views/reset.js";
-import { _resetSessionForTests, isLoggedIn, refreshSession } from "../src/session.js";
+import { BASE_PATH, createRouter, type Router } from "../src/router.js";
+import {
+  _resetSessionForTests,
+  isAdmin,
+  isLoggedIn,
+  onSessionChange,
+  refreshSession,
+} from "../src/session.js";
+import { renderLogin } from "../src/views/login.js";
 
 function makeRoot(): HTMLElement {
   while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
@@ -118,7 +126,8 @@ describe("renderReset", () => {
     _resetSessionForTests();
   });
 
-  it("POSTs the new password + token URL-encoded, shows success + login link", async () => {
+  it("POSTs the new password + token URL-encoded, then lands on /login with the notice", async () => {
+    window.history.pushState({}, "", BASE_PATH + "/reset/tok%20123");
     const root = makeRoot();
     renderReset(root, {
       path: "/reset/tok 123",
@@ -132,11 +141,15 @@ describe("renderReset", () => {
     await flush();
     expect(lastReq?.url).toBe("/api/auth/reset/tok%20123");
     expect(JSON.parse(lastReq?.init.body as string)).toEqual({ password: "newPassword1" });
-    const success = root.querySelector('[role="status"]') as HTMLElement;
-    expect(success.textContent).toContain("Passwort gesetzt");
+    expect(window.location.pathname).toBe(BASE_PATH + "/login");
+    expect(window.location.search).toBe("?reset=ok");
   });
 
-  it("says every session ended and drops this tab's cached session too", async () => {
+  // A signed-in admin who opens the link: the reset kills this browser's
+  // session too, the re-probe flips admin true->false and main.ts
+  // re-renders the current route. The notice must survive that re-render
+  // (the token is spent, so an empty reset form would be a dead end).
+  it("keeps the success notice when the re-probe drops a signed-in admin", async () => {
     let reset = false;
     _setApiClientForTests({
       base: "",
@@ -144,29 +157,50 @@ describe("renderReset", () => {
         if (String(input) === "/api/me") {
           return reset
             ? jsonResponse({ error: "no-session", message: "authentication required" }, 401)
-            : jsonResponse({ id: 1, email: "a@b.test", admin: false });
+            : jsonResponse({ id: 1, email: "a@b.test", admin: true });
         }
         reset = true;
         return jsonResponse({ ok: true });
       }) as unknown as typeof fetch,
     });
     await refreshSession();
-    expect(isLoggedIn()).toBe(true);
+    expect(isAdmin()).toBe(true);
+
     const root = makeRoot();
-    renderReset(root, {
-      path: "/reset/tok",
-      segments: ["reset", "tok"],
-      params: { token: "tok" },
-      query: new URLSearchParams(),
+    window.history.pushState({}, "", BASE_PATH + "/reset/tok");
+    const router: Router = createRouter(
+      root,
+      [
+        { pattern: "/login", render: renderLogin },
+        { pattern: "/reset/:token", render: renderReset },
+      ],
+      undefined,
+      undefined,
+      { isAdmin, isLoggedIn },
+    );
+    let wasAdmin = isAdmin();
+    onSessionChange((session) => {
+      if (session.admin !== wasAdmin) router.refresh();
+      wasAdmin = session.admin;
     });
-    (root.querySelector("#reset-password") as HTMLInputElement).value = "newPassword1";
-    (root.querySelector("#reset-password-confirm") as HTMLInputElement).value = "newPassword1";
-    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
-    await flush();
-    await flush();
-    const success = root.querySelector('[role="status"]') as HTMLElement;
-    expect(success.textContent).toBe("Passwort gesetzt. Alle Sitzungen wurden abgemeldet.");
-    expect(isLoggedIn()).toBe(false);
+    router.start();
+    try {
+      (root.querySelector("#reset-password") as HTMLInputElement).value = "newPassword1";
+      (root.querySelector("#reset-password-confirm") as HTMLInputElement).value = "newPassword1";
+      root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+      await flush();
+      await flush();
+      expect(isLoggedIn()).toBe(false);
+      expect(isAdmin()).toBe(false);
+      expect(window.location.pathname).toBe(BASE_PATH + "/login");
+      const notice = root.querySelector('[role="status"]') as HTMLElement;
+      expect(notice.textContent).toBe(
+        "Passwort gesetzt. Alle Sitzungen wurden abgemeldet. Melde dich mit dem neuen Passwort an.",
+      );
+      expect(root.querySelector("#login-email")).not.toBeNull();
+    } finally {
+      router.stop();
+    }
   });
 
   it("rejects mismatching confirm without hitting the network", async () => {
