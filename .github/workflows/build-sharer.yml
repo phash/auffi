@@ -7,6 +7,13 @@ name: Build Sharer Binaries
 on:
   workflow_dispatch:
   workflow_call:
+    # Declared explicitly so the caller passes exactly these two and nothing
+    # else (no `secrets: inherit`) into the steps that run third-party code.
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: true
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
     outputs:
       artifact-linux:
         description: "Linux artifact name"

@@ -11,15 +11,25 @@ permissions:
   contents: read
 
 jobs:
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build-binaries:
     name: Build Sharer Binaries
+    needs: [ci]
     uses: ./.github/workflows/build-sharer.yml
-    secrets: inherit
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     permissions:
       contents: read
 
   docker:
     name: Build & Push Backend Docker Image
+    needs: [ci]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
