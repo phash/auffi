@@ -69,6 +69,13 @@ export type StoreConfig = {
    * is that this is a no-op observer. Default: undefined.
    */
   onCodeCreated?: () => void;
+  /**
+   * Ids a fresh code must not take: paired unattended device ids share
+   * the NNN-NNN-NNN namespace, and a join resolves the ad-hoc store
+   * first, so a code equal to a device id would hand that device's
+   * helpers to a stranger's session for the code's whole TTL.
+   */
+  isReserved?: (code: string) => boolean;
 };
 
 function isJoinable(session: Session, now: number): boolean {
@@ -102,7 +109,7 @@ export class SessionStore {
     let code: string | undefined;
     for (let attempt = 0; attempt < 32; attempt++) {
       const candidate = generateCode();
-      if (!this.sessions.has(candidate)) {
+      if (!this.sessions.has(candidate) && !(this.cfg.isReserved?.(candidate) ?? false)) {
         code = candidate;
         break;
       }
@@ -124,6 +131,11 @@ export class SessionStore {
     this.byPeer.set(sharer, code);
     this.cfg.onCodeCreated?.();
     return { code, session };
+  }
+
+  /** Whether a session currently owns `code`, expired-but-unswept included. */
+  holds(code: string): boolean {
+    return this.sessions.has(code);
   }
 
   attachViewer(code: string, viewer: Peer): Session | null {

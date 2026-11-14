@@ -230,6 +230,9 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
   }
   const store = new SessionStore({
     ttlMs: codeTtlMs,
+    isReserved: (code) =>
+      db.prepare<[string], { id: string }>("SELECT id FROM devices WHERE id = ?").get(code) !==
+      undefined,
     onCodeCreated: () => {
       // DB ist die verlaessliche Single-Source-of-Truth fuer die
       // "wie oft wurde ein Code gemintet"-Statistik. Matomo bleibt als
@@ -357,7 +360,11 @@ export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> 
 
   registerAuthRoutes(app, { db, mailer });
   registerMeRoutes(app, { db, mailer: accountMailer, registry: unattendedRegistry });
-  registerDeviceRoutes(app, { db, registry: unattendedRegistry });
+  registerDeviceRoutes(app, {
+    db,
+    registry: unattendedRegistry,
+    isAdHocCode: (id) => store.holds(id),
+  });
   registerAdminUsersRoutes(app, db, unattendedRegistry);
   registerAdminStatsRoutes(app, db);
   registerAdminFeedbackRoutes(app, db, feedbackMailer);

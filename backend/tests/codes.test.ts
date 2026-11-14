@@ -67,6 +67,30 @@ describe("SessionStore", () => {
     expect(code).toMatch(/^\d{3}-\d{3}-\d{3}$/);
   });
 
+  // Ad-hoc codes and paired device ids share the NNN-NNN-NNN namespace, and
+  // a join resolves the ad-hoc store first: a code equal to a device id
+  // would hand that device's helpers to a stranger's session.
+  it("skips a candidate the reserved-id predicate claims", () => {
+    const asked: string[] = [];
+    const store = new SessionStore({
+      ttlMs: 600_000,
+      isReserved: (candidate) => {
+        asked.push(candidate);
+        return asked.length === 1;
+      },
+    });
+    const { code } = store.registerSharer({});
+    expect(asked).toHaveLength(2);
+    expect(code).toBe(asked[1]);
+  });
+
+  it("holds() reports whether a live session owns a code", () => {
+    const store = new SessionStore({ ttlMs: 600_000 });
+    const { code } = store.registerSharer({});
+    expect(store.holds(code)).toBe(true);
+    expect(store.holds("000-000-000")).toBe(false);
+  });
+
   it("retrieves session by code", () => {
     const store = new SessionStore({ ttlMs: 600_000 });
     const sharer = { id: "s1" } as unknown as object;

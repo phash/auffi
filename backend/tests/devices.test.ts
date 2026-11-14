@@ -4,11 +4,17 @@ import rateLimit from "@fastify/rate-limit";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { decorateRequireSession } from "../src/auth/middleware.js";
 import { registerAuthRoutes } from "../src/auth/handlers.js";
-import { registerDeviceRoutes, normalizePairingCode } from "../src/devices/handlers.js";
+import {
+  registerDeviceRoutes,
+  normalizePairingCode,
+  type DevicesDeps,
+} from "../src/devices/handlers.js";
 import { captureTransport } from "../src/email/transport.js";
 import { buildAuthMailer } from "../src/email/mailer.js";
 
-async function build(): Promise<{ app: FastifyInstance; db: Db; cookie: () => Promise<string> }> {
+async function build(
+  extra: Pick<DevicesDeps, "isAdHocCode"> = {},
+): Promise<{ app: FastifyInstance; db: Db; cookie: () => Promise<string> }> {
   const db = openDb(":memory:");
   applyMigrations(db, defaultMigrationsDir());
   const transport = captureTransport();
@@ -21,7 +27,7 @@ async function build(): Promise<{ app: FastifyInstance; db: Db; cookie: () => Pr
   await app.register(rateLimit, { global: false });
   decorateRequireSession(app, db);
   registerAuthRoutes(app, { db, mailer });
-  registerDeviceRoutes(app, { db });
+  registerDeviceRoutes(app, { db, ...extra });
   await app.ready();
 
   async function cookie(): Promise<string> {
@@ -141,6 +147,30 @@ describe("POST /api/devices/redeem", () => {
     // Pairing marked used
     const pairings = h.db.prepare("SELECT COUNT(*) AS c FROM device_pairings WHERE used_at IS NOT NULL").get() as { c: number };
     expect(pairings.c).toBe(1);
+  });
+
+  it("never mints a device id that a live ad-hoc code holds", async () => {
+    // Same NNN-NNN-NNN namespace: a device id equal to a running ad-hoc code
+    // would be shadowed by it on join for up to the code's TTL.
+    await h.app.close();
+    h.db.close();
+    const asked: string[] = [];
+    h = await build({
+      isAdHocCode: (id) => {
+        asked.push(id);
+        return asked.length === 1;
+      },
+    });
+    const c = await h.cookie();
+    const code = await mintCode(c);
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/api/devices/redeem",
+      payload: { code, alias: "Home-PC" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(asked).toHaveLength(2);
+    expect(res.json().deviceId).toBe(asked[1]);
   });
 
   it("rejects a second redeem of the same code with 410", async () => {

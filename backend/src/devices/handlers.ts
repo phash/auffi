@@ -20,6 +20,12 @@ export interface DevicesDeps {
    * relaying messages until its next reconnect (gh #16 acceptance).
    */
   registry?: UnattendedRegistry;
+  /**
+   * Whether a live ad-hoc session holds the id. Same NNN-NNN-NNN namespace,
+   * and a join resolves the ad-hoc store first, so a device minted onto a
+   * running code would be shadowed by it until the code expires.
+   */
+  isAdHocCode?: (id: string) => boolean;
 }
 
 function bad(reply: FastifyReply, status: number, code: string, message: string) {
@@ -128,7 +134,7 @@ export function registerDeviceRoutes(app: FastifyInstance, deps: DevicesDeps): v
         const exists = db
           .prepare<[string], { id: string }>("SELECT id FROM devices WHERE id = ?")
           .get(candidate);
-        if (!exists) {
+        if (!exists && !(deps.isAdHocCode?.(candidate) ?? false)) {
           deviceId = candidate;
           break;
         }
