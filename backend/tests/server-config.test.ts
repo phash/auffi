@@ -26,7 +26,7 @@ describe("code-TTL hard cap", () => {
     // An operator sets an hour — the ad-hoc code TTL must still cap at 10 min.
     process.env.SESSION_TTL_MS = String(60 * 60 * 1000);
     process.env.REGISTER_RATE_LIMIT_MAX = "1000";
-    app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
+    app = await createServer({ dbPath: ":memory:" });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");
@@ -54,7 +54,7 @@ describe("ad-hoc socket limits from the environment", () => {
   it("applies SIGNAL_MAX_SOCKETS_PER_IP and SIGNAL_ROLE_DEADLINE_MS", async () => {
     process.env.SIGNAL_MAX_SOCKETS_PER_IP = "1";
     process.env.SIGNAL_ROLE_DEADLINE_MS = "100";
-    app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
+    app = await createServer({ dbPath: ":memory:" });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");
@@ -76,14 +76,14 @@ describe("production CORS fail-closed", () => {
     process.env.NODE_ENV = "production";
     delete process.env.ALLOWED_ORIGINS;
     await expect(
-      createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" }),
+      createServer({ dbPath: ":memory:" }),
     ).rejects.toThrow(/ALLOWED_ORIGINS must be set in production/);
   });
 
   it("starts in production when ALLOWED_ORIGINS is set", async () => {
     process.env.NODE_ENV = "production";
     process.env.ALLOWED_ORIGINS = "https://auffi.app";
-    const app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
+    const app = await createServer({ dbPath: ":memory:" });
     expect(app).toBeTruthy();
     await app.close();
   });

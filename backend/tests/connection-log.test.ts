@@ -110,7 +110,7 @@ describe("GET /api/devices/:id/log", () => {
     }
 
     process.env.REGISTER_RATE_LIMIT_MAX = "1000";
-    app = await createServer({ port: 0, host: "127.0.0.1", db });
+    app = await createServer({ db });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");

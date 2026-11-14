@@ -268,7 +268,7 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
     // here for everything except the dedicated rate-limit test
     // below (which builds its own server with a tight cap).
     process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
-    app = await createServer({ port: 0, host: "127.0.0.1", db });
+    app = await createServer({ db });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");
@@ -399,11 +399,7 @@ describe("/signal WSS upgrade with Bearer auth (gh #16)", () => {
 
     process.env.BEARER_AUTH_RATE_LIMIT_MAX = "2";
     process.env.BEARER_AUTH_RATE_LIMIT_WINDOW_MS = "60000";
-    const tight = await createServer({
-      port: 0,
-      host: "127.0.0.1",
-      db: tightDb,
-    });
+    const tight = await createServer({ db: tightDb });
     await tight.listen({ port: 0, host: "127.0.0.1" });
     const addr = tight.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");

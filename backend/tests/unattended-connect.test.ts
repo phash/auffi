@@ -279,7 +279,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
     // Every viewer join costs one unit of the 5/min per-IP budget.
     process.env.RATE_LIMIT_MAX = "1000";
-    app = await createServer({ port: 0, host: "127.0.0.1", db });
+    app = await createServer({ db });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");
@@ -1040,7 +1040,7 @@ describe("device DELETE force-closes a live unattended WSS (TC C-5)", () => {
 
     process.env.REGISTER_RATE_LIMIT_MAX = "1000";
     process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
-    app = await createServer({ port: 0, host: "127.0.0.1", db });
+    app = await createServer({ db });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");
@@ -1345,7 +1345,7 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
       delete process.env.TURN_HOSTS;
     }
     process.env.BEARER_AUTH_RATE_LIMIT_MAX = "1000";
-    const app = await createServer({ port: 0, host: "127.0.0.1", db });
+    const app = await createServer({ db });
     await app.listen({ port: 0, host: "127.0.0.1" });
     const addr = app.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");

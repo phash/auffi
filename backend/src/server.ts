@@ -28,8 +28,6 @@ import { openCountryDb } from "./geoip.js";
 import { redactEmail } from "./email/log_safe.js";
 
 export type ServerConfig = {
-  port: number;
-  host: string;
   /**
    * Override the DB path. When undefined the server falls back to
    * `process.env.AUFFI_DB_PATH` / `db.ts:DEFAULT_DB_PATH`. Tests pass
@@ -151,7 +149,7 @@ function buildLoggerOptions(nodeEnv: string | undefined) {
   };
 }
 
-export async function createServer(cfg: ServerConfig): Promise<FastifyInstance> {
+export async function createServer(cfg: ServerConfig = {}): Promise<FastifyInstance> {
   // Read env at call-time so tests can override values per-server.
   const env = readEnvConfig();
   // Fail closed: never let a production deploy fall back to the localhost

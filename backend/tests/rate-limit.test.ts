@@ -14,7 +14,7 @@ beforeAll(async () => {
   // Other suites raise RATE_LIMIT_MAX to 1000 for their join-heavy flows;
   // this file pins the production default and must not inherit that.
   delete process.env.RATE_LIMIT_MAX;
-  app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
+  app = await createServer({ dbPath: ":memory:" });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
   if (typeof addr === "string" || !addr) throw new Error("no address");
@@ -55,7 +55,7 @@ describe("join rate limit gates correct guesses too", () => {
 
   beforeAll(async () => {
     delete process.env.RATE_LIMIT_MAX;
-    limitedApp = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
+    limitedApp = await createServer({ dbPath: ":memory:" });
     await limitedApp.listen({ port: 0, host: "127.0.0.1" });
     const addr = limitedApp.server.address();
     if (typeof addr === "string" || !addr) throw new Error("no address");

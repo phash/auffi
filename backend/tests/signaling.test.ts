@@ -21,7 +21,7 @@ beforeAll(async () => {
   // Same for the join cap: every join (hits included) costs one unit of the
   // 5/min budget, and this suite joins far more often than that.
   process.env.RATE_LIMIT_MAX = "1000";
-  app = await createServer({ port: 0, host: "127.0.0.1", dbPath: ":memory:" });
+  app = await createServer({ dbPath: ":memory:" });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const addr = app.server.address();
   if (typeof addr === "string" || !addr) throw new Error("no address");
