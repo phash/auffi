@@ -11,7 +11,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "=2.7.4", features = [] }
-cc = "=1.9.0"
+cc = "=1.11.2"
 
 [dependencies]
 tauri = { version = "=2.12.5", features = ["tray-icon"] }
@@ -23,19 +23,24 @@ tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", 
 # See src/tls_roots.rs — the anchors are merged with the bundled set instead.
 tokio-tungstenite = { version = "=0.30.0", features = ["rustls-tls-native-roots"] }
 rustls-native-certs = "=0.8.5"
-webpki-roots = "=1.0.10"
+webpki-roots = "=1.0.12"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 futures-util = "=0.3.34"
-# Held on the 0.17 line: 0.20 is the sans-io full rewrite (no 0.18/0.19
-# exist) that rearchitects the load-bearing connectivity settings from
-# docs/footguns.md — scheduled as its own migration project once 0.21
-# stabilizes.
-webrtc = "=0.17.2"
+# Held on the 0.17 line: 0.20+ (0.21.1 is stable) is the sans-io rewrite on
+# the rtc crates. A drop-in bump does not compile (E0433: the api, ice,
+# interceptor and rtp modules are gone) and the port re-architects the
+# load-bearing connectivity settings from docs/footguns.md, so it is its own
+# migration project. Stay >= 0.17.3: that release moved dtls to p256 0.14 /
+# crypto-bigint 0.7, which closes RUSTSEC-2026-0387 in the DTLS handshake.
+webrtc = "=0.17.3"
 enigo = "=0.6.1"
-log = "=0.4.34"
+log = "=0.4.35"
 tauri-plugin-global-shortcut = "=2.4.1"
-tauri-plugin-dialog = "=2.8.3"
+tauri-plugin-dialog = "=2.8.4"
+# Held at 6: dirs 7 changes nothing we call (download_dir/home_dir), but
+# tauri-plugin-autostart still pulls dirs 6, so the bump only adds a
+# duplicate crate to the graph.
 dirs = "=6.0.0"
 bytes = "=1.12.1"
 reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json"] }
@@ -45,11 +50,11 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["rustls",
 # The version is pinned to the same release the rest of the graph
 # resolves to (see Cargo.lock).
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
-uuid = { version = "=1.28.0", features = ["v4"] }
-tauri-plugin-store = "=2.5.0"
+uuid = { version = "=1.29.2", features = ["v4"] }
+tauri-plugin-store = "=2.5.1"
 # Opens the diagnostic log (Rust side) and the About/update links (webview).
 # Unlike the shell plugin's `open`, it enforces the capability's URL scope.
-tauri-plugin-opener = "=2.7.2"
+tauri-plugin-opener = "=2.7.3"
 # UPnP IGD client for discovering the home router's external IP without
 # round-tripping our STUN server. See `nat_traversal.rs` and issue #89.
 # The `aio_tokio` feature drives the SSDP/SOAP traffic on our existing
@@ -79,8 +84,11 @@ keyring = { version = "=3.6.3", default-features = false, features = [
 tauri-plugin-autostart = "=2.7.0"
 # A second launch (desktop icon while the autostarted sharer sits hidden in
 # the tray) must surface the running instance instead of starting another
-# heartbeat with the same device token.
-tauri-plugin-single-instance = "=2.5.4"
+# heartbeat with the same device token. Needs >= 2.5.5: older releases drop
+# the lock when RunEvent::Exit reaches the plugin, before our exit handler
+# (run_shutdown_jobs_on_exit, up to 800 ms) has closed the heartbeat; 2.5.5
+# holds it until cleanup_before_exit.
+tauri-plugin-single-instance = "=2.5.5"
 # Direct dep for the unattended heartbeat's backoff jitter. Already in
 # the transitive graph (via reqwest/rustls); pinning it here is
 # documentation of the fact that heartbeat.rs reaches for it.
@@ -94,23 +102,27 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "=0.14.0", features = ["randr"] }
-# Held at 0.10: ashpd 0.13 splits every portal into its own feature and
-# moves the screencast API to options-structs — needs a gst_portal.rs
-# port that can only be compile-verified in a Linux build session.
-ashpd = { version = "=0.10.2", default-features = false, features = ["tokio"] }
+# Held at 0.10: ashpd 0.13+ (latest 0.14, on zbus 6) splits every portal
+# into its own feature and moves the screencast API to options structs. A
+# drop-in bump fails in gst_portal.rs (E0432 on desktop::screencast /
+# PersistMode, E0107 lifetimes); the port needs a manual Plasma + GNOME
+# portal smoke, so it is not a routine update.
+ashpd = { version = "=0.10.3", default-features = false, features = ["tokio"] }
 # GStreamer-based Wayland capture: `pipewiresrc` element handles the DMA-BUF
 # / SHM / VideoModifier negotiation that pipewire-rs's raw SPA pods don't
 # expose ergonomically.
-# Held at 0.24: the 0.25 lockstep bump can't be compile-verified on this
-# Windows host — do it in a Linux build session together with ashpd.
-gstreamer = "=0.24.0"
-gstreamer-app = "=0.24.0"
+# Held at 0.24: gstreamer, -app and -video are one lockstep family. Bumping
+# one alone does not compile (E0277: AppSink is not an ObjectType of the
+# other version), so all three move to 0.25 together, with a Wayland
+# capture smoke.
+gstreamer = "=0.24.5"
+gstreamer-app = "=0.24.5"
 # capture/gst_portal.rs reads VideoInfo from the negotiated caps to reject
 # frames whose size disagrees with the declared one.
-gstreamer-video = "=0.24.0"
+gstreamer-video = "=0.24.5"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-xcap = { version = "=0.9.8", features = ["wgc"] }
+xcap = { version = "=0.9.10", features = ["wgc"] }
 # COM apartment init for the WGC capture thread (fixes E_NOINTERFACE from
 # video_recorder) + GDI BitBlt for the RDP/GPU-less fallback capture path.
 windows = { version = "=0.62.2", features = [
