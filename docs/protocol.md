@@ -469,9 +469,12 @@ video track. The server sets `ended_at` and `bytes_relayed`.
 > sets `bytes_relayed` on the row the server just closed, once, within 30 s
 > and on the same sharer socket, without moving `ended_at`.
 >
-> Both frames are **advisory**: the server ignores them outside a `confirmed`
-> session, ignores an unknown `connectionType`, ignores `connection-ended`
-> without a preceding `connection-started`, and never answers with an `error`
+> Both frames are **advisory**: the server ignores `connection-started`
+> outside a `confirmed` session and ignores an unknown `connectionType`. A
+> `connection-ended` with no live row of its own (no session, or a session
+> with no `connection-started` yet) is applied once, as a byte count only, to
+> the row the server finalised on this sharer socket within the last 30 s,
+> and ignored otherwise. The server never answers either frame with an `error`
 > — the sharer's heartbeat treats `error` as a fatal disconnect, so losing
 > telemetry must not cost the session. A device row deleted mid-session makes
 > the insert fail the foreign key; that is caught and logged, not propagated.
