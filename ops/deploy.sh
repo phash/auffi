@@ -69,7 +69,8 @@ Usage: $(basename "$0") [options]
 
 Full idempotent deployment — builds images locally, transfers them to the VPS,
 syncs config + viewer dist, restarts services that need it (config or image
-change), waits for health, prunes old images, appends to deploy-log.
+change), waits for health, appends to deploy-log, snapshots the release,
+prunes old images + release snapshots.
 
 Options:
   --dry-run             Print what would happen without executing remote commands.
@@ -78,13 +79,16 @@ Options:
   --skip-tests          Skip the pre-deploy npm test runs (viewer, backend, dashboard).
                         The sharer's cargo tests are never part of a deploy — the
                         sharer is not deployed to the server (separate release flow).
-  --skip-image-prune    Don't prune old backend images on prod after deploy.
+  --skip-image-prune    Don't prune old backend images or release snapshots on prod
+                        after deploy.
   --allow-dirty         Deploy from a working tree with uncommitted changes. Off by
                         default: the image tag is the git SHA, and Step 5 skips the
                         backend build when that tag already exists on prod — a dirty
                         tree would ship edited frontends next to a stale backend.
   --notes "<text>"      Note appended to the deploy-log entry.
-  --rollback            Roll back to the previous SHA from /opt/screenie/.deploy-log:
+  --rollback            Roll back to a SHA from /opt/screenie/.deploy-log — the last
+                        logged SHA when the running APP_VERSION was never logged
+                        (failed deploy), otherwise the second-to-last one:
                         backend image + viewer-dist/dashboard-dist/nginx/coturn
                         (standalone: caddy) from its release snapshot. Without a
                         snapshot only the backend image is rolled back (warned).
