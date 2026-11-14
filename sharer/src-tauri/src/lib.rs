@@ -225,6 +225,39 @@ struct SwitchState(Mutex<Option<mpsc::Sender<SwitchMsg>>>);
 /// outbound relay (on_ice_candidate, receive_offer's answer, the
 /// bye on teardown) reads through this so the same webrtc_peer
 /// wiring works in both modes. See `outbound.rs`.
+/// Set while a `start_streaming` call is between its slot check and the
+/// hand-off of its peer to `WebRtcState` — seconds while the portal dialog
+/// is open, during which `WebRtcState` is still empty.
+struct StreamStartState(std::sync::atomic::AtomicBool);
+
+/// Exclusive right to fill `WebRtcState`, released on drop so every early
+/// return of `start_streaming` frees the slot again.
+struct StreamStartClaim<'a>(&'a std::sync::atomic::AtomicBool);
+
+impl Drop for StreamStartClaim<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+/// Claim the single stream slot, or `None` while a stream is live or another
+/// start is still setting up — otherwise both pass the check and the second
+/// overwrites the first peer without closing it.
+fn claim_stream_start<'a, P>(
+    live: &Option<P>,
+    starting: &'a std::sync::atomic::AtomicBool,
+) -> Option<StreamStartClaim<'a>> {
+    use std::sync::atomic::Ordering;
+    if live.is_some()
+        || starting
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+    {
+        return None;
+    }
+    Some(StreamStartClaim(starting))
+}
+
 struct OutboundSinkState(Arc<tokio::sync::Mutex<Option<outbound::OutboundSink>>>);
 
 /// Per-session telemetry counters (gh #109).
@@ -446,6 +479,7 @@ async fn start_streaming(
     outbound_state: State<'_, OutboundSinkState>,
     unattended_state: State<'_, unattended_cmd::UnattendedState>,
     bytes_state: State<'_, SessionBytesState>,
+    start_state: State<'_, StreamStartState>,
 ) -> Result<(), String> {
     dbg_log(&format!(
         "[start_streaming] enter monitor_id={} session_code=*** os={} arch={} v{}",
@@ -456,13 +490,14 @@ async fn start_streaming(
     ));
 
     // Defensive guard: refuse to stack a second WebRTC peer on top of a
-    // live one. The JS-side peer-joined handler is supposed to call
-    // disconnect_streaming first, but a missing call would otherwise
-    // silently leak a streaming_loop and queue up a second portal dialog
-    // that the compositor may refuse to display.
-    if rtc_state.0.lock().await.is_some() {
-        return Err("ein Stream läuft bereits — disconnect_streaming zuerst aufrufen".to_string());
-    }
+    // live or still-starting one. The JS-side peer-joined handler is
+    // supposed to call disconnect_streaming first, but a missing call would
+    // otherwise silently leak a streaming_loop and queue up a second portal
+    // dialog that the compositor may refuse to display.
+    let _start_claim =
+        claim_stream_start(&*rtc_state.0.lock().await, &start_state.0).ok_or_else(|| {
+            "ein Stream läuft bereits — disconnect_streaming zuerst aufrufen".to_string()
+        })?;
     // TURN credentials, mode-dependent: the unattended path has no
     // session code and asks over its bearer-authenticated heartbeat
     // WSS; the ad-hoc path POSTs the session code to the backend.
@@ -1913,6 +1948,7 @@ pub fn run() {
         ))
         .manage(SignalingState(Mutex::new(None)))
         .manage(WebRtcState(Arc::new(tokio::sync::Mutex::new(None))))
+        .manage(StreamStartState(std::sync::atomic::AtomicBool::new(false)))
         .manage(InputControllerState(Arc::new(tokio::sync::Mutex::new(
             None,
         ))))
@@ -2054,6 +2090,35 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::reportable_relay_bytes;
+
+    #[test]
+    fn a_second_start_is_refused_while_the_first_is_still_setting_up() {
+        use super::claim_stream_start;
+        let starting = std::sync::atomic::AtomicBool::new(false);
+        let empty: Option<()> = None;
+        let first = claim_stream_start(&empty, &starting);
+        assert!(first.is_some());
+        assert!(
+            claim_stream_start(&empty, &starting).is_none(),
+            "the slot is still empty, but the first start owns it"
+        );
+        drop(first);
+        assert!(
+            claim_stream_start(&empty, &starting).is_some(),
+            "a failed start must free the slot again"
+        );
+    }
+
+    #[test]
+    fn a_start_is_refused_while_a_stream_is_live() {
+        use super::claim_stream_start;
+        let starting = std::sync::atomic::AtomicBool::new(false);
+        assert!(claim_stream_start(&Some(()), &starting).is_none());
+        assert!(
+            claim_stream_start(&None::<()>, &starting).is_some(),
+            "a refusal must not leave the slot claimed"
+        );
+    }
     use std::sync::{Arc, Mutex};
 
     // The shell plugin's `open` ignores the capability's `allow` URLs, so the
