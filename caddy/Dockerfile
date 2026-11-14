@@ -7,8 +7,14 @@
 # Directive (der Cluster-Proxy ist aus demselben Grund ein Custom-Build
 # `caddy-custom:<version>-ratelimit`, siehe docs/footguns.md § Cluster-Ops).
 # Builder- und Runtime-Tag, das Image-Tag in docker-compose.prod.yml und
-# ops/lib.sh::caddy_validate_local laufen im Gleichschritt; der Cluster-Build
-# wird bei jedem Bump auf dieselbe Version nachgezogen.
+# ops/lib.sh::caddy_validate_local laufen im Gleichschritt (Guard:
+# ops/tests/caddy-version-lockstep.test.sh). Dependabot bumpt nur die
+# FROM-Zeilen (`auffi-*` ist in .github/dependabot.yml ignoriert) — in
+# seinem caddy-PR Compose-Tag und lib.sh-Fallback von Hand nachziehen.
+# Der Cluster-Proxy wird von keiner Datei hier gebaut: er bleibt auf seiner
+# Version (Stand docs/footguns.md § Cluster-Ops), bis er auf dem
+# Cluster-Host von Hand neu gebaut wird — Standalone und Cluster können
+# also auseinanderlaufen.
 #
 # Gebaut wird das Image von `docker compose up` (build:-Stanza in
 # docker-compose.prod.yml) und von ops/lib.sh::caddy_validate_local.

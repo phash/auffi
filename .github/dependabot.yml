@@ -80,7 +80,10 @@ updates:
       - dependency-name: nginx
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       # Locally built images (auffi-caddy, auffi-backend) are not on any
-      # registry; looking them up failed every weekly compose run.
+      # registry; looking them up failed every weekly compose run. So the
+      # /caddy docker PR bumps only the FROM lines: edit the auffi-caddy tag
+      # in docker-compose.prod.yml and the ops/lib.sh fallback in that PR
+      # (ops/tests/caddy-version-lockstep.test.sh keeps it red until then).
       - dependency-name: "auffi-*"
 
   - package-ecosystem: github-actions
