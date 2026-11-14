@@ -28,7 +28,7 @@ import {
   type RouteContext,
   type RouteRenderer,
 } from "../router.js";
-import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
+import { redirectIfSessionExpired, redirectToLogin, reprobeIfAdminRevoked } from "../session.js";
 import { ADMIN_USER_ERRORS, localizedError } from "../error-copy.js";
 
 export const renderAdminUserDetail: RouteRenderer = (
@@ -67,6 +67,7 @@ export const renderAdminUserDetail: RouteRenderer = (
         redirectToLogin();
         return;
       }
+      reprobeIfAdminRevoked(res);
       while (root.firstChild) root.removeChild(root.firstChild);
       const err = document.createElement("section");
       err.className = "card";
@@ -316,7 +317,10 @@ export const renderAdminUserDetail: RouteRenderer = (
       const res = await patchAdminUser(user.id, action, reason);
       setBarDisabled(false);
       if (!res.ok) {
-        if (!redirectIfSessionExpired(res)) showActionError(localizedError(res, ADMIN_USER_ERRORS));
+        if (!redirectIfSessionExpired(res)) {
+          reprobeIfAdminRevoked(res);
+          showActionError(localizedError(res, ADMIN_USER_ERRORS));
+        }
         return;
       }
       void load(); // refetch
@@ -329,7 +333,10 @@ export const renderAdminUserDetail: RouteRenderer = (
       const res = await deleteAdminUser(user.id, reason);
       setBarDisabled(false);
       if (!res.ok) {
-        if (!redirectIfSessionExpired(res)) showActionError(localizedError(res, ADMIN_USER_ERRORS));
+        if (!redirectIfSessionExpired(res)) {
+          reprobeIfAdminRevoked(res);
+          showActionError(localizedError(res, ADMIN_USER_ERRORS));
+        }
         return;
       }
       navigate("/admin/users");

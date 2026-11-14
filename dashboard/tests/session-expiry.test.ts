@@ -278,3 +278,88 @@ describe("expired session on a mutation", () => {
     expect(toggle.checked).toBe(true);
   });
 });
+
+// Another admin demoted this one: the backend answers 403 admin-required.
+// The cached admin flag must follow so main.ts drops the Admin nav and the
+// router swaps in the "kein Admin" page.
+
+/** /api/me says "no longer admin"; the admin routes answer 403 (loads, or only mutations). */
+function backendWithRevokedAdmin(onlyMutations: boolean): void {
+  _setApiClientForTests({
+    base: "",
+    fetch: vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/me") return jsonResponse({ ...ME, admin: false });
+      if (!onlyMutations || method !== "GET") {
+        return jsonResponse({ error: "admin-required", message: "admin privileges required" }, 403);
+      }
+      if (url.startsWith("/api/admin/users/")) return jsonResponse(ADMIN_USER);
+      if (url.startsWith("/api/admin/feedback")) return jsonResponse({ items: [FEEDBACK], nextCursor: null });
+      throw new Error(`unexpected ${method} ${url}`);
+    }) as unknown as typeof fetch,
+  });
+}
+
+async function startAsAdmin(): Promise<void> {
+  _setApiClientForTests({
+    base: "",
+    fetch: vi.fn(async () => jsonResponse(ME)) as unknown as typeof fetch,
+  });
+  await refreshSession();
+  expect(isAdmin()).toBe(true);
+}
+
+function renderAt(path: string, render: RouteRenderer, params: Record<string, string>): HTMLElement {
+  window.history.pushState({}, "", `${BASE_PATH}/${path}`);
+  const root = makeRoot();
+  render(root, { path: `/${path}`, segments: path.split("/"), params, query: new URLSearchParams() });
+  return root;
+}
+
+describe("admin rights revoked while the dashboard is open", () => {
+  afterEach(() => {
+    _setApiClientForTests(null);
+    _resetSessionForTests();
+    document.getElementById("admin-modal-backdrop")?.remove();
+  });
+
+  it.each<[string, RouteRenderer, Record<string, string>]>([
+    ["admin", renderAdminOverview, {}],
+    ["admin/stats", renderAdminStats, {}],
+    ["admin/users", renderAdminUsers, {}],
+    ["admin/users/:id", renderAdminUserDetail, { id: "7" }],
+    ["admin/feedback", renderAdminFeedback, {}],
+  ])("a 403 on loading %s re-probes and drops the cached admin flag", async (path, render, params) => {
+    await startAsAdmin();
+    backendWithRevokedAdmin(false);
+    renderAt(path, render, params);
+    await flush();
+    expect(isAdmin()).toBe(false);
+    expect(isLoggedIn()).toBe(true);
+  });
+
+  it.each<[string, string, RouteRenderer, Record<string, string>, () => Promise<void>]>([
+    ["admin user action", "admin/users/7", renderAdminUserDetail, { id: "7" }, async () => {
+      button("Suspendieren").click();
+      confirmWithTypedReason();
+    }],
+    ["admin feedback toggle", "admin/feedback", renderAdminFeedback, {}, async () => {
+      button("Erledigen").click();
+    }],
+    ["admin feedback reply", "admin/feedback", renderAdminFeedback, {}, async () => {
+      button("Antworten").click();
+      (document.querySelector("textarea") as HTMLTextAreaElement).value = "Danke!";
+      button("Senden").click();
+    }],
+  ])("a 403 on %s re-probes and drops the cached admin flag", async (_name, path, render, params, act) => {
+    await startAsAdmin();
+    backendWithRevokedAdmin(true);
+    const root = renderAt(path, render, params);
+    await flush();
+    await act();
+    await flush();
+    expect(isAdmin()).toBe(false);
+    expect(root.textContent).not.toContain("admin privileges required");
+  });
+});

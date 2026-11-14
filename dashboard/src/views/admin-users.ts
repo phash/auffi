@@ -23,7 +23,7 @@ import {
   type RouteContext,
   type RouteRenderer,
 } from "../router.js";
-import { redirectToLogin } from "../session.js";
+import { redirectToLogin, reprobeIfAdminRevoked } from "../session.js";
 
 type Filter = AdminUserStatus | "alle";
 
@@ -165,6 +165,7 @@ export const renderAdminUsers: RouteRenderer = (
         if (!unmounted) redirectToLogin();
         return;
       }
+      reprobeIfAdminRevoked(res);
       status.className = "error";
       status.style.display = "block";
       status.textContent =

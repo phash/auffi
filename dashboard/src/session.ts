@@ -98,6 +98,16 @@ export function redirectIfSessionExpired(res: { status: number }): boolean {
   return true;
 }
 
+/**
+ * Call in every admin-route `!res.ok` branch: 403 admin-required means
+ * another admin demoted this account while it was signed in. Re-probing
+ * lets onSessionChange drop the Admin nav and the router swap in the
+ * "kein Admin" page instead of a stale admin UI that only errors.
+ */
+export function reprobeIfAdminRevoked(res: { status: number; code: string }): void {
+  if (res.status === 403 && res.code === "admin-required") void refreshSession();
+}
+
 /** Test seam — reset to the unresolved anonymous boot state and drop listeners. */
 export function _resetSessionForTests(): void {
   current = ANONYMOUS;

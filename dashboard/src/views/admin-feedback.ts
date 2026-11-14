@@ -23,7 +23,7 @@ import {
 import { formatAbsolute } from "../format.js";
 import { confirmDialog } from "../components/confirm-dialog.js";
 import { type RouteContext, type RouteRenderer } from "../router.js";
-import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
+import { redirectIfSessionExpired, redirectToLogin, reprobeIfAdminRevoked } from "../session.js";
 import { ADMIN_FEEDBACK_ERRORS, localizedError } from "../error-copy.js";
 
 type Tab = "open" | "resolved" | "all";
@@ -129,6 +129,7 @@ export const renderAdminFeedback: RouteRenderer = (
         redirectToLogin();
         return;
       }
+      reprobeIfAdminRevoked(res);
       status.textContent =
         res.status === 403
           ? "Du musst Admin sein, um Feedback zu sehen."
@@ -172,8 +173,9 @@ export const renderAdminFeedback: RouteRenderer = (
         redirectToLogin();
         return;
       }
+      reprobeIfAdminRevoked(res);
       // Fehler sichtbar machen und den Button als Retry-Pfad stehen lassen.
-      status.textContent = `Fehler: ${res.message}`;
+      status.textContent = `Fehler: ${localizedError(res, ADMIN_FEEDBACK_ERRORS)}`;
       status.className = "error";
       return;
     }
@@ -292,6 +294,7 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
     toggleBtn.disabled = false;
     if (!res.ok) {
       if (!redirectIfSessionExpired(res)) {
+        reprobeIfAdminRevoked(res);
         showActionError(localizedError(res, ADMIN_FEEDBACK_ERRORS));
       }
       return;
@@ -342,6 +345,7 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
     deleteBtn.disabled = false;
     if (!res.ok) {
       if (!redirectIfSessionExpired(res)) {
+        reprobeIfAdminRevoked(res);
         showActionError(localizedError(res, ADMIN_FEEDBACK_ERRORS));
       }
       return;
@@ -417,6 +421,7 @@ function buildReplyPanel(
     cancelBtn.disabled = false;
     if (!res.ok) {
       if (redirectIfSessionExpired(res)) return;
+      reprobeIfAdminRevoked(res);
       status.textContent = `Fehler: ${localizedError(res, ADMIN_FEEDBACK_ERRORS)}`;
       status.className = "feedback-admin-reply-status err";
       return;

@@ -363,7 +363,7 @@ describe("renderAdminUserDetail — actions", () => {
 
 describe("renderAdminUserDetail — load errors", () => {
   it.each([
-    [403, { error: "forbidden", message: "admin only" }, "Du musst Admin sein."],
+    [403, { error: "admin-required", message: "admin privileges required" }, "Du musst Admin sein."],
     [404, { error: "not-found", message: "no such user" }, "Nutzer #7 nicht gefunden."],
     [500, { error: "internal", message: "kaputt" }, "Fehler: kaputt"],
   ])("HTTP %i shows its own copy and no action bar", async (status, body, expected) => {

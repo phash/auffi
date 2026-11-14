@@ -13,7 +13,7 @@ import {
 } from "../api.js";
 import { formatBytes, formatUptime } from "../format.js";
 import { type RouteContext, type RouteRenderer } from "../router.js";
-import { redirectToLogin } from "../session.js";
+import { redirectToLogin, reprobeIfAdminRevoked } from "../session.js";
 
 export const renderAdminStats: RouteRenderer = (
   root: HTMLElement,
@@ -61,6 +61,7 @@ export const renderAdminStats: RouteRenderer = (
       // TS narrowt das aber nicht über die `||`-Verzweigung, also
       // cast über den Discriminant.
       const err = which as Extract<typeof which, { ok: false }>;
+      reprobeIfAdminRevoked(err);
       status.className = "error";
       status.textContent =
         err.status === 403

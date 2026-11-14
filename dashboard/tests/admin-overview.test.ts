@@ -60,7 +60,7 @@ describe("renderAdminOverview", () => {
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async () =>
-        jsonResponse({ error: "forbidden", message: "admin only" }, 403),
+        jsonResponse({ error: "admin-required", message: "admin privileges required" }, 403),
       ) as unknown as typeof fetch,
     });
     const root = makeRoot();

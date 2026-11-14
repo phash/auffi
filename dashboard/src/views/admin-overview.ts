@@ -14,7 +14,7 @@ import {
 } from "../api.js";
 import { formatBytes } from "../format.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
-import { redirectToLogin } from "../session.js";
+import { redirectToLogin, reprobeIfAdminRevoked } from "../session.js";
 
 export const renderAdminOverview: RouteRenderer = (
   root: HTMLElement,
@@ -55,6 +55,7 @@ export const renderAdminOverview: RouteRenderer = (
         typeof statsRes | typeof codesRes,
         { ok: false }
       >;
+      reprobeIfAdminRevoked(err);
       status.className = "error";
       status.textContent =
         err.status === 403
