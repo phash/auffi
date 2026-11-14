@@ -274,6 +274,49 @@ describe("renderAdminFeedback — lifecycle + error surfaces", () => {
     expect(err.textContent).toContain("kaputt");
     alertSpy.mockRestore();
   });
+
+  it("shows German copy when the row was deleted in another tab", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return jsonResponse({ error: "not-found", message: "feedback row not found" }, 404);
+        }
+        return jsonResponse({ items: [feedbackItem(1)], nextCursor: null });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAdminFeedback(root, ctx());
+    await flush();
+    findButton(root, "Erledigen").click();
+    await flush();
+    const err = root.querySelector('.feedback-admin-card [role="alert"]') as HTMLElement;
+    expect(err.textContent).toBe(
+      "Fehler: Feedback-Eintrag nicht gefunden — wurde er inzwischen gelöscht?",
+    );
+  });
+
+  it("shows German copy when the backend rejects the reply text", async () => {
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (input: unknown) => {
+        if (String(input).includes("/reply")) {
+          return jsonResponse({ error: "bad-reply", message: "reply must not be empty" }, 400);
+        }
+        return jsonResponse({ items: [feedbackItem(1)], nextCursor: null });
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    renderAdminFeedback(root, ctx());
+    await flush();
+    findButton(root, "Antworten").click();
+    (root.querySelector("textarea") as HTMLTextAreaElement).value = "x";
+    findButton(root, "Senden").click();
+    await flush();
+    expect((root.querySelector(".feedback-admin-reply-status") as HTMLElement).textContent).toBe(
+      "Fehler: Bitte Text eingeben.",
+    );
+  });
 });
 
 describe("renderAdminFeedback — tab-race guard", () => {

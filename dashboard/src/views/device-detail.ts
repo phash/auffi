@@ -20,6 +20,7 @@ import { formatRelative } from "../format.js";
 import { confirmDialog } from "../components/confirm-dialog.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
 import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
+import { DEVICE_ERRORS, localizedError } from "../error-copy.js";
 
 export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -184,7 +185,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
     }
     if (redirectIfSessionExpired(res)) return;
     aliasStatus.style.color = "var(--error)";
-    aliasStatus.textContent = `Fehler: ${res.message}`;
+    aliasStatus.textContent = `Fehler: ${localizedError(res, DEVICE_ERRORS)}`;
   });
   card.appendChild(aliasForm);
 
@@ -254,7 +255,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
     autoToggle.checked = !next;
     if (redirectIfSessionExpired(res)) return;
     autoStatus.style.color = "var(--error)";
-    autoStatus.textContent = `Fehler: ${res.message}`;
+    autoStatus.textContent = `Fehler: ${localizedError(res, DEVICE_ERRORS)}`;
   });
 
   // ── Danger zone: delete ─────────────────────────────────────────
@@ -314,7 +315,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
     dangerBtn.disabled = false;
     dangerBtn.textContent = "Gerät entkoppeln";
     dangerStatus.style.color = "var(--error)";
-    dangerStatus.textContent = `Fehler: ${res.message}`;
+    dangerStatus.textContent = `Fehler: ${localizedError(res, DEVICE_ERRORS)}`;
   });
 
   danger.appendChild(dangerBtn);

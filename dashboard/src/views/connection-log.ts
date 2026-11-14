@@ -13,6 +13,7 @@ import {
 import { formatAbsolute, formatBytes, formatDuration } from "../format.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
 import { redirectToLogin } from "../session.js";
+import { DEVICE_ERRORS, localizedError } from "../error-copy.js";
 
 export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -92,7 +93,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
       // The status line is display:none after the first successful page
       // — bring it back so the error is actually visible.
       status.style.display = "block";
-      status.textContent = `Protokoll konnte nicht geladen werden: ${res.message}`;
+      status.textContent = `Protokoll konnte nicht geladen werden: ${localizedError(res, DEVICE_ERRORS)}`;
       if (wasEmpty) {
         more.style.display = "none";
       } else {

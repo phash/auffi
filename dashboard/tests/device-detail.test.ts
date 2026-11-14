@@ -323,7 +323,7 @@ describe("renderDeviceDetail — error paths", () => {
     root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
     await flush();
     expect(root.querySelector("h1")!.textContent).toBe(SEED.alias);
-    expect(aliasStatus(root).textContent).toBe("Fehler: alias rejected");
+    expect(aliasStatus(root).textContent).toBe("Fehler: Name muss 1–80 Zeichen haben.");
     const submit = root.querySelector("form button[type=submit]") as HTMLButtonElement;
     expect(submit.disabled).toBe(false);
     expect(submit.textContent).toBe("Name speichern");
@@ -361,6 +361,19 @@ describe("renderDeviceDetail — error paths", () => {
     expect(deleteBtn.disabled).toBe(false);
     expect(deleteBtn.textContent).toBe("Gerät entkoppeln");
     expect(root.textContent).toContain("Fehler: revoke failed");
+  });
+
+  it("explains in German when the device was unpaired in another tab", async () => {
+    deviceBackend([SEED], () => jsonResponse({ error: "forbidden", message: "not your device" }, 403));
+    const root = makeRoot();
+    renderDeviceDetail(root, ctx(SEED.id));
+    await flush();
+    const toggle = root.querySelector("#dev-auto-accept") as HTMLInputElement;
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event("change"));
+    await flush();
+    expect(root.textContent).not.toContain("not your device");
+    expect(root.textContent).toContain("gehört nicht (mehr) zu deinem Account");
   });
 });
 

@@ -294,7 +294,7 @@ describe("renderConnectionLog", () => {
     expect(window.location.pathname).toBe(before);
   });
 
-  it("surfaces a 403 (forbidden — cross-account) as an error", async () => {
+  it("surfaces a 403 (forbidden — cross-account) as a German error", async () => {
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async () =>
@@ -304,9 +304,9 @@ describe("renderConnectionLog", () => {
     const root = makeRoot();
     renderConnectionLog(root, ctx("111-222-333"));
     await flush();
-    expect((root.querySelector(".error") as HTMLElement).textContent).toContain(
-      "not your device",
-    );
+    const status = root.querySelector(".error") as HTMLElement;
+    expect(status.textContent).not.toContain("not your device");
+    expect(status.textContent).toContain("gehört nicht (mehr) zu deinem Account");
   });
 
   it("guards against missing device id in the route", () => {

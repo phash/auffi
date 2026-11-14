@@ -24,6 +24,7 @@ import { formatAbsolute } from "../format.js";
 import { confirmDialog } from "../components/confirm-dialog.js";
 import { type RouteContext, type RouteRenderer } from "../router.js";
 import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
+import { ADMIN_FEEDBACK_ERRORS, localizedError } from "../error-copy.js";
 
 type Tab = "open" | "resolved" | "all";
 
@@ -290,7 +291,9 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
     const res = await patchAdminFeedback(item.id, !item.resolvedAt);
     toggleBtn.disabled = false;
     if (!res.ok) {
-      if (!redirectIfSessionExpired(res)) showActionError(res.message);
+      if (!redirectIfSessionExpired(res)) {
+        showActionError(localizedError(res, ADMIN_FEEDBACK_ERRORS));
+      }
       return;
     }
     onChange();
@@ -338,7 +341,9 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
     const res = await deleteAdminFeedback(item.id);
     deleteBtn.disabled = false;
     if (!res.ok) {
-      if (!redirectIfSessionExpired(res)) showActionError(res.message);
+      if (!redirectIfSessionExpired(res)) {
+        showActionError(localizedError(res, ADMIN_FEEDBACK_ERRORS));
+      }
       return;
     }
     onChange();
@@ -412,7 +417,7 @@ function buildReplyPanel(
     cancelBtn.disabled = false;
     if (!res.ok) {
       if (redirectIfSessionExpired(res)) return;
-      status.textContent = `Fehler: ${res.message}`;
+      status.textContent = `Fehler: ${localizedError(res, ADMIN_FEEDBACK_ERRORS)}`;
       status.className = "feedback-admin-reply-status err";
       return;
     }

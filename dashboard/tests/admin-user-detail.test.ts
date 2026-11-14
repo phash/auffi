@@ -340,6 +340,25 @@ describe("renderAdminUserDetail — actions", () => {
     await settle();
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
   });
+
+  it("points to the account page in German when an admin deletes their own account", async () => {
+    fakeBackend(USER, {
+      del: () =>
+        jsonResponse(
+          { error: "no-self-delete", message: "use DELETE /api/me to delete your own account" },
+          409,
+        ),
+    });
+    const root = makeRoot();
+    renderAdminUserDetail(root, ctx);
+    await settle();
+    button(root, "Löschen").click();
+    fillModalAndConfirm();
+    await settle();
+    expect((root.querySelector('[role="alert"]') as HTMLElement).textContent).toBe(
+      "Fehler: Den eigenen Account löschst du unter „Konto“.",
+    );
+  });
 });
 
 describe("renderAdminUserDetail — load errors", () => {
