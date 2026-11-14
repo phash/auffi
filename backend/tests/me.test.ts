@@ -8,6 +8,7 @@ import { registerMeRoutes, type AccountMailer } from "../src/account/me.js";
 import { captureTransport } from "../src/email/transport.js";
 import { buildAuthMailer } from "../src/email/mailer.js";
 import { UnattendedRegistry } from "../src/unattended.js";
+import { hashToken, newToken } from "../src/auth/tokens.js";
 import type { WebSocket } from "ws";
 
 function recordingChangeMailer(): AccountMailer & { sent: { to: string; token: string }[] } {
@@ -657,5 +658,124 @@ describe("DELETE /api/me — the last admin cannot delete themselves", () => {
       .run("benched@example.com", "$argon2id$unused", Date.now(), Date.now(), Date.now());
     const { status } = await del(cookie);
     expect(status).toBe(409);
+  });
+});
+
+// A pending email change or an unused reset link is a way back into the
+// account. Whoever replaces the password (the mailbox owner via reset, or the
+// logged-in owner via PATCH) must close those ways, or a squatter who signed
+// up with the victim's address keeps a link that later swaps the email to
+// theirs.
+describe("password replacement drops the other ways back into the account", () => {
+  let h: Awaited<ReturnType<typeof build>>;
+  let cookie: string;
+  beforeEach(async () => {
+    h = await build();
+    cookie = await h.cookie();
+  });
+  afterEach(async () => {
+    await h.app.close();
+    h.db.close();
+  });
+
+  function stashResetLink(): string {
+    const token = newToken();
+    h.db
+      .prepare(
+        "INSERT INTO password_resets (token_hash, account_id, expires_at, used_at) VALUES (?, 1, ?, NULL)",
+      )
+      .run(hashToken(token), Date.now() + 60_000);
+    return token;
+  }
+
+  async function queueEmailChange(to: string): Promise<string> {
+    await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", new_email: to },
+    });
+    return h.changeMailer.sent[h.changeMailer.sent.length - 1].token;
+  }
+
+  function accountRow(): { email: string; email_verified_at: number | null } {
+    return h.db
+      .prepare<[], { email: string; email_verified_at: number | null }>(
+        "SELECT email, email_verified_at FROM accounts WHERE id = 1",
+      )
+      .get()!;
+  }
+
+  it("a reset voids a pending email change queued before it", async () => {
+    const changeToken = await queueEmailChange("squatter@example.com");
+    const reset = await h.app.inject({
+      method: "POST",
+      url: `/api/auth/reset/${stashResetLink()}`,
+      payload: { password: "the-owners-new-password" },
+    });
+    expect(reset.statusCode).toBe(200);
+
+    const click = await h.app.inject({ method: "GET", url: `/api/me/email-change/${changeToken}` });
+    expect(click.statusCode).toBe(410);
+    expect(accountRow().email).toBe("henry@example.com");
+  });
+
+  it("a reset marks the account verified: the mailed link proves the mailbox", async () => {
+    expect(accountRow().email_verified_at).toBeNull();
+    await h.app.inject({
+      method: "POST",
+      url: `/api/auth/reset/${stashResetLink()}`,
+      payload: { password: "the-owners-new-password" },
+    });
+    expect(accountRow().email_verified_at).not.toBeNull();
+  });
+
+  it("a password change voids a stashed reset link", async () => {
+    const stashed = stashResetLink();
+    const change = await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", new_password: "the-owners-new-password" },
+    });
+    expect(change.statusCode).toBe(200);
+
+    const reset = await h.app.inject({
+      method: "POST",
+      url: `/api/auth/reset/${stashed}`,
+      payload: { password: "the-attackers-password" },
+    });
+    expect(reset.statusCode).toBe(410);
+  });
+
+  it("a password change voids a pending email change", async () => {
+    const changeToken = await queueEmailChange("squatter@example.com");
+    await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", new_password: "the-owners-new-password" },
+    });
+    const click = await h.app.inject({ method: "GET", url: `/api/me/email-change/${changeToken}` });
+    expect(click.statusCode).toBe(410);
+    expect(accountRow().email).toBe("henry@example.com");
+  });
+
+  it("keeps the email change requested in the same PATCH as the password change", async () => {
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: {
+        current_password: "the-current-password",
+        new_email: "henry-new@example.com",
+        new_password: "the-owners-new-password",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const token = h.changeMailer.sent[0].token;
+    const click = await h.app.inject({ method: "GET", url: `/api/me/email-change/${token}` });
+    expect(click.statusCode).toBe(200);
+    expect(accountRow().email).toBe("henry-new@example.com");
   });
 });

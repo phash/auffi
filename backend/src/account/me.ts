@@ -162,7 +162,8 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
       // Email change: queue a pending row + send verify mail to the NEW
       // address. The accounts.email column is NOT touched yet — the
       // verify-link click is what actually performs the swap.
-      if (newEmail && newEmail !== account.email.toLowerCase()) {
+      const queuedEmailChange = !!newEmail && newEmail !== account.email.toLowerCase();
+      if (queuedEmailChange) {
         // Reject if the new address is already taken by another verified
         // account. Use a soft uniqueness check rather than relying on the
         // unique index because the unique only fires at the verify step
@@ -198,6 +199,16 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
             newHash,
             account.id,
           );
+          // A stashed reset link or a pending email change is a way back
+          // in for whoever held the old password or the mailbox briefly.
+          // An email change queued by this same request is the owner's own
+          // and stays.
+          db.prepare("DELETE FROM password_resets WHERE account_id = ? AND used_at IS NULL").run(
+            account.id,
+          );
+          if (!queuedEmailChange) {
+            db.prepare("DELETE FROM pending_email_changes WHERE account_id = ?").run(account.id);
+          }
           deleteAllSessionsForAccount(db, account.id);
         });
         tx();

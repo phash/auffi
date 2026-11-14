@@ -384,7 +384,15 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
       db.prepare("DELETE FROM password_resets WHERE account_id = ? AND used_at IS NULL").run(
         row.account_id,
       );
-      db.prepare("UPDATE accounts SET password_hash = ? WHERE id = ?").run(newHash, row.account_id);
+      // Same for a pending email change: one queued by a squatter who
+      // signed up with the owner's address would otherwise, clicked after
+      // this reset, move the account the owner now uses to the squatter's
+      // mailbox. Redeeming the mailed link proves control of the address,
+      // so it also verifies an account whose signup mail was never clicked.
+      db.prepare("DELETE FROM pending_email_changes WHERE account_id = ?").run(row.account_id);
+      db.prepare(
+        "UPDATE accounts SET password_hash = ?, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?",
+      ).run(newHash, now, row.account_id);
       // Spec §4.5 step 3: a successful reset invalidates every other
       // session of the account — log everyone else out.
       deleteAllSessionsForAccount(db, row.account_id);
