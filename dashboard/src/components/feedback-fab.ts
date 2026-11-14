@@ -11,7 +11,7 @@
 // The form posts to POST /api/feedback with source="dashboard".
 // Auth flows via the existing __Host-auffi_session cookie.
 
-import { submitFeedback, type FeedbackCategory } from "../api.js";
+import { submitFeedback, type ApiErr, type FeedbackCategory } from "../api.js";
 import { trapFocus } from "../focus-trap.js";
 
 const FAB_ID = "feedback-fab";
@@ -258,7 +258,7 @@ function openModal(): void {
       showToast("Danke fürs Feedback!");
     } else {
       submitBtn.disabled = false;
-      status.textContent = res.message;
+      status.textContent = friendlySubmitError(res);
       status.className = "feedback-modal-status err";
     }
   });
@@ -268,6 +268,22 @@ function openModal(): void {
   // lands on the primary input.
   releaseTrap = trapFocus(overlay, close);
   bodyArea.focus();
+}
+
+// The form's fixed controls and maxLength rule out the backend's
+// bad-body/-rating/-category answers, so only the session and a generic
+// failure need their own copy.
+function friendlySubmitError(res: ApiErr): string {
+  switch (res.code) {
+    case "no-auth":
+      return "Sitzung abgelaufen, bitte neu anmelden.";
+    // request() already puts German copy into these two messages.
+    case "rate-limit":
+    case "network-error":
+      return res.message;
+    default:
+      return "Feedback konnte nicht gesendet werden. Bitte später erneut versuchen.";
+  }
 }
 
 function showToast(message: string): void {
