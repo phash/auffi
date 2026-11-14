@@ -527,3 +527,57 @@ describe("InputCapture: losing window focus releases what is held", () => {
     document.body.removeChild(video);
   });
 });
+
+describe("InputCapture: button events carry their own position", () => {
+  const rect100 = (): DOMRect => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
+  const nextFrame = (): Promise<void> => new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+  it("a tap without any preceding pointermove moves to the tap position before pressing", () => {
+    const video = makeVideo(100, 100);
+    video.getBoundingClientRect = rect100;
+    const emit = vi.fn();
+    new InputCapture(video, emit).enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0, clientX: 25, clientY: 75 }));
+    expect(emit.mock.calls.map((c) => c[0])).toEqual([
+      { kind: "mouse-move", x: 0.25, y: 0.75 },
+      { kind: "mouse-button", button: "left", pressed: true },
+    ]);
+  });
+
+  it("a press inside the same frame as a move supersedes the coalesced move", async () => {
+    const video = makeVideo(100, 100);
+    video.getBoundingClientRect = rect100;
+    const emit = vi.fn();
+    new InputCapture(video, emit).enable();
+    video.dispatchEvent(new PointerEvent("pointermove", { clientX: 10, clientY: 10 }));
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0, clientX: 50, clientY: 50 }));
+    await nextFrame();
+    expect(emit.mock.calls.map((c) => c[0])).toEqual([
+      { kind: "mouse-move", x: 0.5, y: 0.5 },
+      { kind: "mouse-button", button: "left", pressed: true },
+    ]);
+  });
+
+  it("a release at a new position moves there before releasing", () => {
+    const video = makeVideo(100, 100);
+    video.getBoundingClientRect = rect100;
+    const emit = vi.fn();
+    new InputCapture(video, emit).enable();
+    video.dispatchEvent(new PointerEvent("pointerdown", { button: 0, clientX: 10, clientY: 10 }));
+    emit.mockClear();
+    video.dispatchEvent(new PointerEvent("pointerup", { button: 0, clientX: 90, clientY: 40 }));
+    expect(emit.mock.calls.map((c) => c[0])).toEqual([
+      { kind: "mouse-move", x: 0.9, y: 0.4 },
+      { kind: "mouse-button", button: "left", pressed: false },
+    ]);
+  });
+
+  it("disables browser touch gestures on the video only while capturing", () => {
+    const video = makeVideo(100, 100);
+    const cap = new InputCapture(video, vi.fn());
+    cap.enable();
+    expect(video.classList.contains("input-captured")).toBe(true);
+    cap.disable();
+    expect(video.classList.contains("input-captured")).toBe(false);
+  });
+});

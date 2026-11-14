@@ -989,6 +989,9 @@ body.streaming .hero-alt-cta { display: none; }
   transition: opacity 400ms ease, transform 180ms ease;
 }
 #remote-video.active { display: block; opacity: 1; }
+/* Without this a touch on the video starts a browser pan, which fires
+   pointercancel and turns every tap into a press plus synthesized release. */
+#remote-video.input-captured { touch-action: none; }
 
 /* Disconnect button overlaid on the video ── */
 #disconnect {

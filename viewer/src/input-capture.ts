@@ -114,6 +114,7 @@ export class InputCapture {
     if (this.enabled) return;
     this.enabled = true;
     this.video.tabIndex = 0;
+    this.video.classList.add("input-captured");
 
     // requestAnimationFrame throttle for pointermove. Without this, a
     // 1000 Hz mouse floods the input data channel with JSON-serialized
@@ -138,18 +139,24 @@ export class InputCapture {
       this.emit({ kind: "mouse-move", x, y });
     };
     const onMove = (e: Event): void => {
-      const ev = e as PointerEvent;
-      const rect = this.video.getBoundingClientRect();
-      const content = videoContentRect(rect, this.video.videoWidth, this.video.videoHeight);
-      if (content.width <= 0 || content.height <= 0) return;
-      pendingMove = {
-        x: clamp01((ev.clientX - content.left) / content.width),
-        y: clamp01((ev.clientY - content.top) / content.height),
-      };
+      const pos = this.normalizedPosition(e as PointerEvent);
+      if (pos === null) return;
+      pendingMove = pos;
       if (!movePending) {
         movePending = true;
         requestAnimationFrame(flushMove);
       }
+    };
+
+    // The channel is ordered, so a press sent before the still-coalesced
+    // move would land at the stale remote position, and a touch/pen tap has
+    // no pointermove before pointerdown at all. Send the event's own position
+    // first; it supersedes the pending move, so the scheduled flush no-ops.
+    const moveTo = (ev: PointerEvent): void => {
+      const pos = this.normalizedPosition(ev);
+      if (pos === null) return;
+      pendingMove = null;
+      this.emit({ kind: "mouse-move", ...pos });
     };
 
     const onDown = (e: Event): void => {
@@ -169,6 +176,7 @@ export class InputCapture {
           // release in that case.
         }
       }
+      moveTo(ev);
       this.emit({ kind: "mouse-button", button, pressed: true });
       this.heldButtons.add(button);
     };
@@ -177,6 +185,7 @@ export class InputCapture {
       const ev = e as PointerEvent;
       const button = BUTTON_MAP[ev.button];
       if (button === undefined) return;
+      moveTo(ev);
       this.emit({ kind: "mouse-button", button, pressed: false });
       this.heldButtons.delete(button);
     };
@@ -249,6 +258,7 @@ export class InputCapture {
 
   disable(): void {
     this.enabled = false;
+    this.video.classList.remove("input-captured");
     // Release before detaching, while the input channel is still up:
     // teardown calls disable() before closing the peer, and the Esc-to-stop
     // path removes the listeners before the user's keyup can arrive.
@@ -263,6 +273,16 @@ export class InputCapture {
     }
     this.wheelAccX = 0;
     this.wheelAccY = 0;
+  }
+
+  private normalizedPosition(ev: PointerEvent): { x: number; y: number } | null {
+    const rect = this.video.getBoundingClientRect();
+    const content = videoContentRect(rect, this.video.videoWidth, this.video.videoHeight);
+    if (content.width <= 0 || content.height <= 0) return null;
+    return {
+      x: clamp01((ev.clientX - content.left) / content.width),
+      y: clamp01((ev.clientY - content.top) / content.height),
+    };
   }
 
   /** Forward a release for every button and key still held. */
