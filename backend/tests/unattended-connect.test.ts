@@ -4,7 +4,7 @@ import websocketPlugin from "@fastify/websocket";
 import WebSocket from "ws";
 import { createServer } from "../src/server.js";
 import { registerSignaling } from "../src/signaling.js";
-import { SessionStore } from "../src/codes.js";
+import { SessionStore, TURN_CREDENTIALS_PER_JOIN, TURN_CREDENTIALS_UP_FRONT } from "../src/codes.js";
 import { UnattendedRegistry } from "../src/unattended.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { hashPassword } from "../src/auth/argon.js";
@@ -16,6 +16,7 @@ import {
   PW_LOCKOUT_MS,
   recordPwFail,
   resetPwFail,
+  UNATTENDED_TURN_WINDOW_MS,
   UnattendedSessions,
 } from "../src/unattended_sessions.js";
 
@@ -199,6 +200,56 @@ describe("UnattendedSessions", () => {
     expect(stale.map((x) => x.deviceId)).toEqual(["111-111-111"]);
     // Confirmed sessions live until a peer disconnects.
     expect(ss.findByDeviceId("222-222-222")).not.toBeNull();
+  });
+
+  // gh #139: the device id is the number a helper types, so it is not a
+  // secret. Unbudgeted, anyone who knew a connected device's id could mint
+  // TURN credentials at the per-IP rate from as many addresses as they had.
+  it("allows a connected device's pre-join viewer fetches only up to the up-front budget per window", () => {
+    const ss = new UnattendedSessions();
+    const results = Array.from({ length: TURN_CREDENTIALS_UP_FRONT + 1 }, () =>
+      ss.claimViewerTurnCredential("123-456-789", 1_000),
+    );
+    expect(results.slice(0, TURN_CREDENTIALS_UP_FRONT).every((r) => r === "ok")).toBe(true);
+    expect(results[TURN_CREDENTIALS_UP_FRONT]).toBe("exhausted");
+    // Another device has its own allowance.
+    expect(ss.claimViewerTurnCredential("987-654-321", 1_000)).toBe("ok");
+    // The window lapses like an ad-hoc code's TTL.
+    expect(ss.claimViewerTurnCredential("123-456-789", 1_000 + UNATTENDED_TURN_WINDOW_MS)).toBe("ok");
+  });
+
+  it("a verified password refills the device's pre-join allowance", () => {
+    const ss = new UnattendedSessions();
+    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) ss.claimViewerTurnCredential("123-456-789", 0);
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, 0);
+    ss.transition("123-456-789", "confirmed");
+    ss.detachViewer(v);
+    expect(ss.claimViewerTurnCredential("123-456-789", 0)).toBe("ok");
+  });
+
+  it("issues the sharer credentials only for a confirmed session, within the per-join budget", () => {
+    const ss = new UnattendedSessions();
+    expect(ss.claimSharerTurnCredential(s)).toBe(false);
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
+    expect(ss.claimSharerTurnCredential(s)).toBe(false);
+    ss.transition("123-456-789", "pw-in-flight");
+    expect(ss.claimSharerTurnCredential(s)).toBe(false);
+    ss.transition("123-456-789", "confirmed");
+    const granted = Array.from({ length: TURN_CREDENTIALS_PER_JOIN + 1 }, () =>
+      ss.claimSharerTurnCredential(s),
+    );
+    expect(granted).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN).fill(true), false]);
+  });
+
+  it("a confirmed session's viewer re-fetch draws from the same per-join budget as the sharer", () => {
+    const ss = new UnattendedSessions();
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
+    ss.transition("123-456-789", "confirmed");
+    expect(ss.claimSharerTurnCredential(s)).toBe(true);
+    const rest = Array.from({ length: TURN_CREDENTIALS_PER_JOIN }, () =>
+      ss.claimViewerTurnCredential("123-456-789"),
+    );
+    expect(rest).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN - 1).fill("ok"), "exhausted"]);
   });
 });
 
@@ -1249,9 +1300,58 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
     delete process.env.TURN_HOSTS;
   });
 
+  async function confirmAViewer(url: string, sharer: WebSocket): Promise<WebSocket> {
+    const viewer = new WebSocket(url, { headers: { origin: ORIGIN } });
+    await new Promise<void>((r) => viewer.once("open", () => r()));
+    const next = (ws: WebSocket): Promise<unknown> =>
+      new Promise((r) => ws.once("message", (d: Buffer) => r(JSON.parse(d.toString()))));
+    viewer.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+    await next(viewer); // needs-password
+    viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
+    await next(sharer); // pw-check
+    sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
+    await next(viewer); // peer-confirmed
+    await next(sharer); // peer-joined
+    return viewer;
+  }
+
+  async function requestTurn(sharer: WebSocket): Promise<any> {
+    sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
+    return new Promise<any>((r) =>
+      sharer.once("message", (data: Buffer) => r(JSON.parse(data.toString()))),
+    );
+  }
+
+  // gh #139: the sharer asks right after peer-joined, i.e. after a verified
+  // password. An idle authenticated socket asking in a loop must not be a
+  // credential tap.
+  it("refuses credentials while the sharer has no confirmed viewer", async () => {
+    const { app, url, db } = await startApp(true);
+    const sharer = await openSharerAt(url);
+    expect(await requestTurn(sharer)).toEqual({ type: "turn-credentials", credentials: null });
+    sharer.close();
+    await app.close();
+    db.close();
+  });
+
+  it("caps a confirmed session's in-band credentials at the per-join budget", async () => {
+    const { app, url, db } = await startApp(true);
+    const sharer = await openSharerAt(url);
+    const viewer = await confirmAViewer(url, sharer);
+    for (let i = 0; i < TURN_CREDENTIALS_PER_JOIN; i++) {
+      expect((await requestTurn(sharer)).credentials).not.toBeNull();
+    }
+    expect(await requestTurn(sharer)).toEqual({ type: "turn-credentials", credentials: null });
+    viewer.close();
+    sharer.close();
+    await app.close();
+    db.close();
+  });
+
   it("replies with ephemeral credentials when TURN is configured", async () => {
     const { app, url, db } = await startApp(true);
     const sharer = await openSharerAt(url);
+    const viewer = await confirmAViewer(url, sharer);
     sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
     const msg = await new Promise<any>((r) =>
       sharer.once("message", (data: Buffer) => r(JSON.parse(data.toString()))),
@@ -1260,6 +1360,7 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
     expect(msg.credentials.urls).toContain("turn:turn.auffi.local:3478");
     expect(msg.credentials.username).toMatch(/^\d+:[a-z0-9-]+$/);
     expect(msg.credentials.ttl).toBeGreaterThan(60);
+    viewer.close();
     sharer.close();
     await app.close();
     db.close();
@@ -1268,11 +1369,13 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
   it("replies with credentials: null when the backend has no TURN configured", async () => {
     const { app, url, db } = await startApp(false);
     const sharer = await openSharerAt(url);
+    const viewer = await confirmAViewer(url, sharer);
     sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
     const msg = await new Promise<any>((r) =>
       sharer.once("message", (data: Buffer) => r(JSON.parse(data.toString()))),
     );
     expect(msg).toEqual({ type: "turn-credentials", credentials: null });
+    viewer.close();
     sharer.close();
     await app.close();
     db.close();

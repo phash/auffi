@@ -19,20 +19,14 @@ export type TurnConfig = {
    */
   sessionStore?: SessionStore;
   /**
-   * Optional: when provided, credential issuance is also accepted for
-   * callers that present a code matching a live unattended session's
-   * deviceId. Without this, unattended viewers behind symmetric NAT /
-   * firewalls were denied TURN credentials (403 "no active session")
-   * even though a valid pairing existed in UnattendedSessions.
+   * Optional, together with `unattendedRegistry`: also accept a code that
+   * names a CONNECTED unattended device (its sharer holds a live
+   * bearer-authenticated WSS). The viewer fetches ICE servers BEFORE
+   * joining, when no UnattendedSession exists yet, so the registry is the
+   * gate; the issuance itself is budgeted per device and per confirmed
+   * session (`UnattendedSessions.claimViewerTurnCredential`, gh #139).
    */
-  unattendedSessions?: { findByDeviceId(id: string): unknown | null };
-  /**
-   * Optional: also accept a code matching a CONNECTED unattended
-   * device (its sharer holds a live bearer-authenticated WSS). The
-   * viewer fetches ICE servers BEFORE joining, when no
-   * UnattendedSession exists yet — the registry is the only gate that
-   * is already populated at that point.
-   */
+  unattendedSessions?: { claimViewerTurnCredential(deviceId: string): "ok" | "exhausted" };
   unattendedRegistry?: { has(id: string): boolean };
 };
 
@@ -77,12 +71,19 @@ export function registerTurnEndpoint(
         if (adHoc === "exhausted") {
           return reply.status(429).send({ error: "turn credential budget exhausted" });
         }
-        const hasUnattended =
-          normalized !== null &&
-          ((cfg.unattendedSessions?.findByDeviceId(normalized) ?? null) !== null ||
-            (cfg.unattendedRegistry?.has(normalized) ?? false));
-        if (adHoc === "unknown" && !hasUnattended) {
-          return reply.status(403).send({ error: "no active session" });
+        if (adHoc === "unknown") {
+          const unattended =
+            normalized !== null &&
+            cfg.unattendedSessions !== undefined &&
+            (cfg.unattendedRegistry?.has(normalized) ?? false)
+              ? cfg.unattendedSessions.claimViewerTurnCredential(normalized)
+              : "unknown";
+          if (unattended === "unknown") {
+            return reply.status(403).send({ error: "no active session" });
+          }
+          if (unattended === "exhausted") {
+            return reply.status(429).send({ error: "turn credential budget exhausted" });
+          }
         }
       }
       return makeCredentials(cfg);

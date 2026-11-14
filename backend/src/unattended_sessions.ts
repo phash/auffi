@@ -1,6 +1,7 @@
 import type { WebSocket } from "ws";
 import type { Db } from "./db.js";
 import type { ViewerInfo } from "./protocol.js";
+import { TURN_CREDENTIALS_PER_JOIN, TURN_CREDENTIALS_UP_FRONT } from "./codes.js";
 
 /**
  * Per-device lockout: 5 cumulative wrong password attempts → the bucket
@@ -165,6 +166,8 @@ export interface UnattendedSession {
    * pre-confirmed lifetime — see [`PW_ENTRY_TIMEOUT_MS`].
    */
   createdAt: number;
+  /** TURN credentials minted for this session, capped at TURN_CREDENTIALS_PER_JOIN. */
+  turnCredentialsIssued: number;
 }
 
 /**
@@ -183,9 +186,27 @@ export interface UnattendedSession {
  */
 export const PW_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
 
+/**
+ * Window for a device's pre-join TURN allowance (gh #139). The viewer
+ * fetches credentials BEFORE it joins, when only the device id is known,
+ * and that id is the number a helper types, not a secret. So a connected
+ * device gets what a fresh ad-hoc code gets (TURN_CREDENTIALS_UP_FRONT), and
+ * the allowance renews on the ad-hoc code's 10-minute TTL. A verified
+ * password renews it at once, so an owner retrying is never starved.
+ * In-memory, swept by [`UnattendedSessions.sweepStale`] once the window
+ * lapsed: that is its retention policy.
+ */
+export const UNATTENDED_TURN_WINDOW_MS = 10 * 60 * 1000;
+
+interface PreJoinTurnWindow {
+  startedAt: number;
+  issued: number;
+}
+
 export class UnattendedSessions {
   private readonly byDevice = new Map<string, UnattendedSession>();
   private readonly viewerToDevice = new Map<WebSocket, string>();
+  private readonly preJoinTurn = new Map<string, PreJoinTurnWindow>();
   /** Store-wide so an id is never reused across sessions of one device. */
   private nextAttemptId = 1;
   private onStaleReap: ((sess: UnattendedSession) => void) | null = null;
@@ -246,6 +267,7 @@ export class UnattendedSessions {
       logId: null,
       viewerInfo,
       createdAt: now,
+      turnCredentialsIssued: 0,
     });
     this.viewerToDevice.set(viewer, deviceId);
     return "ok";
@@ -273,6 +295,9 @@ export class UnattendedSessions {
       this.remove(sess.deviceId);
       this.onStaleReap?.(sess);
     }
+    for (const [deviceId, window] of this.preJoinTurn) {
+      if (now - window.startedAt >= UNATTENDED_TURN_WINDOW_MS) this.preJoinTurn.delete(deviceId);
+    }
     return stale;
   }
 
@@ -296,7 +321,46 @@ export class UnattendedSessions {
 
   transition(deviceId: string, to: UnattendedSession["state"]): void {
     const sess = this.byDevice.get(deviceId);
-    if (sess) sess.state = to;
+    if (!sess) return;
+    sess.state = to;
+    if (to === "confirmed") this.preJoinTurn.delete(deviceId);
+  }
+
+  /**
+   * Gate for a viewer's `POST /turn-credentials` with a device id (the
+   * caller has already checked the device is connected). A confirmed
+   * session draws from its per-join budget, shared with the sharer;
+   * otherwise the device's pre-join allowance applies
+   * ([`UNATTENDED_TURN_WINDOW_MS`]).
+   */
+  claimViewerTurnCredential(deviceId: string, now: number = Date.now()): "ok" | "exhausted" {
+    const sess = this.byDevice.get(deviceId);
+    if (sess?.state === "confirmed") return this.claimSessionTurn(sess) ? "ok" : "exhausted";
+    let window = this.preJoinTurn.get(deviceId);
+    if (!window || now - window.startedAt >= UNATTENDED_TURN_WINDOW_MS) {
+      window = { startedAt: now, issued: 0 };
+      this.preJoinTurn.set(deviceId, window);
+    }
+    if (window.issued >= TURN_CREDENTIALS_UP_FRONT) return "exhausted";
+    window.issued += 1;
+    return "ok";
+  }
+
+  /**
+   * Gate for the sharer's in-band `turn-credentials-request`: only while
+   * its session is confirmed (a verified password), within the per-join
+   * budget. The socket is authenticated, but authentication alone made an
+   * idle sharer an unbounded credential tap.
+   */
+  claimSharerTurnCredential(sharer: WebSocket): boolean {
+    const sess = this.findBySharer(sharer);
+    return sess !== null && sess.state === "confirmed" && this.claimSessionTurn(sess);
+  }
+
+  private claimSessionTurn(sess: UnattendedSession): boolean {
+    if (sess.turnCredentialsIssued >= TURN_CREDENTIALS_PER_JOIN) return false;
+    sess.turnCredentialsIssued += 1;
+    return true;
   }
 
   /**

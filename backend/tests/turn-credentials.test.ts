@@ -4,7 +4,8 @@ import rateLimitPlugin from "@fastify/rate-limit";
 import { WebSocket } from "ws";
 import { createServer } from "../src/server.js";
 import { registerTurnEndpoint } from "../src/turn-credentials.js";
-import { SessionStore } from "../src/codes.js";
+import { SessionStore, TURN_CREDENTIALS_UP_FRONT } from "../src/codes.js";
+import { UnattendedSessions } from "../src/unattended_sessions.js";
 
 function setTurnEnv(): void {
   process.env.TURN_SHARED_SECRET = "test-secret-32-chars-minimum";
@@ -224,67 +225,6 @@ describe("POST /turn-credentials — rate limiting", () => {
   });
 });
 
-describe("POST /turn-credentials — unattended session gate", () => {
-  // Tests that a code with no ad-hoc session but a live unattended
-  // session → 200, and both missing → 403.
-  let app: FastifyInstance;
-  let baseUrl: string;
-  const LIVE_DEVICE_ID = "123-456-789";
-  const DEAD_CODE = "000-000-000";
-
-  beforeAll(async () => {
-    const store = new SessionStore({ ttlMs: 600_000 });
-    // No ad-hoc sessions registered — only the unattended stub has the code.
-    const unattendedSessions = {
-      findByDeviceId(id: string): object | null {
-        return id === LIVE_DEVICE_ID ? { deviceId: id } : null;
-      },
-    };
-
-    app = Fastify();
-    await app.register(rateLimitPlugin, { global: true, max: 100, timeWindow: "1 minute" });
-    registerTurnEndpoint(app, {
-      sharedSecret: "test-secret-32-chars-minimum",
-      urls: ["turn:turn.auffi.local:3478"],
-      ttlSec: 3600,
-      allowedOrigins: ["http://localhost:5173"],
-      sessionStore: store,
-      unattendedSessions,
-    });
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const addr = app.server.address();
-    if (typeof addr === "string" || !addr) throw new Error("no address");
-    baseUrl = `http://127.0.0.1:${addr.port}`;
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  async function post(code: string): Promise<Response> {
-    return fetch(`${baseUrl}/turn-credentials`, {
-      method: "POST",
-      headers: { Origin: "http://localhost:5173", "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
-    });
-  }
-
-  it("issues credentials when no ad-hoc session exists but a live unattended session matches the deviceId", async () => {
-    const res = await post(LIVE_DEVICE_ID);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { urls: string[]; username: string };
-    expect(body.urls).toContain("turn:turn.auffi.local:3478");
-    expect(body.username).toMatch(/^\d+:[a-z0-9-]+$/);
-  });
-
-  it("returns 403 when neither ad-hoc nor unattended session matches the code", async () => {
-    const res = await post(DEAD_CODE);
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("session");
-  });
-});
-
 // Every credential is a distinct TURN username, and coturn caps allocations
 // server-wide. A live ad-hoc code was enough to mint them without end — and
 // anyone gets a code by registering as a sharer. Issuance per code is
@@ -346,59 +286,65 @@ describe("POST /turn-credentials — per-code issuance budget", () => {
   });
 });
 
-describe("POST /turn-credentials — unattended registry gate (pre-join fetch)", () => {
-  // The viewer fetches ICE servers BEFORE joining, when no
-  // UnattendedSession exists yet. The gate must therefore also accept
-  // a code whose device is currently CONNECTED (UnattendedRegistry) —
-  // without this, unattended viewers never received TURN credentials
-  // and cross-NAT unattended connects failed.
+// The viewer fetches ICE servers BEFORE joining, so a connected unattended
+// device must be accepted before any UnattendedSession exists — without that,
+// cross-NAT unattended connects never got a relay. gh #139: that id is the
+// number a helper types, not a secret, so the pre-join path is budgeted per
+// device like an ad-hoc code, and only a verified password opens more.
+describe("POST /turn-credentials — unattended device ids", () => {
   let app: FastifyInstance;
-  let baseUrl: string;
+  let sessions: UnattendedSessions;
   const CONNECTED_DEVICE_ID = "321-654-987";
 
   beforeAll(async () => {
-    const store = new SessionStore({ ttlMs: 600_000 });
+    sessions = new UnattendedSessions();
     app = Fastify();
-    await app.register(rateLimitPlugin, { global: true, max: 100, timeWindow: "1 minute" });
+    await app.register(rateLimitPlugin, { global: true, max: 1000, timeWindow: "1 minute" });
     registerTurnEndpoint(app, {
       sharedSecret: "test-secret-32-chars-minimum",
       urls: ["turn:turn.auffi.local:3478"],
       ttlSec: 3600,
       allowedOrigins: ["http://localhost:5173"],
-      sessionStore: store,
+      sessionStore: new SessionStore({ ttlMs: 600_000 }),
+      unattendedSessions: sessions,
       unattendedRegistry: {
         has(id: string): boolean {
           return id === CONNECTED_DEVICE_ID;
         },
       },
     });
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const addr = app.server.address();
-    if (typeof addr === "string" || !addr) throw new Error("no address");
-    baseUrl = `http://127.0.0.1:${addr.port}`;
+    await app.ready();
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  async function post(code: string): Promise<Response> {
-    return fetch(`${baseUrl}/turn-credentials`, {
+  let nextIp = 1;
+  async function post(code: string): Promise<{ status: number; body: unknown }> {
+    const res = await app.inject({
       method: "POST",
-      headers: { Origin: "http://localhost:5173", "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      url: "/turn-credentials",
+      remoteAddress: `10.8.0.${nextIp++}`,
+      headers: { origin: "http://localhost:5173" },
+      payload: { code },
     });
+    return { status: res.statusCode, body: res.json() };
   }
 
-  it("issues credentials for a code whose device is connected but has no session yet", async () => {
-    const res = await post(CONNECTED_DEVICE_ID);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { urls: string[] };
-    expect(body.urls).toContain("turn:turn.auffi.local:3478");
+  it("serves a connected device's pre-join fetches up to the up-front budget, then 429", async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i <= TURN_CREDENTIALS_UP_FRONT; i++) statuses.push((await post(CONNECTED_DEVICE_ID)).status);
+    expect(statuses).toEqual([...Array(TURN_CREDENTIALS_UP_FRONT).fill(200), 429]);
+    expect((await post(CONNECTED_DEVICE_ID)).body).toEqual({ error: "turn credential budget exhausted" });
   });
 
-  it("still refuses a code with no session and no connected device", async () => {
-    const res = await post("999-888-777");
-    expect(res.status).toBe(403);
+  it("refuses a code with no session and no connected device", async () => {
+    expect((await post("999-888-777")).status).toBe(403);
+  });
+
+  it("refuses a device id whose sharer is not connected, even with budget left", async () => {
+    expect(sessions.claimViewerTurnCredential("111-222-333")).toBe("ok");
+    expect((await post("111-222-333")).status).toBe(403);
   });
 });

@@ -175,7 +175,9 @@ export interface UnattendedDeps {
   sessions: UnattendedSessions;
   /**
    * Mint ephemeral TURN credentials for an authenticated unattended
-   * sharer (`turn-credentials-request` frame). Omitted / returning
+   * sharer (`turn-credentials-request` frame), issued only while its
+   * session is confirmed and within the per-join budget
+   * (`UnattendedSessions.claimSharerTurnCredential`). Omitted / returning
    * null when the deployment has no TURN configured — the sharer then
    * proceeds STUN-less. Same HMAC credentials as POST /turn-credentials.
    */
@@ -552,7 +554,9 @@ export function registerSignaling(
         if (msg.type === "turn-credentials-request") {
           send(peer, {
             type: "turn-credentials",
-            credentials: turnCredentials?.() ?? null,
+            credentials: sessions.claimSharerTurnCredential(peer)
+              ? (turnCredentials?.() ?? null)
+              : null,
           });
           return;
         }

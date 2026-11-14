@@ -405,19 +405,28 @@ credentials in-band — sent before building the WebRTC peer for a session.
 
 Reply to `turn-credentials-request`. Carries the same HMAC-ephemeral
 credentials the REST endpoint mints, or `null` when the deployment has no
-TURN configured — the sharer then builds its peer STUN-less (identical
-degradation to a failed REST fetch).
+TURN configured, when the sharer has no confirmed session (no viewer passed
+`pw-check-result: ok` on this socket yet), or when that session spent its
+budget of **2** (`TURN_CREDENTIALS_PER_JOIN`, shared with the viewer's
+REST re-fetches for the same session). The sharer then builds its peer
+STUN-less (identical degradation to a failed REST fetch). It asks right
+after `peer-joined`, which the backend sends only after the confirm, so the
+legitimate request always finds the session confirmed.
 ```json
 { "type": "turn-credentials", "credentials": { "urls": ["turn:host:3478"], "username": "1715000000:uuid", "credential": "base64==", "ttl": 3600 } }
 { "type": "turn-credentials", "credentials": null }
 ```
 
 > Viewer side: unattended viewers use the normal `POST /turn-credentials`
-> REST endpoint with the device-id as `code` — the gate accepts any code
-> whose device currently holds a live bearer-authenticated WSS
+> REST endpoint with the device-id as `code`. The gate accepts a code whose
+> device currently holds a live bearer-authenticated WSS
 > (`UnattendedRegistry`), which is already true during the viewer's
-> pre-join fetch. Neither this in-band request nor the device-id path of the
-> REST endpoint is subject to the per-code credential budget (see
+> pre-join fetch. Because the device id is the number a helper types (not a
+> secret), that pre-join path is budgeted per device like a fresh ad-hoc
+> code: **4** credentials per 10-minute window
+> (`UNATTENDED_TURN_WINDOW_MS`, `backend/src/unattended_sessions.ts`), renewed
+> at once by a verified password. Once a session is confirmed, a viewer
+> fetch draws from that session's budget of 2 instead (gh #139; see
 > § `POST /turn-credentials`).
 
 ### `connection-started` (sharer → server)
@@ -647,10 +656,10 @@ explicitly) + JSON body `{ "code": "284-915-073" }`.
 
 | Status | Body | When |
 |--------|------|------|
-| 200 | credentials above | live ad-hoc session with budget left, or a live unattended session / connected unattended device for that id |
+| 200 | credentials above | live ad-hoc session with budget left, or a connected unattended device for that id with budget left |
 | 403 | `{"error":"origin not allowed"}` | `Origin` missing or not allow-listed |
 | 403 | `{"error":"no active session"}` | code unknown / malformed and no unattended match |
-| 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`) |
+| 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`); or the unattended device spent its pre-join allowance (**4** per 10 min) or its confirmed session's **2** (§ `turn-credentials`) |
 | 429 | `@fastify/rate-limit` default body | more than 10 requests/min/IP |
 
 Errors use `{ "error": "<text>" }` without a `message` field (unlike `/api/*`).
