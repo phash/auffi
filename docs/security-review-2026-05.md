@@ -55,7 +55,7 @@ None of these block the 70 % gate. Logging as a follow-up rather than a blocker.
 | Bot UA filter     | scrapy / wget / curl / bot / crawler / spider / sqlmap / nmap / nikto / phantomjs 403 (with /healthz exception). **Erratum (2026-05-14):** the generic `bot` / `crawler` / `spider` substrings 403'd Googlebot, bingbot & co. and caused a two-day SEO outage; they were removed. The audited posture is NOT the one to restore — the current narrow list and the rule live in `docs/footguns.md` § Caddyfile Footguns. | `caddy/Caddyfile:23-30` |
 | Caddy rate-limit  | 300/min general zone, 10/min on /turn-credentials, both per-IP | `caddy/Caddyfile:36-54` |
 | Log redaction     | `cookie`, `authorization`, `x-forwarded-for`, `x-real-ip` all stripped from request logs | `server.ts:38-45` |
-| DSGVO IP prefix   | Signaling: first octet only; audit log: first two octets — never the full IP | `signaling.ts:71-76`, `admin/middleware.ts:50-63` |
+| DSGVO IP prefix   | connection_log (signaling) and audit log: first octet (IPv4) / first two hextets (IPv6) via the shared `redactIp()` — never the full IP. **Erratum (2026-11-14):** the audited text said "audit log: first two octets"; both writers have used the single shared helper since, so do not "restore" a second octet. | `lib/redact-ip.ts`, `signaling.ts`, `admin/middleware.ts` |
 
 ### Fixed in this review (commit 4f4b6ad)
 
