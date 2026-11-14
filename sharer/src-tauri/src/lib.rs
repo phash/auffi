@@ -219,12 +219,6 @@ struct FileTransferState(Arc<tokio::sync::Mutex<Option<files::FileTransferManage
 /// track is preserved (no SDP renegotiation, no viewer reconnect).
 struct SwitchState(Mutex<Option<mpsc::Sender<SwitchMsg>>>);
 
-/// Mode-agnostic outbound relay channel. Set by `start_signaling`
-/// (AdHoc variant) or `unattended_start` (Unattended variant);
-/// cleared by `disconnect_streaming` and `unattended_stop`. Every
-/// outbound relay (on_ice_candidate, receive_offer's answer, the
-/// bye on teardown) reads through this so the same webrtc_peer
-/// wiring works in both modes. See `outbound.rs`.
 /// Set while a `start_streaming` call is between its slot check and the
 /// hand-off of its peer to `WebRtcState` — seconds while the portal dialog
 /// is open, during which `WebRtcState` is still empty.
@@ -258,6 +252,12 @@ fn claim_stream_start<'a, P>(
     Some(StreamStartClaim(starting))
 }
 
+/// Mode-agnostic outbound relay channel. Set by `start_signaling`
+/// (AdHoc variant) or `unattended_start` (Unattended variant);
+/// cleared by `disconnect_streaming` and `unattended_stop`. Every
+/// outbound relay (on_ice_candidate, receive_offer's answer, the
+/// bye on teardown) reads through this so the same webrtc_peer
+/// wiring works in both modes. See `outbound.rs`.
 struct OutboundSinkState(Arc<tokio::sync::Mutex<Option<outbound::OutboundSink>>>);
 
 /// Per-session telemetry counters (gh #109).
