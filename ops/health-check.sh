@@ -77,6 +77,11 @@ if [[ -n "${MRD_API_KEY:-}" ]] && [[ -n "${MRD_CLUSTER_ID:-}" ]]; then
 
   MRD_CLUSTER_URL="https://www.mr-development.de/api/v1/external/clusters/${MRD_CLUSTER_ID}"
 
+  # Der Key geht per `-H @<datei>` an curl statt als Argument: Prozess-
+  # Argumente sind auf dem geteilten Cluster-Host über /proc/<pid>/cmdline
+  # für jeden lokalen Nutzer lesbar, printf ist ein Builtin ohne eigenen Prozess.
+  mrd_key_header() { printf 'X-API-Key: %s\n' "${MRD_API_KEY}"; }
+
   # PUT /clusters/:id/status erwartet {"status": {…}} — ein Record, dessen
   # Keys die Projekte auf dem Cluster sind (jeder Wert ein freier Text).
   # Ein flaches {"state": …} bekommt VALIDATION_ERROR, und weil der Post
@@ -86,7 +91,7 @@ if [[ -n "${MRD_API_KEY:-}" ]] && [[ -n "${MRD_CLUSTER_ID:-}" ]]; then
   # Antwort kein Cluster-Objekt, unterbleibt der PUT — ein Record nur mit
   # unserem Key würde sonst bei jedem MRD-Aussetzer alle anderen löschen.
   MRD_PAYLOAD=""
-  if MRD_CURRENT="$(curl -fsS --max-time 10 -H "X-API-Key: ${MRD_API_KEY}" "${MRD_CLUSTER_URL}" 2>/dev/null)"; then
+  if MRD_CURRENT="$(curl -fsS --max-time 10 -H @<(mrd_key_header) "${MRD_CLUSTER_URL}" 2>/dev/null)"; then
     MRD_PAYLOAD="$(printf '%s' "${MRD_CURRENT}" | python3 -c '
 import json, sys
 state, checked = sys.argv[1], sys.argv[2]
@@ -111,7 +116,7 @@ print(json.dumps({"status": status}))
     MRD_RESULT="$(curl -sS --max-time 10 \
       -X PUT \
       -H "Content-Type: application/json" \
-      -H "X-API-Key: ${MRD_API_KEY}" \
+      -H @<(mrd_key_header) \
       -d "${MRD_PAYLOAD}" \
       -w $'\n%{http_code}' \
       "${MRD_CLUSTER_URL}/status" 2>/dev/null)" || MRD_RESULT=$'\nerror'

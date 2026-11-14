@@ -12,6 +12,7 @@ printf 'MRD_API_KEY=test-key\nMRD_CLUSTER_ID=cluster-1\nSMTP_PASS=we$ird"chars\n
 mkdir -p "${TMP}/bin"
 export STUB_LOG="${TMP}/bin/calls.log"
 export PUT_BODY_FILE="${TMP}/put-body.json"
+export HEADER_LOG="${TMP}/headers.log"
 # curl stub: probes answer per STUB_PROBE_FAIL, the MRD GET returns a record
 # that already holds another project's status, the MRD PUT records its body.
 cat > "${TMP}/bin/curl" <<'STUB'
@@ -22,7 +23,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -X) method="$2"; shift 2 ;;
     -d) data="$2"; shift 2 ;;
-    -H|--max-time|-o|-w) shift 2 ;;
+    -H) if [[ "$2" == @* ]]; then cat "${2#@}" >> "${HEADER_LOG}"; else printf '%s\n' "$2" >> "${HEADER_LOG}"; fi; shift 2 ;;
+    --max-time|-o|-w) shift 2 ;;
     -*) shift ;;
     *) url="$1"; shift ;;
   esac
@@ -47,8 +49,8 @@ STUB
 chmod +x "${TMP}/bin/curl"
 
 run_health() {
-  : > "${STUB_LOG}"; rm -f "${PUT_BODY_FILE}"
-  env -i PATH="${TMP}/bin:${PATH}" HOME="${HOME}" STUB_LOG="${STUB_LOG}" PUT_BODY_FILE="${PUT_BODY_FILE}" \
+  : > "${STUB_LOG}"; : > "${HEADER_LOG}"; rm -f "${PUT_BODY_FILE}"
+  env -i PATH="${TMP}/bin:${PATH}" HOME="${HOME}" STUB_LOG="${STUB_LOG}" PUT_BODY_FILE="${PUT_BODY_FILE}" HEADER_LOG="${HEADER_LOG}" \
     DEPLOY_DOMAIN="deploy.invalid" "$@" bash "${TMP}/repo/ops/health-check.sh"
 }
 
@@ -94,5 +96,11 @@ assert_contains "${OUT}" "MRD-API status read failed" "skipped PUT is logged"
 echo "# cluster without a status record yet → fresh record with our key"
 RC=0; OUT="$(run_health STUB_GET_MODE=nostatus 2>&1)" || RC=$?
 assert_eq "['auffi']" "$(pf 'print(sorted(d["status"]))')" "fresh status record holds only auffi"
+
+echo "# the API key never lands on a curl command line (/proc/<pid>/cmdline is world-readable)"
+run_health >/dev/null 2>&1 || true
+assert_eq "true" "$([[ -f "${PUT_BODY_FILE}" ]] && echo true || echo false)" "a PUT was still sent"
+assert_not_contains "$(cat "${STUB_LOG}")" "test-key" "MRD_API_KEY absent from every curl argv"
+assert_eq "2" "$(grep -c '^X-API-Key: test-key$' "${HEADER_LOG}")" "GET and PUT both still send the key header"
 
 finish
