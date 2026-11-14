@@ -150,4 +150,9 @@ RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
 [[ ${RC} -eq 0 ]] || printf "%s\n" "${OUT}"
 assert_eq "aaaaaaa" "$(app_version)" "then B → A"
 
+echo "# --help describes the live-stack rollback, not the old log-position rule"
+HELP="$(bash "${TMP}/repo/ops/deploy.sh" --help)"
+assert_not_contains "${HELP}" "second-to-last" "--help does not promise the second-to-last logged SHA"
+assert_contains "${HELP}" "--rollback" "--help still documents --rollback"
+
 finish

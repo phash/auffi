@@ -315,6 +315,13 @@ the hash in `/opt/screenie/.caddy-image-dockerfile.sha256`, which is written
 only after a successful build — a failed build is retried on the next deploy.
 A host without that stamp rebuilds once.
 
+The rollback restores `caddy/` but not `docker-compose.prod.yml`, so the image
+tag stays at the current one (`auffi-caddy:2.11.9-ratelimit`): rolling back to
+a snapshot from before a Caddy bump builds the *older* Dockerfile under the
+*newer* tag. The tag then does not name what runs — check with `docker exec
+auffi-caddy caddy version`; the next regular deploy rebuilds from the current
+Dockerfile (the stamp differs) and the tag is truthful again.
+
 **Without a snapshot** (a SHA deployed before 0.7.1) the rollback is
 backend-image-only — the script says so loudly, and the frontends/configs stay
 at the newer state. To back out a frontend/config regression in that case,

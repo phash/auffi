@@ -7,38 +7,51 @@
 #   ./ops/deploy.sh --rollback [--yes]
 #   ./ops/deploy.sh --help
 #
-# Default-Flow:
-#   1) Pre-flight (lock, clean git tree, ssh, docker, .env.prod on the host,
-#      nginx -t, caddy validate)
-#   2) Tests (viewer + backend + dashboard) — skip mit --skip-tests
-#   3) Diff-Preview (git log seit dem zuletzt deployten SHA) + Confirm
-#   4) Build backend image — skip wenn :${APP_VERSION} schon remote
-#   5) Build viewer + dashboard (npm ci wird übersprungen wenn package-lock unverändert)
-#   6) Transfer image-tarball (mit Trap-Cleanup)
-#   7) Hash-Diff der Configs gegen prod → Liste der zu restartenden Services
-#   8) rsync Compose, Configs, viewer-dist, dashboard-dist, ops-Skripte
+# Default-Flow (Nummern = die "# Step N"-Marker im Code):
+#   1) Pre-flight: SSH, Docker remote + lokal, .env.prod auf dem Host
+#      (standalone zusätzlich ACME_EMAIL gesetzt, sonst Abbruch)
+#   2) Config-Validierung: nginx -t, caddy validate (standalone)
+#   3) Tests (viewer + backend + dashboard) — skip mit --skip-tests
+#   4) Diff-Preview (git log seit dem zuletzt deployten SHA) + Confirm
+#   5) Build backend image — skip wenn :${APP_VERSION} schon remote
+#   6) Build viewer + dashboard (npm ci wird übersprungen wenn package-lock unverändert)
+#   7) Remote-Deploy-Pfad anlegen
+#   8) Transfer image-tarball (mit Trap-Cleanup)
+#   9) Hash-Diff der Configs gegen prod → Liste der zu restartenden Services
+#  10) rsync Compose, Configs, viewer-dist, dashboard-dist, ops-Skripte
 #      (backup.sh, health-check.sh, lib.sh)
-#   9) docker compose up -d (recreatet bei Image- oder Compose-Spec-Änderung)
-#  10) Service-Restart für geänderte Configs (Single-File-Bind-Mount-Stale-Fix)
-#  11) Erweiterte Health-Checks (homepage, healthz, llms.txt, robots.txt,
+#  11) viewer-static-Volume befüllen (nur standalone)
+#  12) APP_VERSION in .env.prod pinnen
+#  13) auffi-caddy neu bauen falls caddy/Dockerfile ≠ Stempel (standalone),
+#      dann docker compose up -d (recreatet bei Image- oder Compose-Spec-Änderung)
+#  14) Service-Restart für geänderte Configs (Single-File-Bind-Mount-Stale-Fix)
+#  15) Erweiterte Health-Checks (homepage, healthz, llms.txt, robots.txt,
 #      sitemap.xml; unbekannte URL: 404 im Cluster, 200 standalone)
-#  12) Deploy-Log-Append auf prod — MUSS vor dem Prune laufen, der Prune
+#  16) Deploy-Log-Append auf prod — MUSS vor dem Prune laufen, der Prune
 #      liest das Log als Source-of-Truth
-#  13) Release-Snapshot: viewer-dist, dashboard-dist, nginx/, coturn/
+#  16b) Release-Snapshot: viewer-dist, dashboard-dist, nginx/, coturn/
 #      (standalone auch caddy/) nach /opt/screenie/releases/<sha>/
-#  14) Image- + Snapshot-Prune auf prod (keep die letzten 3 unique SHAs
-#      aus .deploy-log + :latest) — skip mit --skip-image-prune
+#  17) Image- + Snapshot-Prune auf prod (keep die 3 obersten SHAs des
+#      Live-Stacks aus .deploy-log + APP_VERSION + :latest) — skip mit
+#      --skip-image-prune
+#  18) Report (compose ps)
 #
 # Rollback:
-#   --rollback wählt den Ziel-SHA aus /opt/screenie/.deploy-log: steht der
-#   laufende APP_VERSION nicht als letzter Eintrag im Log (gescheiterter,
-#   nie geloggter Deploy), den letzten geloggten SHA, sonst den vorletzten.
+#   --rollback rechnet aus /opt/screenie/.deploy-log den Live-Stack: jeder
+#   Deploy legt seinen SHA oben drauf, ein ROLLBACK-Eintrag nimmt alles über
+#   seinem Ziel wieder herunter. Läuft der oberste Live-SHA, ist das Ziel der
+#   darunter; läuft ein anderer APP_VERSION (gescheiterter, nie geloggter
+#   Deploy), der oberste. Rollbacks in Folge gehen so jeweils einen Release
+#   weiter zurück; ist keiner mehr übrig, bricht das Skript ab.
 #   Setzt APP_VERSION in .env.prod, spielt den Release-Snapshot dieses
-#   SHAs zurück (Frontends + Configs), macht compose up -d und restartet
-#   die Sidecars mit Single-File-Bind-Mounts. Setzt voraus, dass Image
-#   und Snapshot noch auf prod sind (Prune hält die letzten 3 + :latest).
-#   Ohne Snapshot (SHA vor 0.7.1 deployed) wird NUR das Backend-Image
-#   zurückgesetzt — das Skript warnt dann explizit.
+#   SHAs zurück (Frontends + Configs), baut standalone auffi-caddy neu, wenn
+#   das zurückgespielte caddy/Dockerfile vom gebauten abweicht, macht
+#   compose up -d und restartet die Sidecars mit Single-File-Bind-Mounts
+#   (auffi-dashboard, auffi-coturn; Cluster: auffi-viewer +
+#   auffi-turn-cert-stage; standalone: auffi-caddy). Setzt voraus, dass Image
+#   und Snapshot noch auf prod sind (Prune hält die 3 obersten Live-SHAs +
+#   APP_VERSION + :latest). Ohne Snapshot (SHA vor 0.7.1 deployed) wird NUR
+#   das Backend-Image zurückgesetzt — das Skript warnt dann explizit.
 #
 # Environment:
 #   Reads ops/.env.deploy (or env vars) for SSH target and paths.
@@ -80,17 +93,22 @@ Options:
                         The sharer's cargo tests are never part of a deploy — the
                         sharer is not deployed to the server (separate release flow).
   --skip-image-prune    Don't prune old backend images or release snapshots on prod
-                        after deploy.
+                        after deploy (the prune keeps the top 3 live-stack SHAs
+                        from the deploy-log + APP_VERSION + :latest).
   --allow-dirty         Deploy from a working tree with uncommitted changes. Off by
                         default: the image tag is the git SHA, and Step 5 skips the
                         backend build when that tag already exists on prod — a dirty
                         tree would ship edited frontends next to a stale backend.
   --notes "<text>"      Note appended to the deploy-log entry.
-  --rollback            Roll back to a SHA from /opt/screenie/.deploy-log — the last
-                        logged SHA when the running APP_VERSION was never logged
-                        (failed deploy), otherwise the second-to-last one:
+  --rollback            Roll back one release on the live stack of
+                        /opt/screenie/.deploy-log (ROLLBACK entries pop what they
+                        backed out of): the release below the running one, or the
+                        top live release when the running APP_VERSION was never
+                        logged (failed deploy). Consecutive rollbacks walk further
+                        back; refuses when no older release is left. Restores the
                         backend image + viewer-dist/dashboard-dist/nginx/coturn
-                        (standalone: caddy) from its release snapshot. Without a
+                        (standalone: caddy, rebuilding auffi-caddy if the restored
+                        Dockerfile differs) from its release snapshot. Without a
                         snapshot only the backend image is rolled back (warned).
   --help                Show this help and exit.
 EOF
