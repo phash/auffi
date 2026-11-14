@@ -165,8 +165,9 @@ export class FileTransferManager {
 
   private pendingSend: Map<string, PendingSend> = new Map();
   private pendingReceive: Map<string, IncomingReceive> = new Map();
-  /** Accepted transfers currently streaming; the flag lets a peer
-   *  `file-error` or `cancelAll()` stop the chunk loop mid-file. */
+  /** Accepted transfers currently streaming; a peer `file-error` or
+   *  `file-reject`, or `cancelAll()`, sets the stream's abort reason and
+   *  the chunk loop rethrows it. */
   private activeStreams: Map<string, StreamState> = new Map();
 
   constructor(
