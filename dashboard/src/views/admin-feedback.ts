@@ -107,8 +107,8 @@ export const renderAdminFeedback: RouteRenderer = (
   }
 
   async function reload(): Promise<void> {
-    // The reply panel schedules a delayed reload; if the admin left the
-    // page meanwhile it must not fetch against the detached view.
+    // A card action can finish after the admin left the page; it must not
+    // fetch against the detached view then.
     if (unmounted) return;
     const myGeneration = ++generation;
     status.textContent = "Lade …";
@@ -187,7 +187,7 @@ export const renderAdminFeedback: RouteRenderer = (
   void reload();
 
   // Router-invoked cleanup: bumping the generation discards in-flight
-  // responses, the flag stops the reply panel's delayed reload.
+  // responses, the flag stops reloads from late-finishing card actions.
   return () => {
     unmounted = true;
     generation += 1;
@@ -308,7 +308,16 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
       existing.remove();
       return;
     }
-    card.appendChild(buildReplyPanel(item, onChange));
+    card.appendChild(
+      buildReplyPanel(item, onChange, (stored, panel) => {
+        // The panel survives the rebuild, so a second failed send runs from
+        // inside the rebuilt card — replace whichever card holds it now.
+        const current = panel.closest(".feedback-admin-card") ?? card;
+        const rebuilt = buildCard(stored, onChange);
+        rebuilt.appendChild(panel);
+        current.replaceWith(rebuilt);
+      }),
+    );
   });
   actions.appendChild(replyBtn);
 
@@ -341,7 +350,11 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
   return card;
 }
 
-function buildReplyPanel(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
+function buildReplyPanel(
+  item: AdminFeedbackRow,
+  onChange: () => void,
+  onStoredUnsent: (stored: AdminFeedbackRow, panel: HTMLElement) => void,
+): HTMLElement {
   const panel = document.createElement("div");
   panel.className = "feedback-admin-reply-panel";
 
@@ -402,18 +415,25 @@ function buildReplyPanel(item: AdminFeedbackRow, onChange: () => void): HTMLElem
       status.className = "feedback-admin-reply-status err";
       return;
     }
-    // Backend always returns 200 if the reply persisted; sentAt may be
-    // null when SMTP failed. Reload the list either way so the card
-    // shows the new reply-shown box, including the "send failed" hint.
     if (res.data.sentAt === null) {
       status.textContent =
         `Antwort gespeichert, aber Mail-Versand fehlgeschlagen` +
         (res.data.sendError ? ` (${res.data.sendError})` : "") +
         ". Du kannst es gleich nochmal versuchen.";
       status.className = "feedback-admin-reply-status err";
-      // Trigger reload so the "Mail-Versand fehlgeschlagen"-Badge appears
-      // in the read-only block; admin then clicks "Neu antworten" to retry.
-      window.setTimeout(onChange, 1500);
+      // No list reload: the backend resolves the row in the same UPDATE that
+      // stores the reply, so on the "Offen" tab a reload would drop the card
+      // and this retry hint with it. Re-render the card in place instead.
+      onStoredUnsent(
+        {
+          ...item,
+          replyBody: text,
+          repliedAt: res.data.replyAt,
+          replySentAt: null,
+          resolvedAt: item.resolvedAt ?? res.data.replyAt,
+        },
+        panel,
+      );
     } else {
       onChange();
     }

@@ -182,33 +182,73 @@ describe("renderAdminFeedback — cursor pagination", () => {
 describe("renderAdminFeedback — lifecycle + error surfaces", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("does not reload the list after unmount when a failed-mail reply armed the delayed refresh", async () => {
+  it("keeps the card and the send-failure hint on the open tab when the reply mail fails", async () => {
     vi.useFakeTimers();
-    let calls = 0;
+    let replied = false;
+    let listCalls = 0;
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async (input: unknown) => {
-        calls += 1;
         if (String(input).includes("/reply")) {
-          return jsonResponse({ ok: true, replyAt: 1, sentAt: null, sendError: "smtp down" });
+          replied = true;
+          return jsonResponse({ ok: true, replyAt: 1_700_000_100_000, sentAt: null, sendError: "smtp down" });
         }
-        return jsonResponse({ items: [feedbackItem(1)], nextCursor: null });
+        listCalls += 1;
+        // The backend resolves the row in the same UPDATE that stores the
+        // reply, so the open tab no longer lists it afterwards.
+        return jsonResponse({ items: replied ? [] : [feedbackItem(1)], nextCursor: null });
       }) as unknown as typeof fetch,
     });
     const root = makeRoot();
-    const cleanup = renderAdminFeedback(root, ctx());
+    renderAdminFeedback(root, ctx());
     await vi.advanceTimersByTimeAsync(0);
     findButton(root, "Antworten").click();
     (root.querySelector("textarea") as HTMLTextAreaElement).value = "Danke!";
     findButton(root, "Senden").click();
-    await vi.advanceTimersByTimeAsync(0);
-    const afterReply = calls;
-    expect(root.textContent).toContain("Mail-Versand fehlgeschlagen");
+    await vi.advanceTimersByTimeAsync(2_000);
 
+    expect(listCalls, "the open list must not reload the failed reply away").toBe(1);
+    const card = root.querySelector(".feedback-admin-card") as HTMLElement;
+    expect(card).not.toBeNull();
+    const shown = card.querySelector(".feedback-admin-reply-shown") as HTMLElement;
+    expect(shown.textContent).toContain("Mail-Versand fehlgeschlagen");
+    expect(shown.textContent).toContain("Danke!");
+    const panelStatus = card.querySelector(".feedback-admin-reply-status") as HTMLElement;
+    expect(panelStatus.textContent).toContain("smtp down");
+    expect(findButton(root, "Wieder öffnen")).toBeDefined();
+    expect(findButton(root, "Neu antworten")).toBeDefined();
+
+    (root.querySelector("textarea") as HTMLTextAreaElement).value = "Zweiter Versuch";
+    findButton(root, "Senden").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelectorAll(".feedback-admin-card").length).toBe(1);
+    expect(
+      (root.querySelector(".feedback-admin-reply-shown") as HTMLElement).textContent,
+    ).toContain("Zweiter Versuch");
+  });
+
+  it("does not reload the list after unmount when an action finishes late", async () => {
+    let resolvePatch: (r: Response) => void = () => undefined;
+    let listCalls = 0;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn((_input: unknown, init?: RequestInit) => {
+        if (init?.method === "PATCH") {
+          return new Promise<Response>((resolve) => (resolvePatch = resolve));
+        }
+        listCalls += 1;
+        return Promise.resolve(jsonResponse({ items: [feedbackItem(1)], nextCursor: null }));
+      }) as unknown as typeof fetch,
+    });
+    const root = makeRoot();
+    const cleanup = renderAdminFeedback(root, ctx());
+    await flush();
+    findButton(root, "Erledigen").click();
     expect(typeof cleanup, "renderer must return a cleanup for the router").toBe("function");
     (cleanup as () => void)();
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(calls, "no list reload may fire after unmount").toBe(afterReply);
+    resolvePatch(jsonResponse({ ok: true }));
+    await flush();
+    expect(listCalls, "no list reload may fire after unmount").toBe(1);
   });
 
   it("surfaces a failed 'Erledigen' inline instead of via window.alert", async () => {
