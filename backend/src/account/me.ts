@@ -307,15 +307,13 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
 
       // Final taken-check inside the transaction. If two pending changes
       // race for the same new address, only the first commit wins.
-      const tx = db.transaction(() => {
+      const tx = db.transaction((): "swapped" | "taken" => {
         const taken = db
           .prepare<[string, number], { id: number }>(
             "SELECT id FROM accounts WHERE email = ? AND id != ?",
           )
           .get(row.new_email, row.account_id);
-        if (taken) {
-          throw new Error("email-taken");
-        }
+        if (taken) return "taken";
         // The click proves ownership of the NEW mailbox, so it also sets
         // email_verified_at: a typo-signup account (verify mail went to a
         // wrong address, no resend path exists) becomes verified here, and
@@ -337,14 +335,10 @@ export function registerMeRoutes(app: FastifyInstance, deps: MeDeps): void {
         // privileged access after the legitimate owner's email
         // suddenly differs.
         deleteAllSessionsForAccount(db, row.account_id);
+        return "swapped";
       });
-      try {
-        tx();
-      } catch (e) {
-        if ((e as Error).message === "email-taken") {
-          return bad(reply, 409, "email-taken", "new address was claimed elsewhere");
-        }
-        throw e;
+      if (tx() === "taken") {
+        return bad(reply, 409, "email-taken", "new address was claimed elsewhere");
       }
 
       // Sec L-9: also clear the cookie on THIS response so the

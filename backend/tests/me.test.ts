@@ -295,6 +295,47 @@ describe("PATCH /api/me — email change", () => {
     expect(res.statusCode).toBe(410);
   });
 
+  it("verify-click answers 409 when the address was claimed after the request", async () => {
+    await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", new_email: "contested@example.com" },
+    });
+    const token = h.changeMailer.sent[0].token;
+    await h.app.inject({
+      method: "POST",
+      url: "/api/auth/signup",
+      payload: { email: "contested@example.com", password: "the-rivals-password" },
+    });
+
+    const click = await h.app.inject({ method: "GET", url: `/api/me/email-change/${token}` });
+    expect(click.statusCode).toBe(409);
+    expect(click.json().error).toBe("email-taken");
+    const me = await h.app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+    });
+    expect(me.statusCode, "a refused swap must not log the owner out").toBe(200);
+    expect(me.json().email).toBe("henry@example.com");
+  });
+
+  it("verify-click answers 410 token-used on a second click", async () => {
+    await h.app.inject({
+      method: "PATCH",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", new_email: "henry-new@example.com" },
+    });
+    const token = h.changeMailer.sent[0].token;
+    const first = await h.app.inject({ method: "GET", url: `/api/me/email-change/${token}` });
+    expect(first.statusCode).toBe(200);
+    const second = await h.app.inject({ method: "GET", url: `/api/me/email-change/${token}` });
+    expect(second.statusCode).toBe(410);
+    expect(second.json().error).toBe("token-used");
+  });
+
   it("a fresh change overwrites a prior in-flight one (only one pending)", async () => {
     await h.app.inject({
       method: "PATCH",
