@@ -216,7 +216,7 @@ Zusätzlich verifiziert (aus demselben Audit, Tabelle „What's good — verifie
 
 ## Konkret nachlesen
 
-- [`sharer/src-tauri/src/webrtc_peer.rs`](../sharer/src-tauri/src/webrtc_peer.rs) — `setup_peer_connection()`. Hier wird die `SettingEngine` konfiguriert (mDNS-Modus, per UPnP ermittelte Public-IP als srflx-Candidate; DTLS-Zertifikat und SRTP-Profil bleiben webrtc-rs-Default).
+- [`sharer/src-tauri/src/webrtc_peer.rs`](../sharer/src-tauri/src/webrtc_peer.rs) — `SharerPeer::new()`. Hier wird die `SettingEngine` konfiguriert (mDNS-Modus, per UPnP ermittelte Public-IP als srflx-Candidate; DTLS-Zertifikat und SRTP-Profil bleiben webrtc-rs-Default).
 - [`viewer/src/webrtc-client.ts`](../viewer/src/webrtc-client.ts) — `ViewerPeer.start()`. Browser-seitig dasselbe via Web-API.
 - [`backend/src/signaling.ts`](../backend/src/signaling.ts) — siehst, dass das Backend wirklich nur Frames durchreicht. Suche nach `RELAY_KINDS`: dort steht die einzige Prüfung, die ein Relay-Frame durchläuft.
 - [`coturn/turnserver.conf.tmpl`](../coturn/turnserver.conf.tmpl) — `denied-peer-ip`-Deny-Liste (alle privaten, Loopback-, Link-Local- und Doku-Bereiche inkl. IPv4-mapped IPv6), `no-tcp-relay`, `no-multicast-peers`, TLS ≥ 1.2 mit expliziter `cipher-list`. Der TURN-Server kann damit nicht als offener Proxy ins interne Netz missbraucht werden.
