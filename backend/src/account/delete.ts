@@ -1,5 +1,6 @@
 import type { Db } from "../db.js";
 import type { UnattendedRegistry } from "../unattended.js";
+import { deleteDeviceCascade } from "../devices/store.js";
 
 /**
  * Hard-delete an account (DELETE /api/me and the admin delete share this).
@@ -33,6 +34,11 @@ export function deleteAccount(
         WHERE target_type = 'feedback'
           AND target_id IN (SELECT CAST(id AS TEXT) FROM feedback WHERE account_id = ?)`,
     ).run(accountId);
+    // Rate-limit buckets are keyed by id string, not by FK, and a
+    // partial-fail counter matches no purge predicate: without this they
+    // outlive the account, and a re-minted device id inherits its counter.
+    db.prepare("DELETE FROM rate_limit_buckets WHERE key = ?").run(`account:${accountId}:pwfail`);
+    for (const id of deviceIds) deleteDeviceCascade(db, id);
     db.prepare("DELETE FROM accounts WHERE id = ?").run(accountId);
   })();
   if (registry) for (const id of deviceIds) registry.evict(id);

@@ -382,6 +382,39 @@ describe("DELETE /api/me", () => {
     expect(after.statusCode).toBe(401);
   });
 
+  it("takes the account's and its devices' rate-limit buckets with it", async () => {
+    // The buckets have no FK, and a partial-fail counter matches no purge
+    // predicate, so it would outlive the account forever — and a re-minted
+    // device id would inherit it.
+    h.db
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, auto_accept, created_at)
+         VALUES ('555-444-333', 1, 'D', 'x', 1, ?)`,
+      )
+      .run(Date.now());
+    h.db
+      .prepare(
+        `INSERT OR REPLACE INTO rate_limit_buckets (key, fail_count, locked_until)
+         VALUES ('account:1:pwfail', 2, NULL), ('device:555-444-333:pwfail', 3, NULL),
+                ('device:999-999-999:pwfail', 1, NULL)`,
+      )
+      .run();
+
+    const res = await h.app.inject({
+      method: "DELETE",
+      url: "/api/me",
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { current_password: "the-current-password", confirm: "LÖSCHEN" },
+    });
+    expect(res.statusCode).toBe(204);
+
+    const keys = h.db
+      .prepare<[], { key: string }>("SELECT key FROM rate_limit_buckets ORDER BY key")
+      .all()
+      .map((r) => r.key);
+    expect(keys).toEqual(["device:999-999-999:pwfail"]);
+  });
+
   it("deletes an account that once replied to feedback — the reply stays, its author goes", async () => {
     h.db
       .prepare(
