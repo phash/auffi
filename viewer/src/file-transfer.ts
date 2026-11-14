@@ -209,23 +209,25 @@ export class FileTransferManager {
     const stream: StreamState = { abort: null };
     this.activeStreams.set(id, stream);
     try {
-      const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
       let seq = 0;
-      const progress = this.progressReporter(id, file.name, "send", bytes.byteLength);
+      const progress = this.progressReporter(id, file.name, "send", file.size);
       progress(0);
 
-      for (let offset = 0; offset < bytes.byteLength; offset += CHUNK_SIZE) {
+      // Read per chunk from the Blob, never file.arrayBuffer(): a file near
+      // the 2 GiB cap would sit in tab memory for the whole transfer, and
+      // that single allocation can reject outright close to 2^31 bytes.
+      for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
         if (this.filesBufferedAmount() > BACKPRESSURE_THRESHOLD) {
           // Rejects when the files channel closes mid-wait — the abort path
-          // that keeps this frame (and the whole file buffer) from being
-          // suspended forever on a disconnect.
+          // that keeps this frame from being suspended forever on a
+          // disconnect.
           await this.awaitFilesBufferedLow(BACKPRESSURE_THRESHOLD);
         }
         // Re-checked after every await: a file-error from the peer or a
         // teardown cancelAll() may have flagged the transfer meanwhile.
         if (stream.abort) throw stream.abort;
-        const slice = bytes.slice(offset, offset + CHUNK_SIZE);
+        const slice = new Uint8Array(await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer());
+        if (stream.abort) throw stream.abort;
         this.sendChunk(buildChunkFrame(id, seq, slice));
         seq++;
         progress(offset + slice.byteLength);

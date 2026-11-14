@@ -297,6 +297,53 @@ describe("FileTransferManager — send", () => {
     expect(sentEvents.some((e) => e.kind === "file-done")).toBe(false);
   });
 
+  it("streams the file slice by slice without reading it whole into memory", async () => {
+    const content = new Uint8Array(40000).map((_, i) => i % 251);
+    const file = new File([content], "huge.bin", { type: "application/octet-stream" });
+    const wholeRead = vi.fn(() => Promise.reject(new RangeError("Array buffer allocation failed")));
+    Object.defineProperty(file, "arrayBuffer", { value: wholeRead });
+
+    const sendPromise = manager.send(file);
+    await vi.waitFor(() => {
+      expect(sentEvents.length).toBeGreaterThan(0);
+    });
+    const offer = sentEvents[0];
+    if (offer.kind !== "file-offer") throw new Error("expected file-offer");
+    manager.handle({ kind: "file-accept", id: offer.id });
+
+    await expect(sendPromise).resolves.toBeUndefined();
+    expect(wholeRead).not.toHaveBeenCalled();
+    expect(sentChunks.map((c) => new DataView(c).getUint32(4, true))).toEqual([0, 1, 2]);
+    const payload = sentChunks.flatMap((c) => Array.from(new Uint8Array(c, 8)));
+    expect(payload).toEqual(Array.from(content));
+  });
+
+  it("an abort that lands while a slice is being read stops the transfer", async () => {
+    const file = new File([new Uint8Array(20000)], "slow.bin", { type: "application/octet-stream" });
+    let releaseRead: () => void = () => {};
+    const sliceRead = new Promise<ArrayBuffer>((resolve) => {
+      releaseRead = () => resolve(new ArrayBuffer(16 * 1024));
+    });
+    Object.defineProperty(file, "slice", {
+      value: () => ({ arrayBuffer: () => sliceRead }),
+    });
+
+    const sendPromise = manager.send(file);
+    await vi.waitFor(() => {
+      expect(sentEvents.length).toBeGreaterThan(0);
+    });
+    const offer = sentEvents[0];
+    if (offer.kind !== "file-offer") throw new Error("expected file-offer");
+    manager.handle({ kind: "file-accept", id: offer.id });
+    await new Promise((r) => setTimeout(r, 10));
+    manager.handle({ kind: "file-error", id: offer.id, message: "cannot-open-file" });
+    releaseRead();
+
+    await expect(sendPromise).rejects.toThrow(/aborted/i);
+    expect(sentChunks).toHaveLength(0);
+    expect(sentEvents.some((e) => e.kind === "file-done")).toBe(false);
+  });
+
   it("file-reject mid-stream stops the chunk loop and settles as rejected (protocol.md)", async () => {
     let awaitResolve: () => void = () => {};
     const awaitLow = (): Promise<void> =>
