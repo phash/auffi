@@ -243,4 +243,21 @@ describe("unattended.ts settings wiring", () => {
       "start_streaming",
     ]);
   });
+
+  // main.ts owns the ice-state teardown; the backend sends no bye for a
+  // confirmed session that died, so without the event this buffer stayed
+  // live and every heartbeat line was suppressed indefinitely.
+  it("returns to the heartbeat status after an ICE-loss teardown", async () => {
+    await startSession();
+    const changes: unknown[] = [];
+    window.addEventListener("auffi-unattended-state-changed", (e) =>
+      changes.push((e as CustomEvent).detail),
+    );
+    window.dispatchEvent(new Event("auffi-stream-ended-after-ice-loss"));
+    await flush();
+    expect(byId("unattended-status").textContent).toContain("Verbindung zum Helfer verloren");
+    expect(changes.at(-1)).toEqual({ sessionLive: false });
+    await emit({ kind: "reconnecting", after_ms: 2000, attempt: 1 });
+    expect(byId("unattended-status").textContent).toContain("Neuer Verbindungsversuch");
+  });
 });

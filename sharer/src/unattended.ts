@@ -562,4 +562,15 @@ void listen<{ reason: string }>("streaming-failed", () => {
   setStatusText("Übertragung unterbrochen — bereit für neue Verbindung.");
 }).catch(() => {});
 
+// main.ts owns the ice-state teardown of the shared Rust peer. The backend
+// sends no bye for a confirmed session that died, so this is the only word
+// this buffer gets that the session is over.
+window.addEventListener("auffi-stream-ended-after-ice-loss", () => {
+  if (!signalBuffer.hasActivity()) return;
+  signalBuffer.reset();
+  void refresh()
+    .then(() => setStatusText("Verbindung zum Helfer verloren — bereit für neue Verbindung."))
+    .catch(() => {});
+});
+
 void refresh().catch(() => {});

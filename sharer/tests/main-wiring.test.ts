@@ -325,6 +325,16 @@ describe("main.ts ad-hoc wiring", () => {
     expect(byId("status").textContent).not.toBe("Streaming läuft.");
   });
 
+  // The unattended settings keep their own handshake buffer; this event is
+  // how they learn that the ICE-loss teardown ended the session.
+  it("announces an ICE-loss teardown to the unattended settings", async () => {
+    await startStream();
+    const seen: Event[] = [];
+    window.addEventListener("auffi-stream-ended-after-ice-loss", (e) => seen.push(e));
+    await emit("ice-state", "failed");
+    expect(seen).toHaveLength(1);
+  });
+
   // ── failures after Akzeptieren (finding 15) ─────────────────────────────
   it("offers Neuer Code when the portal start fails after Akzeptieren", async () => {
     await joinPeer();

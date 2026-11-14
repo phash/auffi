@@ -1083,6 +1083,9 @@ async function endStreamAfterIceLoss(): Promise<void> {
     newCodeBtn.classList.add("visible");
     resumeExpiryCountdown();
   }
+  // unattended.ts keeps its own handshake buffer and hears nothing else of
+  // this teardown: the backend sends no bye for a confirmed session that died.
+  window.dispatchEvent(new Event("auffi-stream-ended-after-ice-loss"));
   // keepSignaling: the peer is gone, but this sharer stays available for the
   // next viewer — dropping the signaling channel would release the code (or,
   // in unattended mode, the heartbeat's OutboundSink).
