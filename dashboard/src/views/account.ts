@@ -14,7 +14,7 @@ import { deleteMe, getMe, patchMe, type ApiErr, type Me } from "../api.js";
 import { wrapPasswordField } from "../components/password-field.js";
 import { formatAbsolute } from "../format.js";
 import { type RouteContext, type RouteRenderer } from "../router.js";
-import { redirectToLogin } from "../session.js";
+import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
 
 /**
  * German copy for the current_password-gated forms. PATCH/DELETE /api/me
@@ -196,6 +196,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
         "Bestätigungs-Mail an die neue Adresse unterwegs. Klick den Link, dann ist die Adresse aktiv.";
       return;
     }
+    if (redirectIfSessionExpired(res)) return;
     emailStatus.style.color = "var(--error)";
     emailStatus.textContent = friendlyAccountError(res);
   });
@@ -283,6 +284,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
       redirectToLogin();
       return;
     }
+    if (redirectIfSessionExpired(res)) return;
     pwSubmit.disabled = false;
     pwSubmit.textContent = "Passwort ändern";
     pwStatus.style.color = "var(--error)";
@@ -377,6 +379,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
       redirectToLogin();
       return;
     }
+    if (redirectIfSessionExpired(res)) return;
     dSubmit.disabled = false;
     dSubmit.textContent = "Account unwiderruflich löschen";
     dStatus.style.color = "var(--error)";

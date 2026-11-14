@@ -19,7 +19,7 @@ import {
 import { formatRelative } from "../format.js";
 import { confirmDialog } from "../components/confirm-dialog.js";
 import { BASE_PATH, navigate, type RouteContext, type RouteRenderer } from "../router.js";
-import { redirectToLogin } from "../session.js";
+import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
 
 export const renderDeviceDetail: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
   while (root.firstChild) root.removeChild(root.firstChild);
@@ -182,6 +182,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
       aliasStatus.textContent = "Name gespeichert.";
       return;
     }
+    if (redirectIfSessionExpired(res)) return;
     aliasStatus.style.color = "var(--error)";
     aliasStatus.textContent = `Fehler: ${res.message}`;
   });
@@ -251,6 +252,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
     // Roll the toggle back so the visible state always matches the
     // server's truth.
     autoToggle.checked = !next;
+    if (redirectIfSessionExpired(res)) return;
     autoStatus.style.color = "var(--error)";
     autoStatus.textContent = `Fehler: ${res.message}`;
   });
@@ -308,6 +310,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
       navigate("/devices");
       return;
     }
+    if (redirectIfSessionExpired(res)) return;
     dangerBtn.disabled = false;
     dangerBtn.textContent = "Gerät entkoppeln";
     dangerStatus.style.color = "var(--error)";

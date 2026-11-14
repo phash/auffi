@@ -86,6 +86,18 @@ export function redirectToLogin(): void {
   void refreshSession();
 }
 
+/**
+ * Call first in every authed `!res.ok` branch: a 401 there always means the
+ * session cookie expired (wrong current passwords answer 403), so redirect
+ * and tell the caller to stop. Not for the login form, whose 401 means
+ * "wrong credentials".
+ */
+export function redirectIfSessionExpired(res: { status: number }): boolean {
+  if (res.status !== 401) return false;
+  redirectToLogin();
+  return true;
+}
+
 /** Test seam — reset to the unresolved anonymous boot state and drop listeners. */
 export function _resetSessionForTests(): void {
   current = ANONYMOUS;

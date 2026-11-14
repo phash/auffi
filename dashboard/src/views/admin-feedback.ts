@@ -23,7 +23,7 @@ import {
 import { formatAbsolute } from "../format.js";
 import { confirmDialog } from "../components/confirm-dialog.js";
 import { type RouteContext, type RouteRenderer } from "../router.js";
-import { redirectToLogin } from "../session.js";
+import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
 
 type Tab = "open" | "resolved" | "all";
 
@@ -290,7 +290,7 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
     const res = await patchAdminFeedback(item.id, !item.resolvedAt);
     toggleBtn.disabled = false;
     if (!res.ok) {
-      showActionError(res.message);
+      if (!redirectIfSessionExpired(res)) showActionError(res.message);
       return;
     }
     onChange();
@@ -338,7 +338,7 @@ function buildCard(item: AdminFeedbackRow, onChange: () => void): HTMLElement {
     const res = await deleteAdminFeedback(item.id);
     deleteBtn.disabled = false;
     if (!res.ok) {
-      showActionError(res.message);
+      if (!redirectIfSessionExpired(res)) showActionError(res.message);
       return;
     }
     onChange();
@@ -411,6 +411,7 @@ function buildReplyPanel(
     sendBtn.disabled = false;
     cancelBtn.disabled = false;
     if (!res.ok) {
+      if (redirectIfSessionExpired(res)) return;
       status.textContent = `Fehler: ${res.message}`;
       status.className = "feedback-admin-reply-status err";
       return;

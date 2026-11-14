@@ -28,7 +28,7 @@ import {
   type RouteContext,
   type RouteRenderer,
 } from "../router.js";
-import { redirectToLogin } from "../session.js";
+import { redirectIfSessionExpired, redirectToLogin } from "../session.js";
 
 export const renderAdminUserDetail: RouteRenderer = (
   root: HTMLElement,
@@ -315,7 +315,7 @@ export const renderAdminUserDetail: RouteRenderer = (
       const res = await patchAdminUser(user.id, action, reason);
       setBarDisabled(false);
       if (!res.ok) {
-        showActionError(res.message);
+        if (!redirectIfSessionExpired(res)) showActionError(res.message);
         return;
       }
       void load(); // refetch
@@ -328,7 +328,7 @@ export const renderAdminUserDetail: RouteRenderer = (
       const res = await deleteAdminUser(user.id, reason);
       setBarDisabled(false);
       if (!res.ok) {
-        showActionError(res.message);
+        if (!redirectIfSessionExpired(res)) showActionError(res.message);
         return;
       }
       navigate("/admin/users");
