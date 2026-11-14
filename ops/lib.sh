@@ -462,3 +462,37 @@ remote_env_app_version() {
   # nach Step 13) und der Log-Tail ist bereits der letzte GUTE SHA.
   remote "grep -E '^APP_VERSION=' '${DEPLOY_PATH}/.env.prod' 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\"'" || true
 }
+
+# ---------------------------------------------------------------------------
+# Standalone auffi-caddy-Image: fester Tag (auffi-caddy:<ver>-ratelimit), also
+# baut `compose up` es nie neu. Ob es zum caddy/Dockerfile auf dem Host passt,
+# sagt ein Stempel mit dem Hash des Dockerfiles, aus dem es zuletzt ERFOLGREICH
+# gebaut wurde — nicht der Vergleich lokal↔Host: das rsync legt das neue
+# Dockerfile vor dem Build ab, ein gescheiterter Build sähe beim Retry sonst
+# "unverändert" aus. Liegt außerhalb von caddy/, weil rsync --delete und
+# release_restore das Verzeichnis überschreiben.
+# ---------------------------------------------------------------------------
+CADDY_IMAGE_STAMP=".caddy-image-dockerfile.sha256"
+
+caddy_image_stale() {
+  remote "cd '${DEPLOY_PATH}' && [ \"\$(sha256sum caddy/Dockerfile 2>/dev/null | awk '{print \$1}')\" != \"\$(cat '${CADDY_IMAGE_STAMP}' 2>/dev/null)\" ]"
+}
+
+caddy_image_rebuild() {
+  remote_compose "build caddy" || return
+  remote "cd '${DEPLOY_PATH}' && sha256sum caddy/Dockerfile | awk '{print \$1}' > '${CADDY_IMAGE_STAMP}'"
+}
+
+# rebuild_caddy_image_if_stale — standalone only; Cluster-Modus hat kein
+# auffi-caddy.
+rebuild_caddy_image_if_stale() {
+  [[ -n "${CLUSTER_PROXY:-}" ]] && return 0
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    log_dry "docker compose build caddy, falls caddy/Dockerfile ≠ Stempel ${CADDY_IMAGE_STAMP}"
+    return 0
+  fi
+  if caddy_image_stale; then
+    log_info "caddy/Dockerfile ≠ zuletzt gebautes auffi-caddy-Image → Rebuild"
+    caddy_image_rebuild
+  fi
+}

@@ -297,7 +297,9 @@ further back instead of returning to the release the first one backed out
 of, and the script refuses once no older release is left in the log. It
 then sets `APP_VERSION` in `.env.prod`, restores that SHA's **release snapshot**
 (`/opt/screenie/releases/<sha>/` — `viewer-dist`, `dashboard-dist`, `nginx/`,
-`coturn/`, in standalone mode also `caddy/`), recreates the stack, restarts
+`coturn/`, in standalone mode also `caddy/`; when the restored
+`caddy/Dockerfile` differs from the one the running `auffi-caddy` image was
+built from, the image is rebuilt first), recreates the stack, restarts
 the sidecars that read those files through single-file bind mounts
 (`auffi-dashboard`, `auffi-coturn`, cluster: `auffi-viewer` +
 `auffi-turn-cert-stage`, standalone:
@@ -305,6 +307,12 @@ the sidecars that read those files through single-file bind mounts
 deploy writes its snapshot after the health checks pass; the prune step keeps
 images and snapshots for the same last 3 SHAs, so the rollback target is
 still loaded.
+
+Standalone deploys rebuild the `auffi-caddy` image (fixed tag, so `compose
+up` alone never would) whenever `caddy/Dockerfile` on the host differs from
+the hash in `/opt/screenie/.caddy-image-dockerfile.sha256`, which is written
+only after a successful build — a failed build is retried on the next deploy.
+A host without that stamp rebuilds once.
 
 **Without a snapshot** (a SHA deployed before 0.7.1) the rollback is
 backend-image-only — the script says so loudly, and the frontends/configs stay

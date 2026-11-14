@@ -223,6 +223,10 @@ if [[ "${ROLLBACK}" == "true" ]]; then
     fi
   fi
 
+  # Der Snapshot bringt evtl. ein älteres caddy/Dockerfile zurück — ohne
+  # Rebuild liefe unter dem festen Tag weiter das neuere Plugin/Base-Image.
+  rebuild_caddy_image_if_stale
+
   maybe_run "docker compose up -d (rollback recreate)" \
     remote_compose "up -d --remove-orphans"
 
@@ -502,7 +506,6 @@ fi
 log_step "Config-Diff (welche Service-Configs haben sich geändert?)"
 
 SERVICES_TO_RESTART=()
-CADDY_REBUILD=false
 if [[ "${DRY_RUN}" == "false" ]]; then
   # auffi-viewer existiert nur im Cluster-Overlay (standalone served Caddy
   # den Viewer aus dem viewer-static-Volume) — ein `docker restart` auf
@@ -544,16 +547,6 @@ if [[ "${DRY_RUN}" == "false" ]]; then
       "${DEPLOY_PATH}/caddy/Caddyfile"; then
     SERVICES_TO_RESTART+=("auffi-caddy")
     log_info "caddy/Caddyfile changed → auffi-caddy wird restartet"
-  fi
-  # Das Image hat einen festen Tag (auffi-caddy:<ver>-ratelimit): existiert er
-  # auf dem Host, baut `compose up` nie neu — ein Plugin- oder Base-Bump im
-  # Dockerfile käme sonst nie an. Der Rebuild bekommt eine neue Image-ID, und
-  # `compose up` recreatet auffi-caddy daraufhin selbst.
-  if [[ -z "${CLUSTER_PROXY:-}" ]] && file_changed_on_remote \
-      "${REPO_ROOT}/caddy/Dockerfile" \
-      "${DEPLOY_PATH}/caddy/Dockerfile"; then
-    CADDY_REBUILD=true
-    log_info "caddy/Dockerfile changed → auffi-caddy-Image wird neu gebaut"
   fi
   if [[ ${#SERVICES_TO_RESTART[@]} -eq 0 ]]; then
     log_info "Keine Config-Änderungen — kein expliziter Service-Restart nötig."
@@ -637,10 +630,9 @@ maybe_run "Sync APP_VERSION in .env.prod → ${APP_VERSION}" \
 # ---------------------------------------------------------------------------
 log_step "docker compose up -d"
 
-if [[ "${CADDY_REBUILD}" == "true" ]]; then
-  maybe_run "docker compose build caddy" \
-    remote_compose "build caddy"
-fi
+# Der Rebuild bekommt eine neue Image-ID, und `compose up` recreatet
+# auffi-caddy daraufhin selbst.
+rebuild_caddy_image_if_stale
 
 maybe_run "docker compose up -d" \
   remote_compose "up -d --remove-orphans"

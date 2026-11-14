@@ -95,6 +95,33 @@ assert_contains "${OUT}" "NUR das Backend-Image" "operator is warned that only t
 assert_contains "$(grep '^APP_VERSION=' "${REMOTE}/.env.prod")" "APP_VERSION=aaaaaaa" ".env.prod points at A"
 assert_not_contains "$(cat "${STUB_LOG}")" "docker restart" "backend-only rollback restarts no bind-mount sidecar"
 
+echo "# standalone rollback to a snapshot with an older caddy/Dockerfile rebuilds the caddy image"
+seed_remote
+seed_snapshot_a
+printf 'FROM caddy:B\n' > "${REMOTE}/caddy/Dockerfile"
+(cd "${REMOTE}" && sha256sum caddy/Dockerfile | awk '{print $1}' > .caddy-image-dockerfile.sha256)
+printf 'FROM caddy:A-old\n' > "${REMOTE}/releases/aaaaaaa/caddy/Dockerfile"
+RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf "%s\n" "${OUT}"
+assert_eq 0 "${RC}" "rollback exits 0"
+assert_file_eq "${REMOTE}/caddy/Dockerfile" "FROM caddy:A-old" "caddy/Dockerfile restored to A"
+CALLS="$(cat "${STUB_LOG}")"
+assert_contains "${CALLS}" " build caddy" "caddy image rebuilt from the restored Dockerfile"
+BUILD_LINE="$(grep -n ' build caddy' "${STUB_LOG}" | head -n 1 | cut -d: -f1 || true)"
+UP_LINE="$(grep -n ' up -d --remove-orphans' "${STUB_LOG}" | head -n 1 | cut -d: -f1 || true)"
+assert_eq "true" "$([[ ${BUILD_LINE:-0} -gt 0 && ${BUILD_LINE} -lt ${UP_LINE:-0} ]] && echo true || echo false)" "rebuild runs before compose up"
+
+echo "# standalone rollback whose snapshot has the same caddy/Dockerfile does not rebuild"
+seed_remote
+seed_snapshot_a
+printf 'FROM caddy:B\n' > "${REMOTE}/caddy/Dockerfile"
+(cd "${REMOTE}" && sha256sum caddy/Dockerfile | awk '{print $1}' > .caddy-image-dockerfile.sha256)
+cp "${REMOTE}/caddy/Dockerfile" "${REMOTE}/releases/aaaaaaa/caddy/Dockerfile"
+RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf "%s\n" "${OUT}"
+assert_eq 0 "${RC}" "rollback exits 0"
+assert_not_contains "$(cat "${STUB_LOG}")" " build caddy" "unchanged Dockerfile → no caddy rebuild"
+
 # app_version — the SHA .env.prod points at after a run.
 app_version() { grep '^APP_VERSION=' "${REMOTE}/.env.prod" | cut -d= -f2; }
 

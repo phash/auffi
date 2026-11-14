@@ -127,9 +127,11 @@ printf 'rsync %s\n' "${args[*]}" >> "${STUB_LOG}"
 exec "${REAL_RSYNC}" "${args[@]}"
 STUB
 
+  # docker: logs and succeeds, unless the call contains STUB_DOCKER_FAIL.
   cat > "${bin}/docker" <<'STUB'
 #!/usr/bin/env bash
 printf 'docker %s\n' "$*" >> "${STUB_LOG}"
+if [[ -n "${STUB_DOCKER_FAIL:-}" && "$*" == *"${STUB_DOCKER_FAIL}"* ]]; then exit 1; fi
 exit 0
 STUB
 

@@ -19,6 +19,7 @@ run_deploy() {
     STUB_LOG="${STUB_LOG}" REAL_RSYNC="${REAL_RSYNC}" \
     DEPLOY_SSH="deploy@remote.invalid" DEPLOY_PATH="${REMOTE}" \
     DEPLOY_DOMAIN="deploy.invalid" DEPLOY_LOCK_FILE="${TMP}/lock" CLUSTER_PROXY= \
+    STUB_DOCKER_FAIL="${STUB_DOCKER_FAIL:-}" \
     bash "${TMP}/repo/ops/deploy.sh" --yes --skip-tests --notes "test"
 }
 
@@ -74,5 +75,18 @@ assert_not_contains "$(cat "${STUB_LOG}")" " build caddy" "unchanged caddy/Docke
 assert_eq "true" "$([[ -d "${REMOTE}/releases/old3333" ]] && echo true || echo false)" "most recent predecessor kept"
 assert_eq "true" "$([[ -d "${REMOTE}/releases/old2222" ]] && echo true || echo false)" "second predecessor kept"
 assert_eq "false" "$([[ -e "${REMOTE}/releases/old1111" ]] && echo true || echo false)" "oldest predecessor pruned (keep = 3)"
+
+echo "# a failed caddy build is retried on the next deploy, though the host already has the new Dockerfile"
+printf '\n# bumped plugin\n' >> "${TMP}/repo/caddy/Dockerfile"
+git -C "${TMP}/repo" -c user.name=test -c user.email=test@example.invalid commit -q -am "bump caddy"
+RC=0; OUT="$(STUB_DOCKER_FAIL="build caddy" run_deploy 2>&1)" || RC=$?
+assert_eq "false" "$([[ ${RC} -eq 0 ]] && echo true || echo false)" "deploy with a failing caddy build fails"
+assert_contains "$(cat "${REMOTE}/caddy/Dockerfile")" "bumped plugin" "the new Dockerfile already sits on the host"
+RC=0; OUT="$(run_deploy 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf '%s\n' "${OUT}"
+assert_eq 0 "${RC}" "retry exits 0"
+assert_contains "$(cat "${STUB_LOG}")" " build caddy" "retry rebuilds the caddy image"
+RC=0; OUT="$(run_deploy 2>&1)" || RC=$?
+assert_not_contains "$(cat "${STUB_LOG}")" " build caddy" "after a successful build the next deploy skips it"
 
 finish
