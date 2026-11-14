@@ -275,6 +275,56 @@ describe("main.ts ad-hoc wiring", () => {
     }
   });
 
+  // start_streaming cannot be cancelled and Rust stores the peer only at its
+  // end, so a bye while the user still sits in the portal dialog tears down
+  // nothing. The late start then built a capture for no viewer and the UI
+  // claimed "Streaming läuft.".
+  it("tears down a portal start that a bye overtook", async () => {
+    await joinPeer();
+    let resolveStart: () => void = () => {};
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "start_streaming"
+        ? new Promise<void>((r) => {
+            resolveStart = r;
+          })
+        : Promise.resolve(INVOKE_RESULTS[cmd]),
+    );
+    byId<HTMLButtonElement>("accept").click();
+    await flush();
+    expect(calls("start_streaming")).toHaveLength(1);
+    await emit("relay", { payload: { kind: "bye" } });
+    invokeMock.mockClear();
+    resolveStart();
+    await flush();
+    expect(calls("disconnect_streaming")).toEqual([["disconnect_streaming", { keepSignaling: true }]]);
+    expect(byId("status").textContent).not.toBe("Streaming läuft.");
+    expect(byId("streaming-actions").classList.contains("visible")).toBe(false);
+  });
+
+  it("tears down a picked-monitor start that a bye overtook", async () => {
+    await mount({ capture_backend_uses_portal: false, list_monitors: [{ id: 0, width: 1920, height: 1080 }] });
+    await joinPeer();
+    byId<HTMLButtonElement>("accept").click();
+    await flush();
+    let resolveStart: () => void = () => {};
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "start_streaming"
+        ? new Promise<void>((r) => {
+            resolveStart = r;
+          })
+        : Promise.resolve(INVOKE_RESULTS[cmd]),
+    );
+    byId<HTMLButtonElement>("stream-btn").click();
+    await flush();
+    expect(calls("start_streaming")).toHaveLength(1);
+    await emit("relay", { payload: { kind: "bye" } });
+    invokeMock.mockClear();
+    resolveStart();
+    await flush();
+    expect(calls("disconnect_streaming")).toEqual([["disconnect_streaming", { keepSignaling: true }]]);
+    expect(byId("status").textContent).not.toBe("Streaming läuft.");
+  });
+
   // ── failures after Akzeptieren (finding 15) ─────────────────────────────
   it("offers Neuer Code when the portal start fails after Akzeptieren", async () => {
     await joinPeer();

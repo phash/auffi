@@ -63,6 +63,21 @@ async function mount(): Promise<void> {
   invokeMock.mockClear();
 }
 
+/** Make start_streaming hang until the returned release() is called. */
+function deferStart(): { release: () => void } {
+  const pending: Array<() => void> = [];
+  invokeMock.mockImplementation((cmd: string) =>
+    cmd === "start_streaming"
+      ? new Promise<void>((r) => pending.push(r))
+      : Promise.resolve(INVOKE_RESULTS[cmd]),
+  );
+  return { release: () => pending.shift()?.() };
+}
+
+function invokeOrder(...cmds: string[]): string[] {
+  return invokeMock.mock.calls.map((c: unknown[]) => c[0] as string).filter((c) => cmds.includes(c));
+}
+
 /** A helper is connected and its offer has arrived — the P2P session is live. */
 async function startSession(): Promise<void> {
   await emit({ kind: "peer-joined" });
@@ -177,5 +192,55 @@ describe("unattended.ts settings wiring", () => {
     expect(byId("unattended-status").textContent).toContain("Getrennt");
     await emit({ kind: "connected", deviceId: "dev-1234" });
     expect(byId("unattended-status").textContent).toBe("Verbunden");
+  });
+
+  // ── a start that a teardown overtakes ───────────────────────────────────
+  // start_streaming cannot be cancelled and Rust stores the peer only at its
+  // end: a revoke while it runs finds nothing to tear down, and the late
+  // start kept capture and input alive after the owner revoked the device.
+  it("tears down a start that a revoke overtook", async () => {
+    const start = deferStart();
+    await emit({ kind: "peer-joined" });
+    await emit({ kind: "revoked" });
+    invokeMock.mockClear();
+    start.release();
+    await flush();
+    expect(calls("disconnect_streaming")).toEqual([
+      ["disconnect_streaming", { keepSignaling: true }],
+    ]);
+  });
+
+  it("ends a start still in flight when the user deactivates", async () => {
+    const start = deferStart();
+    await emit({ kind: "peer-joined" });
+    byId<HTMLButtonElement>("unattended-stop-btn").click();
+    await flush();
+    expect(calls("disconnect_streaming")).toEqual([
+      ["disconnect_streaming", { keepSignaling: true, sendBye: true }],
+    ]);
+    invokeMock.mockClear();
+    start.release();
+    await flush();
+    expect(calls("disconnect_streaming")).toEqual([
+      ["disconnect_streaming", { keepSignaling: true }],
+    ]);
+  });
+
+  // Rust's rtc_state guard runs before the slow steps, so two overlapping
+  // starts both pass it.
+  it("runs a second helper's start only after the first one settled", async () => {
+    const start = deferStart();
+    await emit({ kind: "peer-joined" });
+    await emit({ kind: "peer-joined" });
+    expect(calls("start_streaming")).toHaveLength(1);
+    start.release();
+    await flush();
+    await flush();
+    expect(calls("start_streaming")).toHaveLength(2);
+    expect(invokeOrder("disconnect_streaming", "start_streaming")).toEqual([
+      "start_streaming",
+      "disconnect_streaming",
+      "start_streaming",
+    ]);
   });
 });

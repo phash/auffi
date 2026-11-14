@@ -50,8 +50,22 @@ export class SignalingBuffer {
   private streamingReady = false;
   private pendingOffer: string | null = null;
   private pendingIce: IcePayload[] = [];
+  private currentGeneration = 0;
 
   constructor(private readonly sinks: SignalingBufferSinks) {}
+
+  /** Session token: read it before invoking start_streaming and hand it
+   *  to ready(). Every reset() retires it. start_streaming cannot be
+   *  cancelled once running and Rust stores the peer only at its very
+   *  end, so a teardown in between finds nothing to tear down — the
+   *  token is how the late start learns its session already ended. */
+  get generation(): number {
+    return this.currentGeneration;
+  }
+
+  isCurrent(generation: number): boolean {
+    return generation === this.currentGeneration;
+  }
 
   /** Route an incoming offer: forward when ready, buffer otherwise.
    *  A buffered offer replaces any previous one — only the newest
@@ -76,8 +90,12 @@ export class SignalingBuffer {
   }
 
   /** Mark the stream live and replay everything buffered, offer first,
-   *  candidates in arrival order. Call after start_streaming resolves. */
-  async ready(): Promise<void> {
+   *  candidates in arrival order. Call after start_streaming resolves.
+   *  Resolves false when `generation` was retired before or during the
+   *  replay: the session is over and the caller must tear down the peer
+   *  its start just built. */
+  async ready(generation: number): Promise<boolean> {
+    if (!this.isCurrent(generation)) return false;
     this.streamingReady = true;
     if (this.pendingOffer !== null) {
       const sdp = this.pendingOffer;
@@ -86,8 +104,10 @@ export class SignalingBuffer {
     }
     const ice = this.pendingIce.splice(0);
     for (const c of ice) {
+      if (!this.isCurrent(generation)) return false;
       await this.sinks.sendIce(c);
     }
+    return this.isCurrent(generation);
   }
 
   /** Drop ready-state and buffers — the next session starts fresh.
@@ -97,6 +117,7 @@ export class SignalingBuffer {
     this.streamingReady = false;
     this.pendingOffer = null;
     this.pendingIce = [];
+    this.currentGeneration += 1;
   }
 
   /** True while a session is live or handshake material is buffered —

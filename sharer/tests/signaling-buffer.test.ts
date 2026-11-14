@@ -59,14 +59,14 @@ describe("SignalingBuffer", () => {
     expect(offers).toEqual([]);
     expect(ices).toEqual([]);
 
-    await buffer.ready();
+    await buffer.ready(buffer.generation);
     expect(offers).toEqual(["v=0 offer"]);
     expect(ices.map((i) => i.candidate)).toEqual(["c1", "c2"]);
   });
 
   it("forwards immediately once ready", async () => {
     const { offers, ices, buffer } = harness();
-    await buffer.ready();
+    await buffer.ready(buffer.generation);
     buffer.offer("live offer");
     buffer.ice({ candidate: "live", sdpMid: "0" });
     // sinks are called via fire-and-forget promises — flush microtasks.
@@ -79,7 +79,7 @@ describe("SignalingBuffer", () => {
     const { offers, buffer } = harness();
     buffer.offer("stale offer");
     buffer.offer("fresh offer");
-    await buffer.ready();
+    await buffer.ready(buffer.generation);
     expect(offers).toEqual(["fresh offer"]);
   });
 
@@ -88,7 +88,7 @@ describe("SignalingBuffer", () => {
     buffer.offer("stale");
     buffer.ice({ candidate: "stale", sdpMid: "0" });
     buffer.reset();
-    await buffer.ready();
+    await buffer.ready(buffer.generation);
     expect(offers).toEqual([]);
     expect(ices).toEqual([]);
 
@@ -107,7 +107,42 @@ describe("SignalingBuffer", () => {
     expect(buffer.hasActivity()).toBe(true);
     buffer.reset();
     expect(buffer.hasActivity()).toBe(false);
-    await buffer.ready();
+    await buffer.ready(buffer.generation);
     expect(buffer.hasActivity()).toBe(true);
+  });
+
+  // A teardown that lands while start_streaming is still pending (portal
+  // dialog open, TURN fetch) must win: the late start may not flip the
+  // buffer live for a session that has already ended.
+  it("a ready() for a generation that reset() retired stays not-live", async () => {
+    const { offers, buffer } = harness();
+    const gen = buffer.generation;
+    buffer.offer("old session");
+    buffer.reset();
+    expect(await buffer.ready(gen)).toBe(false);
+    expect(buffer.hasActivity()).toBe(false);
+    buffer.offer("next session");
+    expect(offers).toEqual([]);
+  });
+
+  it("ready() for the current generation reports live", async () => {
+    const { buffer } = harness();
+    expect(await buffer.ready(buffer.generation)).toBe(true);
+    expect(buffer.isCurrent(buffer.generation)).toBe(true);
+  });
+
+  it("stops replaying old candidates once reset() runs mid-replay", async () => {
+    const ices: IcePayload[] = [];
+    const buffer: SignalingBuffer = new SignalingBuffer({
+      sendOffer: async () => {},
+      sendIce: async (ice) => {
+        ices.push(ice);
+        buffer.reset();
+      },
+    });
+    buffer.ice({ candidate: "c1", sdpMid: "0" });
+    buffer.ice({ candidate: "c2", sdpMid: "0" });
+    expect(await buffer.ready(buffer.generation)).toBe(false);
+    expect(ices.map((i) => i.candidate)).toEqual(["c1"]);
   });
 });

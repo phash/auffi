@@ -176,26 +176,54 @@ const signalBuffer = new SignalingBuffer({
   },
 });
 
+// Starts run one after another: Rust's rtc_state guard runs before the slow
+// steps (TURN fetch, capturer startup), so two overlapping start_streaming
+// calls would both pass it.
+let startQueue: Promise<void> = Promise.resolve();
+// Starts queued or running. They count as a live session for every teardown
+// decision: Rust stores the peer only when start_streaming returns, so the
+// buffer alone shows no activity until the offer arrives.
+let startsInFlight = 0;
+
+function sessionActive(): boolean {
+  return startsInFlight > 0 || signalBuffer.hasActivity();
+}
+
 /**
- * Serialised session start for a freshly confirmed helper. A previous
- * viewer that vanished without a bye leaves the Rust peer populated
- * (there is no ICE-failure teardown, mirroring ad-hoc semantics), so
- * tear stale streaming state down first — keepSignaling, because the
- * heartbeat WSS and its OutboundSink must survive the swap. Failures
- * surface in the status line and reset state so the next attempt works.
+ * Session start for a freshly confirmed helper. A previous viewer that
+ * vanished without a bye leaves the Rust peer populated, so tear stale
+ * streaming state down first — keepSignaling, because the heartbeat WSS and
+ * its OutboundSink must survive the swap. The buffer is reset right away, so
+ * the new helper's offer is buffered for this start and an older start still
+ * running learns its session is over. A teardown that overtakes this start
+ * (revoke, Deaktivieren, bye) retires its generation; the start then removes
+ * the peer it built instead of going live.
  */
-async function startUnattendedStream(): Promise<void> {
-  if (signalBuffer.hasActivity()) {
-    signalBuffer.reset();
-    await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
-  }
-  try {
-    await invoke("start_streaming", { monitorId: 0, sessionCode: "" });
-    await signalBuffer.ready();
-  } catch (e) {
-    signalBuffer.reset();
-    setStatusText(`Fehler beim Streamen: ${detail(e)}`);
-  }
+function startUnattendedStream(): void {
+  // A start still in flight removes its own peer once it sees the reset below.
+  const tearDownFirst = startsInFlight === 0 && signalBuffer.hasActivity();
+  signalBuffer.reset();
+  const generation = signalBuffer.generation;
+  startsInFlight += 1;
+  startQueue = startQueue.then(async () => {
+    try {
+      if (tearDownFirst) {
+        await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+      }
+      if (!signalBuffer.isCurrent(generation)) return;
+      await invoke("start_streaming", { monitorId: 0, sessionCode: "" });
+      if (!(await signalBuffer.ready(generation))) {
+        await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
+      }
+    } catch (e) {
+      if (signalBuffer.isCurrent(generation)) {
+        signalBuffer.reset();
+        setStatusText(`Fehler beim Streamen: ${detail(e)}`);
+      }
+    } finally {
+      startsInFlight -= 1;
+    }
+  });
 }
 
 /**
@@ -211,7 +239,7 @@ async function startUnattendedStream(): Promise<void> {
  * helper only learns from the 10-s ICE grace that the session is over.
  */
 async function endLiveUnattendedSession(): Promise<void> {
-  if (!signalBuffer.hasActivity()) return;
+  if (!sessionActive()) return;
   signalBuffer.reset();
   await invoke("disconnect_streaming", { keepSignaling: true, sendBye: true }).catch(() => {});
 }
@@ -234,7 +262,7 @@ function setStatusText(text: string): void {
  * line keeps describing the session instead of the link's reconnect.
  */
 function setHeartbeatStatusText(text: string): void {
-  if (!signalBuffer.hasActivity()) setStatusText(text);
+  if (!sessionActive()) setStatusText(text);
 }
 
 /**
@@ -255,7 +283,7 @@ async function refresh(): Promise<void> {
   // visibility without polling.
   window.dispatchEvent(
     new CustomEvent("auffi-unattended-state-changed", {
-      detail: { sessionLive: signalBuffer.hasActivity() },
+      detail: { sessionLive: sessionActive() },
     }),
   );
 
@@ -465,7 +493,7 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       // gh #20 + heartbeat→webrtc_peer integration: kick off the
       // WebRTC pipeline (tearing stale streaming state down first).
       // The viewer follows up with an SDP offer via "relay".
-      void startUnattendedStream();
+      startUnattendedStream();
       break;
     case "revoked":
     case "superseded": {
@@ -474,7 +502,7 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       // peer-to-peer session would otherwise keep running — screen AND
       // input — long after the owner revoked the device. Tear it down here.
       const kind = e.payload.kind === "revoked" ? "revoked" : "superseded";
-      const plan = planUnattendedTerminal(kind, signalBuffer.hasActivity());
+      const plan = planUnattendedTerminal(kind, sessionActive());
       if (plan.tearDownStream) {
         signalBuffer.reset();
         void invoke("disconnect_streaming", { keepSignaling: plan.keepSignaling }).catch(

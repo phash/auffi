@@ -554,8 +554,12 @@ async function startAcceptedSession(ip: string, rememberIt: boolean): Promise<vo
     if (usesPortal) {
       setStatus("Wähle den Bildschirm im System-Dialog…", "waiting");
       streamBtn.disabled = true;
+      const generation = signalBuffer.generation;
       await invoke("start_streaming", { monitorId: 0, sessionCode: currentCode ?? "" });
-      await signalBuffer.ready();
+      if (!(await signalBuffer.ready(generation))) {
+        await discardOvertakenStart();
+        return;
+      }
       setStatus("Streaming läuft.", "success");
       showStreamingActions();
       return;
@@ -577,6 +581,18 @@ async function startAcceptedSession(ip: string, rememberIt: boolean): Promise<vo
     streamBtn.disabled = false;
     newCodeBtn.classList.add("visible");
   }
+}
+
+/**
+ * A bye, viewer swap or signaling loss ended the session while
+ * start_streaming was still running. Rust stores the peer only at the end of
+ * that start, so the teardown that path ran found nothing; the capture and
+ * peer the start just built belong to no viewer and go now. keepSignaling:
+ * whichever path ended the session already decided the signaling channel's
+ * fate. The status it set stays.
+ */
+async function discardOvertakenStart(): Promise<void> {
+  await invoke("disconnect_streaming", { keepSignaling: true }).catch(() => {});
 }
 
 function renderMonitorChoices(monitors: DisplayInfo[]): void {
@@ -688,9 +704,13 @@ streamBtn.addEventListener("click", () => {
 
   setStatus("Stream wird gestartet…", "waiting");
 
+  const generation = signalBuffer.generation;
   invoke("start_streaming", { monitorId, sessionCode: currentCode ?? "" })
     .then(async () => {
-      await signalBuffer.ready();
+      if (!(await signalBuffer.ready(generation))) {
+        await discardOvertakenStart();
+        return;
+      }
       setStatus("Streaming läuft.", "success");
       showStreamingActions();
     })
