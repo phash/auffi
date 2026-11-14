@@ -91,5 +91,34 @@ assert_eq 0 "${RC}" "rollback exits 0"
 assert_file_eq "${REMOTE}/viewer-dist/index.html" "build-B" "viewer-dist untouched"
 assert_contains "${OUT}" "NUR das Backend-Image" "operator is warned that only the backend was rolled back"
 assert_contains "$(grep '^APP_VERSION=' "${REMOTE}/.env.prod")" "APP_VERSION=aaaaaaa" ".env.prod points at A"
+assert_not_contains "$(cat "${STUB_LOG}")" "docker restart" "backend-only rollback restarts no bind-mount sidecar"
+
+# app_version — the SHA .env.prod points at after a run.
+app_version() { grep '^APP_VERSION=' "${REMOTE}/.env.prod" | cut -d= -f2; }
+
+echo "# a second rollback in a row walks further back, never forward to the release it backed out of"
+seed_remote
+printf 'APP_VERSION=ccccccc\nTURN_SHARED_SECRET=x\n' > "${REMOTE}/.env.prod"
+printf '2026-09-03T00:00:00Z\tccccccc\tme@box\t\n' >> "${REMOTE}/.deploy-log"
+RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf "%s\n" "${OUT}"
+assert_eq "bbbbbbb" "$(app_version)" "first rollback: C → B"
+RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf "%s\n" "${OUT}"
+assert_eq 0 "${RC}" "second rollback exits 0"
+assert_eq "aaaaaaa" "$(app_version)" "second rollback: B → A, not back to the bad C"
+RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
+assert_eq 1 "${RC}" "third rollback refuses: nothing older than A is in the log"
+assert_eq "aaaaaaa" "$(app_version)" "a refused rollback leaves A running"
+
+echo "# rollback after a failed deploy, then once more"
+seed_remote
+printf 'APP_VERSION=ddddddd\nTURN_SHARED_SECRET=x\n' > "${REMOTE}/.env.prod"
+RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf "%s\n" "${OUT}"
+assert_eq "bbbbbbb" "$(app_version)" "failed deploy D (never logged) → last logged B"
+RC=0; OUT="$(run_rollback CLUSTER_PROXY= 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf "%s\n" "${OUT}"
+assert_eq "aaaaaaa" "$(app_version)" "then B → A"
 
 finish

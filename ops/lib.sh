@@ -413,9 +413,43 @@ deploy_log_last_sha() {
   remote "tail -n 1 '${DEPLOY_LOG_REMOTE}' 2>/dev/null | awk -F'\t' '{print \$2}'" || true
 }
 
-deploy_log_previous_sha() {
-  # Vorletzte Zeile — für Rollback.
-  remote "tail -n 2 '${DEPLOY_LOG_REMOTE}' 2>/dev/null | head -n 1 | awk -F'\t' '{print \$2}'" || true
+# deploy_log_live_stack — liest .deploy-log von stdin und gibt die Kette der
+# noch "lebenden" Releases aus, ältester zuerst, einer pro Zeile. Ein Deploy
+# legt seinen SHA oben drauf, ein ROLLBACK-Eintrag (SHA = Ziel) nimmt alles
+# darüber wieder herunter. Nur so kann ein zweiter Rollback in Folge nicht auf
+# den Release zurückspringen, den der erste gerade verlassen hat — die
+# vorletzte Log-Zeile ist nach einem Rollback genau dieser kaputte Release.
+deploy_log_live_stack() {
+  awk -F'\t' '
+    $2 == "" { next }
+    $4 ~ /^ROLLBACK/ {
+      while (n > 0 && stack[n] != $2) n--
+      if (n == 0) stack[++n] = $2
+      next
+    }
+    n == 0 || stack[n] != $2 { stack[++n] = $2 }
+    END { for (i = 1; i <= n; i++) print stack[i] }
+  '
+}
+
+# deploy_log_rollback_target <running_sha> — von stdin (.deploy-log). Läuft
+# der oberste lebende Release (oder ist der laufende SHA unbekannt), ist das
+# Ziel der darunter. Läuft etwas anderes, ist der letzte Deploy vor seinem
+# Log-Eintrag gescheitert und der oberste lebende Release das Ziel. Leer,
+# wenn es kein Ziel gibt.
+deploy_log_rollback_target() {
+  local running="$1" stack
+  stack="$(deploy_log_live_stack)"
+  local top; top="$(tail -n 1 <<<"${stack}")"
+  if [[ -n "${running}" && -n "${top}" && "${running}" != "${top}" ]]; then
+    printf '%s\n' "${top}"
+  else
+    tail -n 2 <<<"${stack}" | sed '$d' | tail -n 1
+  fi
+}
+
+deploy_log_fetch() {
+  remote "cat '${DEPLOY_LOG_REMOTE}' 2>/dev/null" || true
 }
 
 remote_env_app_version() {

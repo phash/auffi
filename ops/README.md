@@ -286,8 +286,11 @@ warning header in the script before using it.
 ```
 
 Reads the previous SHA from the deploy-log on the VPS (falling back to the
-last logged entry when the most recent deploy failed before being logged),
-sets `APP_VERSION` in `.env.prod`, restores that SHA's **release snapshot**
+last logged entry when the most recent deploy failed before being logged).
+`ROLLBACK` entries count: a second `--rollback` in a row goes one release
+further back instead of returning to the release the first one backed out
+of, and the script refuses once no older release is left in the log. It
+then sets `APP_VERSION` in `.env.prod`, restores that SHA's **release snapshot**
 (`/opt/screenie/releases/<sha>/` — `viewer-dist`, `dashboard-dist`, `nginx/`,
 `coturn/`, in standalone mode also `caddy/`), recreates the stack, restarts
 the sidecars that read those files through single-file bind mounts

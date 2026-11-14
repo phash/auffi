@@ -172,16 +172,17 @@ if [[ "${ROLLBACK}" == "true" ]]; then
   # gescheitert und hat NIE einen Log-Eintrag bekommen (Step 16 läuft nach
   # Step 15) — .env.prod trägt aber schon den kaputten SHA. Dann ist der
   # LETZTE Log-Eintrag der letzte gute Stand, nicht der vorletzte.
-  LAST_LOGGED_SHA="$(deploy_log_last_sha)"
+  # deploy_log_rollback_target überspringt außerdem Releases, die ein
+  # früherer Rollback schon verlassen hat.
+  DEPLOY_LOG_CONTENT="$(deploy_log_fetch)"
   RUNNING_SHA="$(remote_env_app_version)"
-  if [[ -n "${LAST_LOGGED_SHA}" && -n "${RUNNING_SHA}" && "${LAST_LOGGED_SHA}" != "${RUNNING_SHA}" ]]; then
-    PREV_SHA="${LAST_LOGGED_SHA}"
+  LIVE_TOP_SHA="$(deploy_log_live_stack <<<"${DEPLOY_LOG_CONTENT}" | tail -n 1)"
+  PREV_SHA="$(deploy_log_rollback_target "${RUNNING_SHA}" <<<"${DEPLOY_LOG_CONTENT}")"
+  if [[ -n "${RUNNING_SHA}" && -n "${LIVE_TOP_SHA}" && "${RUNNING_SHA}" != "${LIVE_TOP_SHA}" ]]; then
     log_info "Laufender SHA ${RUNNING_SHA} ist nicht im Deploy-Log (gescheiterter Deploy) — Rollback auf letzten geloggten SHA."
-  else
-    PREV_SHA="$(deploy_log_previous_sha)"
   fi
   if [[ -z "${PREV_SHA}" ]]; then
-    log_error "Kein vorheriger SHA im Deploy-Log gefunden (${DEPLOY_LOG_REMOTE}). Mindestens 2 Einträge nötig."
+    log_error "Kein älterer Release im Deploy-Log gefunden (${DEPLOY_LOG_REMOTE}) — frühere Rollbacks schon mitgezählt. Gezielt zurück: ./ops/deploy.sh --version <sha>."
     exit 1
   fi
 
