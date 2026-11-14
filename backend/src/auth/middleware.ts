@@ -38,9 +38,10 @@ function makeRequireSession(db: Db) {
     if (!sess) {
       return reply.status(401).send({ error: "no-session", message: "authentication required" });
     }
-    // Refresh last_seen_at on every authenticated hit (per #12 acceptance).
-    // This makes "stale" sessions visible in the dashboard's active-sessions
-    // view later and keeps active users' cookies from rolling-expiry pruning.
+    // Refresh last_seen_at on every authenticated hit (per #12 acceptance) so
+    // stale sessions are visible in the dashboard's session list. It does NOT
+    // extend the session: expires_at stays fixed at login + 30 d (the cookie's
+    // Max-Age matches), and findSession and the purge both go by expires_at.
     db.prepare("UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?").run(
       Date.now(),
       sess.tokenHash,
