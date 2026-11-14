@@ -18,8 +18,9 @@ updates:
       npm-minor-patch:
         update-types: [minor, patch]
     ignore:
-      # @types/node tracks the Node runtime major (22 in the backend image and
-      # CI), not the newest Node release.
+      # @types/node tracks the Node runtime major (22 in backend/Dockerfile
+      # and every CI job), not the newest Node release. Move it in the same
+      # commit as the Dockerfile and the CI node-version.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
 
@@ -31,6 +32,21 @@ updates:
     groups:
       cargo-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # Majors held in sharer/src-tauri/Cargo.toml (the comment there says
+      # why): none compiles as a drop-in. Their open major PRs filled all
+      # five slots and stalled the minor/patch group from 2026-10-23 on.
+      # Remove an entry when that migration lands.
+      - dependency-name: webrtc
+        update-types: ["version-update:semver-major"]
+      - dependency-name: ashpd
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "gstreamer*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: dirs
+        update-types: ["version-update:semver-major"]
+      - dependency-name: keyring
+        update-types: ["version-update:semver-major"]
 
   # Dockerfiles: backend (node + alpine geoip stage) and the standalone Caddy.
   - package-ecosystem: docker
@@ -58,6 +74,14 @@ updates:
     groups:
       compose-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # Odd nginx minors are the mainline branch; prod stays on stable. A
+      # new stable minor (1.32) is bumped by hand, patches come through.
+      - dependency-name: nginx
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # Locally built images (auffi-caddy, auffi-backend) are not on any
+      # registry; looking them up failed every weekly compose run.
+      - dependency-name: "auffi-*"
 
   - package-ecosystem: github-actions
     directory: /
