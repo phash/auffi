@@ -1,6 +1,7 @@
 // gh new-feature 2026-05-21 — Update-Notifier-Banner.
-// Pure DOM-Helpers; das Wiring (Tauri-Command-Aufruf + shell-open) sitzt
-// in main.ts und ist von Coverage ausgenommen.
+// Pure DOM-Helpers; das Wiring (Tauri-Command-Aufruf + openUrl aus
+// tauri-plugin-opener, URL-Scope in capabilities/default.json) sitzt in
+// main.ts und ist von Coverage ausgenommen.
 
 /** UpdateInfo-Form (kommt vom Rust-Command `check_for_update`). */
 export interface UpdateInfo {
