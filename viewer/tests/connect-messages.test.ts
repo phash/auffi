@@ -31,6 +31,9 @@ describe("friendlyJoinError", () => {
     const r = friendlyJoinError("peer-rejected: sharer-gone");
     expect(r.kind).toBe("err");
     expect(r.text.toLowerCase()).toContain("nicht mehr erreichbar");
+    // The viewer user IS the helper — the copy must point at the other side.
+    expect(r.text).toContain("bei der anderen Person nachfragen");
+    expect(r.text).not.toContain("Helfer");
   });
 
   it("treats an expired peer-rejection like an expired code", () => {

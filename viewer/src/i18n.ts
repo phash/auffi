@@ -71,7 +71,7 @@ const MESSAGES: Record<Lang, Record<string, Entry>> = {
     "join.declined": "Die andere Seite hat die Verbindung abgelehnt.",
     "join.expired": "Der Code ist abgelaufen. Bitte beim Helfer einen neuen Code anfragen.",
     "join.lockout": (p) => `Zu viele Fehlversuche. Gesperrt für ca. ${p.mins} Min — bitte später erneut versuchen.`,
-    "join.sharerGone": "Der andere Computer ist nicht mehr erreichbar. Bitte beim Helfer nachfragen und erneut verbinden.",
+    "join.sharerGone": "Der andere Computer ist nicht mehr erreichbar. Bitte bei der anderen Person nachfragen und erneut verbinden.",
     "join.invalidCode": "Dieser Code ist nicht (mehr) gültig. Bitte beim Helfer nach einem aktuellen Code fragen.",
     "join.sessionFull": "Zu dieser Sitzung ist bereits jemand verbunden. Bitte beim Helfer einen neuen Code anfragen.",
     "join.rateLimit": "Zu viele Versuche in kurzer Zeit. Bitte einen Moment warten und erneut versuchen.",
