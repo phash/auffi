@@ -134,6 +134,10 @@ class TransferRejectedError extends Error {
   }
 }
 
+/** `abort` holds the reason once the peer or a teardown stopped the stream;
+ *  the chunk loop rethrows it so send() settles with the right phase. */
+type StreamState = { abort: Error | null };
+
 type PendingSend = {
   acceptResolve: () => void;
   acceptReject: (err: Error) => void;
@@ -163,7 +167,7 @@ export class FileTransferManager {
   private pendingReceive: Map<string, IncomingReceive> = new Map();
   /** Accepted transfers currently streaming; the flag lets a peer
    *  `file-error` or `cancelAll()` stop the chunk loop mid-file. */
-  private activeStreams: Map<string, { aborted: boolean }> = new Map();
+  private activeStreams: Map<string, StreamState> = new Map();
 
   constructor(
     private sendEvent: (event: FileEvent) => void,
@@ -202,7 +206,7 @@ export class FileTransferManager {
   }
 
   private async streamFile(id: string, file: File): Promise<void> {
-    const stream = { aborted: false };
+    const stream: StreamState = { abort: null };
     this.activeStreams.set(id, stream);
     try {
       const buffer = await file.arrayBuffer();
@@ -220,14 +224,14 @@ export class FileTransferManager {
         }
         // Re-checked after every await: a file-error from the peer or a
         // teardown cancelAll() may have flagged the transfer meanwhile.
-        if (stream.aborted) throw new Error("Transfer aborted");
+        if (stream.abort) throw stream.abort;
         const slice = bytes.slice(offset, offset + CHUNK_SIZE);
         this.sendChunk(buildChunkFrame(id, seq, slice));
         seq++;
         progress(offset + slice.byteLength);
       }
 
-      if (stream.aborted) throw new Error("Transfer aborted");
+      if (stream.abort) throw stream.abort;
       this.sendEvent({ kind: "file-done", id });
     } finally {
       this.activeStreams.delete(id);
@@ -289,6 +293,10 @@ export class FileTransferManager {
           this.pendingSend.delete(event.id);
           pending.acceptReject(new TransferRejectedError());
         }
+        // protocol.md: a reject for an id that is already streaming stops
+        // the sender's chunk loop, same as file-error.
+        const stream = this.activeStreams.get(event.id);
+        if (stream) stream.abort ??= new TransferRejectedError();
         break;
       }
       case "file-offer": {
@@ -316,7 +324,7 @@ export class FileTransferManager {
           pending.acceptReject(new Error(event.message));
         }
         const stream = this.activeStreams.get(event.id);
-        if (stream) stream.aborted = true;
+        if (stream) stream.abort ??= new Error("Transfer aborted");
         break;
       }
     }
@@ -364,7 +372,7 @@ export class FileTransferManager {
     // Accepted transfers are no longer in pendingSend — flag their running
     // streams so the chunk loops stop and the send() promises settle.
     for (const [, stream] of this.activeStreams) {
-      stream.aborted = true;
+      stream.abort ??= new Error("Transfer aborted");
     }
   }
 

@@ -297,6 +297,40 @@ describe("FileTransferManager — send", () => {
     expect(sentEvents.some((e) => e.kind === "file-done")).toBe(false);
   });
 
+  it("file-reject mid-stream stops the chunk loop and settles as rejected (protocol.md)", async () => {
+    let awaitResolve: () => void = () => {};
+    const awaitLow = (): Promise<void> =>
+      new Promise((resolve) => {
+        awaitResolve = resolve;
+      });
+    const mgr = new FileTransferManager(
+      (ev) => sentEvents.push(ev),
+      (buf) => sentChunks.push(buf),
+      () => 2 * 1024 * 1024,
+      awaitLow,
+    );
+    const phases: string[] = [];
+    mgr.onTransferStatus((s) => phases.push(s.phase));
+
+    const file = new File([new Uint8Array(20000)], "reject.bin", { type: "application/octet-stream" });
+    const sendPromise = mgr.send(file);
+    await vi.waitFor(() => {
+      expect(sentEvents.length).toBeGreaterThan(0);
+    });
+    const offer = sentEvents[0];
+    if (offer.kind !== "file-offer") throw new Error("expected file-offer");
+
+    mgr.handle({ kind: "file-accept", id: offer.id });
+    await new Promise((r) => setTimeout(r, 10));
+    mgr.handle({ kind: "file-reject", id: offer.id });
+    awaitResolve();
+
+    await expect(sendPromise).rejects.toThrow("rejected");
+    expect(sentChunks).toHaveLength(0);
+    expect(sentEvents.some((e) => e.kind === "file-done")).toBe(false);
+    expect(phases.at(-1)).toBe("rejected");
+  });
+
   it("respects backpressure threshold — waits when bufferedAmount is high", async () => {
     let awaitCalled = false;
     let awaitResolve: () => void = () => {};
