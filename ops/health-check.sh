@@ -82,37 +82,47 @@ if [[ -n "${MRD_API_KEY:-}" ]] && [[ -n "${MRD_CLUSTER_ID:-}" ]]; then
   # Ein flaches {"state": …} bekommt VALIDATION_ERROR, und weil der Post
   # non-fatal ist, fiel das monatelang nicht auf. Der Record wird per GET
   # geholt und nur unser Key ersetzt, damit ein PUT die Einträge der
-  # anderen Projekte nicht überschreibt.
-  MRD_CURRENT="$(curl -fsS --max-time 10 -H "X-API-Key: ${MRD_API_KEY}" "${MRD_CLUSTER_URL}" 2>/dev/null || true)"
-  MRD_PAYLOAD="$(printf '%s' "${MRD_CURRENT}" | python3 -c '
+  # anderen Projekte nicht überschreibt. Scheitert der GET oder ist die
+  # Antwort kein Cluster-Objekt, unterbleibt der PUT — ein Record nur mit
+  # unserem Key würde sonst bei jedem MRD-Aussetzer alle anderen löschen.
+  MRD_PAYLOAD=""
+  if MRD_CURRENT="$(curl -fsS --max-time 10 -H "X-API-Key: ${MRD_API_KEY}" "${MRD_CLUSTER_URL}" 2>/dev/null)"; then
+    MRD_PAYLOAD="$(printf '%s' "${MRD_CURRENT}" | python3 -c '
 import json, sys
 state, checked = sys.argv[1], sys.argv[2]
 try:
     doc = json.load(sys.stdin)
 except ValueError:
-    doc = {}
-cluster = doc.get("data", doc) if isinstance(doc, dict) else {}
-status = cluster.get("status") if isinstance(cluster, dict) else None
+    sys.exit(1)
+cluster = doc.get("data", doc) if isinstance(doc, dict) else None
+if not isinstance(cluster, dict):
+    sys.exit(1)
+status = cluster.get("status")
 if not isinstance(status, dict):
     status = {}
 status["auffi"] = f"{state} — healthz+readyz checked {checked}"
 print(json.dumps({"status": status}))
-' "${STATE}" "${TIMESTAMP}")"
+' "${STATE}" "${TIMESTAMP}")" || MRD_PAYLOAD=""
+  fi
 
-  MRD_RESULT="$(curl -sS --max-time 10 \
-    -X PUT \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: ${MRD_API_KEY}" \
-    -d "${MRD_PAYLOAD}" \
-    -w $'\n%{http_code}' \
-    "${MRD_CLUSTER_URL}/status" 2>/dev/null)" || MRD_RESULT=$'\nerror'
-  CURL_STATUS="${MRD_RESULT##*$'\n'}"
-  MRD_BODY="${MRD_RESULT%$'\n'*}"
-
-  if [[ "${CURL_STATUS}" == "200" ]] || [[ "${CURL_STATUS}" == "204" ]]; then
-    log_ok "[${TIMESTAMP}] MRD-API status posted: ${STATE}"
+  if [[ -z "${MRD_PAYLOAD}" ]]; then
+    log_warn "[${TIMESTAMP}] MRD-API status read failed — PUT skipped so the other projects' entries stay intact (non-fatal)"
   else
-    log_warn "[${TIMESTAMP}] MRD-API status post failed (HTTP ${CURL_STATUS}) — non-fatal. Response: ${MRD_BODY}"
+    MRD_RESULT="$(curl -sS --max-time 10 \
+      -X PUT \
+      -H "Content-Type: application/json" \
+      -H "X-API-Key: ${MRD_API_KEY}" \
+      -d "${MRD_PAYLOAD}" \
+      -w $'\n%{http_code}' \
+      "${MRD_CLUSTER_URL}/status" 2>/dev/null)" || MRD_RESULT=$'\nerror'
+    CURL_STATUS="${MRD_RESULT##*$'\n'}"
+    MRD_BODY="${MRD_RESULT%$'\n'*}"
+
+    if [[ "${CURL_STATUS}" == "200" ]] || [[ "${CURL_STATUS}" == "204" ]]; then
+      log_ok "[${TIMESTAMP}] MRD-API status posted: ${STATE}"
+    else
+      log_warn "[${TIMESTAMP}] MRD-API status post failed (HTTP ${CURL_STATUS}) — non-fatal. Response: ${MRD_BODY}"
+    fi
   fi
 fi
 

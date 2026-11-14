@@ -31,9 +31,14 @@ if [[ "${url}" == *mr-development.de* ]]; then
   if [[ "${method}" == "PUT" ]]; then
     printf '%s' "${data}" > "${PUT_BODY_FILE}"
     printf '%s\n%s' "${STUB_PUT_BODY:-{\}}" "${STUB_PUT_STATUS:-200}"
-  else
-    printf '{"data":{"id":"cluster-1","status":{"chords":"LIVE since 2026-08-07"}}}'
+    exit 0
   fi
+  case "${STUB_GET_MODE:-ok}" in
+    fail) exit 28 ;;
+    nonjson) printf '<html>502 Bad Gateway</html>' ;;
+    nostatus) printf '{"data":{"id":"cluster-1","status":null}}' ;;
+    *) printf '{"data":{"id":"cluster-1","status":{"chords":"LIVE since 2026-08-07"}}}' ;;
+  esac
   exit 0
 fi
 if [[ -n "${STUB_PROBE_FAIL:-}" ]]; then exit 22; fi
@@ -73,5 +78,21 @@ RC=0; OUT="$(run_health STUB_PUT_STATUS=400 'STUB_PUT_BODY={"error":"VALIDATION_
 assert_eq 0 "${RC}" "MRD failure stays non-fatal"
 assert_contains "${OUT}" "HTTP 400" "status code logged"
 assert_contains "${OUT}" "VALIDATION_ERROR" "response body logged so a contract drift is visible"
+
+echo "# MRD GET fails → no PUT, so the other projects' entries survive"
+RC=0; OUT="$(run_health STUB_GET_MODE=fail 2>&1)" || RC=$?
+assert_eq 0 "${RC}" "a failed GET stays non-fatal"
+assert_eq "false" "$([[ -f "${PUT_BODY_FILE}" ]] && echo true || echo false)" "no PUT after a failed GET"
+assert_contains "${OUT}" "MRD-API status read failed" "skipped PUT is logged"
+
+echo "# MRD GET returns non-JSON → no PUT"
+RC=0; OUT="$(run_health STUB_GET_MODE=nonjson 2>&1)" || RC=$?
+assert_eq 0 "${RC}" "a junk GET body stays non-fatal"
+assert_eq "false" "$([[ -f "${PUT_BODY_FILE}" ]] && echo true || echo false)" "no PUT after a non-JSON GET"
+assert_contains "${OUT}" "MRD-API status read failed" "skipped PUT is logged"
+
+echo "# cluster without a status record yet → fresh record with our key"
+RC=0; OUT="$(run_health STUB_GET_MODE=nostatus 2>&1)" || RC=$?
+assert_eq "['auffi']" "$(pf 'print(sorted(d["status"]))')" "fresh status record holds only auffi"
 
 finish
