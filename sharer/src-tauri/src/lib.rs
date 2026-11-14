@@ -258,6 +258,16 @@ struct SessionMetrics {
     generation: std::sync::atomic::AtomicU64,
 }
 
+impl SessionMetrics {
+    /// Read-and-reset the `bytesRelayed` figure for the session ending now,
+    /// so a second teardown in the same process cannot report it twice.
+    fn take_relay_bytes(&self) -> u64 {
+        use std::sync::atomic::Ordering;
+        let written = self.bytes.swap(0, Ordering::Relaxed);
+        reportable_relay_bytes(written, self.is_relay.swap(false, Ordering::Relaxed))
+    }
+}
+
 struct SessionBytesState(Arc<SessionMetrics>);
 
 /// Two-phase swap protocol so the OLD capture pipeline tears down before
@@ -1081,16 +1091,7 @@ async fn disconnect_streaming(
     // Read-and-reset so a later teardown in the same process cannot report
     // the same bytes twice. No-op on the ad-hoc sink.
     {
-        use std::sync::atomic::Ordering;
-        // connection_log.bytes_relayed means RELAYED bytes — the schema
-        // documents "0 for p2p". Reporting the track total regardless of path
-        // made every direct session look like multi-GB relay traffic in the
-        // admin stats. Read-and-reset so a second teardown cannot re-report.
-        let written = bytes_state.0.bytes.swap(0, Ordering::Relaxed);
-        let sent = reportable_relay_bytes(
-            written,
-            bytes_state.0.is_relay.swap(false, Ordering::Relaxed),
-        );
+        let sent = bytes_state.0.take_relay_bytes();
         let sink = outbound_state.0.lock().await.clone();
         if let Some(sink) = sink {
             if let Err(e) = sink
@@ -1230,9 +1231,9 @@ fn exit_on_sigterm(app: tauri::AppHandle) {
     });
 }
 
-/// Main-thread exit hook: a `bye` to a live viewer, then a clean heartbeat
-/// close — all bounded by `SHUTDOWN_BUDGET` so neither a dead network nor a
-/// busy lock stalls exit.
+/// Main-thread exit hook: end-of-session telemetry and a `bye` to a live
+/// viewer, then a clean heartbeat close — all bounded by `SHUTDOWN_BUDGET`
+/// so neither a dead network nor a busy lock stalls exit.
 fn run_shutdown_jobs_on_exit(app: &tauri::AppHandle) {
     use tauri::Manager;
     let rtc = app.state::<WebRtcState>().0.clone();
@@ -1241,8 +1242,9 @@ fn run_shutdown_jobs_on_exit(app: &tauri::AppHandle) {
         .state::<unattended_cmd::UnattendedState>()
         .commands
         .clone();
+    let metrics = app.state::<SessionBytesState>().0.clone();
     let finished = tauri::async_runtime::block_on(async move {
-        lifecycle::run_shutdown_jobs(&rtc, &sink, &heartbeat).await
+        lifecycle::run_shutdown_jobs(&rtc, &sink, &heartbeat, &metrics).await
     });
     if !finished {
         dbg_log("[exit] shutdown jobs hit the time budget");

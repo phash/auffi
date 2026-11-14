@@ -10,8 +10,9 @@ use std::time::Duration;
 
 use tokio::sync::Mutex;
 
-use crate::heartbeat::{HeartbeatCommand, HeartbeatCommands};
+use crate::heartbeat::{HeartbeatCommand, HeartbeatCommands, SharerFrame};
 use crate::outbound::OutboundSink;
+use crate::SessionMetrics;
 
 /// Argument the autostart entry launches the sharer with.
 pub(crate) const MINIMIZED_FLAG: &str = "--minimized";
@@ -32,9 +33,10 @@ pub(crate) fn starts_hidden(mut args: impl Iterator<Item = String>, mode: Option
     crate::unattended_cmd::resumes_on_launch(mode) && args.any(|a| a == MINIMIZED_FLAG)
 }
 
-/// Exit jobs, in order: `bye` to the viewer of a live session (otherwise it
-/// sees an ICE drop and shows "Verbindung verloren"), then a clean close of
-/// the heartbeat WSS.
+/// Exit jobs, in order: for a live session the `connection-ended` telemetry
+/// (unattended only; otherwise the backend closes the log row with 0 relayed
+/// bytes) and a `bye` to the viewer (otherwise it sees an ICE drop and shows
+/// "Verbindung verloren"), then a clean close of the heartbeat WSS.
 ///
 /// The lock waits run inside [`SHUTDOWN_BUDGET`] too: `disconnect_streaming`
 /// holds the peer lock across `peer.close()` and `start_heartbeat` holds the
@@ -45,13 +47,14 @@ pub(crate) async fn run_shutdown_jobs<P>(
     rtc: &Mutex<Option<P>>,
     sink: &Mutex<Option<OutboundSink>>,
     heartbeat: &Mutex<Option<HeartbeatCommands>>,
+    metrics: &SessionMetrics,
 ) -> bool {
     tokio::time::timeout(SHUTDOWN_BUDGET, async {
         let session_live = rtc.lock().await.is_some();
         if session_live {
             let sink = sink.lock().await.clone();
             if let Some(sink) = sink {
-                send_bye(&sink).await;
+                end_session(&sink, metrics).await;
             }
         }
         let heartbeat = heartbeat.lock().await.take();
@@ -65,7 +68,15 @@ pub(crate) async fn run_shutdown_jobs<P>(
     .is_ok()
 }
 
-async fn send_bye(sink: &OutboundSink) {
+async fn end_session(sink: &OutboundSink, metrics: &SessionMetrics) {
+    if let Err(e) = sink
+        .send_telemetry(SharerFrame::ConnectionEnded {
+            bytes_relayed: metrics.take_relay_bytes(),
+        })
+        .await
+    {
+        crate::dbg_log(&format!("[exit] telemetry end: {e}"));
+    }
     if sink
         .send_relay(serde_json::json!({ "kind": "bye" }))
         .await
@@ -78,7 +89,6 @@ async fn send_bye(sink: &OutboundSink) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::heartbeat::SharerFrame;
     use crate::protocol::Outgoing;
     use tokio::sync::mpsc;
 
@@ -148,6 +158,7 @@ mod tests {
             &locked(LIVE),
             &locked(Some(OutboundSink::AdHoc(tx))),
             &locked(None),
+            &SessionMetrics::default(),
         )
         .await;
         assert!(finished);
@@ -155,6 +166,7 @@ mod tests {
             Ok(Outgoing::Relay { payload }) => assert_eq!(payload["kind"], "bye"),
             _ => panic!("expected a bye relay"),
         }
+        assert!(rx.try_recv().is_err(), "ad-hoc gets no telemetry frame");
     }
 
     #[tokio::test]
@@ -164,30 +176,47 @@ mod tests {
             &locked(None::<()>),
             &locked(Some(OutboundSink::AdHoc(tx))),
             &locked(None),
+            &SessionMetrics::default(),
         )
         .await;
         assert!(rx.try_recv().is_err());
     }
 
     #[tokio::test]
-    async fn heartbeat_gets_bye_then_shutdown_and_jobs_wait_for_its_close() {
+    async fn heartbeat_gets_end_telemetry_bye_then_shutdown_and_jobs_wait_for_its_close() {
+        use std::sync::atomic::Ordering;
         let (tx, heartbeat) = fake_heartbeat();
+        let metrics = SessionMetrics::default();
+        metrics.bytes.store(41_231_872, Ordering::Relaxed);
+        metrics.is_relay.store(true, Ordering::Relaxed);
         let finished = run_shutdown_jobs(
             &locked(LIVE),
             &locked(Some(OutboundSink::Unattended(tx.clone()))),
             &locked(Some(tx)),
+            &metrics,
         )
         .await;
         assert!(finished, "jobs must return once the heartbeat task is gone");
         let seen = heartbeat.await.expect("heartbeat task");
-        assert_eq!(seen.len(), 2);
+        assert_eq!(seen.len(), 3);
         match &seen[0] {
+            HeartbeatCommand::Send(SharerFrame::ConnectionEnded { bytes_relayed }) => {
+                assert_eq!(*bytes_relayed, 41_231_872)
+            }
+            _ => panic!("first command must be the connection-ended telemetry"),
+        }
+        match &seen[1] {
             HeartbeatCommand::Send(SharerFrame::Relay { payload }) => {
                 assert_eq!(payload["kind"], "bye")
             }
-            _ => panic!("first command must be the bye relay"),
+            _ => panic!("second command must be the bye relay"),
         }
-        assert!(matches!(seen[1], HeartbeatCommand::Shutdown));
+        assert!(matches!(seen[2], HeartbeatCommand::Shutdown));
+        assert_eq!(
+            metrics.bytes.load(Ordering::Relaxed),
+            0,
+            "reported bytes are reset so a later teardown cannot report them twice"
+        );
     }
 
     #[tokio::test]
@@ -198,6 +227,7 @@ mod tests {
             &locked(None::<()>),
             &locked(None),
             &locked(Some(tx)),
+            &SessionMetrics::default(),
         )
         .await;
         assert!(finished, "a gone heartbeat must not stall exit");
@@ -215,7 +245,8 @@ mod tests {
                 &locked(LIVE),
                 &locked(Some(OutboundSink::AdHoc(tx))),
                 &heartbeat,
-                ),
+                &SessionMetrics::default(),
+            ),
         )
         .await
         .expect("a held heartbeat lock must not stall exit past the budget");
@@ -234,7 +265,8 @@ mod tests {
                 &rtc,
                 &locked(None),
                 &locked(None),
-                ),
+                &SessionMetrics::default(),
+            ),
         )
         .await
         .expect("a held peer lock must not stall exit past the budget");
@@ -251,7 +283,8 @@ mod tests {
                 &locked(LIVE),
                 &sink,
                 &locked(None),
-                ),
+                &SessionMetrics::default(),
+            ),
         )
         .await
         .expect("a held sink lock must not stall exit past the budget");
