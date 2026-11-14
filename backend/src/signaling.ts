@@ -110,8 +110,6 @@ function newPerPeerEntry(cfg: RateLimitConfig): RateLimitEntry {
 
 const DEFAULT_PER_PEER_LIMIT: RateLimitConfig = { windowMs: 10_000, max: 50 };
 
-/// Allowed values of `payload.kind` in a relay message. Anything else is a
-/// protocol error and gets rejected before being forwarded to the other peer.
 /**
  * How long after the backend finalised a session row a trailing
  * `connection-ended` may still record its byte count. The frame follows the
@@ -120,6 +118,8 @@ const DEFAULT_PER_PEER_LIMIT: RateLimitConfig = { windowMs: 10_000, max: 50 };
  */
 const TRAILING_BYTES_WINDOW_MS = 30_000;
 
+/// Allowed values of `payload.kind` in a relay message. Anything else is a
+/// protocol error and gets rejected before being forwarded to the other peer.
 const RELAY_KINDS = new Set<string>(["sdp", "ice", "hello", "bye"]);
 
 /// Per-IP cap on `register`-as-sharer messages. Caddy's `/signal`
