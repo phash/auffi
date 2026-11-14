@@ -1,10 +1,11 @@
-// /dashboard/reset/:token — set new password form. On 200 backend
-// also revokes every other session of the account (per spec §4.5
-// step 3), so the user is logged out everywhere except this tab.
+// /dashboard/reset/:token — set new password form. On 200 the backend
+// revokes every session of the account (per spec §4.5 step 3) —
+// including this browser's, if the link was opened while still signed in.
 
 import { resetPassword } from "../api.js";
 import { wrapPasswordField } from "../components/password-field.js";
 import { BASE_PATH, type RouteContext, type RouteRenderer } from "../router.js";
+import { refreshSession } from "../session.js";
 import { friendlyAuthError } from "./login.js";
 
 export const renderReset: RouteRenderer = (root: HTMLElement, ctx: RouteContext) => {
@@ -97,8 +98,8 @@ export const renderReset: RouteRenderer = (root: HTMLElement, ctx: RouteContext)
       pwInput.disabled = true;
       pw2Input.disabled = true;
       submit.disabled = true;
-      successBox.textContent =
-        "Passwort gesetzt. Alle anderen Sitzungen wurden abgemeldet.";
+      successBox.textContent = "Passwort gesetzt. Alle Sitzungen wurden abgemeldet.";
+      void refreshSession();
       const link = document.createElement("a");
       link.href = BASE_PATH + "/login";
       link.textContent = "→ Anmelden";

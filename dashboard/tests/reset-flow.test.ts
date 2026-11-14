@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { _setApiClientForTests } from "../src/api.js";
 import { renderForgot } from "../src/views/forgot.js";
 import { renderReset } from "../src/views/reset.js";
+import { _resetSessionForTests, isLoggedIn, refreshSession } from "../src/session.js";
 
 function makeRoot(): HTMLElement {
   while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
@@ -104,15 +105,18 @@ describe("renderReset", () => {
     _setApiClientForTests({
       base: "",
       fetch: vi.fn(async (input, init) => {
-        lastReq = {
-          url: typeof input === "string" ? input : input.toString(),
-          init: init ?? {},
-        };
+        const url = typeof input === "string" ? input : input.toString();
+        // The success path re-probes /api/me; keep the reset POST as lastReq.
+        if (url === "/api/me") return jsonResponse({ error: "no-session" }, 401);
+        lastReq = { url, init: init ?? {} };
         return jsonResponse({ ok: true });
       }) as unknown as typeof fetch,
     });
   });
-  afterEach(() => _setApiClientForTests(null));
+  afterEach(() => {
+    _setApiClientForTests(null);
+    _resetSessionForTests();
+  });
 
   it("POSTs the new password + token URL-encoded, shows success + login link", async () => {
     const root = makeRoot();
@@ -130,6 +134,39 @@ describe("renderReset", () => {
     expect(JSON.parse(lastReq?.init.body as string)).toEqual({ password: "newPassword1" });
     const success = root.querySelector('[role="status"]') as HTMLElement;
     expect(success.textContent).toContain("Passwort gesetzt");
+  });
+
+  it("says every session ended and drops this tab's cached session too", async () => {
+    let reset = false;
+    _setApiClientForTests({
+      base: "",
+      fetch: vi.fn(async (input: unknown) => {
+        if (String(input) === "/api/me") {
+          return reset
+            ? jsonResponse({ error: "no-session", message: "authentication required" }, 401)
+            : jsonResponse({ id: 1, email: "a@b.test", admin: false });
+        }
+        reset = true;
+        return jsonResponse({ ok: true });
+      }) as unknown as typeof fetch,
+    });
+    await refreshSession();
+    expect(isLoggedIn()).toBe(true);
+    const root = makeRoot();
+    renderReset(root, {
+      path: "/reset/tok",
+      segments: ["reset", "tok"],
+      params: { token: "tok" },
+      query: new URLSearchParams(),
+    });
+    (root.querySelector("#reset-password") as HTMLInputElement).value = "newPassword1";
+    (root.querySelector("#reset-password-confirm") as HTMLInputElement).value = "newPassword1";
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await flush();
+    await flush();
+    const success = root.querySelector('[role="status"]') as HTMLElement;
+    expect(success.textContent).toBe("Passwort gesetzt. Alle Sitzungen wurden abgemeldet.");
+    expect(isLoggedIn()).toBe(false);
   });
 
   it("rejects mismatching confirm without hitting the network", async () => {
