@@ -101,6 +101,9 @@ export class SignalingBuffer {
       const sdp = this.pendingOffer;
       this.pendingOffer = null;
       await this.sinks.sendOffer(sdp);
+      // A reset during the offer swapped in the next session's buffer:
+      // splicing it here would swallow that session's candidates.
+      if (!this.isCurrent(generation)) return false;
     }
     const ice = this.pendingIce.splice(0);
     for (const c of ice) {

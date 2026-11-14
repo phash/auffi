@@ -145,4 +145,25 @@ describe("SignalingBuffer", () => {
     expect(await buffer.ready(buffer.generation)).toBe(false);
     expect(ices.map((i) => i.candidate)).toEqual(["c1"]);
   });
+
+  it("keeps the next session's candidates when reset() runs during the offer replay", async () => {
+    const ices: string[] = [];
+    let resetDuringOffer = true;
+    const buffer: SignalingBuffer = new SignalingBuffer({
+      sendOffer: async () => {
+        if (!resetDuringOffer) return;
+        resetDuringOffer = false;
+        buffer.reset();
+        buffer.ice({ candidate: "next", sdpMid: "0" });
+      },
+      sendIce: async (ice) => {
+        ices.push(ice.candidate);
+      },
+    });
+    buffer.offer("v=0");
+    expect(await buffer.ready(buffer.generation)).toBe(false);
+    expect(ices).toEqual([]);
+    expect(await buffer.ready(buffer.generation)).toBe(true);
+    expect(ices).toEqual(["next"]);
+  });
 });
