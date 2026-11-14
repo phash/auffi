@@ -91,8 +91,8 @@ services:
     # caddy/Caddyfile nicht (mholt/caddy-ratelimit-Plugin) und würde am
     # unbekannten Directive crash-loopen. caddy/Dockerfile kompiliert das
     # Plugin via xcaddy ein; `docker compose up` baut das Image beim
-    # ersten Start. Nach Änderungen am caddy/Dockerfile auf dem Host:
-    # `docker compose -f docker-compose.prod.yml build caddy`.
+    # ersten Start. Ändert sich caddy/Dockerfile, baut ops/deploy.sh das
+    # Image neu (der feste Tag allein löst keinen Rebuild aus).
     build:
       context: ./caddy
       dockerfile: Dockerfile

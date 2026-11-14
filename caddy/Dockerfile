@@ -21,9 +21,8 @@
 # (Guard: ops/tests/caddy-toolchain-pinned.test.sh).
 #
 # Gebaut wird das Image von `docker compose up` (build:-Stanza in
-# docker-compose.prod.yml) und von ops/lib.sh::caddy_validate_local.
-# Nach einer Änderung an DIESER Datei auf einem laufenden Host:
-#   docker compose -f docker-compose.prod.yml build caddy
+# docker-compose.prod.yml), von ops/deploy.sh sobald sich DIESE Datei
+# gegenüber dem Host geändert hat, und von ops/lib.sh::caddy_validate_local.
 FROM caddy:2.11.9-builder-alpine AS builder
 RUN xcaddy build --with github.com/mholt/caddy-ratelimit@v0.1.1-0.20260612195517-5625512f24f6
 
