@@ -171,7 +171,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-10-23: backend 579, sharer-lib 390 (+ 13 `#[ignore]` Display-/GPU-requiring), viewer 743, dashboard 286, sharer-js 155, ops shell tests 12 files via `bash ops/tests/run-all.sh`. Suites can timeout-flake under parallel load — re-run the flaked file ISOLATED before believing a red run. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-11-14: backend 579, sharer-lib 390 (+ 13 `#[ignore]` Display-/GPU-requiring), viewer 906, dashboard 286, sharer-js 155, ops shell tests 12 files via `bash ops/tests/run-all.sh`. Suites can timeout-flake under parallel load — re-run the flaked file ISOLATED before believing a red run. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy --lib --tests -- -D warnings` (CI pins Rust 1.99.1 and adds `--no-deps`; reproduce with `rustup run 1.99.1 cargo clippy --lib --tests --no-deps -- -D warnings`). (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
