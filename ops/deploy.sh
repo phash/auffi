@@ -20,15 +20,20 @@
 #      (backup.sh, health-check.sh, lib.sh)
 #   9) docker compose up -d (recreatet bei Image- oder Compose-Spec-Änderung)
 #  10) Service-Restart für geänderte Configs (Single-File-Bind-Mount-Stale-Fix)
-#  11) Erweiterte Health-Checks (homepage, healthz, llms.txt, robots.txt, 404)
-#  12) Image-Prune auf prod (keep last 3 + :latest)
-#  13) Deploy-Log-Append auf prod
-#  14) Release-Snapshot: viewer-dist, dashboard-dist, nginx/, coturn/
+#  11) Erweiterte Health-Checks (homepage, healthz, llms.txt, robots.txt,
+#      sitemap.xml; unbekannte URL: 404 im Cluster, 200 standalone)
+#  12) Deploy-Log-Append auf prod — MUSS vor dem Prune laufen, der Prune
+#      liest das Log als Source-of-Truth
+#  13) Release-Snapshot: viewer-dist, dashboard-dist, nginx/, coturn/
 #      (standalone auch caddy/) nach /opt/screenie/releases/<sha>/
+#  14) Image- + Snapshot-Prune auf prod (keep die letzten 3 unique SHAs
+#      aus .deploy-log + :latest) — skip mit --skip-image-prune
 #
 # Rollback:
-#   --rollback liest den vorletzten SHA aus /opt/screenie/.deploy-log,
-#   setzt APP_VERSION in .env.prod, spielt den Release-Snapshot dieses
+#   --rollback wählt den Ziel-SHA aus /opt/screenie/.deploy-log: steht der
+#   laufende APP_VERSION nicht als letzter Eintrag im Log (gescheiterter,
+#   nie geloggter Deploy), den letzten geloggten SHA, sonst den vorletzten.
+#   Setzt APP_VERSION in .env.prod, spielt den Release-Snapshot dieses
 #   SHAs zurück (Frontends + Configs), macht compose up -d und restartet
 #   die Sidecars mit Single-File-Bind-Mounts. Setzt voraus, dass Image
 #   und Snapshot noch auf prod sind (Prune hält die letzten 3 + :latest).
