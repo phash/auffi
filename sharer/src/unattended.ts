@@ -112,6 +112,8 @@ interface UnattendedEvent {
    * overlapping pw-check attempts have queued multiple dialogs.
    */
   confirmId?: number;
+  /** Present only on `relay` events: the viewer's signaling frame, unvalidated. */
+  payload?: unknown;
 }
 
 const modeSelect = document.getElementById("unattended-mode-select") as HTMLSelectElement | null;
@@ -501,8 +503,7 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       // heartbeat's command slot and OutboundSink, so an established
       // peer-to-peer session would otherwise keep running — screen AND
       // input — long after the owner revoked the device. Tear it down here.
-      const kind = e.payload.kind === "revoked" ? "revoked" : "superseded";
-      const plan = planUnattendedTerminal(kind, sessionActive());
+      const plan = planUnattendedTerminal(ev.kind, sessionActive());
       if (plan.tearDownStream) {
         signalBuffer.reset();
         void invoke("disconnect_streaming", { keepSignaling: plan.keepSignaling }).catch(
@@ -524,7 +525,7 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
       // receive_offer / receive_ice_candidate Tauri commands (and the
       // same ICE key normalization) as the ad-hoc path; outbound goes
       // back via the OutboundSink in Unattended mode.
-      const payload = (e.payload as unknown as { payload?: unknown }).payload;
+      const payload = ev.payload;
       if (payload && typeof payload === "object" && "kind" in payload) {
         const p = payload as { kind: string; sdp?: { sdp: string }; candidate?: unknown };
         if (p.kind === "sdp" && p.sdp && typeof p.sdp.sdp === "string") {
