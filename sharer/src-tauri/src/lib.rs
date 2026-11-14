@@ -1230,8 +1230,9 @@ fn exit_on_sigterm(app: tauri::AppHandle) {
     });
 }
 
-/// Main-thread exit hook: a `bye` to a live viewer and a clean heartbeat
-/// close, bounded by `SHUTDOWN_BUDGET` so a dead network never stalls exit.
+/// Main-thread exit hook: a `bye` to a live viewer, then a clean heartbeat
+/// close — all bounded by `SHUTDOWN_BUDGET` so neither a dead network nor a
+/// busy lock stalls exit.
 fn run_shutdown_jobs_on_exit(app: &tauri::AppHandle) {
     use tauri::Manager;
     let rtc = app.state::<WebRtcState>().0.clone();
@@ -1241,15 +1242,7 @@ fn run_shutdown_jobs_on_exit(app: &tauri::AppHandle) {
         .commands
         .clone();
     let finished = tauri::async_runtime::block_on(async move {
-        let session_live = rtc.lock().await.is_some();
-        let sink = sink.lock().await.clone();
-        let heartbeat = heartbeat.lock().await.take();
-        tokio::time::timeout(
-            lifecycle::SHUTDOWN_BUDGET,
-            lifecycle::run_shutdown_jobs(session_live, sink, heartbeat),
-        )
-        .await
-        .is_ok()
+        lifecycle::run_shutdown_jobs(&rtc, &sink, &heartbeat).await
     });
     if !finished {
         dbg_log("[exit] shutdown jobs hit the time budget");

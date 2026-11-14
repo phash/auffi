@@ -8,6 +8,8 @@
 
 use std::time::Duration;
 
+use tokio::sync::Mutex;
+
 use crate::heartbeat::{HeartbeatCommand, HeartbeatCommands};
 use crate::outbound::OutboundSink;
 
@@ -32,28 +34,44 @@ pub(crate) fn starts_hidden(mut args: impl Iterator<Item = String>, mode: Option
 
 /// Exit jobs, in order: `bye` to the viewer of a live session (otherwise it
 /// sees an ICE drop and shows "Verbindung verloren"), then a clean close of
-/// the heartbeat WSS. Returns once the heartbeat task has written its Close
-/// frame and dropped its receiver; callers bound it with [`SHUTDOWN_BUDGET`].
-pub(crate) async fn run_shutdown_jobs(
-    session_live: bool,
-    sink: Option<OutboundSink>,
-    heartbeat: Option<HeartbeatCommands>,
-) {
-    if session_live {
-        if let Some(sink) = sink {
-            if sink
-                .send_relay(serde_json::json!({ "kind": "bye" }))
-                .await
-                .is_ok()
-            {
-                tokio::time::sleep(BYE_FLUSH).await;
+/// the heartbeat WSS.
+///
+/// The lock waits run inside [`SHUTDOWN_BUDGET`] too: `disconnect_streaming`
+/// holds the peer lock across `peer.close()` and `start_heartbeat` holds the
+/// heartbeat lock across a keyring read that can sit in an unlock prompt.
+/// Waiting on either outside the budget would block the main thread at exit.
+/// Returns whether every job finished within the budget.
+pub(crate) async fn run_shutdown_jobs<P>(
+    rtc: &Mutex<Option<P>>,
+    sink: &Mutex<Option<OutboundSink>>,
+    heartbeat: &Mutex<Option<HeartbeatCommands>>,
+) -> bool {
+    tokio::time::timeout(SHUTDOWN_BUDGET, async {
+        let session_live = rtc.lock().await.is_some();
+        if session_live {
+            let sink = sink.lock().await.clone();
+            if let Some(sink) = sink {
+                send_bye(&sink).await;
             }
         }
-    }
-    if let Some(cmds) = heartbeat {
-        if cmds.send(HeartbeatCommand::Shutdown).await.is_ok() {
-            cmds.closed().await;
+        let heartbeat = heartbeat.lock().await.take();
+        if let Some(cmds) = heartbeat {
+            if cmds.send(HeartbeatCommand::Shutdown).await.is_ok() {
+                cmds.closed().await;
+            }
         }
+    })
+    .await
+    .is_ok()
+}
+
+async fn send_bye(sink: &OutboundSink) {
+    if sink
+        .send_relay(serde_json::json!({ "kind": "bye" }))
+        .await
+        .is_ok()
+    {
+        tokio::time::sleep(BYE_FLUSH).await;
     }
 }
 
@@ -93,27 +111,20 @@ mod tests {
         assert!(!starts_hidden(args(&["auffi", "--minimized"]), None));
     }
 
-    #[tokio::test]
-    async fn live_adhoc_session_gets_a_bye() {
-        let (tx, mut rx) = mpsc::channel(4);
-        run_shutdown_jobs(true, Some(OutboundSink::AdHoc(tx)), None).await;
-        match rx.try_recv() {
-            Ok(Outgoing::Relay { payload }) => assert_eq!(payload["kind"], "bye"),
-            _ => panic!("expected a bye relay"),
-        }
+    const LIVE: Option<()> = Some(());
+
+    fn locked<T>(value: T) -> Mutex<T> {
+        Mutex::new(value)
     }
 
-    #[tokio::test]
-    async fn no_bye_without_a_live_session() {
-        let (tx, mut rx) = mpsc::channel(4);
-        run_shutdown_jobs(false, Some(OutboundSink::AdHoc(tx)), None).await;
-        assert!(rx.try_recv().is_err());
-    }
-
-    #[tokio::test]
-    async fn heartbeat_gets_bye_then_shutdown_and_jobs_wait_for_its_close() {
-        let (tx, mut rx) = mpsc::channel::<HeartbeatCommand>(4);
-        let heartbeat = tokio::spawn(async move {
+    /// Fake heartbeat task: records commands until `Shutdown`, then drops
+    /// its receiver like the real one does after writing the Close frame.
+    fn fake_heartbeat() -> (
+        HeartbeatCommands,
+        tokio::task::JoinHandle<Vec<HeartbeatCommand>>,
+    ) {
+        let (tx, mut rx) = mpsc::channel::<HeartbeatCommand>(8);
+        let task = tokio::spawn(async move {
             let mut seen = Vec::new();
             while let Some(cmd) = rx.recv().await {
                 let shutdown = matches!(cmd, HeartbeatCommand::Shutdown);
@@ -124,12 +135,50 @@ mod tests {
             }
             seen
         });
-        tokio::time::timeout(
-            SHUTDOWN_BUDGET,
-            run_shutdown_jobs(true, Some(OutboundSink::Unattended(tx.clone())), Some(tx)),
+        (tx, task)
+    }
+
+    /// Generous slack over the budget for a loaded CI host.
+    const EXIT_DEADLINE: Duration = Duration::from_millis(1_500);
+
+    #[tokio::test]
+    async fn live_adhoc_session_gets_a_bye() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let finished = run_shutdown_jobs(
+            &locked(LIVE),
+            &locked(Some(OutboundSink::AdHoc(tx))),
+            &locked(None),
         )
-        .await
-        .expect("jobs must return once the heartbeat task is gone");
+        .await;
+        assert!(finished);
+        match rx.try_recv() {
+            Ok(Outgoing::Relay { payload }) => assert_eq!(payload["kind"], "bye"),
+            _ => panic!("expected a bye relay"),
+        }
+    }
+
+    #[tokio::test]
+    async fn no_bye_without_a_live_session() {
+        let (tx, mut rx) = mpsc::channel(4);
+        run_shutdown_jobs(
+            &locked(None::<()>),
+            &locked(Some(OutboundSink::AdHoc(tx))),
+            &locked(None),
+        )
+        .await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn heartbeat_gets_bye_then_shutdown_and_jobs_wait_for_its_close() {
+        let (tx, heartbeat) = fake_heartbeat();
+        let finished = run_shutdown_jobs(
+            &locked(LIVE),
+            &locked(Some(OutboundSink::Unattended(tx.clone()))),
+            &locked(Some(tx)),
+        )
+        .await;
+        assert!(finished, "jobs must return once the heartbeat task is gone");
         let seen = heartbeat.await.expect("heartbeat task");
         assert_eq!(seen.len(), 2);
         match &seen[0] {
@@ -145,8 +194,67 @@ mod tests {
     async fn dead_heartbeat_does_not_block_exit() {
         let (tx, rx) = mpsc::channel::<HeartbeatCommand>(4);
         drop(rx);
-        tokio::time::timeout(SHUTDOWN_BUDGET, run_shutdown_jobs(false, None, Some(tx)))
-            .await
-            .expect("a gone heartbeat must not stall exit");
+        let finished = run_shutdown_jobs(
+            &locked(None::<()>),
+            &locked(None),
+            &locked(Some(tx)),
+        )
+        .await;
+        assert!(finished, "a gone heartbeat must not stall exit");
+    }
+
+    #[tokio::test]
+    async fn held_heartbeat_lock_is_bounded_by_the_budget_and_the_bye_still_goes_out() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let heartbeat = locked(None::<HeartbeatCommands>);
+        let _start_in_progress = heartbeat.lock().await;
+        let started = std::time::Instant::now();
+        let finished = tokio::time::timeout(
+            EXIT_DEADLINE,
+            run_shutdown_jobs(
+                &locked(LIVE),
+                &locked(Some(OutboundSink::AdHoc(tx))),
+                &heartbeat,
+                ),
+        )
+        .await
+        .expect("a held heartbeat lock must not stall exit past the budget");
+        assert!(!finished);
+        assert!(started.elapsed() >= SHUTDOWN_BUDGET);
+        assert!(matches!(rx.try_recv(), Ok(Outgoing::Relay { .. })));
+    }
+
+    #[tokio::test]
+    async fn held_peer_lock_is_bounded_by_the_budget() {
+        let rtc = locked(LIVE);
+        let _closing_peer = rtc.lock().await;
+        let finished = tokio::time::timeout(
+            EXIT_DEADLINE,
+            run_shutdown_jobs(
+                &rtc,
+                &locked(None),
+                &locked(None),
+                ),
+        )
+        .await
+        .expect("a held peer lock must not stall exit past the budget");
+        assert!(!finished);
+    }
+
+    #[tokio::test]
+    async fn held_sink_lock_is_bounded_by_the_budget() {
+        let sink = locked(None::<OutboundSink>);
+        let _installing = sink.lock().await;
+        let finished = tokio::time::timeout(
+            EXIT_DEADLINE,
+            run_shutdown_jobs(
+                &locked(LIVE),
+                &sink,
+                &locked(None),
+                ),
+        )
+        .await
+        .expect("a held sink lock must not stall exit past the budget");
+        assert!(!finished);
     }
 }
