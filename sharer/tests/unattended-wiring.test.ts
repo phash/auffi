@@ -27,7 +27,7 @@ const INVOKE_RESULTS: Record<string, unknown> = {
   unattended_is_paired: "dev-1234",
   unattended_is_password_set: true,
   unattended_is_active: true,
-  autostart_is_enabled: false,
+  is_autostart_enabled: false,
 };
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
