@@ -460,7 +460,10 @@ video track. The server sets `ended_at` and `bytes_relayed`.
 > never sends one at all. The row is therefore finalised whenever the session
 > leaves the store, whatever the cause: viewer close, sharer close, stale
 > reap. A session that never reported a byte count logs `0` rather than a
-> guess. `connection-ended` arriving in time simply supplies a better number.
+> guess. A `connection-ended` that arrives while the session lives finalises
+> the row itself; one that trails the session end (the ordinary case) still
+> sets `bytes_relayed` on the row the server just closed, once, within 30 s
+> and on the same sharer socket, without moving `ended_at`.
 >
 > Both frames are **advisory**: the server ignores them outside a `confirmed`
 > session, ignores an unknown `connectionType`, ignores `connection-ended`

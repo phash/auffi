@@ -439,6 +439,28 @@ describe("/signal unattended connect flow (gh #17)", () => {
     return { sharer, viewer };
   }
 
+  /**
+   * Positive signal that the backend tore the previous viewer's session down:
+   * a fresh join gets needs-password instead of "session full". Replaces a
+   * fixed sleep, which under load passes before the teardown it waits for.
+   */
+  async function waitForDeviceSlotFree(): Promise<void> {
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const probe = openViewer();
+      await new Promise<void>((r) => probe.once("open", () => r()));
+      probe.send(JSON.stringify({ type: "join", role: "viewer", code: deviceId }));
+      const reply = await once(probe, "message");
+      probe.close();
+      if (reply.type === "needs-password") {
+        await waitFor(() => probe.readyState === probe.CLOSED, "probe viewer closed");
+        return;
+      }
+      if (Date.now() > deadline) throw new Error("device slot never freed");
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
   it("connection-started writes a connection_log row for the device", async () => {
     db.prepare("DELETE FROM connection_log").run();
     const { sharer, viewer } = await confirmedPair();
@@ -550,7 +572,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     await watchUnattendedSharer(sharer).settle();
 
     viewer.close();
-    await new Promise((r) => setTimeout(r, 150));
+    await waitForDeviceSlotFree();
 
     const row = db
       .prepare<[string], { bytes_relayed: number }>(
@@ -558,6 +580,54 @@ describe("/signal unattended connect flow (gh #17)", () => {
       )
       .get(deviceId);
     expect(row!.bytes_relayed, "the reported count must survive the teardown sweep").toBe(999);
+    sharer.close();
+  });
+
+  // The ordinary ending: the helper closes the tab, the backend finalises the
+  // row with 0, and the sharer's connection-ended follows a round-trip later.
+  // Dropping it left bytes_relayed (device log, admin relay_bytes_today) at 0
+  // for nearly every session.
+  it("takes the byte count of a connection-ended that trails the viewer's close", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await watchUnattendedSharer(sharer).settle();
+    viewer.close();
+    await waitForDeviceSlotFree();
+    const endedAt = db
+      .prepare<[string], { ended_at: number }>("SELECT ended_at FROM connection_log WHERE device_id = ?")
+      .get(deviceId)!.ended_at;
+
+    sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 999 }));
+    await watchUnattendedSharer(sharer).settle();
+
+    const row = db
+      .prepare<[string], { ended_at: number; bytes_relayed: number }>(
+        "SELECT ended_at, bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId)!;
+    expect(row.bytes_relayed).toBe(999);
+    expect(row.ended_at, "the session's end stays where the backend put it").toBe(endedAt);
+    sharer.close();
+  });
+
+  it("takes a trailing byte count only once", async () => {
+    db.prepare("DELETE FROM connection_log").run();
+    const { sharer, viewer } = await confirmedPair();
+    sharer.send(JSON.stringify({ type: "connection-started", connectionType: "relay" }));
+    await watchUnattendedSharer(sharer).settle();
+    viewer.close();
+    await waitForDeviceSlotFree();
+    sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 999 }));
+    sharer.send(JSON.stringify({ type: "connection-ended", bytesRelayed: 5 }));
+    await watchUnattendedSharer(sharer).settle();
+
+    const row = db
+      .prepare<[string], { bytes_relayed: number }>(
+        "SELECT bytes_relayed FROM connection_log WHERE device_id = ?",
+      )
+      .get(deviceId)!;
+    expect(row.bytes_relayed).toBe(999);
     sharer.close();
   });
 

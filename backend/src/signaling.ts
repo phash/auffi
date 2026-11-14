@@ -23,7 +23,7 @@ import {
   resetPwFail,
   UnattendedSessions,
 } from "./unattended_sessions.js";
-import { startConnectionLog, endConnectionLog } from "./connection_log.js";
+import { startConnectionLog, endConnectionLog, setConnectionLogBytes } from "./connection_log.js";
 import { redactIp } from "./lib/redact-ip.js";
 import {
   checkIpRateLimit as checkRateLimit,
@@ -112,6 +112,14 @@ const DEFAULT_PER_PEER_LIMIT: RateLimitConfig = { windowMs: 10_000, max: 50 };
 
 /// Allowed values of `payload.kind` in a relay message. Anything else is a
 /// protocol error and gets rejected before being forwarded to the other peer.
+/**
+ * How long after the backend finalised a session row a trailing
+ * `connection-ended` may still record its byte count. The frame follows the
+ * viewer close by one round-trip plus the sharer teardown; 30 s matches the
+ * reconnect grace and is far above both.
+ */
+const TRAILING_BYTES_WINDOW_MS = 30_000;
+
 const RELAY_KINDS = new Set<string>(["sdp", "ice", "hello", "bye"]);
 
 /// Per-IP cap on `register`-as-sharer messages. Caddy's `/signal`
@@ -291,14 +299,24 @@ export function registerSignaling(
   // on the common ending (viewer closes the tab) it no longer does — and a
   // crashed sharer never sends one. Without this the row keeps ended_at NULL
   // forever and the device log renders it as still running.
+  //
+  // The row it finalised is remembered per sharer socket for
+  // TRAILING_BYTES_WINDOW_MS, so the `connection-ended` that follows a
+  // round-trip later still lands its byte count (never its end time). One
+  // entry per sharer socket, overwritten by the next session's, dropped
+  // with the socket.
+  const trailingBytes = new Map<WebSocket, { logId: number; until: number }>();
   if (unattended) {
     const { db: logDb, sessions: logSessions } = unattended;
     logSessions.setOnRemove((sess) => {
       if (sess.logId === null) return;
       try {
-        // Bytes are whatever the sharer managed to report; an unreported
-        // session honestly logs 0 rather than a guess.
+        // An unreported session honestly logs 0 rather than a guess.
         endConnectionLog(logDb, sess.logId, 0);
+        trailingBytes.set(sess.sharer, {
+          logId: sess.logId,
+          until: Date.now() + TRAILING_BYTES_WINDOW_MS,
+        });
       } catch (e) {
         app.log.warn({ err: e }, "connection_log finalise on session removal failed");
       }
@@ -516,8 +534,6 @@ export function registerSignaling(
         }
 
         if (msg.type === "connection-ended") {
-          const sess = sessions.findBySharer(peer);
-          if (!sess || sess.logId === null) return;
           // Clamp both ends: SQLite binds a non-integer JS number as a float,
           // which would land a REAL in an INTEGER column and break the SUM in
           // the admin stats. MAX_SAFE_INTEGER is far above any real session.
@@ -525,6 +541,19 @@ export function registerSignaling(
           const bytes = Number.isFinite(raw)
             ? Math.min(Math.max(0, Math.floor(raw)), Number.MAX_SAFE_INTEGER)
             : 0;
+          const sess = sessions.findBySharer(peer);
+          if (!sess || sess.logId === null) {
+            const trailing = trailingBytes.get(peer);
+            if (!trailing) return;
+            trailingBytes.delete(peer);
+            if (Date.now() > trailing.until) return;
+            try {
+              setConnectionLogBytes(db, trailing.logId, bytes);
+            } catch (e) {
+              req.log.warn({ err: e }, "connection-ended: trailing byte update failed");
+            }
+            return;
+          }
           try {
             endConnectionLog(db, sess.logId, bytes);
           } catch (e) {
@@ -568,6 +597,7 @@ export function registerSignaling(
       // gets the same "sharer-gone" treatment as the ad-hoc flow.
       peer.on("close", () => {
         const sess = sessions.detachSharer(peer);
+        trailingBytes.delete(peer);
         if (sess) {
           send(sess.viewer, { type: "peer-rejected", reason: "sharer-gone" });
           sess.viewer.close();

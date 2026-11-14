@@ -57,6 +57,16 @@ export function endConnectionLog(
 }
 
 /**
+ * Record the byte count of a row the backend already finalised: the sharer's
+ * `connection-ended` trails the viewer's close by a round-trip, so on the
+ * ordinary ending it arrives after the row was closed with 0. Never moves
+ * `ended_at` — the backend owns the session's end.
+ */
+export function setConnectionLogBytes(db: Db, id: number, bytesRelayed: number): void {
+  db.prepare("UPDATE connection_log SET bytes_relayed = ? WHERE id = ?").run(bytesRelayed, id);
+}
+
+/**
  * Page of connection_log rows for a device, newest first. The
  * `cursor` is the smallest id seen on the previous page — pass
  * `undefined` for page 1. `limit` is clamped to `MAX_LIMIT` so a
