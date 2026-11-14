@@ -294,7 +294,8 @@ then sets `APP_VERSION` in `.env.prod`, restores that SHA's **release snapshot**
 (`/opt/screenie/releases/<sha>/` — `viewer-dist`, `dashboard-dist`, `nginx/`,
 `coturn/`, in standalone mode also `caddy/`), recreates the stack, restarts
 the sidecars that read those files through single-file bind mounts
-(`auffi-dashboard`, `auffi-coturn`, cluster: `auffi-viewer`, standalone:
+(`auffi-dashboard`, `auffi-coturn`, cluster: `auffi-viewer` +
+`auffi-turn-cert-stage`, standalone:
 `auffi-caddy`), and runs the same smoke checks as a deploy. Every successful
 deploy writes its snapshot after the health checks pass; the prune step keeps
 images and snapshots for the same last 3 SHAs, so the rollback target is

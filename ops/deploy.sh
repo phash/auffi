@@ -143,11 +143,13 @@ post_deploy_smoke() {
 # Sidecars, die ihre Config/ihr Dist per Bind-Mount lesen. `compose up -d`
 # recreatet sie nicht (Spec unverändert), ein Single-File-Bind-Mount hängt
 # aber am alten Inode — nur ein Restart lädt die zurückgespielten Dateien.
+# auffi-turn-cert-stage läuft als Dauer-Loop: ohne Restart führt er weiter
+# das cert-stage.sh aus, das der Rollback gerade zurücknehmen wollte.
 restart_bind_mount_sidecars() {
   local svc
   local services=(auffi-dashboard auffi-coturn)
   if [[ -n "${CLUSTER_PROXY:-}" ]]; then
-    services+=(auffi-viewer)
+    services+=(auffi-viewer auffi-turn-cert-stage)
   else
     services+=(auffi-caddy)
   fi

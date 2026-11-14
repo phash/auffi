@@ -66,6 +66,7 @@ assert_contains "${CALLS}" "docker restart auffi-dashboard" "dashboard sidecar r
 assert_contains "${CALLS}" "docker restart auffi-coturn" "coturn restarted for its restored template"
 assert_contains "${CALLS}" "docker restart auffi-caddy" "standalone caddy restarted"
 assert_not_contains "${CALLS}" "docker restart auffi-viewer" "no auffi-viewer container in standalone mode"
+assert_not_contains "${CALLS}" "docker restart auffi-turn-cert-stage" "no cert-stage sidecar in standalone mode"
 assert_contains "${CALLS}" "screenie_viewer-static:/data" "standalone viewer volume repopulated"
 assert_contains "${CALLS}" "https://deploy.invalid/robots.txt" "smoke checks ran after rollback"
 assert_contains "$(tail -n 1 "${REMOTE}/.deploy-log")" "ROLLBACK" "rollback logged"
@@ -80,6 +81,7 @@ assert_file_eq "${REMOTE}/viewer-dist/index.html" "A" "viewer-dist restored to A
 assert_file_eq "${REMOTE}/caddy/Caddyfile" "build-B" "cluster mode never touches caddy/ (hand-maintained on the host)"
 CALLS="$(cat "${STUB_LOG}")"
 assert_contains "${CALLS}" "docker restart auffi-viewer" "viewer sidecar restarted"
+assert_contains "${CALLS}" "docker restart auffi-turn-cert-stage" "cert-stage sidecar restarted for its restored script"
 assert_not_contains "${CALLS}" "docker restart auffi-caddy" "no auffi-caddy container in cluster mode"
 assert_not_contains "${CALLS}" "screenie_viewer-static" "no volume copy in cluster mode"
 
