@@ -37,7 +37,7 @@ rsvg-convert -w 1200 -h 630 ops/og-image.svg -o viewer/public/og-image.png
 ## Sharer Release (Linux + Windows; no macOS)
 
 **Zwei Wege:**
-- **(a) CI per Tag-Push (empfohlen):** `git tag vX.Y.Z && git push origin vX.Y.Z` → `release.yml` ruft `build-sharer.yml` (baut **Linux + Windows** — seit PR #117 mit GStreamer-dev (Linux) + vcpkg-`libvpx`/`VCPKG_ROOT` (Windows)), baut das Backend-Image und erstellt das GH-Release automatisch. Vorher Version bumpen (Schritt 1 unten).
+- **(a) CI per Tag-Push (empfohlen):** `git tag vX.Y.Z && git push origin vX.Y.Z` → `release.yml` ruft `build-sharer.yml` (baut **Linux + Windows** — seit PR #117 mit GStreamer-dev (Linux) + vcpkg-`libvpx`/`VCPKG_ROOT` (Windows)), baut das Backend-Image und erstellt das GH-Release automatisch. **Vorab läuft `ci.yml` als Gate** (`needs: [ci]`) — Build und Release starten erst, wenn die volle Test-Suite grün ist. Flakt ein CI-Job, die fehlgeschlagenen Jobs neu starten (`gh run rerun <id> --failed`), **nicht** neu taggen. Vorher Version bumpen (Schritt 1 unten).
 - **(b) Lokaler Linux-Build (schneller für reine Linux-Iteration):** s. Skript unten — der AppImage-Wrapper umgeht DT_RELR-Strip + Icon-Pfad auf rolling-release-Distros (auf ubuntu-24.04-CI nicht nötig).
 - **Kein macOS:** der Sharer hat keinen macOS-Capture/-Input-Backend (`capture/mod.rs` nur Linux/Windows). Ein macOS-Build kompiliert nicht.
 
