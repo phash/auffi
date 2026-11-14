@@ -1,7 +1,7 @@
 /* Auffi — Matomo-Consent-Banner.
  *
- * Geladen von den 4 Marketing-Pages (index, impressum, datenschutz,
- * download). Implementiert die Cookie-/Tracking-Einwilligung für die
+ * Geladen von jeder statischen Marketing-Seite (DE+EN) und der App-Seite.
+ * Implementiert die Cookie-/Tracking-Einwilligung für die
  * selbst-gehostete Matomo-Instanz:
  *
  *   - Do-Not-Track gesetzt → kein Banner, kein Matomo (User hat im
