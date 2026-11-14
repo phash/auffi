@@ -90,4 +90,41 @@ describe("confirmDialog (sharer)", () => {
     (document.activeElement as HTMLButtonElement).click();
     expect(await p).toBe(false);
   });
+
+  // The unattended prompt gates screen + input: keyboard focus must not
+  // wander to the (hidden-behind-the-backdrop) app while it stands.
+  describe("focus trap", () => {
+    const tab = (shiftKey = false): boolean =>
+      backdrop().dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true }),
+      );
+    const open = (): void => {
+      void confirmDialog({ title: "T", message: "m", confirmLabel: "Erlauben", cancelLabel: "Ablehnen" });
+    };
+
+    it("wraps Tab from the last button to the first", () => {
+      open();
+      btn("Erlauben").focus();
+      expect(tab()).toBe(false);
+      expect(document.activeElement).toBe(btn("Ablehnen"));
+    });
+
+    it("wraps Shift+Tab from the first button to the last", () => {
+      open();
+      expect(tab(true)).toBe(false);
+      expect(document.activeElement).toBe(btn("Erlauben"));
+    });
+
+    it("pulls focus that escaped the dialog back inside", () => {
+      open();
+      (document.activeElement as HTMLElement).blur();
+      expect(tab()).toBe(false);
+      expect(document.activeElement).toBe(btn("Ablehnen"));
+    });
+
+    it("leaves Tab between the buttons to the browser", () => {
+      open();
+      expect(tab()).toBe(true);
+    });
+  });
 });
