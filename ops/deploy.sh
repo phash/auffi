@@ -684,7 +684,7 @@ maybe_run "Snapshot viewer-dist/dashboard-dist/configs" \
   release_snapshot "${APP_VERSION}"
 
 # ---------------------------------------------------------------------------
-# Step 17: Image-Prune auf prod (keep last-3-unique-SHAs aus deploy-log + :latest)
+# Step 17: Image-Prune auf prod (keep die 3 obersten SHAs des Live-Stacks aus deploy-log + :latest)
 # Frühere Variante nutzte `docker images | tail -n +4` was bei ungenau
 # definierter Sortierung gerne den JUST-deployten Tag erwischt hat (siehe
 # Smoke 2026-05-20: nach Build prunte der Step den frischen :SHA gleich
@@ -693,26 +693,27 @@ maybe_run "Snapshot viewer-dist/dashboard-dist/configs" \
 if [[ "${SKIP_IMAGE_PRUNE}" == "true" ]]; then
   log_step "Image-Prune übersprungen (--skip-image-prune)"
 else
-  log_step "Image- + Snapshot-Prune (keep last 3 unique SHAs aus deploy-log + :latest)"
-  # Release-Snapshots hängen an derselben KEEP_LIST wie die Images, damit
+  log_step "Image- + Snapshot-Prune (keep 3 oberste Live-Stack-SHAs aus deploy-log + :latest)"
+  # Release-Snapshots hängen an derselben Keep-Liste wie die Images, damit
   # "Image noch da" auch "Snapshot noch da" heißt und releases/ nicht
-  # unbegrenzt wächst. Gezählt wird der JÜNGSTE Eintrag je SHA (Log rückwärts
-  # lesen): ein per --version erneut deployter älterer SHA stünde sonst mit
-  # seinem ersten Eintrag ganz hinten und verlöre Image + Snapshot, obwohl er
-  # gerade läuft. APP_VERSION ist deshalb zusätzlich immer gesetzt.
+  # unbegrenzt wächst. Gezählt wird der Live-Stack wie beim Rollback: ein
+  # Release, den ein Rollback verlassen hat, belegt keinen Platz vor einem
+  # älteren, noch erreichbaren Rollback-Ziel. APP_VERSION ist zusätzlich
+  # immer gesetzt.
+  KEEP_REGEX="^latest\$|^${APP_VERSION}\$"
+  if [[ "${DRY_RUN}" == "false" ]]; then
+    for sha in $(deploy_log_fetch | deploy_log_keep_shas 3); do
+      KEEP_REGEX+="|^${sha}\$"
+    done
+  fi
   maybe_run "Prune old backend images + release snapshots" \
     remote "set -e; \
-      KEEP_LIST=\$(tail -n 20 '${DEPLOY_LOG_REMOTE}' 2>/dev/null \
-        | awk -F'\t' '\$2 != \"\" {sha[++n] = \$2} END {for (i = n; i > 0; i--) if (!seen[sha[i]]++) print sha[i]}' \
-        | head -n 3); \
-      KEEP_REGEX='^latest$|^${APP_VERSION}$'; \
-      for sha in \${KEEP_LIST}; do KEEP_REGEX=\"\${KEEP_REGEX}|^\${sha}$\"; done; \
       docker images --filter 'reference=auffi-backend' --format '{{.Tag}}' \
-        | grep -E -v \"\${KEEP_REGEX}\" \
+        | grep -E -v '${KEEP_REGEX}' \
         | xargs -r -I{} docker rmi 'auffi-backend:{}' >/dev/null 2>&1 || true; \
       for dir in '${DEPLOY_PATH}'/releases/*/; do \
         [ -d \"\${dir}\" ] || continue; \
-        basename \"\${dir}\" | grep -E -q \"\${KEEP_REGEX}\" || rm -rf \"\${dir}\"; \
+        basename \"\${dir}\" | grep -E -q '${KEEP_REGEX}' || rm -rf \"\${dir}\"; \
       done"
 fi
 

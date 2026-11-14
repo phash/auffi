@@ -451,6 +451,18 @@ deploy_log_rollback_target() {
   fi
 }
 
+# deploy_log_keep_shas <n> — von stdin (.deploy-log): die <n> obersten
+# verschiedenen SHAs des Live-Stacks, oberster zuerst. Der Prune zählt so wie
+# der Rollback: ein Release, den ein Rollback verlassen hat, ist kein
+# Rollback-Ziel mehr und darf Image + Snapshot nicht vor einem noch
+# erreichbaren älteren Release behalten.
+deploy_log_keep_shas() {
+  deploy_log_live_stack | awk -v max="$1" '
+    { s[++n] = $0 }
+    END { for (i = n; i > 0 && k < max; i--) if (!seen[s[i]]++) { print s[i]; k++ } }
+  '
+}
+
 deploy_log_fetch() {
   remote "cat '${DEPLOY_LOG_REMOTE}' 2>/dev/null" || true
 }

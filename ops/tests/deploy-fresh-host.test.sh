@@ -76,6 +76,20 @@ assert_eq "true" "$([[ -d "${REMOTE}/releases/old3333" ]] && echo true || echo f
 assert_eq "true" "$([[ -d "${REMOTE}/releases/old2222" ]] && echo true || echo false)" "second predecessor kept"
 assert_eq "false" "$([[ -e "${REMOTE}/releases/old1111" ]] && echo true || echo false)" "oldest predecessor pruned (keep = 3)"
 
+echo "# prune counts the live stack: a release a rollback backed out of goes first"
+: > "${REMOTE}/.deploy-log"
+for s in aaaaaaa bbbbbbb ccccccc; do
+  printf '2026-09-01T00:00:00Z\t%s\tme@box\t\n' "${s}" >> "${REMOTE}/.deploy-log"
+  mkdir -p "${REMOTE}/releases/${s}/viewer-dist"
+done
+printf '2026-09-02T00:00:00Z\tbbbbbbb\tme@box\tROLLBACK\n' >> "${REMOTE}/.deploy-log"
+RC=0; OUT="$(run_deploy 2>&1)" || RC=$?
+[[ ${RC} -eq 0 ]] || printf '%s\n' "${OUT}"
+assert_eq 0 "${RC}" "deploy after a rollback exits 0"
+assert_eq "true" "$([[ -d "${REMOTE}/releases/aaaaaaa" ]] && echo true || echo false)" "A (still a rollback target) keeps its snapshot"
+assert_eq "true" "$([[ -d "${REMOTE}/releases/bbbbbbb" ]] && echo true || echo false)" "B keeps its snapshot"
+assert_eq "false" "$([[ -e "${REMOTE}/releases/ccccccc" ]] && echo true || echo false)" "C (backed out by the rollback) pruned"
+
 echo "# a failed caddy build is retried on the next deploy, though the host already has the new Dockerfile"
 printf '\n# bumped plugin\n' >> "${TMP}/repo/caddy/Dockerfile"
 git -C "${TMP}/repo" -c user.name=test -c user.email=test@example.invalid commit -q -am "bump caddy"

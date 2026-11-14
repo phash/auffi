@@ -305,8 +305,9 @@ the sidecars that read those files through single-file bind mounts
 `auffi-turn-cert-stage`, standalone:
 `auffi-caddy`), and runs the same smoke checks as a deploy. Every successful
 deploy writes its snapshot after the health checks pass; the prune step keeps
-images and snapshots for the same last 3 SHAs, so the rollback target is
-still loaded.
+images and snapshots for the top 3 SHAs of the same chain the rollback walks
+(releases a rollback backed out of drop out of it), so the rollback targets
+are still loaded.
 
 Standalone deploys rebuild the `auffi-caddy` image (fixed tag, so `compose
 up` alone never would) whenever `caddy/Dockerfile` on the host differs from
