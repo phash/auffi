@@ -194,6 +194,66 @@ describe("unattended.ts settings wiring", () => {
     expect(byId("unattended-status").textContent).toBe("Verbunden");
   });
 
+  // ── terminal + expiry branches ──────────────────────────────────────────
+  it("tears a live session down when the device is revoked", async () => {
+    await startSession();
+    invokeMock.mockClear();
+    await emit({ kind: "revoked" });
+    expect(calls("disconnect_streaming")).toEqual([
+      ["disconnect_streaming", { keepSignaling: true }],
+    ]);
+    expect(byId("unattended-status").textContent).toContain("Sitzung beendet");
+  });
+
+  it("only reports a takeover when nothing was streaming", async () => {
+    await emit({ kind: "superseded" });
+    expect(calls("disconnect_streaming")).toHaveLength(0);
+    expect(byId("unattended-status").textContent).toBe("Eine andere Instanz hat übernommen.");
+  });
+
+  it("closes the prompt whose confirmation expired", async () => {
+    await emit({ kind: "needs-confirm", confirmId: 7 });
+    await emit({ kind: "confirm-expired", confirmId: 7 });
+    expect(document.getElementById("sharer-confirm-backdrop")).toBeNull();
+    expect(byId("unattended-status").textContent).toContain("abgelaufen");
+  });
+
+  it("keeps a prompt open when another confirmation expires", async () => {
+    await emit({ kind: "needs-confirm", confirmId: 7 });
+    await emit({ kind: "confirm-expired", confirmId: 6 });
+    expect(document.getElementById("sharer-confirm-backdrop")).not.toBeNull();
+  });
+
+  it("declines the prompt a newer one displaces", async () => {
+    await emit({ kind: "needs-confirm", confirmId: 1 });
+    await emit({ kind: "needs-confirm", confirmId: 2 });
+    expect(calls("unattended_confirm")).toEqual([
+      ["unattended_confirm", { confirmId: 1, accepted: false }],
+    ]);
+  });
+
+  it("ends a live session with a bye before Deaktivieren stops the heartbeat", async () => {
+    await startSession();
+    invokeMock.mockClear();
+    byId<HTMLButtonElement>("unattended-stop-btn").click();
+    await flush();
+    expect(invokeOrder("disconnect_streaming", "unattended_stop")).toEqual([
+      "disconnect_streaming",
+      "unattended_stop",
+    ]);
+    expect(calls("disconnect_streaming")).toEqual([
+      ["disconnect_streaming", { keepSignaling: true, sendBye: true }],
+    ]);
+  });
+
+  it("starts the next helper without a teardown after a failed stream", async () => {
+    await startSession();
+    for (const h of listeners.get("streaming-failed") ?? []) await h({ payload: { reason: "x" } });
+    invokeMock.mockClear();
+    await emit({ kind: "peer-joined" });
+    expect(invokeOrder("disconnect_streaming", "start_streaming")).toEqual(["start_streaming"]);
+  });
+
   // ── a start that a teardown overtakes ───────────────────────────────────
   // start_streaming cannot be cancelled and Rust stores the peer only at its
   // end: a revoke while it runs finds nothing to tear down, and the late

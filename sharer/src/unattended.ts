@@ -509,9 +509,11 @@ void listen<UnattendedEvent>("unattended-event", (e) => {
           () => {},
         );
       }
-      setStatusText(plan.status);
       active = plan.stillActive;
-      void refresh();
+      // After refresh(): its heartbeat line would overwrite why the session ended.
+      void refresh()
+        .then(() => setStatusText(plan.status))
+        .catch(() => {});
       break;
     }
     case "locked-out":
