@@ -1,7 +1,7 @@
 # Auffi — Production Deployment Runbook
 
 Target VPS: `musikersuche@musikersuche.org` (`/opt/screenie` — path retained
-post-rebrand for Docker volume / cert continuity; see CLAUDE.md).
+post-rebrand for Docker volume / cert continuity; see `docs/ops-runbook.md` § Rebrand Naming Inconsistencies).
 Main domain: `auffi.app`
 TURN domain: `turn.auffi.app`
 
@@ -186,7 +186,7 @@ sudo certbot certonly --standalone \
 # Stage the flat cert pair into the Docker volume. certbot's live/ paths are
 # symlinks into archive/ — mount all of /etc/letsencrypt and resolve them
 # with cp -L. The volume name carries the compose project prefix (screenie_
-# on prod, DEPLOY_PATH=/opt/screenie, see CLAUDE.md rebrand notes) — a wrong
+# on prod, DEPLOY_PATH=/opt/screenie, see docs/ops-runbook.md § Rebrand Naming Inconsistencies) — a wrong
 # prefix is silently auto-created as a fresh empty volume coturn never reads.
 docker run --rm \
   -v /etc/letsencrypt:/src:ro \

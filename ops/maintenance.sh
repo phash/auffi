@@ -110,8 +110,8 @@ case "${SUBCOMMAND}" in
     DATE="$(date +%Y-%m-%d)"
     BACKUP_FILE="${BACKUP_DIR}/certs-${DATE}.tar.gz"
     # Volume-Prefix `screenie_` ergibt sich aus dem Compose-Project-Namen
-    # (DEPLOY_PATH=/opt/screenie); siehe CLAUDE.md "Rebrand Naming
-    # Inconsistencies". Im Cluster-Modus staged der turn-cert-stage-
+    # (DEPLOY_PATH=/opt/screenie); siehe docs/ops-runbook.md § "Rebrand
+    # Naming Inconsistencies". Im Cluster-Modus staged der turn-cert-stage-
     # Sidecar in `turn-certs-staged`; das standalone `turn-certs`-Volume
     # existiert dort nicht.
     CERT_VOLUME="screenie_turn-certs"

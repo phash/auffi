@@ -27,8 +27,8 @@ volumes:
   # fresh host the directory comes up empty; applyMigrations() on
   # the first boot creates every table. Volume name uses the same
   # `auffi-*` prefix the rest of this file uses — the docker-compose
-  # project on prod is still `screenie` (see CLAUDE.md rebrand
-  # notes) so the on-disk volume name will be `screenie_auffi-db`.
+  # project on prod is still `screenie` (see docs/ops-runbook.md §
+  # Rebrand Naming Inconsistencies) so the on-disk volume name will be `screenie_auffi-db`.
   auffi-db:
 
 services:

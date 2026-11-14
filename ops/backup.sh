@@ -12,7 +12,7 @@
 #      shared Cluster-Caddy, was beim Host-Restore Bonus ist).
 #      Hintergrund: im Cluster-Modus läuft NICHT `auffi-caddy` aus
 #      docker-compose.prod.yml, sondern der externe `caddy-proxy`,
-#      siehe CLAUDE.md "Cluster-Ops Footguns". `screenie_caddy-data`
+#      siehe docs/footguns.md § Cluster-Ops Footguns. `screenie_caddy-data`
 #      ist in dieser Topologie ein totes Volume.
 #
 # Was NICHT gesichert wird (alles reproduzierbar):
