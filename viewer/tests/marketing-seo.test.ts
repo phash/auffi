@@ -441,5 +441,10 @@ describe("static pages — CSP style-src 'self'", () => {
     it(`${page.slice(REPO.length + 1)} has no inline <style> block`, () => {
       expect(readFileSync(page, "utf8")).not.toMatch(/<style[\s>]/);
     });
+    // Without 'unsafe-inline' the same CSP drops style="…" attributes too,
+    // inline SVG included.
+    it(`${page.slice(REPO.length + 1)} has no inline style="…" attribute`, () => {
+      expect(readFileSync(page, "utf8")).not.toMatch(/\sstyle\s*=/i);
+    });
   }
 });
