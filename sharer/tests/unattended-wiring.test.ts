@@ -270,6 +270,21 @@ describe("unattended.ts settings wiring", () => {
     ]);
   });
 
+  it("reports the session over once a start a revoke overtook settles", async () => {
+    const start = deferStart();
+    await emit({ kind: "peer-joined" });
+    const changes: unknown[] = [];
+    window.addEventListener("auffi-unattended-state-changed", (e) =>
+      changes.push((e as CustomEvent).detail),
+    );
+    await emit({ kind: "revoked" });
+    start.release();
+    await flush();
+    await flush();
+    expect(changes.at(-1)).toEqual({ sessionLive: false });
+    expect(byId("unattended-status").textContent).toContain("Sitzung beendet");
+  });
+
   it("ends a start still in flight when the user deactivates", async () => {
     const start = deferStart();
     await emit({ kind: "peer-joined" });

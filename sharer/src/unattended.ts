@@ -224,6 +224,12 @@ function startUnattendedStream(): void {
       }
     } finally {
       startsInFlight -= 1;
+      // The teardown that overtook this start announced the session as still
+      // live (this start counted); only the event, so the status line keeps
+      // why the session ended.
+      if (startsInFlight === 0 && !signalBuffer.isCurrent(generation)) {
+        announceSessionState();
+      }
     }
   });
 }
@@ -278,16 +284,20 @@ function detail(e: unknown): string {
   return typeof e === "string" && e.trim().length > 0 ? e : "Unbekannter Fehler";
 }
 
-async function refresh(): Promise<void> {
-  // gh #39: every refresh() pass crosses every state-transition the
-  // feedback FAB cares about (mode change, pair, unpair, password
-  // set). Dispatch a custom event so the FAB can re-evaluate
-  // visibility without polling.
+function announceSessionState(): void {
   window.dispatchEvent(
     new CustomEvent("auffi-unattended-state-changed", {
       detail: { sessionLive: sessionActive() },
     }),
   );
+}
+
+async function refresh(): Promise<void> {
+  // gh #39: every refresh() pass crosses every state-transition the
+  // feedback FAB cares about (mode change, pair, unpair, password
+  // set). Dispatch a custom event so the FAB can re-evaluate
+  // visibility without polling.
+  announceSessionState();
 
   if (!modeSelect) return;
   const mode = ((await invoke<string>("unattended_get_mode").catch(() => "adhoc")) as ModeChoice);
