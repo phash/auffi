@@ -606,6 +606,39 @@ describe("DELETE /api/admin/users/:id", () => {
     expect(h.registry.has("777-888-999")).toBe(false);
   });
 
+  // The sharer treats 4401 as terminal ("re-pair"), so a suspend that rolls
+  // back must not have sent it: the devices would stay offline although
+  // nothing was revoked.
+  it("leaves the target's sharers connected when the suspend itself fails", async () => {
+    const targetId = h.db
+      .prepare<[string], { id: number }>("SELECT id FROM accounts WHERE email = ?")
+      .get("user2@example.com")!.id;
+    h.db
+      .prepare(
+        `INSERT INTO devices (id, owner_account_id, alias, token_hash, created_at)
+         VALUES ('777-888-111', ?, 'X', 'dummy', ?)`,
+      )
+      .run(targetId, Date.now());
+    const peer = { close: vi.fn() };
+    h.registry.register("777-888-111", peer as unknown as WebSocket);
+    h.db.exec(
+      "CREATE TRIGGER refuse_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    );
+
+    const res = await h.app.inject({
+      method: "PATCH",
+      url: `/api/admin/users/${targetId}`,
+      headers: { cookie: `__Host-auffi_session=${cookie}` },
+      payload: { action: "suspend", reason: "abuse" },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(peer.close).not.toHaveBeenCalled();
+    expect(h.registry.has("777-888-111")).toBe(true);
+    expect(
+      h.db.prepare("SELECT suspended_at FROM accounts WHERE id = ?").get(targetId),
+    ).toEqual({ suspended_at: null });
+  });
+
   it("rejects self-delete with 409", async () => {
     const res = await h.app.inject({
       method: "DELETE",
