@@ -14,7 +14,10 @@ import { execPublicScript } from "./helpers/exec-public-script";
 
 interface HelpSection {
   q: string;
+  /** Everything after <summary>, so a second paragraph or list is compared too. */
   a: string;
+  links: Array<[string, string | null]>;
+  bold: string[];
 }
 
 function normalize(text: string | null | undefined): string {
@@ -22,12 +25,18 @@ function normalize(text: string | null | undefined): string {
 }
 
 function sectionsOf(root: ParentNode): HelpSection[] {
-  return Array.from(root.querySelectorAll("#help-modal .help-section")).map(
-    (section) => ({
+  return Array.from(root.querySelectorAll("#help-modal .help-section")).map((section) => {
+    const body = Array.from(section.children).filter((el) => el.tagName !== "SUMMARY");
+    const all = (selector: string): Element[] => body.flatMap((el) => Array.from(el.querySelectorAll(selector)));
+    return {
       q: normalize(section.querySelector("summary")?.textContent),
-      a: normalize(section.querySelector("p")?.textContent),
-    }),
-  );
+      a: normalize(body.map((el) => el.textContent).join(" ")),
+      // getAttribute, not .href: the overlay's jsdom resolves hrefs against
+      // its own URL, the parsed index.html against about:blank.
+      links: all("a").map((a): [string, string | null] => [normalize(a.textContent), a.getAttribute("href")]),
+      bold: all("strong").map((b) => normalize(b.textContent)),
+    };
+  });
 }
 
 function appSections(lang: "de" | "en"): HelpSection[] {
