@@ -16,6 +16,7 @@ import {
   PW_LOCKOUT_MS,
   recordPwFail,
   resetPwFail,
+  UNATTENDED_TURN_DEVICE_CEILING,
   UNATTENDED_TURN_WINDOW_MS,
   UnattendedSessions,
 } from "../src/unattended_sessions.js";
@@ -205,26 +206,51 @@ describe("UnattendedSessions", () => {
   // gh #139: the device id is the number a helper types, so it is not a
   // secret. Unbudgeted, anyone who knew a connected device's id could mint
   // TURN credentials at the per-IP rate from as many addresses as they had.
-  it("allows a connected device's pre-join viewer fetches only up to the up-front budget per window", () => {
+  it("allows each requester a connected device's pre-join fetches only up to the up-front budget per window", () => {
     const ss = new UnattendedSessions();
     const results = Array.from({ length: TURN_CREDENTIALS_UP_FRONT + 1 }, () =>
-      ss.claimViewerTurnCredential("123-456-789", 1_000),
+      ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 1_000),
     );
     expect(results.slice(0, TURN_CREDENTIALS_UP_FRONT).every((r) => r === "ok")).toBe(true);
     expect(results[TURN_CREDENTIALS_UP_FRONT]).toBe("exhausted");
     // Another device has its own allowance.
-    expect(ss.claimViewerTurnCredential("987-654-321", 1_000)).toBe("ok");
+    expect(ss.claimViewerTurnCredential("987-654-321", "10.0.0.1", 1_000)).toBe("ok");
     // The window lapses like an ad-hoc code's TTL.
-    expect(ss.claimViewerTurnCredential("123-456-789", 1_000 + UNATTENDED_TURN_WINDOW_MS)).toBe("ok");
+    expect(
+      ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 1_000 + UNATTENDED_TURN_WINDOW_MS),
+    ).toBe("ok");
+  });
+
+  // Review of gh #139: a per-device allowance shared by every address let one
+  // requester who knew the id drain it, so the real helper's single pre-join
+  // fetch got 429 and the session ran STUN-only.
+  it("one requester draining its allowance leaves the device's other requesters theirs", () => {
+    const ss = new UnattendedSessions();
+    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) {
+      ss.claimViewerTurnCredential("123-456-789", "203.0.113.9", 0);
+    }
+    expect(ss.claimViewerTurnCredential("123-456-789", "203.0.113.9", 0)).toBe("exhausted");
+    expect(ss.claimViewerTurnCredential("123-456-789", "198.51.100.7", 0)).toBe("ok");
+  });
+
+  it("caps a device's pre-join issuance across all requesters at the device ceiling", () => {
+    const ss = new UnattendedSessions();
+    let granted = 0;
+    for (let k = 0; granted < UNATTENDED_TURN_DEVICE_CEILING; k++) {
+      expect(ss.claimViewerTurnCredential("123-456-789", `10.1.0.${k}`, 0)).toBe("ok");
+      granted++;
+    }
+    expect(ss.claimViewerTurnCredential("123-456-789", "10.2.0.1", 0)).toBe("exhausted");
+    expect(ss.claimViewerTurnCredential("123-456-789", "10.2.0.1", UNATTENDED_TURN_WINDOW_MS)).toBe("ok");
   });
 
   it("a verified password refills the device's pre-join allowance", () => {
     const ss = new UnattendedSessions();
-    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) ss.claimViewerTurnCredential("123-456-789", 0);
+    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 0);
     ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, 0);
     ss.transition("123-456-789", "confirmed");
     ss.detachViewer(v);
-    expect(ss.claimViewerTurnCredential("123-456-789", 0)).toBe("ok");
+    expect(ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 0)).toBe("ok");
   });
 
   it("issues the sharer credentials only for a confirmed session, within the per-join budget", () => {
@@ -241,15 +267,18 @@ describe("UnattendedSessions", () => {
     expect(granted).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN).fill(true), false]);
   });
 
-  it("a confirmed session's viewer re-fetch draws from the same per-join budget as the sharer", () => {
+  // A REST caller only has to know the id; if its fetches drew from the
+  // confirmed session's per-join budget, polling it would starve the
+  // sharer's in-band request.
+  it("a viewer REST fetch never spends the confirmed session's sharer budget", () => {
     const ss = new UnattendedSessions();
     ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
     ss.transition("123-456-789", "confirmed");
-    expect(ss.claimSharerTurnCredential(s)).toBe(true);
-    const rest = Array.from({ length: TURN_CREDENTIALS_PER_JOIN }, () =>
-      ss.claimViewerTurnCredential("123-456-789"),
-    );
-    expect(rest).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN - 1).fill("ok"), "exhausted"]);
+    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) {
+      expect(ss.claimViewerTurnCredential("123-456-789", "203.0.113.9")).toBe("ok");
+    }
+    const granted = Array.from({ length: TURN_CREDENTIALS_PER_JOIN }, () => ss.claimSharerTurnCredential(s));
+    expect(granted).toEqual(Array(TURN_CREDENTIALS_PER_JOIN).fill(true));
   });
 });
 

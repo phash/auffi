@@ -320,23 +320,34 @@ describe("POST /turn-credentials — unattended device ids", () => {
     await app.close();
   });
 
-  let nextIp = 1;
-  async function post(code: string): Promise<{ status: number; body: unknown }> {
+  async function post(code: string, ip = "10.8.0.1"): Promise<{ status: number; body: unknown }> {
     const res = await app.inject({
       method: "POST",
       url: "/turn-credentials",
-      remoteAddress: `10.8.0.${nextIp++}`,
+      remoteAddress: ip,
       headers: { origin: "http://localhost:5173" },
       payload: { code },
     });
     return { status: res.statusCode, body: res.json() };
   }
 
-  it("serves a connected device's pre-join fetches up to the up-front budget, then 429", async () => {
+  it("serves one address a connected device's pre-join fetches up to the up-front budget, then 429", async () => {
     const statuses: number[] = [];
     for (let i = 0; i <= TURN_CREDENTIALS_UP_FRONT; i++) statuses.push((await post(CONNECTED_DEVICE_ID)).status);
     expect(statuses).toEqual([...Array(TURN_CREDENTIALS_UP_FRONT).fill(200), 429]);
     expect((await post(CONNECTED_DEVICE_ID)).body).toEqual({ error: "turn credential budget exhausted" });
+  });
+
+  it("keeps serving the real helper after another address spent its allowance", async () => {
+    for (let i = 0; i <= TURN_CREDENTIALS_UP_FRONT; i++) await post(CONNECTED_DEVICE_ID, "203.0.113.50");
+    expect((await post(CONNECTED_DEVICE_ID, "198.51.100.20")).status).toBe(200);
+  });
+
+  it("counts every address of one IPv6 /64 against the same allowance", async () => {
+    for (let i = 1; i <= TURN_CREDENTIALS_UP_FRONT; i++) {
+      expect((await post(CONNECTED_DEVICE_ID, `2001:db8:5:6::${i}`)).status).toBe(200);
+    }
+    expect((await post(CONNECTED_DEVICE_ID, "2001:db8:5:6::99")).status).toBe(429);
   });
 
   it("refuses a code with no session and no connected device", async () => {
@@ -344,7 +355,7 @@ describe("POST /turn-credentials — unattended device ids", () => {
   });
 
   it("refuses a device id whose sharer is not connected, even with budget left", async () => {
-    expect(sessions.claimViewerTurnCredential("111-222-333")).toBe("ok");
+    expect(sessions.claimViewerTurnCredential("111-222-333", "10.9.9.9")).toBe("ok");
     expect((await post("111-222-333")).status).toBe(403);
   });
 });

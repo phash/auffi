@@ -2,6 +2,7 @@ import { randomUUID, createHmac } from "node:crypto";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { SessionStore } from "./codes.js";
 import { normalizeCode } from "./codes.js";
+import { rateLimitKey } from "./rate-limit.js";
 
 export type TurnConfig = {
   sharedSecret: string;
@@ -23,10 +24,12 @@ export type TurnConfig = {
    * names a CONNECTED unattended device (its sharer holds a live
    * bearer-authenticated WSS). The viewer fetches ICE servers BEFORE
    * joining, when no UnattendedSession exists yet, so the registry is the
-   * gate; the issuance itself is budgeted per device and per confirmed
-   * session (`UnattendedSessions.claimViewerTurnCredential`, gh #139).
+   * gate; the issuance itself is budgeted per requester address and per
+   * device (`UnattendedSessions.claimViewerTurnCredential`, gh #139).
    */
-  unattendedSessions?: { claimViewerTurnCredential(deviceId: string): "ok" | "exhausted" };
+  unattendedSessions?: {
+    claimViewerTurnCredential(deviceId: string, requesterKey: string): "ok" | "exhausted";
+  };
   unattendedRegistry?: { has(id: string): boolean };
 };
 
@@ -76,7 +79,7 @@ export function registerTurnEndpoint(
             normalized !== null &&
             cfg.unattendedSessions !== undefined &&
             (cfg.unattendedRegistry?.has(normalized) ?? false)
-              ? cfg.unattendedSessions.claimViewerTurnCredential(normalized)
+              ? cfg.unattendedSessions.claimViewerTurnCredential(normalized, rateLimitKey(req.ip))
               : "unknown";
           if (unattended === "unknown") {
             return reply.status(403).send({ error: "no active session" });

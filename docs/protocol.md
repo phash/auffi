@@ -407,8 +407,8 @@ Reply to `turn-credentials-request`. Carries the same HMAC-ephemeral
 credentials the REST endpoint mints, or `null` when the deployment has no
 TURN configured, when the sharer has no confirmed session (no viewer passed
 `pw-check-result: ok` on this socket yet), or when that session spent its
-budget of **2** (`TURN_CREDENTIALS_PER_JOIN`, shared with the viewer's
-REST re-fetches for the same session). The sharer then builds its peer
+budget of **2** (`TURN_CREDENTIALS_PER_JOIN`; the sharer's alone, viewer
+REST fetches never draw from it). The sharer then builds its peer
 STUN-less (identical degradation to a failed REST fetch). It asks right
 after `peer-joined`, which the backend sends only after the confirm, so the
 legitimate request always finds the session confirmed.
@@ -422,11 +422,15 @@ legitimate request always finds the session confirmed.
 > device currently holds a live bearer-authenticated WSS
 > (`UnattendedRegistry`), which is already true during the viewer's
 > pre-join fetch. Because the device id is the number a helper types (not a
-> secret), that pre-join path is budgeted per device like a fresh ad-hoc
-> code: **4** credentials per 10-minute window
-> (`UNATTENDED_TURN_WINDOW_MS`, `backend/src/unattended_sessions.ts`), renewed
-> at once by a verified password. Once a session is confirmed, a viewer
-> fetch draws from that session's budget of 2 instead (gh #139; see
+> secret), that path is budgeted like a fresh ad-hoc code, per requester:
+> **4** credentials per device per 10-minute window for each address
+> (an IPv4 address or an IPv6 /64), and at most **16** per device across all
+> addresses (`UNATTENDED_TURN_WINDOW_MS` / `UNATTENDED_TURN_DEVICE_CEILING`,
+> `backend/src/unattended_sessions.ts`). A verified password renews the
+> device's windows at once. Keying per requester means one caller who knows
+> the id cannot spend the real helper's allowance; only four or more
+> distinct addresses draining the device ceiling inside one window can,
+> and the ceiling is what keeps issuance bounded at all (gh #139; see
 > § `POST /turn-credentials`).
 
 ### `connection-started` (sharer → server)
@@ -662,7 +666,7 @@ explicitly) + JSON body `{ "code": "284-915-073" }`.
 | 200 | credentials above | live ad-hoc session with budget left, or a connected unattended device for that id with budget left |
 | 403 | `{"error":"origin not allowed"}` | `Origin` missing or not allow-listed |
 | 403 | `{"error":"no active session"}` | code unknown / malformed and no unattended match |
-| 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`); or the unattended device spent its pre-join allowance (**4** per 10 min) or its confirmed session's **2** (§ `turn-credentials`) |
+| 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`); or, for an unattended device id, this address spent its **4** per 10 min or the device its ceiling of **16** (§ `turn-credentials`) |
 | 429 | `@fastify/rate-limit` default body | more than 10 requests/min/IP |
 
 Errors use `{ "error": "<text>" }` without a `message` field (unlike `/api/*`).

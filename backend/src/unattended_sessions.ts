@@ -189,18 +189,29 @@ export const PW_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
 /**
  * Window for a device's pre-join TURN allowance (gh #139). The viewer
  * fetches credentials BEFORE it joins, when only the device id is known,
- * and that id is the number a helper types, not a secret. So a connected
- * device gets what a fresh ad-hoc code gets (TURN_CREDENTIALS_UP_FRONT), and
- * the allowance renews on the ad-hoc code's 10-minute TTL. A verified
- * password renews it at once, so an owner retrying is never starved.
- * In-memory, swept by [`UnattendedSessions.sweepStale`] once the window
- * lapsed: that is its retention policy.
+ * and that id is the number a helper types, not a secret. So each requester
+ * (`rateLimitKey`: an IPv4 address or an IPv6 /64) gets what a fresh ad-hoc
+ * code gets (TURN_CREDENTIALS_UP_FRONT) per device, renewed on the ad-hoc
+ * code's 10-minute TTL. Keyed per requester so that one caller who knows the
+ * id cannot spend the real helper's allowance; a verified password renews
+ * the device's windows at once. In-memory, swept by
+ * [`UnattendedSessions.sweepStale`] once the window lapsed: that is its
+ * retention policy.
  */
 export const UNATTENDED_TURN_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Bound on a device's pre-join issuance across all requesters per window,
+ * so the per-requester keying does not reopen unbounded issuance to anyone
+ * with many addresses. Exhausting it takes this many credentials from at
+ * least four distinct requesters, not one.
+ */
+export const UNATTENDED_TURN_DEVICE_CEILING = 4 * TURN_CREDENTIALS_UP_FRONT;
 
 interface PreJoinTurnWindow {
   startedAt: number;
   issued: number;
+  issuedByRequester: Map<string, number>;
 }
 
 export class UnattendedSessions {
@@ -328,20 +339,27 @@ export class UnattendedSessions {
 
   /**
    * Gate for a viewer's `POST /turn-credentials` with a device id (the
-   * caller has already checked the device is connected). A confirmed
-   * session draws from its per-join budget, shared with the sharer;
-   * otherwise the device's pre-join allowance applies
-   * ([`UNATTENDED_TURN_WINDOW_MS`]).
+   * caller has already checked the device is connected), charged to the
+   * requester's pre-join allowance ([`UNATTENDED_TURN_WINDOW_MS`]) within
+   * the device ceiling. It never draws from a confirmed session's per-join
+   * budget: a REST caller only has to know the id, so polling would starve
+   * the sharer's in-band request.
    */
-  claimViewerTurnCredential(deviceId: string, now: number = Date.now()): "ok" | "exhausted" {
-    const sess = this.byDevice.get(deviceId);
-    if (sess?.state === "confirmed") return this.claimSessionTurn(sess) ? "ok" : "exhausted";
+  claimViewerTurnCredential(
+    deviceId: string,
+    requesterKey: string,
+    now: number = Date.now(),
+  ): "ok" | "exhausted" {
     let window = this.preJoinTurn.get(deviceId);
     if (!window || now - window.startedAt >= UNATTENDED_TURN_WINDOW_MS) {
-      window = { startedAt: now, issued: 0 };
+      window = { startedAt: now, issued: 0, issuedByRequester: new Map() };
       this.preJoinTurn.set(deviceId, window);
     }
-    if (window.issued >= TURN_CREDENTIALS_UP_FRONT) return "exhausted";
+    const byRequester = window.issuedByRequester.get(requesterKey) ?? 0;
+    if (byRequester >= TURN_CREDENTIALS_UP_FRONT || window.issued >= UNATTENDED_TURN_DEVICE_CEILING) {
+      return "exhausted";
+    }
+    window.issuedByRequester.set(requesterKey, byRequester + 1);
     window.issued += 1;
     return "ok";
   }
