@@ -77,7 +77,7 @@ services:
   viewer-build:
     # One-shot: copies the pre-built viewer/dist into the viewer-static volume so
     # Caddy can serve it.  Runs before any other service starts.
-    image: busybox:1.36.1
+    image: busybox:1.38.0
     container_name: auffi-viewer-build
     volumes:
       - ./viewer/dist:/src:ro
