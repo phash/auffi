@@ -57,6 +57,11 @@ ssh musikersuche@musikersuche.org
 openssl rand -hex 32
 ```
 
+**Standalone mode** (our own Caddy) also needs `ACME_EMAIL` in `.env.prod`:
+the contact address of your Let's Encrypt account. `caddy/Caddyfile` reads it
+as `email {$ACME_EMAIL}`; an empty value stops Caddy from parsing its config,
+so `deploy.sh` refuses to deploy without it. Cluster mode ignores it.
+
 ### SMTP (gh #39 — required for unattended-mode accounts)
 
 The dashboard's account flows (signup → verify-email, forgot-password

@@ -305,6 +305,12 @@ if [[ "${DRY_RUN}" == "false" ]]; then
     log_error "Bitte ausfüllen (mindestens TURN_SHARED_SECRET = openssl rand -hex 32, ALLOWED_ORIGINS, SMTP_*) und den Deploy erneut starten. Siehe ops/README.md § 2."
     exit 1
   fi
+  # caddy/Caddyfile liest den ACME-Kontakt aus ACME_EMAIL; leer parst Caddy
+  # die Config nicht und auffi-caddy crash-loopt nach dem compose up.
+  if [[ -z "${CLUSTER_PROXY:-}" ]] && ! remote "grep -Eq '^ACME_EMAIL=[^[:space:]]+' '${DEPLOY_PATH}/.env.prod'"; then
+    log_error "ACME_EMAIL fehlt in ${DEPLOY_SSH}:${DEPLOY_PATH}/.env.prod — Standalone-Caddy braucht die Kontaktadresse für Let's Encrypt. Siehe ops/README.md § 2."
+    exit 1
+  fi
 else
   log_dry "skip .env.prod pre-flight in dry-run"
 fi

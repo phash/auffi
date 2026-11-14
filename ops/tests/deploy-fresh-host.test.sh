@@ -32,8 +32,15 @@ assert_not_contains "$(cat "${STUB_LOG}")" "docker compose" "no compose up on a 
 assert_not_contains "$(cat "${STUB_LOG}")" "docker build" "stopped before spending build time"
 assert_eq "false" "$([[ -e "${REMOTE}/viewer-dist" ]] && echo true || echo false)" "nothing rsynced yet"
 
+echo "# standalone .env.prod without ACME_EMAIL → stop before compose up (Caddy would crash-loop on an empty email)"
+printf 'APP_VERSION=old\nTURN_SHARED_SECRET=s3cret\nALLOWED_ORIGINS=https://deploy.invalid\nACME_EMAIL=\n' > "${REMOTE}/.env.prod"
+RC=0; OUT="$(run_deploy 2>&1)" || RC=$?
+assert_eq 1 "${RC}" "deploy exits 1"
+assert_contains "${OUT}" "ACME_EMAIL" "operator told to set ACME_EMAIL"
+assert_not_contains "$(cat "${STUB_LOG}")" "docker compose" "no compose up without ACME_EMAIL"
+
 echo "# .env.prod present → full deploy, snapshot written"
-printf 'APP_VERSION=old\nTURN_SHARED_SECRET=s3cret\nALLOWED_ORIGINS=https://deploy.invalid\n' > "${REMOTE}/.env.prod"
+printf 'APP_VERSION=old\nTURN_SHARED_SECRET=s3cret\nALLOWED_ORIGINS=https://deploy.invalid\nACME_EMAIL=ops@example.org\n' > "${REMOTE}/.env.prod"
 mkdir -p "${REMOTE}/releases/stale111/viewer-dist" "${REMOTE}/releases/stale222/viewer-dist"
 RC=0; OUT="$(run_deploy 2>&1)" || RC=$?
 [[ ${RC} -eq 0 ]] || printf '%s\n' "${OUT}"
@@ -47,6 +54,7 @@ assert_file_eq "${REMOTE}/releases/${SHA}/dashboard-dist/index.html" "dashboard 
 assert_eq "true" "$([[ -f "${REMOTE}/releases/${SHA}/nginx/auffi-viewer.conf" ]] && echo true || echo false)" "release snapshot holds nginx/"
 assert_eq "true" "$([[ -f "${REMOTE}/releases/${SHA}/caddy/Caddyfile" ]] && echo true || echo false)" "standalone snapshot holds caddy/"
 assert_contains "$(tail -n 1 "${REMOTE}/.deploy-log")" "${SHA}" "deploy logged"
+assert_contains "$(cat "${STUB_LOG}")" "-e ACME_EMAIL=" "caddy validate gets a parse-time ACME_EMAIL"
 assert_contains "$(cat "${STUB_LOG}")" " build caddy" "standalone caddy image rebuilt: caddy/Dockerfile is new on the host"
 assert_eq "false" "$([[ -e "${REMOTE}/releases/stale111" ]] && echo true || echo false)" "snapshot of a SHA outside the keep list pruned"
 assert_eq "false" "$([[ -e "${REMOTE}/releases/stale222" ]] && echo true || echo false)" "second stale snapshot pruned"

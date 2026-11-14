@@ -31,4 +31,10 @@ assert_contains "${SITE}" '@corp_same_origin not path /og-image.png' "CORP match
 assert_contains "${SITE}" 'header @corp_same_origin >Cross-Origin-Resource-Policy "same-origin"' "CORP same-origin on everything else"
 assert_contains "${SITE}" 'header -Via' "Via header stripped"
 
+# The global block belongs to whoever hosts it, not the maintainer: the ACME
+# account contact comes from .env.prod, never a hard-coded address.
+GLOBAL="$(awk 'NR==1 && /^\{/{g=1} g{print} g && /^\}/{exit}' "${CADDYFILE}")"
+assert_contains "${GLOBAL}" 'email {$ACME_EMAIL}' "ACME contact read from the ACME_EMAIL env var"
+assert_eq "" "$(grep -nE '^[^#]*[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[A-Za-z]' "${CADDYFILE}" || true)" "no literal e-mail address in the Caddyfile"
+
 finish

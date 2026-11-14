@@ -1,5 +1,8 @@
 {
-    email m.roedig@gmail.com
+    # ACME-Kontakt des Let's-Encrypt-Accounts aus .env.prod (ACME_EMAIL, über
+    # docker-compose.prod.yml durchgereicht). Leer bricht das Parsen ab —
+    # ops/deploy.sh prüft es deshalb vorab (standalone).
+    email {$ACME_EMAIL}
     order rate_limit before basicauth
 }
 

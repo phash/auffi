@@ -272,7 +272,10 @@ caddy_validate_local() {
       return 1
     fi
   fi
+  # ACME_EMAIL nur fürs Parsen von `email {$ACME_EMAIL}` — validate spricht
+  # nicht mit Let's Encrypt; den echten Wert prüft deploy.sh auf dem Host.
   if ! out=$(docker run --rm \
+      -e ACME_EMAIL=validate@example.org \
       -v "${caddyfile}:/etc/caddy/Caddyfile:ro" \
       "${image}" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
     log_error "caddy validate failed for ${caddyfile}:"

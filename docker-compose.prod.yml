@@ -99,6 +99,8 @@ services:
     image: auffi-caddy:2.11.9-ratelimit
     container_name: auffi-caddy
     restart: unless-stopped
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-}
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
       - "${CADDY_HTTPS_PORT:-443}:443"
