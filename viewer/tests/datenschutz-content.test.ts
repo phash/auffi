@@ -68,6 +68,7 @@ describe("Datenschutzerklärung matches the live processing", () => {
   it("carries a current 'Stand' date", () => {
     expect(html).not.toContain("Stand: Mai 2026");
     expect(html).not.toContain("Stand: September 2026");
-    expect(html).toMatch(/Stand: Oktober 2026/);
+    expect(html).not.toContain("Stand: Oktober 2026");
+    expect(html).toMatch(/Stand: November 2026/);
   });
 });
