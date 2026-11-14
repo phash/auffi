@@ -1415,9 +1415,14 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
     return viewer;
   }
 
-  async function requestTurn(sharer: WebSocket): Promise<any> {
+  type TurnCredentialsFrame = {
+    type: string;
+    credentials: { urls: string[]; username: string; credential: string; ttl: number } | null;
+  };
+
+  async function requestTurn(sharer: WebSocket): Promise<TurnCredentialsFrame> {
     sharer.send(JSON.stringify({ type: "turn-credentials-request" }));
-    return new Promise<any>((r) =>
+    return new Promise<TurnCredentialsFrame>((r) =>
       sharer.once("message", (data: Buffer) => r(JSON.parse(data.toString()))),
     );
   }
