@@ -15,13 +15,16 @@
 //!
 //! So the sharer packetizes itself: [`RtpClock`] turns capture timestamps
 //! into 90 kHz tick deltas, [`FramePacketizer`] applies them to a
-//! `rtp::Packetizer` and hands the packets to a `TrackLocalStaticRTP`, which
-//! rewrites payload type and SSRC per binding.
+//! `rtp::Packetizer` and hands the packets to `webrtc_peer::VideoTrack`, which
+//! stamps the announced SSRC and the negotiated payload type.
+
+use std::time::Instant;
 
 use bytes::Bytes;
-use webrtc::rtp::packet::Packet;
-use webrtc::rtp::packetizer::{new_packetizer, Packetizer, Payloader};
-use webrtc::rtp::sequence::new_random_sequencer;
+use rtc::rtp::codec::vp8::Vp8Payloader;
+use rtc::rtp::packet::Packet;
+use rtc::rtp::packetizer::{new_packetizer, Packetizer};
+use rtc::rtp::sequence::new_random_sequencer;
 
 /// RTP clock rate for video (RFC 7741 §4 for VP8; universal for video).
 pub const VIDEO_CLOCK_RATE: u32 = 90_000;
@@ -38,13 +41,11 @@ const MAX_GAP_US: u64 = 2_000_000;
 /// by a nominal 30 fps frame instead.
 pub const NOMINAL_FRAME_TICKS: u32 = 2_970;
 
-/// Same MTU `TrackLocalStaticSample` used (`webrtc::track::RTP_OUTBOUND_MTU`,
-/// which is crate-private there).
+/// The MTU webrtc-rs' own sample track packetizes to.
 const RTP_OUTBOUND_MTU: usize = 1200;
 
-/// Placeholder payload type / SSRC. `TrackLocalStaticRTP` overwrites both per
-/// binding with the negotiated values, so what is set here never reaches the
-/// wire.
+/// Placeholder payload type / SSRC. `VideoTrack` overwrites both before a
+/// packet is sent, so what is set here never reaches the wire.
 const UNBOUND_PAYLOAD_TYPE: u8 = 96;
 const UNBOUND_SSRC: u32 = 0;
 
@@ -80,14 +81,15 @@ pub struct FramePacketizer {
 }
 
 impl FramePacketizer {
-    pub fn new(payloader: Box<dyn Payloader + Send + Sync>) -> Self {
+    pub fn new() -> Self {
         Self {
             clock: RtpClock::default(),
             packetizer: Box::new(new_packetizer(
+                Instant::now(),
                 RTP_OUTBOUND_MTU,
                 UNBOUND_PAYLOAD_TYPE,
                 UNBOUND_SSRC,
-                payloader,
+                Box::new(Vp8Payloader::default()),
                 Box::new(new_random_sequencer()),
                 VIDEO_CLOCK_RATE,
             )),
@@ -100,12 +102,13 @@ impl FramePacketizer {
         &mut self,
         pts_us: u64,
         frame: Vec<u8>,
-    ) -> Result<Vec<Packet>, webrtc::rtp::Error> {
+    ) -> Result<Vec<Packet>, rtc::shared::error::Error> {
         // `packetize` stamps the CURRENT timestamp and then adds `samples`
         // for the next call; advancing first and passing 0 puts the whole
         // delta on this frame instead of the next one.
         self.packetizer.skip_samples(self.clock.advance(pts_us));
-        self.packetizer.packetize(&Bytes::from(frame), 0)
+        self.packetizer
+            .packetize(Instant::now(), &Bytes::from(frame), 0)
     }
 }
 
@@ -145,8 +148,7 @@ mod tests {
 
     #[test]
     fn frame_packetizer_stamps_capture_time_and_contiguous_sequence_numbers() {
-        let mut fp =
-            FramePacketizer::new(Box::new(webrtc::rtp::codecs::vp8::Vp8Payloader::default()));
+        let mut fp = FramePacketizer::new();
         let mut all = Vec::new();
         for pts in [0u64, 33_000, 533_000] {
             all.extend(fp.packetize(pts, vec![0x10]).expect("packetize"));

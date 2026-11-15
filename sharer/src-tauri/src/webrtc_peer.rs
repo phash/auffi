@@ -1,26 +1,32 @@
-use std::sync::Arc;
+use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
+use std::time::Instant;
 
+use std::collections::VecDeque;
+
+use bytes::BytesMut;
+use rtc::ice::mdns::MulticastDnsMode;
+use rtc::interceptor::{Attribute, Interceptor, Packet, Slot, StreamInfo, TaggedPacket};
+use rtc::peer_connection::configuration::media_engine::MIME_TYPE_VP8;
+use rtc::rtcp;
+use rtc::rtp;
+use rtc::rtp_transceiver::rtp_sender;
+use rtc::statistics::stats::ice_candidate_pair::RTCStatsIceCandidatePairState;
 use tokio::sync::mpsc;
-use webrtc::interceptor::registry::Registry;
-use webrtc::{
-    api::{
-        interceptor_registry::register_default_interceptors, media_engine::MediaEngine,
-        setting_engine::SettingEngine, APIBuilder,
-    },
-    data_channel::RTCDataChannel,
-    ice::{candidate::CandidateType, mdns::MulticastDnsMode},
-    ice_transport::{
-        ice_candidate::{RTCIceCandidate, RTCIceCandidateInit},
-        ice_candidate_type::RTCIceCandidateType,
-        ice_connection_state::RTCIceConnectionState,
-        ice_server::RTCIceServer,
-    },
-    peer_connection::{configuration::RTCConfiguration, RTCPeerConnection},
-    rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
-    stats::StatsReportType,
-    track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
-    Error,
+use webrtc::data_channel::{DataChannel, DataChannelEvent};
+use webrtc::error::Error;
+use webrtc::media_stream::track_local::static_rtp::TrackLocalStaticRTP;
+use webrtc::media_stream::track_local::{TrackLocal, TrackLocalEvent};
+use webrtc::media_stream::MediaStreamTrack;
+use webrtc::peer_connection::{
+    register_default_interceptors, MediaEngine, PeerConnection, PeerConnectionBuilder,
+    PeerConnectionEventHandler, RTCConfigurationBuilder, RTCIceCandidate, RTCIceCandidateInit,
+    RTCIceCandidateType, RTCIceConnectionState, RTCIceGatheringState, RTCIceServer,
+    RTCPeerConnectionIceEvent, RTCSessionDescription, RTCStatsReport, RTCStatsReportEntry,
+    Registry, SettingEngineBuilder, StatsSelector,
 };
+use webrtc::rtp_transceiver::RtpSender;
 
 use crate::files::FileMessage;
 use crate::input::{InputCommand, InputEvent};
@@ -32,94 +38,265 @@ pub enum ConnectionType {
     Relay,
 }
 
-/// Inspect a stats report and return the connection type for the nominated,
-/// succeeded candidate pair. Returns `None` when no such pair exists yet.
-///
-/// Extracted as a pure function so it can be unit-tested without a real
-/// `RTCPeerConnection`.
-pub fn resolve_connection_type(
-    reports: &std::collections::HashMap<String, StatsReportType>,
-) -> Option<ConnectionType> {
-    let active_pair = reports.values().find_map(|r| {
-        if let StatsReportType::CandidatePair(pair) = r {
-            use webrtc::ice::candidate::CandidatePairState;
-            if pair.state == CandidatePairState::Succeeded && pair.nominated {
-                return Some(pair);
-            }
-        }
-        None
-    })?;
-
-    let local_relay = reports
-        .get(&active_pair.local_candidate_id)
-        .and_then(|r| {
-            if let StatsReportType::LocalCandidate(c) = r {
-                Some(c.candidate_type == CandidateType::Relay)
-            } else {
-                None
-            }
+/// The ids of the local and remote candidate of the nominated, succeeded
+/// pair, if there is one yet.
+fn select_active_pair<'a>(
+    pairs: impl IntoIterator<Item = (RTCStatsIceCandidatePairState, bool, &'a str, &'a str)>,
+) -> Option<(&'a str, &'a str)> {
+    pairs
+        .into_iter()
+        .find(|(state, nominated, _, _)| {
+            *state == RTCStatsIceCandidatePairState::Succeeded && *nominated
         })
-        .unwrap_or(false);
+        .map(|(_, _, local, remote)| (local, remote))
+}
 
-    let remote_relay = reports
-        .get(&active_pair.remote_candidate_id)
-        .and_then(|r| {
-            if let StatsReportType::RemoteCandidate(c) = r {
-                Some(c.candidate_type == CandidateType::Relay)
-            } else {
-                None
-            }
-        })
-        .unwrap_or(false);
-
-    if local_relay || remote_relay {
-        Some(ConnectionType::Relay)
+/// A path is relayed when either end of it is a TURN relay candidate; a
+/// candidate the report does not list counts as not relayed.
+fn connection_type_of(
+    local: Option<RTCIceCandidateType>,
+    remote: Option<RTCIceCandidateType>,
+) -> ConnectionType {
+    if local == Some(RTCIceCandidateType::Relay) || remote == Some(RTCIceCandidateType::Relay) {
+        ConnectionType::Relay
     } else {
-        Some(ConnectionType::P2p)
+        ConnectionType::P2p
     }
 }
 
-/// A WebRTC peer connection for the sharer side.
-///
-/// Holds a VP8 video track and the underlying `RTCPeerConnection`.
-/// Pinned mDNS gathering mode for every SharerPeer we build. See the
-/// long comment inside `SharerPeer::new` for the rationale; the constant
-/// is hoisted out so the regression test below can assert on it without
-/// having to introspect a `SettingEngine` (webrtc-rs doesn't expose
-/// getters for its internal state).
+/// Connection type of the nominated, succeeded candidate pair; `None` while
+/// no such pair exists yet.
+fn resolve_connection_type(report: &RTCStatsReport) -> Option<ConnectionType> {
+    let (local_id, remote_id) = select_active_pair(report.candidate_pairs().map(|p| {
+        (
+            p.state,
+            p.nominated,
+            p.local_candidate_id.as_str(),
+            p.remote_candidate_id.as_str(),
+        )
+    }))?;
+    let local = match report.get(local_id) {
+        Some(RTCStatsReportEntry::LocalCandidate(c)) => Some(c.candidate_type),
+        _ => None,
+    };
+    let remote = match report.get(remote_id) {
+        Some(RTCStatsReportEntry::RemoteCandidate(c)) => Some(c.candidate_type),
+        _ => None,
+    };
+    Some(connection_type_of(local, remote))
+}
+
+/// Pinned mDNS gathering mode for every SharerPeer we build. The webrtc-rs
+/// default is `QueryOnly`: it resolves the viewer's `.local` candidates but
+/// publishes raw private IPs for its own, and against Chrome (which publishes
+/// only `.local` names) every same-LAN session then settled on the TURN relay
+/// — see `docs/postmortem-2026-05-13-connectivity.md`. Hoisted out so the
+/// regression test can assert on it: the `SettingEngine` has no getter a test
+/// could use without building a peer.
 const MDNS_MODE: MulticastDnsMode = MulticastDnsMode::QueryAndGather;
 
-/// Slot holding an optional observer callback.
+/// Placeholder until the answer names the viewer's VP8 payload type. No
+/// payload type is above 127, so this never collides with a real one.
+const PAYLOAD_TYPE_NOT_NEGOTIATED: u16 = u16::MAX;
+
+/// The IPv4 address the OS would route public traffic from: the interface
+/// the viewer most likely reaches us on.
 ///
-/// webrtc-rs allows one `on_ice_connection_state_change` handler, so the ICE
-/// registration installed in [`SharerPeer::new`] dispatches to these instead —
-/// neither observer can displace the other, whatever order the caller
-/// registers them in.
+/// webrtc-rs 0.21 hides exactly one host address behind the mDNS name (the
+/// one set as `multicast_dns_local_ip`); without it the responder answers for
+/// 127.0.0.1 and every host candidate goes out as a raw private IP — the
+/// relay-on-the-same-LAN bug `MDNS_MODE` exists to prevent. Binding the peer
+/// to this one address also keeps Docker bridges and VPN adapters out of the
+/// candidate list. `connect` on a UDP socket only consults the routing table;
+/// nothing is sent.
+fn primary_ipv4() -> Option<IpAddr> {
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("192.0.2.1:9").ok()?;
+    let ip = socket.local_addr().ok()?.ip();
+    (!ip.is_loopback() && !ip.is_unspecified()).then_some(ip)
+}
+
+/// One optional observer callback, filled in after the peer is built.
 type ObserverSlot<T> = Arc<std::sync::Mutex<Option<Arc<dyn Fn(T) + Send + Sync>>>>;
 
-/// `files_dc` is populated once the viewer opens the `"files"` channel so the
-/// sharer can send file offers and chunks back.
+type CandidateSlot = Arc<std::sync::Mutex<Option<Box<dyn FnMut(Option<RTCIceCandidate>) + Send>>>>;
+
+fn read_slot<T>(slot: &ObserverSlot<T>) -> Option<Arc<dyn Fn(T) + Send + Sync>> {
+    slot.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+/// The callbacks the event handler dispatches to.
+///
+/// webrtc-rs 0.21 takes its single event handler when the connection is
+/// built, before any caller could register an observer, so the handler reads
+/// these slots at call time instead. Callbacks run on the connection's driver
+/// task: anything that calls back into the connection (stats, sends) is
+/// spawned, because the driver cannot answer while it is running the callback.
+#[derive(Default)]
+struct Observers {
+    ice_candidate: CandidateSlot,
+    ice_state: ObserverSlot<RTCIceConnectionState>,
+    conn_type: ObserverSlot<ConnectionType>,
+    data_channel: ObserverSlot<Arc<dyn DataChannel>>,
+    last_conn_type: Arc<tokio::sync::Mutex<Option<ConnectionType>>>,
+    /// Weak: the driver owns this handler, and a strong reference back to the
+    /// connection would keep both alive after `close`.
+    pc: OnceLock<Weak<dyn PeerConnection>>,
+}
+
+impl Observers {
+    fn clear(&self) {
+        *self.ice_candidate.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *self.ice_state.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *self.conn_type.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *self.data_channel.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    }
+}
+
+struct Handler(Arc<Observers>);
+
+#[async_trait::async_trait]
+impl PeerConnectionEventHandler for Handler {
+    async fn on_ice_candidate(&self, event: RTCPeerConnectionIceEvent) {
+        if let Some(cb) = self
+            .0
+            .ice_candidate
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_mut()
+        {
+            cb(Some(event.candidate));
+        }
+    }
+
+    async fn on_ice_gathering_state_change(&self, state: RTCIceGatheringState) {
+        if state != RTCIceGatheringState::Complete {
+            return;
+        }
+        if let Some(cb) = self
+            .0
+            .ice_candidate
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_mut()
+        {
+            cb(None);
+        }
+    }
+
+    async fn on_ice_connection_state_change(&self, state: RTCIceConnectionState) {
+        if let Some(observer) = read_slot(&self.0.ice_state) {
+            observer(state);
+        }
+        if state != RTCIceConnectionState::Connected && state != RTCIceConnectionState::Completed {
+            return;
+        }
+        let Some(pc) = self.0.pc.get().and_then(Weak::upgrade) else {
+            return;
+        };
+        let type_slot = Arc::clone(&self.0.conn_type);
+        let last = Arc::clone(&self.0.last_conn_type);
+        tokio::spawn(async move {
+            let report = pc.get_stats(Instant::now(), StatsSelector::None).await;
+            let Some(conn_type) = resolve_connection_type(&report) else {
+                return;
+            };
+            let mut guard = last.lock().await;
+            if *guard != Some(conn_type) {
+                *guard = Some(conn_type);
+                if let Some(handler) = read_slot(&type_slot) {
+                    handler(conn_type);
+                }
+            }
+        });
+    }
+
+    async fn on_data_channel(&self, data_channel: Arc<dyn DataChannel>) {
+        if let Some(observer) = read_slot(&self.0.data_channel) {
+            observer(data_channel);
+        }
+    }
+}
+
+/// The VP8 track as the streaming loop sees it.
+///
+/// webrtc-rs 0.21 sends an RTP packet only if its SSRC is one the track
+/// announced and its payload type one the answer negotiated, and drops any
+/// other packet with nothing but a log line. This stamps both on every packet,
+/// so the packetizer in `rtp_clock.rs` stays unaware of either. Until the
+/// answer is set there is no payload type to stamp and packets are discarded,
+/// as the 0.17 track did while unbound.
+#[derive(Clone)]
+pub struct VideoTrack {
+    track: Arc<TrackLocalStaticRTP>,
+    ssrc: u32,
+    payload_type: Arc<AtomicU16>,
+}
+
+impl VideoTrack {
+    pub(crate) fn new() -> Self {
+        let ssrc = rand::random::<u32>();
+        let codec = vp8_codec();
+        let track = TrackLocalStaticRTP::new(MediaStreamTrack::new(
+            "auffi".to_string(),
+            "video".to_string(),
+            "video".to_string(),
+            rtp_sender::RtpCodecKind::Video,
+            vec![rtp_sender::RTCRtpEncodingParameters {
+                rtp_coding_parameters: rtp_sender::RTCRtpCodingParameters {
+                    ssrc: Some(ssrc),
+                    ..Default::default()
+                },
+                codec,
+                ..Default::default()
+            }],
+        ));
+        Self {
+            track: Arc::new(track),
+            ssrc,
+            payload_type: Arc::new(AtomicU16::new(PAYLOAD_TYPE_NOT_NEGOTIATED)),
+        }
+    }
+
+    /// Send one packet, or drop it while no payload type is negotiated.
+    pub async fn write_rtp(&self, mut packet: rtp::Packet) -> Result<(), Error> {
+        let Ok(payload_type) = u8::try_from(self.payload_type.load(Ordering::Acquire)) else {
+            return Ok(());
+        };
+        packet.header.ssrc = self.ssrc;
+        packet.header.payload_type = payload_type;
+        self.track.write_rtp(packet).await
+    }
+
+    fn set_payload_type(&self, payload_type: u8) {
+        self.payload_type
+            .store(u16::from(payload_type), Ordering::Release);
+    }
+}
+
+fn vp8_codec() -> rtp_sender::RTCRtpCodec {
+    rtp_sender::RTCRtpCodec {
+        mime_type: MIME_TYPE_VP8.to_string(),
+        clock_rate: crate::rtp_clock::VIDEO_CLOCK_RATE,
+        ..Default::default()
+    }
+}
+
+/// A WebRTC peer connection for the sharer side: one VP8 video track plus the
+/// `"input"` and `"files"` DataChannels the viewer opens.
 pub struct SharerPeer {
-    pc: Arc<RTCPeerConnection>,
-    /// The video track's RTP sender. Kept so the caller can drain its RTCP
-    /// stream — a viewer that lost the reference frame asks for a new one
-    /// there (PLI), and without reading it we would never hear the request.
-    sender: Arc<webrtc::rtp_transceiver::rtp_sender::RTCRtpSender>,
-    /// The video track. RTP-level (not sample-level) on purpose: the streaming
-    /// loop packetizes frames itself so every RTP timestamp carries the
-    /// frame's capture time — see `rtp_clock.rs` for why the constant
-    /// per-sample duration of `TrackLocalStaticSample` was a bitrate bug.
-    pub track: Arc<TrackLocalStaticRTP>,
+    pc: Arc<dyn PeerConnection>,
+    /// The video track's RTP sender, asked for the negotiated payload type
+    /// once the answer is set.
+    sender: Arc<dyn RtpSender>,
+    /// RTP-level (not sample-level) on purpose: the streaming loop packetizes
+    /// frames itself so every RTP timestamp carries the frame's capture time —
+    /// see `rtp_clock.rs` for why a constant per-sample duration was a bitrate
+    /// bug.
+    pub track: VideoTrack,
     /// The `"files"` DataChannel, set once the viewer opens it.
     files_dc: FilesChannel,
-    /// Observer for every ICE connection-state change.
-    ///
-    /// webrtc-rs allows a single `on_ice_connection_state_change` handler, and
-    /// the connection-type resolution already claims it. Both observers hang
-    /// off one registration installed in [`SharerPeer::new`] instead, so
-    /// neither can silently displace the other.
-    ice_state_cb: ObserverSlot<RTCIceConnectionState>,
-    type_cb: ObserverSlot<ConnectionType>,
+    observers: Arc<Observers>,
 }
 
 /// What a viewer's RTCP told us.
@@ -137,12 +314,12 @@ pub enum SenderFeedback {
 ///
 /// Split out from the read loop so the mapping is testable without a live
 /// peer connection — the loop itself is then trivial enough to read.
-fn classify_rtcp(packet: &(dyn webrtc::rtcp::packet::Packet + Send + Sync)) -> Vec<SenderFeedback> {
-    use webrtc::rtcp::payload_feedbacks::{
+fn classify_rtcp(packet: &dyn rtcp::Packet) -> Vec<SenderFeedback> {
+    use rtcp::payload_feedbacks::{
         full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
         receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
     };
-    use webrtc::rtcp::receiver_report::ReceiverReport;
+    use rtcp::receiver_report::ReceiverReport;
 
     let any = packet.as_any();
     if any.downcast_ref::<PictureLossIndication>().is_some()
@@ -169,6 +346,71 @@ fn classify_rtcp(packet: &(dyn webrtc::rtcp::packet::Packet + Send + Sync)) -> V
     Vec::new()
 }
 
+/// Passes the viewer's sender feedback — the packets [`classify_rtcp`] reads —
+/// on to the application.
+///
+/// webrtc-rs 0.21 ends inbound RTCP at the end of its interceptor chain:
+/// only a packet an interceptor marks with `DeliverToApplication` reaches
+/// `TrackLocal::poll`. Without this one the sharer would never hear a PLI
+/// (the viewer stays black after a loss) nor a loss report or REMB (the
+/// bitrate controller never moves).
+///
+/// Registered application-most ([`FEEDBACK_FORWARDER_SLOT`]), so every
+/// interceptor has seen the whole of the inbound RTCP before this narrows it.
+#[derive(Default)]
+struct FeedbackForwarder {
+    read_queue: VecDeque<TaggedPacket>,
+    write_queue: VecDeque<TaggedPacket>,
+}
+
+/// Past every slot `rtc` defines, so the forwarder runs last.
+const FEEDBACK_FORWARDER_SLOT: usize = 14_000;
+
+impl rtc::sansio::Protocol<TaggedPacket, TaggedPacket, ()> for FeedbackForwarder {
+    type Rout = TaggedPacket;
+    type Wout = TaggedPacket;
+    type Eout = ();
+    type Error = Error;
+    type Time = Instant;
+
+    fn handle_read(&mut self, mut msg: TaggedPacket) -> Result<(), Self::Error> {
+        if let Packet::Rtcp(packets) = &msg.message.packet {
+            let feedback: Vec<Box<dyn rtcp::Packet>> = packets
+                .iter()
+                .filter(|p| !classify_rtcp(p.as_ref()).is_empty())
+                .cloned()
+                .collect();
+            if feedback.is_empty() {
+                return Ok(());
+            }
+            msg.message.packet = Packet::Rtcp(feedback);
+            msg.message.add(Attribute::DeliverToApplication);
+        }
+        self.read_queue.push_back(msg);
+        Ok(())
+    }
+
+    fn poll_read(&mut self) -> Option<Self::Rout> {
+        self.read_queue.pop_front()
+    }
+
+    fn handle_write(&mut self, msg: TaggedPacket) -> Result<(), Self::Error> {
+        self.write_queue.push_back(msg);
+        Ok(())
+    }
+
+    fn poll_write(&mut self) -> Option<Self::Wout> {
+        self.write_queue.pop_front()
+    }
+}
+
+impl Interceptor for FeedbackForwarder {
+    fn bind_local_stream(&mut self, _info: &StreamInfo) {}
+    fn unbind_local_stream(&mut self, _info: &StreamInfo) {}
+    fn bind_remote_stream(&mut self, _info: &StreamInfo) {}
+    fn unbind_remote_stream(&mut self, _info: &StreamInfo) {}
+}
+
 /// Route one `files` DataChannel message by its transport type.
 ///
 /// Text frames carry a `FileEvent` (JSON), binary frames carry a chunk frame
@@ -187,125 +429,160 @@ fn route_files_message(is_string: bool, bytes: &[u8]) -> Result<FileMessage, Str
     }
 }
 
+/// Apply every message of the `"input"` channel until it closes, then release
+/// whatever the viewer still held.
+///
+/// The release goes through the same queue as the events, so it never
+/// overtakes a press that is still in flight. It also runs when the whole
+/// connection closes, which ends `poll` without an `OnClose`.
+async fn pump_input_channel(dc: Arc<dyn DataChannel>, tx: mpsc::Sender<InputCommand>) {
+    while let Some(event) = dc.poll().await {
+        match event {
+            DataChannelEvent::OnMessage(msg) => {
+                match serde_json::from_slice::<InputEvent>(&msg.data) {
+                    Ok(event) => {
+                        if tx.send(InputCommand::Apply(event)).await.is_err() {
+                            log::warn!("input channel: receiver dropped");
+                        }
+                    }
+                    Err(e) => log::warn!("input channel: failed to parse event: {e}"),
+                }
+            }
+            DataChannelEvent::OnClose => break,
+            _ => {}
+        }
+    }
+    crate::dbg_log("[input] data channel closed — releasing held input");
+    let _ = tx.send(InputCommand::ReleaseAll).await;
+}
+
+async fn pump_files_channel(dc: Arc<dyn DataChannel>, tx: mpsc::Sender<FileMessage>) {
+    while let Some(event) = dc.poll().await {
+        match event {
+            DataChannelEvent::OnMessage(msg) => {
+                let message = match route_files_message(msg.is_string, &msg.data) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        log::warn!("files channel: failed to parse JSON: {e}");
+                        continue;
+                    }
+                };
+                if tx.send(message).await.is_err() {
+                    log::warn!("files channel: receiver dropped");
+                }
+            }
+            DataChannelEvent::OnClose => break,
+            _ => {}
+        }
+    }
+}
+
+/// Everything a connection is built from; kept so the build can be repeated
+/// with another mDNS mode.
+struct ConnectionPlan {
+    ice_servers: Vec<RTCIceServer>,
+    primary: Option<IpAddr>,
+    public_ip: Option<IpAddr>,
+    observers: Arc<Observers>,
+}
+
+impl ConnectionPlan {
+    async fn build(&self, mdns: MulticastDnsMode) -> Result<Arc<dyn PeerConnection>, Error> {
+        let mut media_engine = MediaEngine::default();
+        media_engine.register_default_codecs()?;
+        let registry = register_default_interceptors(Registry::new(), &mut media_engine)?.with(
+            Slot::from(FEEDBACK_FORWARDER_SLOT),
+            FeedbackForwarder::default(),
+        );
+
+        let mut settings = SettingEngineBuilder::new()
+            .with_multicast_dns_mode(mdns)
+            .with_multicast_dns_local_ip(self.primary);
+        if let Some(ip) = self.public_ip {
+            settings = settings.with_nat_1to1_ips(vec![ip.to_string()], RTCIceCandidateType::Srflx);
+        }
+
+        let bind = match self.primary {
+            Some(ip) => SocketAddr::new(ip, 0),
+            None => {
+                crate::dbg_log("[webrtc] no routable ipv4 found — binding every interface");
+                SocketAddr::from(([0, 0, 0, 0], 0))
+            }
+        };
+
+        let pc = PeerConnectionBuilder::new()
+            .with_configuration(
+                RTCConfigurationBuilder::new()
+                    .with_ice_servers(self.ice_servers.clone())
+                    .build(),
+            )
+            .with_media_engine(media_engine)
+            .with_interceptor_registry(registry)
+            .with_setting_engine(settings.build())
+            .with_handler(Arc::new(Handler(Arc::clone(&self.observers))))
+            .with_udp_addrs(vec![bind])
+            .build()
+            .await?;
+        Ok(Arc::new(pc))
+    }
+}
+
 impl SharerPeer {
     /// Create a new peer connection with the provided ICE servers.
     pub async fn new(ice_servers: Vec<RTCIceServer>) -> Result<Self, Error> {
-        let mut media_engine = MediaEngine::default();
-        media_engine.register_default_codecs()?;
-
-        let mut registry = Registry::new();
-        registry = register_default_interceptors(registry, &mut media_engine)?;
-
-        // mDNS gathering policy is pinned via a named constant so a future
-        // refactor that "simplifies" the SettingEngine setup can't silently
-        // regress to QueryOnly. The QueryOnly default forces every same-LAN
-        // session through TURN relay because the sharer's raw private IPs
-        // never pair with Chrome's mDNS-anonymized `.local` candidates —
-        // see `docs/postmortem-2026-05-13-connectivity.md`. webrtc-rs
-        // requires a local mDNS responder (avahi / systemd-resolved on
-        // Linux) for resolution to work end-to-end.
-        let mut setting_engine = SettingEngine::default();
-        setting_engine.set_ice_multicast_dns_mode(MDNS_MODE);
-
-        // Best-effort UPnP-IGD discovery of our home router's public
-        // IPv4. If the router answers, declare the public address as a
-        // `Srflx` candidate so peers behind STUN-hostile networks
-        // (corporate firewalls that block 3478) still see our public
-        // endpoint. `Host` would replace local IPs entirely and conflict
-        // with the mDNS gathering above (webrtc-rs forbids host+mDNS
-        // combos). The cache returns instantly on subsequent calls.
-        // See issue #89 — phase 2 will also pre-bind the UDP socket and
-        // request a same-port mapping so the srflx candidate's port is
-        // known to be reachable, not just probable.
-        if let Some(ep) = crate::nat_traversal::cached_external_endpoint().await {
-            crate::dbg_log(&format!(
+        let primary = primary_ipv4();
+        // Best-effort UPnP-IGD discovery of our home router's public IPv4. If
+        // the router answers, the public address is declared as a `Srflx`
+        // candidate so peers behind STUN-hostile networks (corporate
+        // firewalls that block 3478) still see our public endpoint. `Host`
+        // would replace the local address and with it the mDNS candidate.
+        // The cache returns instantly on subsequent calls. See issue #89.
+        let public_ip = crate::nat_traversal::cached_external_endpoint()
+            .await
+            .map(|ep| ep.ip);
+        match public_ip {
+            Some(ip) => crate::dbg_log(&format!(
                 "[nat_traversal] declaring upnp-discovered public ip {} as srflx candidate",
-                crate::ip_redact::redact_ip_addr(&ep.ip)
-            ));
-            setting_engine.set_nat_1to1_ips(vec![ep.ip.to_string()], RTCIceCandidateType::Srflx);
-        } else {
-            crate::dbg_log("[nat_traversal] no upnp public ip available — relying on stun/turn");
+                crate::ip_redact::redact_ip_addr(&ip)
+            )),
+            None => {
+                crate::dbg_log("[nat_traversal] no upnp public ip available — relying on stun/turn")
+            }
         }
 
-        let api = APIBuilder::new()
-            .with_media_engine(media_engine)
-            .with_interceptor_registry(registry)
-            .with_setting_engine(setting_engine)
-            .build();
-
-        let config = RTCConfiguration {
+        let observers = Arc::new(Observers::default());
+        let plan = ConnectionPlan {
             ice_servers,
-            ..Default::default()
+            primary,
+            public_ip,
+            observers: Arc::clone(&observers),
         };
+        // The mDNS responder binds UDP 5353 next to the OS's own one. Should
+        // that ever be refused, a peer without mDNS still connects — over a
+        // raw host candidate or the relay — where a failed build would end
+        // the session before it started.
+        let pc = match plan.build(MDNS_MODE).await {
+            Ok(pc) => pc,
+            Err(e) => {
+                crate::dbg_log(&format!(
+                    "[webrtc] peer with mDNS failed ({e}) — retrying without mDNS"
+                ));
+                plan.build(MulticastDnsMode::Disabled).await?
+            }
+        };
+        let _ = observers.pc.set(Arc::downgrade(&pc));
 
-        let pc = Arc::new(api.new_peer_connection(config).await?);
-
-        let track = Arc::new(TrackLocalStaticRTP::new(
-            RTCRtpCodecCapability {
-                mime_type: "video/VP8".to_string(),
-                ..Default::default()
-            },
-            "video".to_string(),
-            "auffi".to_string(),
-        ));
-
+        let track = VideoTrack::new();
         let sender = pc
-            .add_track(
-                track.clone() as Arc<dyn webrtc::track::track_local::TrackLocal + Send + Sync>
-            )
+            .add_track(Arc::clone(&track.track) as Arc<dyn TrackLocal>)
             .await?;
-
-        let ice_state_cb: ObserverSlot<RTCIceConnectionState> =
-            Arc::new(std::sync::Mutex::new(None));
-        let type_cb: ObserverSlot<ConnectionType> = Arc::new(std::sync::Mutex::new(None));
-
-        // The single ICE-state registration. Both observers read their slot at
-        // call time, so registration order at the call site does not matter and
-        // neither can overwrite the other.
-        {
-            let pc_for_cb = Arc::clone(&pc);
-            let state_slot = Arc::clone(&ice_state_cb);
-            let type_slot = Arc::clone(&type_cb);
-            let last: Arc<tokio::sync::Mutex<Option<ConnectionType>>> =
-                Arc::new(tokio::sync::Mutex::new(None));
-            pc.on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
-                let pc = Arc::clone(&pc_for_cb);
-                let state_slot = Arc::clone(&state_slot);
-                let type_slot = Arc::clone(&type_slot);
-                let last = Arc::clone(&last);
-                Box::pin(async move {
-                    let observer = state_slot.lock().unwrap_or_else(|p| p.into_inner()).clone();
-                    if let Some(observer) = observer {
-                        observer(state);
-                    }
-                    if state != RTCIceConnectionState::Connected
-                        && state != RTCIceConnectionState::Completed
-                    {
-                        return;
-                    }
-                    let report = pc.get_stats().await;
-                    let Some(conn_type) = resolve_connection_type(&report.reports) else {
-                        return;
-                    };
-                    let mut guard = last.lock().await;
-                    if *guard != Some(conn_type) {
-                        *guard = Some(conn_type);
-                        let handler = type_slot.lock().unwrap_or_else(|p| p.into_inner()).clone();
-                        if let Some(handler) = handler {
-                            handler(conn_type);
-                        }
-                    }
-                })
-            }));
-        }
 
         Ok(Self {
             pc,
-            track,
             sender,
+            track,
             files_dc: FilesChannel::default(),
-            ice_state_cb,
-            type_cb,
+            observers,
         })
     }
 
@@ -319,24 +596,31 @@ impl SharerPeer {
     where
         F: Fn(RTCIceConnectionState) + Send + Sync + 'static,
     {
-        *self.ice_state_cb.lock().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(handler));
+        *self
+            .observers
+            .ice_state
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(handler));
     }
 
-    /// Drain the video sender's RTCP stream and report what the viewer said.
+    /// Drain the video track's RTCP feedback and report what the viewer said.
     ///
-    /// There is exactly ONE drain: `read_rtcp` hands each packet to a single
+    /// There is exactly ONE drain: `poll` hands each event to a single
     /// reader, so a second loop elsewhere would not see a copy — it would race
     /// for packets and both would miss half. Every consumer of sender feedback
     /// therefore goes through this one callback.
     ///
-    /// Runs until the sender closes; errors end the loop rather than spin.
+    /// Runs until the connection closes.
     pub fn spawn_rtcp_listener<F>(&self, on_feedback: F)
     where
         F: Fn(SenderFeedback) + Send + Sync + 'static,
     {
-        let sender = Arc::clone(&self.sender);
+        let track = Arc::clone(&self.track.track);
         tokio::spawn(async move {
-            while let Ok((packets, _)) = sender.read_rtcp().await {
+            while let Some(event) = track.poll().await {
+                let TrackLocalEvent::OnRtcpPacket(packets) = event else {
+                    continue;
+                };
                 for packet in packets {
                     for feedback in classify_rtcp(packet.as_ref()) {
                         on_feedback(feedback);
@@ -348,11 +632,20 @@ impl SharerPeer {
 
     /// Set the remote offer SDP and return a local answer SDP string.
     pub async fn set_remote_offer(&self, sdp: String) -> Result<String, Error> {
-        let offer =
-            webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(sdp)?;
+        let offer = RTCSessionDescription::offer(sdp)?;
         self.pc.set_remote_description(offer).await?;
         let answer = self.pc.create_answer(None).await?;
         self.pc.set_local_description(answer.clone()).await?;
+        let params = self.sender.get_parameters().await?;
+        match params
+            .rtp_parameters
+            .codecs
+            .iter()
+            .find(|c| c.rtp_codec.mime_type.eq_ignore_ascii_case(MIME_TYPE_VP8))
+        {
+            Some(codec) => self.track.set_payload_type(codec.payload_type),
+            None => crate::dbg_log("[webrtc] answer negotiated no VP8 — the viewer gets no video"),
+        }
         Ok(answer.sdp)
     }
 
@@ -368,14 +661,11 @@ impl SharerPeer {
     where
         F: FnMut(Option<RTCIceCandidate>) + Send + 'static,
     {
-        let handler = Arc::new(tokio::sync::Mutex::new(handler));
-        self.pc.on_ice_candidate(Box::new(move |candidate| {
-            let handler = handler.clone();
-            Box::pin(async move {
-                let mut h = handler.lock().await;
-                h(candidate);
-            })
-        }));
+        *self
+            .observers
+            .ice_candidate
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(Box::new(handler));
     }
 
     /// Register a callback that fires once when the ICE connection reaches
@@ -386,15 +676,18 @@ impl SharerPeer {
     where
         F: Fn(ConnectionType) + Send + Sync + 'static,
     {
-        *self.type_cb.lock().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(handler));
+        *self
+            .observers
+            .conn_type
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(handler));
     }
 
-    /// Register senders for both the `"input"` and `"files"` DataChannels in a
-    /// single `on_data_channel` callback.
+    /// Route the `"input"` and `"files"` DataChannels the viewer opens.
     ///
-    /// Must be called before ICE negotiation completes so the callback is in
-    /// place when the viewer opens the channels.  Also stores the `"files"` DC
-    /// internally so the sharer can send outbound file data via `send_on_files`.
+    /// Must be called before ICE negotiation completes so the observer is in
+    /// place when the viewer opens the channels. Also stores the `"files"` DC
+    /// so the sharer can send outbound file data through [`FilesChannel`].
     ///
     /// The `"files"` channel carries two kinds of data, told apart by the
     /// DataChannel message type (see [`route_files_message`]):
@@ -406,76 +699,33 @@ impl SharerPeer {
         files_tx: mpsc::Sender<FileMessage>,
     ) {
         let files_dc_slot = Arc::clone(&self.files_dc.0);
-        self.pc.on_data_channel(Box::new(move |dc| {
-            let label = dc.label().to_string();
-            match label.as_str() {
-                "input" => {
-                    let tx = input_tx.clone();
-                    let close_tx = input_tx.clone();
-                    Box::pin(async move {
-                        dc.on_message(Box::new(move |msg| {
-                            let tx = tx.clone();
-                            let bytes = msg.data.clone();
-                            Box::pin(async move {
-                                match serde_json::from_slice::<InputEvent>(&bytes) {
-                                    Ok(event) => {
-                                        if tx.send(InputCommand::Apply(event)).await.is_err() {
-                                            log::warn!("input channel: receiver dropped");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        log::warn!("input channel: failed to parse event: {e}");
-                                    }
-                                }
-                            })
-                        }));
-                        // Through the same queue as the events, so a release
-                        // never overtakes a press that is still in flight.
-                        dc.on_close(Box::new(move || {
-                            let tx = close_tx.clone();
-                            Box::pin(async move {
-                                crate::dbg_log(
-                                    "[input] data channel closed — releasing held input",
-                                );
-                                let _ = tx.send(InputCommand::ReleaseAll).await;
-                            })
-                        }));
-                    })
+        let observer = move |dc: Arc<dyn DataChannel>| {
+            let input_tx = input_tx.clone();
+            let files_tx = files_tx.clone();
+            let slot = Arc::clone(&files_dc_slot);
+            tokio::spawn(async move {
+                let label = match dc.label().await {
+                    Ok(label) => label,
+                    Err(e) => {
+                        log::warn!("data channel label unavailable: {e}");
+                        return;
+                    }
+                };
+                match label.as_str() {
+                    "input" => pump_input_channel(dc, input_tx).await,
+                    "files" => {
+                        *slot.lock().await = Some(Arc::clone(&dc));
+                        pump_files_channel(dc, files_tx).await;
+                    }
+                    other => log::warn!("unexpected data channel: {other}"),
                 }
-                "files" => {
-                    let tx = files_tx.clone();
-                    let slot = Arc::clone(&files_dc_slot);
-                    Box::pin(async move {
-                        // Store the DataChannel so we can send on it.
-                        {
-                            let mut guard = slot.lock().await;
-                            *guard = Some(Arc::clone(&dc));
-                        }
-                        dc.on_message(Box::new(move |msg| {
-                            let tx = tx.clone();
-                            let is_string = msg.is_string;
-                            let bytes = msg.data.clone();
-                            Box::pin(async move {
-                                let message = match route_files_message(is_string, &bytes) {
-                                    Ok(m) => m,
-                                    Err(e) => {
-                                        log::warn!("files channel: failed to parse JSON: {e}");
-                                        return;
-                                    }
-                                };
-                                if tx.send(message).await.is_err() {
-                                    log::warn!("files channel: receiver dropped");
-                                }
-                            })
-                        }));
-                    })
-                }
-                other => {
-                    log::warn!("unexpected data channel: {other}");
-                    Box::pin(async {})
-                }
-            }
-        }));
+            });
+        };
+        *self
+            .observers
+            .data_channel
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(observer));
     }
 
     /// Send a JSON-serialized `FileEvent` on the `"files"` DataChannel (as a
@@ -493,30 +743,26 @@ impl SharerPeer {
         self.files_dc.clone()
     }
 
-    /// Close the underlying `RTCPeerConnection`, tearing down its ICE agent,
-    /// DTLS/SCTP transports and bound UDP sockets.
+    /// Close the underlying connection: its driver, ICE agent, DTLS/SCTP
+    /// state and bound UDP sockets.
     ///
-    /// webrtc-rs has NO `Drop`-based teardown — merely dropping the peer
-    /// leaks all of that for the process lifetime. Worse, the
-    /// `on_connection_type` closure holds an `Arc` back to the pc (stored on
-    /// the pc itself), so the strong count never reaches zero; the handler is
-    /// cleared first to break that cycle so the pc's memory can free after
-    /// close. Closing also drops the DataChannel `on_message` closures, whose
-    /// held senders let the input-applier and file tasks observe channel
-    /// close and exit.
+    /// Dropping the peer does not stop the driver task, so teardown has to go
+    /// through here. The observer callbacks are cleared first: they hold the
+    /// app state lib.rs handed them, and the driver owns the handler that
+    /// holds them. Closing also ends every DataChannel `poll`, which lets the
+    /// input-applier and file tasks observe channel close and exit.
     pub async fn close(&self) -> Result<(), Error> {
-        self.pc
-            .on_ice_connection_state_change(Box::new(|_| Box::pin(async {})));
+        self.observers.clear();
         self.pc.close().await
     }
 }
 
 /// Shared slot for the `"files"` DataChannel; empty until the viewer opens it.
 #[derive(Clone, Default)]
-pub struct FilesChannel(Arc<tokio::sync::Mutex<Option<Arc<RTCDataChannel>>>>);
+pub struct FilesChannel(Arc<tokio::sync::Mutex<Option<Arc<dyn DataChannel>>>>);
 
 impl FilesChannel {
-    async fn channel(&self) -> Result<Arc<RTCDataChannel>, String> {
+    async fn channel(&self) -> Result<Arc<dyn DataChannel>, String> {
         self.0
             .lock()
             .await
@@ -533,182 +779,378 @@ impl crate::files::FileSink for FilesChannel {
         let json = serde_json::to_string(event).map_err(|e| e.to_string())?;
         self.channel()
             .await?
-            .send_text(json)
+            .send_text(&json)
             .await
-            .map(|_| ())
             .map_err(|e| e.to_string())
     }
 
     async fn send_chunk(&self, frame: Vec<u8>) -> Result<(), String> {
         self.channel()
             .await?
-            .send(&bytes::Bytes::from(frame))
+            .send(BytesMut::from(frame.as_slice()))
             .await
-            .map(|_| ())
             .map_err(|e| e.to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use tokio::time::Instant;
-    use webrtc::ice::candidate::{CandidatePairState, CandidateType};
-    use webrtc::ice::network_type::NetworkType;
-    use webrtc::stats::{ICECandidatePairStats, ICECandidateStats, RTCStatsType, StatsReportType};
-
     use super::*;
     use crate::input::InputEvent;
 
-    fn make_pair(
-        local_id: &str,
-        remote_id: &str,
-        state: CandidatePairState,
-        nominated: bool,
-    ) -> ICECandidatePairStats {
-        let now = Instant::now();
-        ICECandidatePairStats {
-            timestamp: now,
-            stats_type: RTCStatsType::CandidatePair,
-            id: "pair1".to_string(),
-            local_candidate_id: local_id.to_string(),
-            remote_candidate_id: remote_id.to_string(),
-            state,
-            nominated,
-            packets_sent: 0,
-            packets_received: 0,
-            bytes_sent: 0,
-            bytes_received: 0,
-            last_packet_sent_timestamp: now,
-            last_packet_received_timestamp: now,
-            total_round_trip_time: 0.0,
-            current_round_trip_time: 0.0,
-            available_outgoing_bitrate: 0.0,
-            available_incoming_bitrate: 0.0,
-            requests_received: 0,
-            requests_sent: 0,
-            responses_received: 0,
-            responses_sent: 0,
-            consent_requests_sent: 0,
-            circuit_breaker_trigger_count: 0,
-            consent_expired_timestamp: now,
-            first_request_timestamp: now,
-            last_request_timestamp: now,
-            retransmissions_sent: 0,
-        }
-    }
-
-    fn make_candidate(
-        id: &str,
-        candidate_type: CandidateType,
-        is_local: bool,
-    ) -> ICECandidateStats {
-        ICECandidateStats {
-            timestamp: Instant::now(),
-            stats_type: if is_local {
-                RTCStatsType::LocalCandidate
-            } else {
-                RTCStatsType::RemoteCandidate
-            },
-            id: id.to_string(),
-            candidate_type,
-            deleted: false,
-            ip: "127.0.0.1".to_string(),
-            network_type: NetworkType::Udp4,
-            port: 12345,
-            priority: 100,
-            relay_protocol: String::new(),
-            url: String::new(),
-        }
-    }
-
-    fn build_reports(
-        pair: ICECandidatePairStats,
-        local: ICECandidateStats,
-        remote: ICECandidateStats,
-    ) -> HashMap<String, StatsReportType> {
-        let mut map = HashMap::new();
-        map.insert(pair.id.clone(), StatsReportType::CandidatePair(pair));
-        map.insert(local.id.clone(), StatsReportType::LocalCandidate(local));
-        map.insert(remote.id.clone(), StatsReportType::RemoteCandidate(remote));
-        map
+    #[test]
+    fn mdns_mode_is_pinned_to_query_and_gather() {
+        assert_eq!(MDNS_MODE, MulticastDnsMode::QueryAndGather);
     }
 
     #[test]
-    fn resolve_connection_type_p2p_for_host_candidates() {
-        let pair = make_pair("local1", "remote1", CandidatePairState::Succeeded, true);
-        let local = make_candidate("local1", CandidateType::Host, true);
-        let remote = make_candidate("remote1", CandidateType::Host, false);
-        let reports = build_reports(pair, local, remote);
-        assert_eq!(resolve_connection_type(&reports), Some(ConnectionType::P2p));
+    fn the_succeeded_nominated_pair_is_the_active_one() {
+        let pairs = [
+            (RTCStatsIceCandidatePairState::Succeeded, false, "a", "b"),
+            (RTCStatsIceCandidatePairState::InProgress, true, "c", "d"),
+            (RTCStatsIceCandidatePairState::Succeeded, true, "e", "f"),
+        ];
+        assert_eq!(select_active_pair(pairs), Some(("e", "f")));
     }
 
     #[test]
-    fn resolve_connection_type_relay_when_local_is_relay() {
-        let pair = make_pair("local1", "remote1", CandidatePairState::Succeeded, true);
-        let local = make_candidate("local1", CandidateType::Relay, true);
-        let remote = make_candidate("remote1", CandidateType::Host, false);
-        let reports = build_reports(pair, local, remote);
+    fn no_active_pair_before_one_succeeded() {
+        let pairs = [(RTCStatsIceCandidatePairState::InProgress, false, "a", "b")];
+        assert_eq!(select_active_pair(pairs), None);
+        assert_eq!(select_active_pair([]), None);
+    }
+
+    #[test]
+    fn host_candidates_are_a_direct_path() {
         assert_eq!(
-            resolve_connection_type(&reports),
-            Some(ConnectionType::Relay)
+            connection_type_of(
+                Some(RTCIceCandidateType::Host),
+                Some(RTCIceCandidateType::Host)
+            ),
+            ConnectionType::P2p
         );
     }
 
     #[test]
-    fn resolve_connection_type_relay_when_remote_is_relay() {
-        let pair = make_pair("local1", "remote1", CandidatePairState::Succeeded, true);
-        let local = make_candidate("local1", CandidateType::ServerReflexive, true);
-        let remote = make_candidate("remote1", CandidateType::Relay, false);
-        let reports = build_reports(pair, local, remote);
+    fn a_local_relay_candidate_is_a_relayed_path() {
         assert_eq!(
-            resolve_connection_type(&reports),
-            Some(ConnectionType::Relay)
+            connection_type_of(
+                Some(RTCIceCandidateType::Relay),
+                Some(RTCIceCandidateType::Host)
+            ),
+            ConnectionType::Relay
         );
     }
 
     #[test]
-    fn resolve_connection_type_none_when_no_succeeded_nominated_pair() {
-        let pair = make_pair("local1", "remote1", CandidatePairState::InProgress, false);
-        let local = make_candidate("local1", CandidateType::Host, true);
-        let remote = make_candidate("remote1", CandidateType::Host, false);
-        let reports = build_reports(pair, local, remote);
-        assert_eq!(resolve_connection_type(&reports), None);
+    fn a_remote_relay_candidate_is_a_relayed_path() {
+        assert_eq!(
+            connection_type_of(
+                Some(RTCIceCandidateType::Srflx),
+                Some(RTCIceCandidateType::Relay)
+            ),
+            ConnectionType::Relay
+        );
     }
 
     #[test]
-    fn resolve_connection_type_none_for_empty_reports() {
-        let reports = HashMap::new();
-        assert_eq!(resolve_connection_type(&reports), None);
+    fn an_unlisted_candidate_does_not_count_as_relay() {
+        assert_eq!(connection_type_of(None, None), ConnectionType::P2p);
     }
 
     #[tokio::test]
     async fn peer_new_succeeds() {
-        let servers = vec![RTCIceServer {
-            urls: vec!["stun:stun.l.google.com:19302".to_string()],
-            ..Default::default()
-        }];
-        SharerPeer::new(servers)
+        let peer = SharerPeer::new(vec![])
             .await
             .expect("SharerPeer::new failed");
+        peer.close().await.expect("close");
     }
 
     /// Pinned regression for the 2026-08 review: teardown MUST go through an
-    /// explicit `close()` — webrtc-rs has no Drop impl, so "drop the peer"
-    /// leaves the connection (and its ICE/DTLS/SCTP tasks + UDP sockets)
-    /// alive forever. Anyone removing `SharerPeer::close` or its call site in
-    /// `disconnect_streaming` is recreating that leak.
+    /// explicit `close()` — dropping the peer leaves the connection (and its
+    /// driver, ICE/DTLS/SCTP state and UDP sockets) alive. Anyone removing
+    /// `SharerPeer::close` or its call site in `disconnect_streaming` is
+    /// recreating that leak.
     #[tokio::test]
-    async fn peer_close_transitions_connection_to_closed() {
-        use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
-
+    async fn peer_close_shuts_the_connection_down() {
         let peer = SharerPeer::new(vec![]).await.expect("SharerPeer::new");
-        // Install the connection-type handler so close() also exercises the
-        // Arc-cycle-breaking path (the closure holds an Arc back to the pc).
         peer.on_connection_type(|_| {});
         peer.close().await.expect("close");
-        assert_eq!(peer.pc.connection_state(), RTCPeerConnectionState::Closed);
+        assert!(
+            peer.pc.create_offer(None).await.is_err(),
+            "a closed connection refuses to negotiate"
+        );
+        assert!(
+            read_slot(&peer.observers.conn_type).is_none(),
+            "close drops the observers lib.rs installed"
+        );
+    }
+
+    /// Without a negotiated payload type webrtc-rs would drop every packet
+    /// with only a log line; before the answer the track discards them
+    /// instead, as the 0.17 track did while unbound.
+    #[tokio::test]
+    async fn an_unnegotiated_track_discards_packets_without_error() {
+        let track = VideoTrack::new();
+        track
+            .write_rtp(rtp::Packet::default())
+            .await
+            .expect("discarded, not failed");
+    }
+
+    /// End to end against a second webrtc-rs peer playing the viewer: the
+    /// sharer's mDNS-masked candidate, the negotiated payload type, the RTCP
+    /// path back (PLI and the receiver reports the bitrate controller reads)
+    /// and both DataChannels all have to work for a session to.
+    mod loopback {
+        use super::super::*;
+        use rtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+        use rtc::rtp_transceiver::{RTCRtpTransceiverDirection, RTCRtpTransceiverInit};
+        use std::time::Duration;
+        use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+        use tokio::time::timeout;
+        use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
+
+        struct ViewerHandler {
+            candidates: UnboundedSender<RTCIceCandidate>,
+            tracks: UnboundedSender<Arc<dyn TrackRemote>>,
+        }
+
+        #[async_trait::async_trait]
+        impl PeerConnectionEventHandler for ViewerHandler {
+            async fn on_ice_candidate(&self, event: RTCPeerConnectionIceEvent) {
+                let _ = self.candidates.send(event.candidate);
+            }
+            async fn on_track(&self, track: Arc<dyn TrackRemote>) {
+                let _ = self.tracks.send(track);
+            }
+        }
+
+        const WAIT: Duration = Duration::from_secs(20);
+
+        async fn recv<T>(rx: &mut UnboundedReceiver<T>, what: &str) -> T {
+            timeout(WAIT, rx.recv())
+                .await
+                .unwrap_or_else(|_| panic!("timed out waiting for {what}"))
+                .unwrap_or_else(|| panic!("{what}: channel closed"))
+        }
+
+        async fn wait_open(dc: &Arc<dyn DataChannel>) {
+            timeout(WAIT, async {
+                while let Some(event) = dc.poll().await {
+                    if matches!(event, DataChannelEvent::OnOpen) {
+                        return;
+                    }
+                }
+                panic!("data channel ended before it opened");
+            })
+            .await
+            .expect("data channel opens");
+        }
+
+        async fn viewer_peer(
+            candidates: UnboundedSender<RTCIceCandidate>,
+            tracks: UnboundedSender<Arc<dyn TrackRemote>>,
+        ) -> Arc<dyn PeerConnection> {
+            let mut media_engine = MediaEngine::default();
+            media_engine.register_default_codecs().expect("codecs");
+            let registry = register_default_interceptors(Registry::new(), &mut media_engine)
+                .expect("registry");
+            let ip = primary_ipv4().unwrap_or(IpAddr::from([127, 0, 0, 1]));
+            let pc = PeerConnectionBuilder::new()
+                .with_media_engine(media_engine)
+                .with_interceptor_registry(registry)
+                .with_setting_engine(
+                    SettingEngineBuilder::new()
+                        .with_multicast_dns_mode(MulticastDnsMode::Disabled)
+                        .build(),
+                )
+                .with_handler(Arc::new(ViewerHandler { candidates, tracks }))
+                .with_udp_addrs(vec![SocketAddr::new(ip, 0)])
+                .build()
+                .await
+                .expect("viewer peer");
+            Arc::new(pc)
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+        async fn a_viewer_gets_video_feedback_and_both_channels_through() {
+            let sharer = Arc::new(SharerPeer::new(vec![]).await.expect("sharer peer"));
+            let (input_tx, mut input_rx) = mpsc::channel(16);
+            let (files_tx, mut files_rx) = mpsc::channel(16);
+            sharer.on_data_channels(input_tx, files_tx);
+            let (feedback_tx, mut feedback_rx) = unbounded_channel();
+            sharer.spawn_rtcp_listener(move |f| {
+                let _ = feedback_tx.send(f);
+            });
+            let (type_tx, mut type_rx) = unbounded_channel();
+            sharer.on_connection_type(move |t| {
+                let _ = type_tx.send(t);
+            });
+            let (sharer_cand_tx, mut sharer_cand_rx) = unbounded_channel();
+            let (host_tx, mut host_rx) = unbounded_channel();
+            sharer.on_ice_candidate(move |c| {
+                if let Some(c) = c {
+                    let init = c.to_json().expect("candidate json");
+                    if init.candidate.contains(" typ host") {
+                        let _ = host_tx.send(init.candidate.clone());
+                    }
+                    let _ = sharer_cand_tx.send(init);
+                }
+            });
+
+            let (viewer_cand_tx, mut viewer_cand_rx) = unbounded_channel();
+            let (track_tx, mut track_rx) = unbounded_channel();
+            let viewer = viewer_peer(viewer_cand_tx, track_tx).await;
+            viewer
+                .add_transceiver_from_kind(
+                    rtp_sender::RtpCodecKind::Video,
+                    Some(RTCRtpTransceiverInit {
+                        direction: RTCRtpTransceiverDirection::Recvonly,
+                        ..Default::default()
+                    }),
+                )
+                .await
+                .expect("recvonly video");
+            let input_dc = viewer
+                .create_data_channel("input", None)
+                .await
+                .expect("input dc");
+            let files_dc = viewer
+                .create_data_channel("files", None)
+                .await
+                .expect("files dc");
+
+            let offer = viewer.create_offer(None).await.expect("offer");
+            viewer
+                .set_local_description(offer.clone())
+                .await
+                .expect("local offer");
+            let answer = sharer.set_remote_offer(offer.sdp).await.expect("answer");
+            viewer
+                .set_remote_description(RTCSessionDescription::answer(answer).expect("answer sdp"))
+                .await
+                .expect("remote answer");
+
+            {
+                let viewer = Arc::clone(&viewer);
+                tokio::spawn(async move {
+                    while let Some(init) = sharer_cand_rx.recv().await {
+                        let _ = viewer.add_ice_candidate(init).await;
+                    }
+                });
+                let sharer = Arc::clone(&sharer);
+                tokio::spawn(async move {
+                    while let Some(c) = viewer_cand_rx.recv().await {
+                        if let Ok(init) = c.to_json() {
+                            let _ = sharer.add_ice_candidate(init).await;
+                        }
+                    }
+                });
+            }
+
+            assert_eq!(
+                recv(&mut type_rx, "connection type").await,
+                ConnectionType::P2p
+            );
+
+            // 0.21 masks only the address set as the mDNS local ip. A raw
+            // private IP here is the same-LAN relay bug of 2026-05-13.
+            if primary_ipv4().is_some() {
+                let host = recv(&mut host_rx, "host candidate").await;
+                assert!(
+                    host.contains(".local"),
+                    "host candidate is mDNS-masked: {host}"
+                );
+            }
+
+            let writer = {
+                let track = sharer.track.clone();
+                tokio::spawn(async move {
+                    let mut packetizer = crate::rtp_clock::FramePacketizer::new();
+                    let mut pts_us = 0u64;
+                    loop {
+                        pts_us += 33_000;
+                        let packets = packetizer
+                            .packetize(pts_us, vec![0x10, 0x00, 0x9d, 0x01, 0x2a])
+                            .expect("packetize");
+                        for p in packets {
+                            let _ = track.write_rtp(p).await;
+                        }
+                        tokio::time::sleep(Duration::from_millis(33)).await;
+                    }
+                })
+            };
+            let track = recv(&mut track_rx, "remote track").await;
+            let packet = timeout(WAIT, async {
+                while let Some(event) = track.poll().await {
+                    if let TrackRemoteEvent::OnRtpPacket(p) = event {
+                        return p;
+                    }
+                }
+                panic!("remote track ended before any RTP");
+            })
+            .await
+            .expect("an RTP packet arrives");
+            let codec = track
+                .codec(packet.header.ssrc)
+                .await
+                .expect("codec of the stream");
+            assert!(codec.mime_type.eq_ignore_ascii_case(MIME_TYPE_VP8));
+
+            track
+                .write_rtcp(vec![Box::new(PictureLossIndication {
+                    sender_ssrc: 0,
+                    media_ssrc: packet.header.ssrc,
+                })])
+                .await
+                .expect("send PLI");
+            let mut keyframe_requested = false;
+            let mut loss_reported = false;
+            while !(keyframe_requested && loss_reported) {
+                match recv(&mut feedback_rx, "keyframe request and receiver report").await {
+                    SenderFeedback::KeyframeRequest => keyframe_requested = true,
+                    SenderFeedback::Loss { .. } => loss_reported = true,
+                    SenderFeedback::Remb { .. } => {}
+                }
+            }
+            writer.abort();
+
+            wait_open(&input_dc).await;
+            input_dc
+                .send_text(r#"{"kind":"mouse-move","x":0.5,"y":0.25}"#)
+                .await
+                .expect("send input");
+            let command = timeout(WAIT, input_rx.recv()).await.expect("input arrives");
+            assert!(matches!(
+                command,
+                Some(InputCommand::Apply(InputEvent::MouseMove { .. }))
+            ));
+
+            // A full viewer chunk: 16 KiB of payload behind the 8-byte header.
+            wait_open(&files_dc).await;
+            let frame = crate::files::build_chunk_frame("t", 0, &[7u8; 16 * 1024]);
+            files_dc
+                .send(BytesMut::from(frame.as_slice()))
+                .await
+                .expect("send chunk");
+            let message = timeout(WAIT, files_rx.recv()).await.expect("chunk arrives");
+            assert!(matches!(message, Some(FileMessage::Chunk(b)) if b == frame));
+
+            sharer.close().await.expect("close sharer");
+            let released = timeout(WAIT, async {
+                while let Some(command) = input_rx.recv().await {
+                    if matches!(command, InputCommand::ReleaseAll) {
+                        return true;
+                    }
+                }
+                false
+            })
+            .await
+            .expect("input channel winds down");
+            assert!(released, "closing the peer releases held input");
+            viewer.close().await.expect("close viewer");
+        }
     }
 
     // The files channel used to decide JSON-vs-chunk by peeking at the first
@@ -781,12 +1223,12 @@ mod tests {
 
     mod classify {
         use super::super::{classify_rtcp, SenderFeedback};
-        use webrtc::rtcp::payload_feedbacks::{
+        use rtc::rtcp::payload_feedbacks::{
             full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
             receiver_estimated_maximum_bitrate::ReceiverEstimatedMaximumBitrate,
         };
-        use webrtc::rtcp::receiver_report::ReceiverReport;
-        use webrtc::rtcp::reception_report::ReceptionReport;
+        use rtc::rtcp::receiver_report::ReceiverReport;
+        use rtc::rtcp::reception_report::ReceptionReport;
 
         #[test]
         fn a_picture_loss_indication_asks_for_a_keyframe() {
@@ -866,7 +1308,7 @@ mod tests {
         fn an_unrelated_packet_is_ignored() {
             // Sender Reports arrive on the same stream and carry no feedback
             // for us; treating an unknown packet as loss would be a disaster.
-            let sr = webrtc::rtcp::sender_report::SenderReport::default();
+            let sr = rtc::rtcp::sender_report::SenderReport::default();
             assert!(classify_rtcp(&sr).is_empty());
         }
     }

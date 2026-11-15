@@ -525,7 +525,7 @@ pub async fn unattended_is_active(state: State<'_, UnattendedState>) -> CmdResul
 pub(crate) async fn request_turn_via_heartbeat(
     cmds: &HeartbeatCommands,
     pending_turn: &Mutex<Option<tokio::sync::oneshot::Sender<Option<TurnCredentials>>>>,
-) -> Vec<webrtc::ice_transport::ice_server::RTCIceServer> {
+) -> Vec<webrtc::peer_connection::RTCIceServer> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     *pending_turn.lock().await = Some(tx);
     if cmds

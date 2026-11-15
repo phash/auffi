@@ -190,8 +190,6 @@ use std::{path::PathBuf, sync::Arc, sync::Mutex, time::Duration};
 
 use tauri::{Emitter, State};
 use tokio::sync::mpsc;
-use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::TrackLocalWriter;
 
 use capture::DisplayInfo;
 use files::FileMessage;
@@ -1344,26 +1342,16 @@ struct WriterStats {
 async fn streaming_loop(
     capturer: Option<capture::ScreenCapturer>,
     enc: Option<encoder::Vp8Encoder>,
-    track: std::sync::Arc<TrackLocalStaticRTP>,
+    track: webrtc_peer::VideoTrack,
     switch_rx: mpsc::Receiver<SwitchMsg>,
     controller_arc: Arc<tokio::sync::Mutex<Option<InputController>>>,
     metrics: Arc<SessionMetrics>,
     on_failed: FailureSink,
 ) {
     dbg_log("[streaming_loop] entered");
-    let payloader = match track.codec().payloader_for_codec() {
-        Ok(p) => p,
-        Err(e) => {
-            dbg_log(&format!(
-                "[streaming_loop] no payloader for track codec: {e}"
-            ));
-            on_failed("internal");
-            return;
-        }
-    };
     // One packetizer for the session: the track (and its SSRC) survives a
     // monitor switch, so the RTP clock and sequence numbers must too.
-    let mut packetizer = rtp_clock::FramePacketizer::new(payloader);
+    let mut packetizer = rtp_clock::FramePacketizer::new();
     let stats = Arc::new(WriterStats::default());
     let (frame_tx, mut frame_rx) = mpsc::channel::<EncodedFrame>(4);
     let encoder_side = {
@@ -1408,7 +1396,7 @@ async fn streaming_loop(
                 }
             }
             let mut frame_written = false;
-            for p in &rtp_packets {
+            for p in rtp_packets {
                 match track.write_rtp(p).await {
                     Ok(_) => {
                         stats
@@ -1759,11 +1747,12 @@ async fn receive_ice_candidate(
         sdp_mid,
         sdp_mline_index
     ));
-    let init = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
+    let init = webrtc::peer_connection::RTCIceCandidateInit {
         candidate,
         sdp_mid,
         sdp_mline_index,
         username_fragment,
+        url: None,
     };
 
     let guard = rtc_state.0.lock().await;
@@ -2557,13 +2546,12 @@ mod tests {
     }
 
     /// Drives `streaming_loop` with a channel-fed capturer, a real encoder
-    /// and an unbound RTP track (no peer needed); failures are recorded
+    /// and a not-yet-negotiated RTP track (no peer needed); failures are recorded
     /// instead of emitted to a webview.
     mod streaming_loop_harness {
         use super::super::*;
         use std::sync::Mutex as StdMutex;
         use std::time::{Duration, Instant};
-        use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
 
         struct Harness {
             failures: Arc<StdMutex<Vec<String>>>,
@@ -2575,14 +2563,7 @@ mod tests {
         fn spawn_loop(frame_w: u32, frame_h: u32) -> Harness {
             let (frame_tx, cap) = capture::ScreenCapturer::from_channel(frame_w, frame_h);
             let enc = encoder::Vp8Encoder::new(frame_w, frame_h, 300).expect("encoder");
-            let track = Arc::new(TrackLocalStaticRTP::new(
-                RTCRtpCodecCapability {
-                    mime_type: "video/VP8".to_string(),
-                    ..Default::default()
-                },
-                "video".to_string(),
-                "auffi".to_string(),
-            ));
+            let track = webrtc_peer::VideoTrack::new();
             let (switch_tx, switch_rx) = mpsc::channel::<SwitchMsg>(1);
             let failures = Arc::new(StdMutex::new(Vec::new()));
             let sink: FailureSink = {

@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use webrtc::ice_transport::ice_server::RTCIceServer;
+use webrtc::peer_connection::RTCIceServer;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TurnCredentials {
