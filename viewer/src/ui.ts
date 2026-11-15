@@ -807,6 +807,11 @@ export function bindUI(backendWsUrl: string): void {
     // sharer has confirmed yet, and whether a TURN relay was on offer.
     let confirmed = false;
     let relayAvailable = false;
+    // Set by needs-password. The backend issues a device id's TURN
+    // credentials only after the password verified (gh #149), so the
+    // pre-join fetch came back empty and the relay is fetched again once
+    // the sharer confirmed.
+    let unattended = false;
     const armConnectTimeout = (ms: number): void => {
       clearConnectTimeout();
       connectTimeout = setTimeout(() => {
@@ -949,6 +954,7 @@ export function bindUI(backendWsUrl: string): void {
       }
 
       signaling.onNeedsPassword(() => {
+        unattended = true;
         // Now waiting on the human to type a password — pause the backstop
         // so a slow typist isn't torn down mid-entry. submitPw re-arms it.
         clearConnectTimeout();
@@ -980,6 +986,12 @@ export function bindUI(backendWsUrl: string): void {
           confirmed = true;
           armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
           hidePwPrompt();
+          if (unattended) {
+            const iceServers = await fetchIceServers(backendHttpUrl, code);
+            if (connectGen !== connectGeneration || !peer) return;
+            relayAvailable = iceServers.length > 0;
+            peer.setIceServers(iceServers);
+          }
           const offer = await peer.start();
           // Abbrechen / a teardown during offer creation: that session is gone.
           if (connectGen !== connectGeneration || !signaling) return;

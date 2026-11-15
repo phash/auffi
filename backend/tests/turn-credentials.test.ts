@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import Fastify, { FastifyInstance } from "fastify";
 import rateLimitPlugin from "@fastify/rate-limit";
 import { WebSocket } from "ws";
 import { createServer } from "../src/server.js";
 import { registerTurnEndpoint } from "../src/turn-credentials.js";
-import { SessionStore, TURN_CREDENTIALS_UP_FRONT } from "../src/codes.js";
+import { SessionStore, TURN_CREDENTIALS_PER_JOIN, TURN_CREDENTIALS_UP_FRONT } from "../src/codes.js";
+import { rateLimitKey } from "../src/rate-limit.js";
 import { UnattendedSessions } from "../src/unattended_sessions.js";
 
 function setTurnEnv(): void {
@@ -286,15 +287,14 @@ describe("POST /turn-credentials — per-code issuance budget", () => {
   });
 });
 
-// The viewer fetches ICE servers BEFORE joining, so a connected unattended
-// device must be accepted before any UnattendedSession exists — without that,
-// cross-NAT unattended connects never got a relay. gh #139: that id is the
-// number a helper types, not a secret, so the pre-join path is budgeted per
-// device like an ad-hoc code, and only a verified password opens more.
+// gh #149: a device id is the number a helper types, not a secret. The viewer
+// fetches its ICE servers again after the password verified, so the endpoint
+// honours a device id only for a confirmed session's own viewer address.
 describe("POST /turn-credentials — unattended device ids", () => {
   let app: FastifyInstance;
   let sessions: UnattendedSessions;
-  const CONNECTED_DEVICE_ID = "321-654-987";
+  const DEVICE_ID = "321-654-987";
+  const VIEWER_IP = "10.8.0.1";
 
   beforeAll(async () => {
     sessions = new UnattendedSessions();
@@ -307,11 +307,6 @@ describe("POST /turn-credentials — unattended device ids", () => {
       allowedOrigins: ["http://localhost:5173"],
       sessionStore: new SessionStore({ ttlMs: 600_000 }),
       unattendedSessions: sessions,
-      unattendedRegistry: {
-        has(id: string): boolean {
-          return id === CONNECTED_DEVICE_ID;
-        },
-      },
     });
     await app.ready();
   });
@@ -320,7 +315,11 @@ describe("POST /turn-credentials — unattended device ids", () => {
     await app.close();
   });
 
-  async function post(code: string, ip = "10.8.0.1"): Promise<{ status: number; body: unknown }> {
+  afterEach(() => {
+    sessions.remove(DEVICE_ID);
+  });
+
+  async function post(code: string, ip = VIEWER_IP): Promise<{ status: number; body: unknown }> {
     const res = await app.inject({
       method: "POST",
       url: "/turn-credentials",
@@ -331,31 +330,39 @@ describe("POST /turn-credentials — unattended device ids", () => {
     return { status: res.statusCode, body: res.json() };
   }
 
-  it("serves one address a connected device's pre-join fetches up to the up-front budget, then 429", async () => {
+  function join(state: "awaiting-pw" | "pw-in-flight" | "confirmed", ip = VIEWER_IP): void {
+    sessions.begin(DEVICE_ID, {} as WebSocket, {} as WebSocket, { ipPrefix: "10.xxx", country: null }, rateLimitKey(ip));
+    sessions.transition(DEVICE_ID, state);
+  }
+
+  it("refuses a device id before its password verified", async () => {
+    expect((await post(DEVICE_ID)).status).toBe(403);
+    join("awaiting-pw");
+    expect((await post(DEVICE_ID)).status).toBe(403);
+    sessions.transition(DEVICE_ID, "pw-in-flight");
+    expect((await post(DEVICE_ID)).status).toBe(403);
+  });
+
+  it("serves the confirmed viewer up to the per-join budget, then 429", async () => {
+    join("confirmed");
     const statuses: number[] = [];
-    for (let i = 0; i <= TURN_CREDENTIALS_UP_FRONT; i++) statuses.push((await post(CONNECTED_DEVICE_ID)).status);
-    expect(statuses).toEqual([...Array(TURN_CREDENTIALS_UP_FRONT).fill(200), 429]);
-    expect((await post(CONNECTED_DEVICE_ID)).body).toEqual({ error: "turn credential budget exhausted" });
+    for (let i = 0; i <= TURN_CREDENTIALS_PER_JOIN; i++) statuses.push((await post(DEVICE_ID)).status);
+    expect(statuses).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN).fill(200), 429]);
+    expect((await post(DEVICE_ID)).body).toEqual({ error: "turn credential budget exhausted" });
   });
 
-  it("keeps serving the real helper after another address spent its allowance", async () => {
-    for (let i = 0; i <= TURN_CREDENTIALS_UP_FRONT; i++) await post(CONNECTED_DEVICE_ID, "203.0.113.50");
-    expect((await post(CONNECTED_DEVICE_ID, "198.51.100.20")).status).toBe(200);
+  it("refuses every address but the confirmed viewer's", async () => {
+    join("confirmed");
+    expect((await post(DEVICE_ID, "203.0.113.50")).status).toBe(403);
+    expect((await post(DEVICE_ID)).status).toBe(200);
   });
 
-  it("counts every address of one IPv6 /64 against the same allowance", async () => {
-    for (let i = 1; i <= TURN_CREDENTIALS_UP_FRONT; i++) {
-      expect((await post(CONNECTED_DEVICE_ID, `2001:db8:5:6::${i}`)).status).toBe(200);
-    }
-    expect((await post(CONNECTED_DEVICE_ID, "2001:db8:5:6::99")).status).toBe(429);
+  it("accepts the confirmed viewer from another address of its IPv6 /64", async () => {
+    join("confirmed", "2001:db8:5:6::1");
+    expect((await post(DEVICE_ID, "2001:db8:5:6::99")).status).toBe(200);
   });
 
-  it("refuses a code with no session and no connected device", async () => {
+  it("refuses a code with no session and no device", async () => {
     expect((await post("999-888-777")).status).toBe(403);
-  });
-
-  it("refuses a device id whose sharer is not connected, even with budget left", async () => {
-    expect(sessions.claimViewerTurnCredential("111-222-333", "10.9.9.9")).toBe("ok");
-    expect((await post("111-222-333")).status).toBe(403);
   });
 });

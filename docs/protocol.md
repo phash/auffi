@@ -418,20 +418,16 @@ legitimate request always finds the session confirmed.
 ```
 
 > Viewer side: unattended viewers use the normal `POST /turn-credentials`
-> REST endpoint with the device-id as `code`. The gate accepts a code whose
-> device currently holds a live bearer-authenticated WSS
-> (`UnattendedRegistry`), which is already true during the viewer's
-> pre-join fetch. Because the device id is the number a helper types (not a
-> secret), that path is budgeted like a fresh ad-hoc code, per requester:
-> **4** credentials per device per 10-minute window for each address
-> (an IPv4 address or an IPv6 /64), and at most **16** per device across all
-> addresses (`UNATTENDED_TURN_WINDOW_MS` / `UNATTENDED_TURN_DEVICE_CEILING`,
-> `backend/src/unattended_sessions.ts`). A verified password renews the
-> device's windows at once. Keying per requester means one caller who knows
-> the id cannot spend the real helper's allowance; only four or more
-> distinct addresses draining the device ceiling inside one window can,
-> and the ceiling is what keeps issuance bounded at all (gh #139; see
-> § `POST /turn-credentials`).
+> REST endpoint with the device id as `code`. The device id is the number a
+> helper types, not a secret, so the endpoint honours it only once the
+> device's session is **confirmed** (`pw-check-result: ok`), only from the
+> address that joined (its `rateLimitKey`: an IPv4 address or an IPv6 /64),
+> and within the viewer's own budget of **2** per session
+> (`TURN_CREDENTIALS_PER_JOIN`, kept apart from the sharer's).
+> The viewer's pre-join fetch for a device id therefore gets 403. After
+> `needs-password` the viewer fetches again once `peer-confirmed` arrives
+> and builds its peer with that result (`viewer/src/ui.ts` doConnect,
+> gh #149; see § `POST /turn-credentials`).
 
 ### `connection-started` (sharer → server)
 
@@ -666,10 +662,10 @@ explicitly) + JSON body `{ "code": "284-915-073" }`.
 
 | Status | Body | When |
 |--------|------|------|
-| 200 | credentials above | live ad-hoc session with budget left, or a connected unattended device for that id with budget left |
+| 200 | credentials above | live ad-hoc session with budget left, or a confirmed unattended session for that device id, asked from its viewer's address, with budget left |
 | 403 | `{"error":"origin not allowed"}` | `Origin` missing or not allow-listed |
-| 403 | `{"error":"no active session"}` | code unknown / malformed and no unattended match |
-| 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`); or, for an unattended device id, this address spent its **4** per 10 min or the device its ceiling of **16** (§ `turn-credentials`) |
+| 403 | `{"error":"no active session"}` | code unknown / malformed and no unattended match; for a device id also: session not confirmed yet, or asked from another address |
+| 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`); or, for an unattended device id, the viewer spent its **2** for this session (§ `turn-credentials`) |
 | 429 | `@fastify/rate-limit` default body | more than 10 requests/min/IP |
 
 Errors use `{ "error": "<text>" }` without a `message` field (unlike `/api/*`).

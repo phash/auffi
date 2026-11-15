@@ -4,7 +4,7 @@ import websocketPlugin from "@fastify/websocket";
 import WebSocket from "ws";
 import { createServer } from "../src/server.js";
 import { registerSignaling } from "../src/signaling.js";
-import { SessionStore, TURN_CREDENTIALS_PER_JOIN, TURN_CREDENTIALS_UP_FRONT } from "../src/codes.js";
+import { SessionStore, TURN_CREDENTIALS_PER_JOIN } from "../src/codes.js";
 import { UnattendedRegistry } from "../src/unattended.js";
 import { openDb, applyMigrations, defaultMigrationsDir, type Db } from "../src/db.js";
 import { hashPassword } from "../src/auth/argon.js";
@@ -16,12 +16,12 @@ import {
   PW_LOCKOUT_MS,
   recordPwFail,
   resetPwFail,
-  UNATTENDED_TURN_DEVICE_CEILING,
-  UNATTENDED_TURN_WINDOW_MS,
   UnattendedSessions,
 } from "../src/unattended_sessions.js";
 
 const ORIGIN = "http://127.0.0.1";
+/** `rateLimitKey` of the viewer that joined in the store-level tests. */
+const VIEWER_KEY = "10.0.0.1";
 
 // ── Pure unit tests: lockout helpers ──────────────────────────────────
 
@@ -146,13 +146,13 @@ describe("UnattendedSessions", () => {
 
   it("begin returns 'busy' on a second attempt for the same device", () => {
     const ss = new UnattendedSessions();
-    expect(ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null })).toBe("ok");
-    expect(ss.begin("123-456-789", {} as WebSocket, s, { ipPrefix: "84.xxx", country: null })).toBe("busy");
+    expect(ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY)).toBe("ok");
+    expect(ss.begin("123-456-789", {} as WebSocket, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY)).toBe("busy");
   });
 
   it("transitions state through awaiting-pw → pw-in-flight → confirmed", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
     expect(ss.findByViewer(v)?.state).toBe("awaiting-pw");
     ss.transition("123-456-789", "pw-in-flight");
     expect(ss.findByViewer(v)?.state).toBe("pw-in-flight");
@@ -162,7 +162,7 @@ describe("UnattendedSessions", () => {
 
   it("detachViewer removes the session but detachSharer is needed to clear by sharer-key", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
     expect(ss.detachViewer(v)?.deviceId).toBe("123-456-789");
     expect(ss.findByViewer(v)).toBeNull();
     expect(ss.size()).toBe(0);
@@ -170,13 +170,13 @@ describe("UnattendedSessions", () => {
 
   it("findBySharer returns the session by sharer ref", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
     expect(ss.findBySharer(s)?.deviceId).toBe("123-456-789");
   });
 
   it("sweepStale frees a slot stuck in awaiting-pw past PW_ENTRY_TIMEOUT_MS", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, 1_000);
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY, 1_000);
     // Not yet stale — nothing reaped.
     expect(ss.sweepStale(1_000 + PW_ENTRY_TIMEOUT_MS - 1)).toEqual([]);
     expect(ss.size()).toBe(1);
@@ -185,16 +185,16 @@ describe("UnattendedSessions", () => {
     expect(stale.map((x) => x.deviceId)).toEqual(["123-456-789"]);
     expect(ss.size()).toBe(0);
     // The device slot is free again for the next viewer.
-    expect(ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null })).toBe("ok");
+    expect(ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY)).toBe("ok");
   });
 
   it("sweepStale reaps pw-in-flight sessions but never confirmed ones", () => {
     const ss = new UnattendedSessions();
     const v2 = {} as unknown as WebSocket;
     const s2 = {} as unknown as WebSocket;
-    ss.begin("111-111-111", v, s, { ipPrefix: "84.xxx", country: null }, 0);
+    ss.begin("111-111-111", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY, 0);
     ss.transition("111-111-111", "pw-in-flight");
-    ss.begin("222-222-222", v2, s2, { ipPrefix: "84.xxx", country: null }, 0);
+    ss.begin("222-222-222", v2, s2, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY, 0);
     ss.transition("222-222-222", "confirmed");
 
     const stale = ss.sweepStale(PW_ENTRY_TIMEOUT_MS + 1);
@@ -203,60 +203,44 @@ describe("UnattendedSessions", () => {
     expect(ss.findByDeviceId("222-222-222")).not.toBeNull();
   });
 
-  // gh #139: the device id is the number a helper types, so it is not a
-  // secret. Unbudgeted, anyone who knew a connected device's id could mint
-  // TURN credentials at the per-IP rate from as many addresses as they had.
-  it("allows each requester a connected device's pre-join fetches only up to the up-front budget per window", () => {
+  // gh #149: the device id is the number a helper types, not a secret, so a
+  // viewer's REST fetch for it is honoured only once a password verified, and
+  // only for the address that joined.
+  it("issues a device id's viewer credentials only for a confirmed session", () => {
     const ss = new UnattendedSessions();
-    const results = Array.from({ length: TURN_CREDENTIALS_UP_FRONT + 1 }, () =>
-      ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 1_000),
-    );
-    expect(results.slice(0, TURN_CREDENTIALS_UP_FRONT).every((r) => r === "ok")).toBe(true);
-    expect(results[TURN_CREDENTIALS_UP_FRONT]).toBe("exhausted");
-    // Another device has its own allowance.
-    expect(ss.claimViewerTurnCredential("987-654-321", "10.0.0.1", 1_000)).toBe("ok");
-    // The window lapses like an ad-hoc code's TTL.
-    expect(
-      ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 1_000 + UNATTENDED_TURN_WINDOW_MS),
-    ).toBe("ok");
-  });
-
-  // Review of gh #139: a per-device allowance shared by every address let one
-  // requester who knew the id drain it, so the real helper's single pre-join
-  // fetch got 429 and the session ran STUN-only.
-  it("one requester draining its allowance leaves the device's other requesters theirs", () => {
-    const ss = new UnattendedSessions();
-    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) {
-      ss.claimViewerTurnCredential("123-456-789", "203.0.113.9", 0);
-    }
-    expect(ss.claimViewerTurnCredential("123-456-789", "203.0.113.9", 0)).toBe("exhausted");
-    expect(ss.claimViewerTurnCredential("123-456-789", "198.51.100.7", 0)).toBe("ok");
-  });
-
-  it("caps a device's pre-join issuance across all requesters at the device ceiling", () => {
-    const ss = new UnattendedSessions();
-    let granted = 0;
-    for (let k = 0; granted < UNATTENDED_TURN_DEVICE_CEILING; k++) {
-      expect(ss.claimViewerTurnCredential("123-456-789", `10.1.0.${k}`, 0)).toBe("ok");
-      granted++;
-    }
-    expect(ss.claimViewerTurnCredential("123-456-789", "10.2.0.1", 0)).toBe("exhausted");
-    expect(ss.claimViewerTurnCredential("123-456-789", "10.2.0.1", UNATTENDED_TURN_WINDOW_MS)).toBe("ok");
-  });
-
-  it("a verified password refills the device's pre-join allowance", () => {
-    const ss = new UnattendedSessions();
-    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 0);
-    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, 0);
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
+    ss.transition("123-456-789", "pw-in-flight");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
     ss.transition("123-456-789", "confirmed");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("ok");
     ss.detachViewer(v);
-    expect(ss.claimViewerTurnCredential("123-456-789", "10.0.0.1", 0)).toBe("ok");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
+  });
+
+  it("refuses a confirmed session's viewer credentials to any other address", () => {
+    const ss = new UnattendedSessions();
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
+    ss.transition("123-456-789", "confirmed");
+    expect(ss.claimViewerTurnCredential("123-456-789", "203.0.113.9")).toBe("unknown");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("ok");
+  });
+
+  it("caps a confirmed session's viewer credentials at the per-join budget", () => {
+    const ss = new UnattendedSessions();
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
+    ss.transition("123-456-789", "confirmed");
+    const results = Array.from({ length: TURN_CREDENTIALS_PER_JOIN + 1 }, () =>
+      ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY),
+    );
+    expect(results).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN).fill("ok"), "exhausted"]);
   });
 
   it("issues the sharer credentials only for a confirmed session, within the per-join budget", () => {
     const ss = new UnattendedSessions();
     expect(ss.claimSharerTurnCredential(s)).toBe(false);
-    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
     expect(ss.claimSharerTurnCredential(s)).toBe(false);
     ss.transition("123-456-789", "pw-in-flight");
     expect(ss.claimSharerTurnCredential(s)).toBe(false);
@@ -267,15 +251,14 @@ describe("UnattendedSessions", () => {
     expect(granted).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN).fill(true), false]);
   });
 
-  // A REST caller only has to know the id; if its fetches drew from the
-  // confirmed session's per-join budget, polling it would starve the
-  // sharer's in-band request.
+  // Viewer and sharer each hold their own per-join budget: the viewer
+  // spending its share must not take the relay away from the sharer.
   it("a viewer REST fetch never spends the confirmed session's sharer budget", () => {
     const ss = new UnattendedSessions();
-    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null });
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
     ss.transition("123-456-789", "confirmed");
-    for (let i = 0; i < TURN_CREDENTIALS_UP_FRONT; i++) {
-      expect(ss.claimViewerTurnCredential("123-456-789", "203.0.113.9")).toBe("ok");
+    for (let i = 0; i < TURN_CREDENTIALS_PER_JOIN; i++) {
+      expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("ok");
     }
     const granted = Array.from({ length: TURN_CREDENTIALS_PER_JOIN }, () => ss.claimSharerTurnCredential(s));
     expect(granted).toEqual(Array(TURN_CREDENTIALS_PER_JOIN).fill(true));
@@ -1469,6 +1452,35 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
     sharer.close();
     await app.close();
     db.close();
+  });
+
+  // gh #149: the viewer fetches its relay again after peer-confirmed. Over
+  // the real server, the pre-join fetch for the device id is refused and the
+  // post-confirm one from the same address is served.
+  it("serves the viewer's REST fetch for the device id only after the password verified", async () => {
+    process.env.ALLOWED_ORIGINS = ORIGIN;
+    const { app, url, db } = await startApp(true);
+    const turnUrl = url.replace(/^ws/, "http").replace(/\/signal$/, "/turn-credentials");
+    const fetchTurn = async (): Promise<number> =>
+      (
+        await fetch(turnUrl, {
+          method: "POST",
+          headers: { origin: ORIGIN, "content-type": "application/json" },
+          body: JSON.stringify({ code: deviceId }),
+        })
+      ).status;
+    try {
+      const sharer = await openSharerAt(url);
+      expect(await fetchTurn()).toBe(403);
+      const viewer = await confirmAViewer(url, sharer);
+      expect(await fetchTurn()).toBe(200);
+      viewer.close();
+      sharer.close();
+    } finally {
+      delete process.env.ALLOWED_ORIGINS;
+      await app.close();
+      db.close();
+    }
   });
 
   it("replies with credentials: null when the backend has no TURN configured", async () => {

@@ -70,6 +70,11 @@ export class ViewerPeer {
 
   constructor(private opts: ViewerPeerOpts = {}) {}
 
+  /** Takes effect on the next start(); the pc is created there. */
+  setIceServers(iceServers: IceServers): void {
+    this.opts = { ...this.opts, iceServers };
+  }
+
   async start(): Promise<RTCSessionDescriptionInit> {
     const factory = this.opts.pcFactory ?? ((c) => new RTCPeerConnection(c));
     const pc = factory({ iceServers: this.opts.iceServers ?? [] });

@@ -20,17 +20,15 @@ export type TurnConfig = {
    */
   sessionStore?: SessionStore;
   /**
-   * Optional, together with `unattendedRegistry`: also accept a code that
-   * names a CONNECTED unattended device (its sharer holds a live
-   * bearer-authenticated WSS). The viewer fetches ICE servers BEFORE
-   * joining, when no UnattendedSession exists yet, so the registry is the
-   * gate; the issuance itself is budgeted per requester address and per
-   * device (`UnattendedSessions.claimViewerTurnCredential`, gh #139).
+   * Optional: also accept a code that names an unattended device whose
+   * session is confirmed, from that session's viewer address, within the
+   * viewer's per-join budget (`UnattendedSessions.claimViewerTurnCredential`).
+   * The viewer's pre-join fetch for a device id therefore gets 403 and it
+   * fetches again after `peer-confirmed` (gh #149).
    */
   unattendedSessions?: {
-    claimViewerTurnCredential(deviceId: string, requesterKey: string): "ok" | "exhausted";
+    claimViewerTurnCredential(deviceId: string, requesterKey: string): "ok" | "exhausted" | "unknown";
   };
-  unattendedRegistry?: { has(id: string): boolean };
 };
 
 export function makeCredentials(cfg: TurnConfig): {
@@ -76,9 +74,7 @@ export function registerTurnEndpoint(
         }
         if (adHoc === "unknown") {
           const unattended =
-            normalized !== null &&
-            cfg.unattendedSessions !== undefined &&
-            (cfg.unattendedRegistry?.has(normalized) ?? false)
+            normalized !== null && cfg.unattendedSessions !== undefined
               ? cfg.unattendedSessions.claimViewerTurnCredential(normalized, rateLimitKey(req.ip))
               : "unknown";
           if (unattended === "unknown") {

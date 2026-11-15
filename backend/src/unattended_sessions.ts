@@ -1,7 +1,7 @@
 import type { WebSocket } from "ws";
 import type { Db } from "./db.js";
 import type { ViewerInfo } from "./protocol.js";
-import { TURN_CREDENTIALS_PER_JOIN, TURN_CREDENTIALS_UP_FRONT } from "./codes.js";
+import { TURN_CREDENTIALS_PER_JOIN } from "./codes.js";
 
 /**
  * Per-device lockout: 5 cumulative wrong password attempts → the bucket
@@ -166,8 +166,17 @@ export interface UnattendedSession {
    * pre-confirmed lifetime — see [`PW_ENTRY_TIMEOUT_MS`].
    */
   createdAt: number;
-  /** TURN credentials minted for this session, capped at TURN_CREDENTIALS_PER_JOIN. */
+  /**
+   * The viewer's `rateLimitKey` (an IPv4 address or an IPv6 /64), kept in
+   * memory only for the session's lifetime: the device id is not a secret,
+   * so the viewer's `POST /turn-credentials` is honoured only from the
+   * address that joined (gh #149).
+   */
+  viewerKey: string;
+  /** TURN credentials minted for the sharer, capped at TURN_CREDENTIALS_PER_JOIN. */
   turnCredentialsIssued: number;
+  /** TURN credentials minted for the viewer, capped at TURN_CREDENTIALS_PER_JOIN. */
+  viewerTurnCredentialsIssued: number;
 }
 
 /**
@@ -186,38 +195,9 @@ export interface UnattendedSession {
  */
 export const PW_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
 
-/**
- * Window for a device's pre-join TURN allowance (gh #139). The viewer
- * fetches credentials BEFORE it joins, when only the device id is known,
- * and that id is the number a helper types, not a secret. So each requester
- * (`rateLimitKey`: an IPv4 address or an IPv6 /64) gets what a fresh ad-hoc
- * code gets (TURN_CREDENTIALS_UP_FRONT) per device, renewed on the ad-hoc
- * code's 10-minute TTL. Keyed per requester so that one caller who knows the
- * id cannot spend the real helper's allowance; a verified password renews
- * the device's windows at once. In-memory, swept by
- * [`UnattendedSessions.sweepStale`] once the window lapsed: that is its
- * retention policy.
- */
-export const UNATTENDED_TURN_WINDOW_MS = 10 * 60 * 1000;
-
-/**
- * Bound on a device's pre-join issuance across all requesters per window,
- * so the per-requester keying does not reopen unbounded issuance to anyone
- * with many addresses. Exhausting it takes this many credentials from at
- * least four distinct requesters, not one.
- */
-export const UNATTENDED_TURN_DEVICE_CEILING = 4 * TURN_CREDENTIALS_UP_FRONT;
-
-interface PreJoinTurnWindow {
-  startedAt: number;
-  issued: number;
-  issuedByRequester: Map<string, number>;
-}
-
 export class UnattendedSessions {
   private readonly byDevice = new Map<string, UnattendedSession>();
   private readonly viewerToDevice = new Map<WebSocket, string>();
-  private readonly preJoinTurn = new Map<string, PreJoinTurnWindow>();
   /** Store-wide so an id is never reused across sessions of one device. */
   private nextAttemptId = 1;
   private onStaleReap: ((sess: UnattendedSession) => void) | null = null;
@@ -266,6 +246,7 @@ export class UnattendedSessions {
     viewer: WebSocket,
     sharer: WebSocket,
     viewerInfo: ViewerInfo,
+    viewerKey: string,
     now: number = Date.now(),
   ): "ok" | "busy" {
     if (this.byDevice.has(deviceId)) return "busy";
@@ -278,7 +259,9 @@ export class UnattendedSessions {
       logId: null,
       viewerInfo,
       createdAt: now,
+      viewerKey,
       turnCredentialsIssued: 0,
+      viewerTurnCredentialsIssued: 0,
     });
     this.viewerToDevice.set(viewer, deviceId);
     return "ok";
@@ -306,9 +289,6 @@ export class UnattendedSessions {
       this.remove(sess.deviceId);
       this.onStaleReap?.(sess);
     }
-    for (const [deviceId, window] of this.preJoinTurn) {
-      if (now - window.startedAt >= UNATTENDED_TURN_WINDOW_MS) this.preJoinTurn.delete(deviceId);
-    }
     return stale;
   }
 
@@ -334,33 +314,22 @@ export class UnattendedSessions {
     const sess = this.byDevice.get(deviceId);
     if (!sess) return;
     sess.state = to;
-    if (to === "confirmed") this.preJoinTurn.delete(deviceId);
   }
 
   /**
-   * Gate for a viewer's `POST /turn-credentials` with a device id (the
-   * caller has already checked the device is connected), charged to the
-   * requester's pre-join allowance ([`UNATTENDED_TURN_WINDOW_MS`]) within
-   * the device ceiling. It never draws from a confirmed session's per-join
-   * budget: a REST caller only has to know the id, so polling would starve
-   * the sharer's in-band request.
+   * Gate for a viewer's `POST /turn-credentials` with a device id: only
+   * while the device's session is confirmed (a verified password), only
+   * from the address that joined, within the viewer's own per-join budget.
+   * The id is the number a helper types, not a secret; keeping the viewer's
+   * budget apart from the sharer's means a viewer cannot starve the
+   * sharer's in-band request either. "unknown" maps to the same 403 as a
+   * code with no session.
    */
-  claimViewerTurnCredential(
-    deviceId: string,
-    requesterKey: string,
-    now: number = Date.now(),
-  ): "ok" | "exhausted" {
-    let window = this.preJoinTurn.get(deviceId);
-    if (!window || now - window.startedAt >= UNATTENDED_TURN_WINDOW_MS) {
-      window = { startedAt: now, issued: 0, issuedByRequester: new Map() };
-      this.preJoinTurn.set(deviceId, window);
-    }
-    const byRequester = window.issuedByRequester.get(requesterKey) ?? 0;
-    if (byRequester >= TURN_CREDENTIALS_UP_FRONT || window.issued >= UNATTENDED_TURN_DEVICE_CEILING) {
-      return "exhausted";
-    }
-    window.issuedByRequester.set(requesterKey, byRequester + 1);
-    window.issued += 1;
+  claimViewerTurnCredential(deviceId: string, requesterKey: string): "ok" | "exhausted" | "unknown" {
+    const sess = this.byDevice.get(deviceId);
+    if (!sess || sess.state !== "confirmed" || sess.viewerKey !== requesterKey) return "unknown";
+    if (sess.viewerTurnCredentialsIssued >= TURN_CREDENTIALS_PER_JOIN) return "exhausted";
+    sess.viewerTurnCredentialsIssued += 1;
     return "ok";
   }
 

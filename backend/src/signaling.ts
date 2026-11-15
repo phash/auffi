@@ -692,6 +692,7 @@ export function registerSignaling(
                 peer,
                 live,
                 viewerInfo(),
+                rateLimitKey(req.ip ?? "unknown"),
               );
               if (begin === "busy") {
                 send(peer, { type: "error", code: "invalid-code", message: "session full" });

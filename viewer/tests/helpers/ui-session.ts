@@ -98,7 +98,7 @@ export class MockPC {
   channels: MockDataChannel[] = [];
   setRemoteDescription: (sdp: RTCSessionDescriptionInit) => Promise<void> = async () => {};
 
-  constructor() {
+  constructor(public config: RTCConfiguration = {}) {
     MockPC.instances.push(this);
   }
 

@@ -274,7 +274,6 @@ export async function createServer(cfg: ServerConfig = {}): Promise<FastifyInsta
         allowedOrigins: env.allowedOrigins,
         sessionStore: store,
         unattendedSessions,
-        unattendedRegistry,
       }
     : null;
   const attemptCounts = registerSignaling(
