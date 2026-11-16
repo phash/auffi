@@ -1375,7 +1375,7 @@ mod tests {
         });
 
         let servers = request_turn_via_heartbeat(&cmd_tx, &pending).await;
-        assert_eq!(servers.len(), 1);
+        assert_eq!(servers.len(), 2, "the TURN server and its STUN twin");
         assert_eq!(servers[0].urls, vec!["turn:t.auffi.app:3478"]);
     }
 
