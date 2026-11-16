@@ -153,8 +153,13 @@ assert_eq "${inode}" "$(stat -c '%i' "${S}/staged/cert.pem")" "stage: unchanged 
 
 printf 'crt-2' > "${SRC}/turn.test.crt"
 printf 'key-2' > "${SRC}/turn.test.key"
-cert_is_2() { [[ "$(cat "${S}/staged/cert.pem")" == crt-2 ]]; }
-wait_for 4 cert_is_2 && ok=true || ok=false
+# The two writes above are not atomic: a loop pass can land between them and
+# stage the new cert next to the old key, which the following pass fixes.
+# Wait for the pair, not the cert alone.
+pair_is_2() {
+  [[ "$(cat "${S}/staged/cert.pem")" == crt-2 && "$(cat "${S}/staged/key.pem")" == key-2 ]]
+}
+wait_for 4 pair_is_2 && ok=true || ok=false
 assert_eq "true" "${ok}" "stage: renewed cert re-copied by the loop"
 assert_file_eq "${S}/staged/key.pem" "key-2" "stage: renewed key re-copied"
 
