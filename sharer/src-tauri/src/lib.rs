@@ -1299,6 +1299,26 @@ fn run_shutdown_jobs_on_exit(app: &tauri::AppHandle) {
 /// helper with a frozen picture and the sharer saying "Streaming läuft."
 const MAX_CONSECUTIVE_ENCODE_FAILURES: u64 = 30;
 
+/// What the capture/encode loop works on after one capture poll.
+enum NextEncode {
+    Fresh(capture::BgraFrame),
+    /// Encode the frame held from the last round again.
+    Repeat,
+    Idle,
+}
+
+/// A static screen delivers no frames (WGC reports only changes), so an
+/// outstanding keyframe request is answered from the frame already held.
+/// Otherwise a viewer whose first keyframe was lost (or that joined a still
+/// screen after a loss) decodes nothing until something on screen moves.
+fn next_encode(polled: capture::NextFrame, keyframe_pending: bool, holding: bool) -> NextEncode {
+    match polled {
+        capture::NextFrame::Frame(frame) => NextEncode::Fresh(frame),
+        capture::NextFrame::Timeout if keyframe_pending && holding => NextEncode::Repeat,
+        capture::NextFrame::Timeout => NextEncode::Idle,
+    }
+}
+
 fn encode_failures_exceeded(consecutive: u64) -> bool {
     consecutive > MAX_CONSECUTIVE_ENCODE_FAILURES
 }
@@ -1469,6 +1489,8 @@ fn capture_encode_loop(
     // average encode time) — the key signal for capture/encode lag.
     let mut frames_since_log = 0u64;
     let mut encode_us_since_log = 0u64;
+    // The last captured frame and when it arrived, for `NextEncode::Repeat`.
+    let mut held: Option<(capture::BgraFrame, std::time::Instant)> = None;
 
     fn handle_switch_msg(
         msg: SwitchMsg,
@@ -1523,6 +1545,7 @@ fn capture_encode_loop(
             match switch_rx.blocking_recv() {
                 Some(msg) => {
                     handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc);
+                    held = None;
                     encode_failures = 0;
                     continue;
                 }
@@ -1538,7 +1561,8 @@ fn capture_encode_loop(
             Ok(msg) => {
                 handle_switch_msg(msg, &mut capturer, &mut enc, &controller_arc);
                 // A fresh capturer + encoder must not inherit the old pair's
-                // failure streak.
+                // failure streak, nor its frame, which has the old geometry.
+                held = None;
                 encode_failures = 0;
                 continue;
             }
@@ -1562,16 +1586,8 @@ fn capture_encode_loop(
             }
         };
 
-        let frame = match cap.next_frame() {
-            Ok(capture::NextFrame::Frame(f)) => f,
-            Ok(capture::NextFrame::Timeout) => {
-                // No frame in the poll window — the source may be stalled
-                // with its channel still open (portal revoked, WGC silent
-                // stop). Loop around so the switch_rx shutdown check above
-                // runs; a `recv()` here used to park the loop forever, past
-                // disconnect_streaming.
-                continue;
-            }
+        let polled = match cap.next_frame() {
+            Ok(polled) => polled,
             Err(e) => {
                 dbg_log(&format!(
                     "[streaming_loop] next_frame Err after {frame_count} frames: {e}"
@@ -1579,6 +1595,35 @@ fn capture_encode_loop(
                 on_failed("capture");
                 return;
             }
+        };
+        let keyframe_pending = metrics
+            .keyframe_requested
+            .load(std::sync::atomic::Ordering::Relaxed)
+            || metrics
+                .keyframe_requested_throttled
+                .load(std::sync::atomic::Ordering::Relaxed);
+        match next_encode(polled, keyframe_pending, held.is_some()) {
+            NextEncode::Fresh(f) => held = Some((f, std::time::Instant::now())),
+            NextEncode::Repeat => {
+                if let Some((f, captured_at)) = held.as_mut() {
+                    // The RTP timestamp follows pts, and a repeat is shown
+                    // later than the original was.
+                    f.pts_us += captured_at.elapsed().as_micros() as u64;
+                    *captured_at = std::time::Instant::now();
+                }
+                dbg_log("[streaming_loop] source idle — re-encoding the held frame as a keyframe");
+            }
+            NextEncode::Idle => {
+                // No frame in the poll window — the source may be stalled
+                // with its channel still open (portal revoked, WGC silent
+                // stop). Loop around so the switch_rx shutdown check above
+                // runs; a `recv()` here used to park the loop forever, past
+                // disconnect_streaming.
+                continue;
+            }
+        }
+        let Some((frame, _)) = held.as_ref() else {
+            continue;
         };
         frame_count += 1;
         if frame_count == 1 {
@@ -2688,6 +2733,39 @@ mod tests {
     // fail while the loop kept spinning at frame rate: frozen picture for the
     // helper, "Streaming läuft." on the sharer, and no event that would let
     // the webview restart. The encode arm has to give up like the write arm.
+    // A static screen delivers no frames (WGC only reports changes), so a
+    // keyframe the viewer asks for has to come from the frame already held:
+    // with webrtc-rs 0.21 the keyframe forced at connect can go out before
+    // SRTP is up and be dropped, and the viewer then saw nothing until the
+    // screen changed.
+    #[test]
+    fn a_pending_keyframe_reencodes_the_held_frame_while_the_source_is_silent() {
+        use super::{capture, next_encode, NextEncode};
+        assert!(matches!(
+            next_encode(capture::NextFrame::Timeout, true, true),
+            NextEncode::Repeat
+        ));
+        assert!(matches!(
+            next_encode(capture::NextFrame::Timeout, false, true),
+            NextEncode::Idle
+        ));
+        assert!(
+            matches!(
+                next_encode(capture::NextFrame::Timeout, true, false),
+                NextEncode::Idle
+            ),
+            "nothing captured yet, nothing to repeat"
+        );
+        let fresh = capture::BgraFrame {
+            data: vec![0; 4],
+            pts_us: 7,
+        };
+        assert!(matches!(
+            next_encode(capture::NextFrame::Frame(fresh), true, true),
+            NextEncode::Fresh(f) if f.pts_us == 7
+        ));
+    }
+
     #[test]
     fn encode_failures_exceeded_only_after_thirty_consecutive() {
         assert!(!super::encode_failures_exceeded(0));

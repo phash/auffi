@@ -23,8 +23,8 @@ use webrtc::peer_connection::{
     register_default_interceptors, MediaEngine, PeerConnection, PeerConnectionBuilder,
     PeerConnectionEventHandler, RTCConfigurationBuilder, RTCIceCandidate, RTCIceCandidateInit,
     RTCIceCandidateType, RTCIceConnectionState, RTCIceGatheringState, RTCIceServer,
-    RTCPeerConnectionIceEvent, RTCSessionDescription, RTCStatsReport, RTCStatsReportEntry,
-    Registry, SettingEngineBuilder, StatsSelector,
+    RTCPeerConnectionIceEvent, RTCPeerConnectionState, RTCSessionDescription, RTCStatsReport,
+    RTCStatsReportEntry, Registry, SettingEngineBuilder, StatsSelector,
 };
 use webrtc::rtp_transceiver::RtpSender;
 
@@ -139,6 +139,10 @@ struct Observers {
     conn_type: ObserverSlot<ConnectionType>,
     data_channel: ObserverSlot<Arc<dyn DataChannel>>,
     last_conn_type: Arc<tokio::sync::Mutex<Option<ConnectionType>>>,
+    /// Set once DTLS is up. Before that webrtc-rs 0.21 drops every RTP packet
+    /// (no SRTP context), so the connection type — on which lib.rs forces
+    /// the viewer's first keyframe — must not be reported earlier.
+    secured: std::sync::atomic::AtomicBool,
     /// Weak: the driver owns this handler, and a strong reference back to the
     /// connection would keep both alive after `close`.
     pc: OnceLock<Weak<dyn PeerConnection>>,
@@ -154,6 +158,31 @@ impl Observers {
 }
 
 struct Handler(Arc<Observers>);
+
+impl Handler {
+    /// Resolve the selected pair's type off the driver task (callbacks run on
+    /// it, and `get_stats` needs it) and report it if it changed.
+    fn report_connection_type(&self) {
+        let Some(pc) = self.0.pc.get().and_then(Weak::upgrade) else {
+            return;
+        };
+        let type_slot = Arc::clone(&self.0.conn_type);
+        let last = Arc::clone(&self.0.last_conn_type);
+        tokio::spawn(async move {
+            let report = pc.get_stats(Instant::now(), StatsSelector::None).await;
+            let Some(conn_type) = resolve_connection_type(&report) else {
+                return;
+            };
+            let mut guard = last.lock().await;
+            if *guard != Some(conn_type) {
+                *guard = Some(conn_type);
+                if let Some(handler) = read_slot(&type_slot) {
+                    handler(conn_type);
+                }
+            }
+        });
+    }
+}
 
 #[async_trait::async_trait]
 impl PeerConnectionEventHandler for Handler {
@@ -188,27 +217,20 @@ impl PeerConnectionEventHandler for Handler {
         if let Some(observer) = read_slot(&self.0.ice_state) {
             observer(state);
         }
-        if state != RTCIceConnectionState::Connected && state != RTCIceConnectionState::Completed {
-            return;
+        // A path change after an ICE restart re-reports; the first report
+        // waits for DTLS in on_connection_state_change.
+        let connected =
+            state == RTCIceConnectionState::Connected || state == RTCIceConnectionState::Completed;
+        if connected && self.0.secured.load(Ordering::Acquire) {
+            self.report_connection_type();
         }
-        let Some(pc) = self.0.pc.get().and_then(Weak::upgrade) else {
-            return;
-        };
-        let type_slot = Arc::clone(&self.0.conn_type);
-        let last = Arc::clone(&self.0.last_conn_type);
-        tokio::spawn(async move {
-            let report = pc.get_stats(Instant::now(), StatsSelector::None).await;
-            let Some(conn_type) = resolve_connection_type(&report) else {
-                return;
-            };
-            let mut guard = last.lock().await;
-            if *guard != Some(conn_type) {
-                *guard = Some(conn_type);
-                if let Some(handler) = read_slot(&type_slot) {
-                    handler(conn_type);
-                }
-            }
-        });
+    }
+
+    async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
+        if state == RTCPeerConnectionState::Connected {
+            self.0.secured.store(true, Ordering::Release);
+            self.report_connection_type();
+        }
     }
 
     async fn on_data_channel(&self, data_channel: Arc<dyn DataChannel>) {
@@ -668,10 +690,11 @@ impl SharerPeer {
             .unwrap_or_else(|p| p.into_inner()) = Some(Box::new(handler));
     }
 
-    /// Register a callback that fires once when the ICE connection reaches
-    /// `Connected` or `Completed` and emits whether the path uses a TURN relay
-    /// or a direct route.  The handler is called at most once per flip between
-    /// `P2p` and `Relay`.
+    /// Register a callback that fires once the connection is up (ICE
+    /// connected and DTLS done, so media sent from then on reaches the
+    /// viewer) and emits whether the path uses a TURN relay or a direct
+    /// route. The handler is called at most once per flip between `P2p` and
+    /// `Relay`.
     pub fn on_connection_type<F>(&self, handler: F)
     where
         F: Fn(ConnectionType) + Send + Sync + 'static,
@@ -1159,6 +1182,157 @@ mod tests {
     // chunk of the transfer was fed to the JSON parser and dropped — the
     // helper streamed the whole file, then both sides reported failure.
     // The DataChannel message type (string vs binary) is authoritative.
+    /// The same session against a real Chrome, the browser the viewer runs
+    /// in. The webrtc-rs loopback above cannot catch what only Chrome does:
+    /// it decodes nothing until a keyframe arrives intact over SRTP, and its
+    /// demuxing and feedback differ from webrtc-rs's own. Needs node and the
+    /// viewer's Playwright Chromium, hence ignored:
+    /// `cargo test --lib chrome -- --ignored`.
+    mod chrome {
+        use super::super::*;
+        use crate::encoder::Vp8Encoder;
+        use std::io::{BufRead, BufReader, Write};
+        use std::process::{Command, Stdio};
+        use std::sync::atomic::AtomicBool;
+        use std::time::Duration;
+        use tokio::sync::mpsc::unbounded_channel;
+
+        const WIDTH: u32 = 320;
+        const HEIGHT: u32 = 240;
+
+        fn frame(n: u32) -> Vec<u8> {
+            let shade = (n * 7 % 256) as u8;
+            (0..WIDTH * HEIGHT)
+                .flat_map(|i| [shade, (i % WIDTH) as u8, (i / WIDTH) as u8, 255])
+                .collect()
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+        #[ignore = "needs node and the viewer's Playwright Chromium"]
+        async fn a_chrome_viewer_decodes_the_stream() {
+            let sharer = Arc::new(SharerPeer::new(vec![]).await.expect("sharer peer"));
+            let (input_tx, _input_rx) = mpsc::channel(16);
+            let (files_tx, _files_rx) = mpsc::channel(16);
+            sharer.on_data_channels(input_tx, files_tx);
+
+            // Mirrors lib.rs: a fresh viewer gets a keyframe forced when the
+            // connection type resolves, a PLI asks for a throttled one.
+            let force_keyframe = Arc::new(AtomicBool::new(false));
+            let throttled_keyframe = Arc::new(AtomicBool::new(false));
+            {
+                let force = Arc::clone(&force_keyframe);
+                sharer.on_connection_type(move |_| force.store(true, Ordering::Relaxed));
+                let throttled = Arc::clone(&throttled_keyframe);
+                sharer.spawn_rtcp_listener(move |f| {
+                    if f == SenderFeedback::KeyframeRequest {
+                        throttled.store(true, Ordering::Relaxed);
+                    }
+                });
+            }
+
+            let script = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/chrome-viewer.mjs");
+            let mut child = Command::new("node")
+                .args([script, "20000"])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("node runs the Chrome viewer");
+            let stdin = Arc::new(std::sync::Mutex::new(child.stdin.take().expect("stdin")));
+            let (lines_tx, mut lines_rx) = unbounded_channel::<serde_json::Value>();
+            let stdout = child.stdout.take().expect("stdout");
+            std::thread::spawn(move || {
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    if let Ok(v) = serde_json::from_str(&line) {
+                        let _ = lines_tx.send(v);
+                    }
+                }
+            });
+            let send = {
+                let stdin = Arc::clone(&stdin);
+                move |v: serde_json::Value| {
+                    let mut w = stdin.lock().unwrap_or_else(|p| p.into_inner());
+                    let _ = writeln!(w, "{v}");
+                    let _ = w.flush();
+                }
+            };
+            {
+                let send = send.clone();
+                sharer.on_ice_candidate(move |c| {
+                    if let Some(init) = c.and_then(|c| c.to_json().ok()) {
+                        send(serde_json::json!({ "candidate": {
+                            "candidate": init.candidate,
+                            "sdpMid": init.sdp_mid,
+                            "sdpMLineIndex": init.sdp_mline_index,
+                        }}));
+                    }
+                });
+            }
+
+            let writer = {
+                let track = sharer.track.clone();
+                let force = Arc::clone(&force_keyframe);
+                let throttled = Arc::clone(&throttled_keyframe);
+                tokio::spawn(async move {
+                    let mut encoder = Vp8Encoder::new(WIDTH, HEIGHT, 1000).expect("encoder");
+                    let mut packetizer = crate::rtp_clock::FramePacketizer::new();
+                    for n in 0u32..1_000 {
+                        if force.swap(false, Ordering::Relaxed) {
+                            encoder.request_keyframe();
+                        }
+                        if throttled.swap(false, Ordering::Relaxed) {
+                            encoder.request_keyframe_throttled();
+                        }
+                        let pts_us = u64::from(n) * 33_000;
+                        for pkt in encoder.encode(&frame(n), pts_us).expect("encode") {
+                            for p in packetizer.packetize(pts_us, pkt.data).expect("packetize") {
+                                let _ = track.write_rtp(p).await;
+                            }
+                        }
+                        // A still desktop: WGC delivers a burst at start and
+                        // then only on change, so the keyframe forced at
+                        // connect must survive on its own.
+                        let gap = if n < 6 { 33 } else { 1600 };
+                        tokio::time::sleep(Duration::from_millis(gap)).await;
+                    }
+                })
+            };
+
+            let mut last_stats = serde_json::Value::Null;
+            let outcome = loop {
+                let msg = tokio::time::timeout(Duration::from_secs(40), lines_rx.recv())
+                    .await
+                    .expect("the Chrome viewer reports")
+                    .expect("the Chrome viewer ended without a result");
+                if let Some(offer) = msg.get("offer").and_then(|v| v.as_str()) {
+                    let answer = sharer
+                        .set_remote_offer(offer.to_string())
+                        .await
+                        .expect("answer");
+                    send(serde_json::json!({ "answer": answer }));
+                } else if let Some(c) = msg.get("candidate") {
+                    let init = RTCIceCandidateInit {
+                        candidate: c["candidate"].as_str().unwrap_or_default().to_string(),
+                        sdp_mid: c["sdpMid"].as_str().map(str::to_string),
+                        sdp_mline_index: c["sdpMLineIndex"]
+                            .as_u64()
+                            .and_then(|i| u16::try_from(i).ok()),
+                        username_fragment: None,
+                        url: None,
+                    };
+                    let _ = sharer.add_ice_candidate(init).await;
+                } else if let Some(stats) = msg.get("stats") {
+                    last_stats = stats.clone();
+                } else if let Some(result) = msg.get("result") {
+                    break result.as_str().unwrap_or_default().to_string();
+                }
+            };
+            writer.abort();
+            let _ = sharer.close().await;
+            let _ = child.wait();
+            assert_eq!(outcome, "playing", "Chrome decoded no video: {last_stats}");
+        }
+    }
+
     mod files_routing {
         use super::super::route_files_message;
         use crate::files::{build_chunk_frame, fnv1a32, FileEvent, FileMessage};
