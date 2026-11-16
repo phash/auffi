@@ -64,9 +64,15 @@ fn connection_type_of(
     }
 }
 
-/// Connection type of the nominated, succeeded candidate pair; `None` while
-/// no such pair exists yet.
-fn resolve_connection_type(report: &RTCStatsReport) -> Option<ConnectionType> {
+/// Candidate types at both ends of the nominated, succeeded pair; `None`
+/// while no such pair exists yet.
+///
+/// rtc 0.21 names a pair's candidates by their bare id but files the
+/// candidate entries under `RTCLocalIceCandidate_<id>` and
+/// `RTCRemoteIceCandidate_<id>`, so the lookup tries both forms.
+fn active_pair_types(
+    report: &RTCStatsReport,
+) -> Option<(Option<RTCIceCandidateType>, Option<RTCIceCandidateType>)> {
     let (local_id, remote_id) = select_active_pair(report.candidate_pairs().map(|p| {
         (
             p.state,
@@ -75,14 +81,25 @@ fn resolve_connection_type(report: &RTCStatsReport) -> Option<ConnectionType> {
             p.remote_candidate_id.as_str(),
         )
     }))?;
-    let local = match report.get(local_id) {
-        Some(RTCStatsReportEntry::LocalCandidate(c)) => Some(c.candidate_type),
-        _ => None,
+    let lookup = |id: &str, prefix: &str| {
+        [id.to_string(), format!("{prefix}{id}")]
+            .iter()
+            .find_map(|key| match report.get(key) {
+                Some(RTCStatsReportEntry::LocalCandidate(c))
+                | Some(RTCStatsReportEntry::RemoteCandidate(c)) => Some(c.candidate_type),
+                _ => None,
+            })
     };
-    let remote = match report.get(remote_id) {
-        Some(RTCStatsReportEntry::RemoteCandidate(c)) => Some(c.candidate_type),
-        _ => None,
-    };
+    Some((
+        lookup(local_id, "RTCLocalIceCandidate_"),
+        lookup(remote_id, "RTCRemoteIceCandidate_"),
+    ))
+}
+
+/// Connection type of the nominated, succeeded candidate pair; `None` while
+/// no such pair exists yet.
+fn resolve_connection_type(report: &RTCStatsReport) -> Option<ConnectionType> {
+    let (local, remote) = active_pair_types(report)?;
     Some(connection_type_of(local, remote))
 }
 
@@ -1075,6 +1092,21 @@ mod tests {
             assert_eq!(
                 recv(&mut type_rx, "connection type").await,
                 ConnectionType::P2p
+            );
+            // rtc 0.21 keys candidate entries differently from the ids the
+            // pair names. An unresolved type read as "not relayed", so every
+            // relayed session was reported (and billed) as p2p.
+            let report = sharer
+                .pc
+                .get_stats(Instant::now(), StatsSelector::None)
+                .await;
+            assert_eq!(
+                active_pair_types(&report),
+                Some((
+                    Some(RTCIceCandidateType::Host),
+                    Some(RTCIceCandidateType::Host)
+                )),
+                "both ends of the active pair resolve to their candidate type"
             );
 
             // 0.21 masks only the address set as the mDNS local ip. A raw
