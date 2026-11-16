@@ -40,6 +40,20 @@ const page = await browser.newPage({
   userAgent:
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
 });
+// Keep a handle on the viewer's peer connections so the loop can print the
+// inbound video stats: they tell "nothing arrived" apart from "arrived but
+// never decodable" (no keyframe, PLIs unanswered).
+await page.addInitScript(() => {
+  const Native = window.RTCPeerConnection;
+  window.__pcs = [];
+  window.RTCPeerConnection = function (...a) {
+    const pc = new Native(...a);
+    window.__pcs.push(pc);
+    return pc;
+  };
+  window.RTCPeerConnection.prototype = Native.prototype;
+  Object.setPrototypeOf(window.RTCPeerConnection, Native);
+});
 await page.goto(`${url}?code=${code.replace(/-/g, "")}`, { waitUntil: "domcontentloaded" });
 // Consent banner (if any) must not sit on top of the connect button.
 await page.locator("#code").waitFor({ state: "visible", timeout: 20_000 });
@@ -51,12 +65,29 @@ await page.locator("#connect").click();
 
 const started = Date.now();
 let last = "";
+let lastStats = "";
 let playing = false;
 while (Date.now() - started < waitSec * 1000) {
   const status = (await page.locator("#status").innerText().catch(() => "")).trim();
   if (status !== last) {
     console.log(`[${Math.round((Date.now() - started) / 1000)}s] ${status}`);
     last = status;
+  }
+  const stats = await page
+    .evaluate(async () => {
+      for (const pc of window.__pcs ?? []) {
+        for (const s of (await pc.getStats()).values()) {
+          if (s.type === "inbound-rtp" && s.kind === "video") {
+            return `pkts=${s.packetsReceived} lost=${s.packetsLost} frames=${s.framesReceived ?? "-"} decoded=${s.framesDecoded} key=${s.keyFramesDecoded} pli=${s.pliCount} fir=${s.firCount} nack=${s.nackCount}`;
+          }
+        }
+      }
+      return "";
+    })
+    .catch(() => "");
+  if (stats && stats !== lastStats) {
+    console.log(`[${Math.round((Date.now() - started) / 1000)}s] rtp ${stats}`);
+    lastStats = stats;
   }
   const video = await page
     .evaluate(() => {
