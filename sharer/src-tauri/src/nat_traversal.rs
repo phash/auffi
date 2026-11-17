@@ -149,10 +149,8 @@ where
 /// the timeout contract without touching the process-wide cache.
 async fn probe_with_budget(budget: Duration) -> Option<ExternalEndpoint> {
     let fut = async {
-        let opts = SearchOptions {
-            timeout: Some(budget),
-            ..SearchOptions::default()
-        };
+        let mut opts = SearchOptions::default();
+        opts.timeout = Some(budget);
         let gateway = search_gateway(opts).await.ok()?;
         let ip = gateway.get_external_ip().await.ok()?;
         if !is_plausible_external_ip(&ip) {
