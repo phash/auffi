@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { WebSocket } from "ws";
 import type { Db } from "./db.js";
 import type { ViewerInfo } from "./protocol.js";
@@ -173,6 +174,14 @@ export interface UnattendedSession {
    * address that joined (gh #149).
    */
   viewerKey: string;
+  /**
+   * Random secret minted when the password verified and sent to this viewer
+   * only, inside `peer-confirmed`. `POST /turn-credentials` for the device id
+   * must present it: the address alone is shared by every host behind the
+   * viewer's NAT, and the device id is shown on screen (gh #152). Null until
+   * confirmed; in memory only, gone with the session.
+   */
+  viewerTurnToken: string | null;
   /** TURN credentials minted for the sharer, capped at TURN_CREDENTIALS_PER_JOIN. */
   turnCredentialsIssued: number;
   /** TURN credentials minted for the viewer, capped at TURN_CREDENTIALS_PER_JOIN. */
@@ -193,6 +202,13 @@ export interface UnattendedSession {
  * for not-yet-confirmed pairing state; confirmed sessions live until a
  * peer disconnects.
  */
+/** Constant-time comparison; a length mismatch fails without comparing. */
+function sameSecret(expected: string, given: string): boolean {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export const PW_ENTRY_TIMEOUT_MS = 2 * 60 * 1000;
 
 export class UnattendedSessions {
@@ -260,6 +276,7 @@ export class UnattendedSessions {
       viewerInfo,
       createdAt: now,
       viewerKey,
+      viewerTurnToken: null,
       turnCredentialsIssued: 0,
       viewerTurnCredentialsIssued: 0,
     });
@@ -310,24 +327,51 @@ export class UnattendedSessions {
     return this.byDevice.get(deviceId) ?? null;
   }
 
-  transition(deviceId: string, to: UnattendedSession["state"]): void {
+  /** Pre-confirmation moves only; "confirmed" goes through [`confirm`]. */
+  transition(deviceId: string, to: Exclude<UnattendedSession["state"], "confirmed">): void {
     const sess = this.byDevice.get(deviceId);
     if (!sess) return;
     sess.state = to;
   }
 
   /**
+   * The password verified: mark the session confirmed and mint the viewer's
+   * TURN token, which the caller sends in `peer-confirmed`. Null when the
+   * device has no session.
+   */
+  confirm(deviceId: string): string | null {
+    const sess = this.byDevice.get(deviceId);
+    if (!sess) return null;
+    sess.state = "confirmed";
+    sess.viewerTurnToken = randomBytes(16).toString("base64url");
+    return sess.viewerTurnToken;
+  }
+
+  /**
    * Gate for a viewer's `POST /turn-credentials` with a device id: only
    * while the device's session is confirmed (a verified password), only
-   * from the address that joined, within the viewer's own per-join budget.
+   * from the address that joined and with the turn token the viewer got in
+   * `peer-confirmed`, within the viewer's own per-join budget.
    * The id is the number a helper types, not a secret; keeping the viewer's
    * budget apart from the sharer's means a viewer cannot starve the
    * sharer's in-band request either. "unknown" maps to the same 403 as a
    * code with no session.
    */
-  claimViewerTurnCredential(deviceId: string, requesterKey: string): "ok" | "exhausted" | "unknown" {
+  claimViewerTurnCredential(
+    deviceId: string,
+    requesterKey: string,
+    turnToken: string,
+  ): "ok" | "exhausted" | "unknown" {
     const sess = this.byDevice.get(deviceId);
-    if (!sess || sess.state !== "confirmed" || sess.viewerKey !== requesterKey) return "unknown";
+    if (
+      !sess ||
+      sess.state !== "confirmed" ||
+      sess.viewerKey !== requesterKey ||
+      sess.viewerTurnToken === null ||
+      !sameSecret(sess.viewerTurnToken, turnToken)
+    ) {
+      return "unknown";
+    }
     if (sess.viewerTurnCredentialsIssued >= TURN_CREDENTIALS_PER_JOIN) return "exhausted";
     sess.viewerTurnCredentialsIssued += 1;
     return "ok";

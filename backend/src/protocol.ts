@@ -89,7 +89,11 @@ export type PeerJoined = {
   type: "peer-joined";
   viewerInfo: ViewerInfo;
 };
-export type PeerConfirmed = { type: "peer-confirmed" };
+/**
+ * `turnToken` only on the unattended path: the viewer presents it to
+ * `POST /turn-credentials` with the device id (gh #152).
+ */
+export type PeerConfirmed = { type: "peer-confirmed"; turnToken?: string };
 export type PeerRejected = {
   type: "peer-rejected";
   reason: "declined" | "expired" | "sharer-gone";

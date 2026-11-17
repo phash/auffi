@@ -46,7 +46,8 @@ export class SignalingClient {
     private opts: { factory?: WSFactory } = {}
   ) {}
 
-  join(code: string): Promise<void> {
+  /** Resolves on peer-confirmed with the unattended turn token, if any. */
+  join(code: string): Promise<{ turnToken: string | undefined }> {
     const factory = this.opts.factory ?? ((u) => new WebSocket(u));
     const ws = factory(this.url);
     this.ws = ws;
@@ -76,7 +77,7 @@ export class SignalingClient {
         };
         if (msg.type === "peer-confirmed") {
           this.settled = true;
-          resolve();
+          resolve({ turnToken: msg.turnToken });
         } else if (msg.type === "peer-rejected") {
           fail(`peer-rejected: ${msg.reason}`);
         } else if (msg.type === "error") {

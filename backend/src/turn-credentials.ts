@@ -27,7 +27,11 @@ export type TurnConfig = {
    * fetches again after `peer-confirmed` (gh #149).
    */
   unattendedSessions?: {
-    claimViewerTurnCredential(deviceId: string, requesterKey: string): "ok" | "exhausted" | "unknown";
+    claimViewerTurnCredential(
+      deviceId: string,
+      requesterKey: string,
+      turnToken: string,
+    ): "ok" | "exhausted" | "unknown";
   };
 };
 
@@ -65,8 +69,9 @@ export function registerTurnEndpoint(
       // by non-browser callers — the code is only known to peers that have
       // already gone through register / join (gh #60).
       if (cfg.sessionStore) {
-        const body = (req.body ?? {}) as { code?: unknown };
+        const body = (req.body ?? {}) as { code?: unknown; turnToken?: unknown };
         const raw = typeof body.code === "string" ? body.code : "";
+        const turnToken = typeof body.turnToken === "string" ? body.turnToken : "";
         const normalized = normalizeCode(raw);
         const adHoc = normalized === null ? "unknown" : cfg.sessionStore.claimTurnCredential(normalized);
         if (adHoc === "exhausted") {
@@ -75,7 +80,7 @@ export function registerTurnEndpoint(
         if (adHoc === "unknown") {
           const unattended =
             normalized !== null && cfg.unattendedSessions !== undefined
-              ? cfg.unattendedSessions.claimViewerTurnCredential(normalized, rateLimitKey(req.ip))
+              ? cfg.unattendedSessions.claimViewerTurnCredential(normalized, rateLimitKey(req.ip), turnToken)
               : "unknown";
           if (unattended === "unknown") {
             return reply.status(403).send({ error: "no active session" });

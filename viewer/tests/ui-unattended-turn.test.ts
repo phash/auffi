@@ -35,9 +35,11 @@ describe("unattended TURN credentials", () => {
     input.value = "geheim";
     (document.getElementById("pw-prompt-submit") as HTMLButtonElement).click();
 
-    const pc = await confirm();
+    const pc = await confirm("tok-152");
 
     expect(turnCalls(fetchMock)).toHaveLength(1);
+    const [, init] = turnCalls(fetchMock)[0] as [string, { body: string }];
+    expect(JSON.parse(init.body)).toEqual({ code: "123-456-789", turnToken: "tok-152" });
     expect(pc.config.iceServers).toEqual([{ urls: "turn:relay.example", username: "u", credential: "c" }]);
     await flush();
     expect(ws.sentOfType("relay")).toHaveLength(1);

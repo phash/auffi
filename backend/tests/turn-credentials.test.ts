@@ -317,22 +317,27 @@ describe("POST /turn-credentials — unattended device ids", () => {
 
   afterEach(() => {
     sessions.remove(DEVICE_ID);
+    turnToken = "";
   });
 
-  async function post(code: string, ip = VIEWER_IP): Promise<{ status: number; body: unknown }> {
+  let turnToken = "";
+
+  // token null = the field is left out.
+  async function post(code: string, ip = VIEWER_IP, token: string | null = turnToken): Promise<{ status: number; body: unknown }> {
     const res = await app.inject({
       method: "POST",
       url: "/turn-credentials",
       remoteAddress: ip,
       headers: { origin: "http://localhost:5173" },
-      payload: { code },
+      payload: token === null ? { code } : { code, turnToken: token },
     });
     return { status: res.statusCode, body: res.json() };
   }
 
   function join(state: "awaiting-pw" | "pw-in-flight" | "confirmed", ip = VIEWER_IP): void {
     sessions.begin(DEVICE_ID, {} as WebSocket, {} as WebSocket, { ipPrefix: "10.xxx", country: null }, rateLimitKey(ip));
-    sessions.transition(DEVICE_ID, state);
+    if (state === "confirmed") turnToken = sessions.confirm(DEVICE_ID) ?? "";
+    else sessions.transition(DEVICE_ID, state);
   }
 
   it("refuses a device id before its password verified", async () => {
@@ -349,6 +354,16 @@ describe("POST /turn-credentials — unattended device ids", () => {
     for (let i = 0; i <= TURN_CREDENTIALS_PER_JOIN; i++) statuses.push((await post(DEVICE_ID)).status);
     expect(statuses).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN).fill(200), 429]);
     expect((await post(DEVICE_ID)).body).toEqual({ error: "turn credential budget exhausted" });
+  });
+
+  // gh #152: the address alone is shared by every host behind the viewer's NAT.
+  it("refuses the confirmed viewer's address without the session's turn token", async () => {
+    // Own address: the route allows 10 requests a minute per IP.
+    const ip = "198.51.100.152";
+    join("confirmed", ip);
+    expect((await post(DEVICE_ID, ip, null)).status).toBe(403);
+    expect((await post(DEVICE_ID, ip, "not-the-token")).status).toBe(403);
+    expect((await post(DEVICE_ID, ip)).status).toBe(200);
   });
 
   it("refuses every address but the confirmed viewer's", async () => {

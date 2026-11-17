@@ -9,6 +9,7 @@ type TurnCredentialsResponse = {
 export async function fetchIceServers(
   backendHttpUrl: string,
   sessionCode: string,
+  turnToken?: string,
 ): Promise<IceServer[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3_000);
@@ -17,7 +18,9 @@ export async function fetchIceServers(
     const res = await fetch(`${backendHttpUrl}/turn-credentials`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: sessionCode }),
+      body: JSON.stringify(
+        turnToken === undefined ? { code: sessionCode } : { code: sessionCode, turnToken },
+      ),
       signal: controller.signal,
     });
 

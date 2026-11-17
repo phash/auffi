@@ -976,7 +976,7 @@ export function bindUI(backendWsUrl: string): void {
 
       signaling
         .join(code)
-        .then(async () => {
+        .then(async ({ turnToken }) => {
           // Checked by generation, not by peer/signaling being non-null: a
           // reconnect may already have put a newer session's objects there.
           if (connectGen !== connectGeneration || !peer) return;
@@ -987,7 +987,7 @@ export function bindUI(backendWsUrl: string): void {
           armConnectTimeout(CONNECT_MEDIA_TIMEOUT_MS);
           hidePwPrompt();
           if (unattended) {
-            const iceServers = await fetchIceServers(backendHttpUrl, code);
+            const iceServers = await fetchIceServers(backendHttpUrl, code, turnToken);
             if (connectGen !== connectGeneration || !peer) return;
             relayAvailable = iceServers.length > 0;
             peer.setIceServers(iceServers);

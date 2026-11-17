@@ -98,6 +98,16 @@ describe("fetchIceServers", () => {
     expect(JSON.parse(calledOpts.body)).toEqual({ code: "123-456-789" });
   });
 
+  it("sends the turn token along when it has one (gh #152)", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(makeFetchResponse(403, { error: "no active session" }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await fetchIceServers("https://api.example.com", "123-456-789", "tok-152");
+
+    const calledOpts = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(calledOpts.body)).toEqual({ code: "123-456-789", turnToken: "tok-152" });
+  });
+
   it("returns only TURN entries when endpoint succeeds", async () => {
     const body = {
       urls: ["turn:relay.example.com:3478"],

@@ -145,7 +145,7 @@ export async function flush(): Promise<void> {
 export interface UiSession {
   ws: MockWS;
   /** Deliver peer-confirmed and wait for ViewerPeer.start() to create the PC. */
-  confirm(): Promise<MockPC>;
+  confirm(turnToken?: string): Promise<MockPC>;
   /** Fire the remote track (what setVideoStream / the toolbar keys off). */
   track(pc: MockPC): void;
   /** Open both data channels so DataChannelHub.ready() resolves. */
@@ -178,8 +178,8 @@ export async function startUiSession(code = "123-456-789"): Promise<UiSession> {
 
   return {
     ws,
-    async confirm() {
-      ws.fakeMessage({ type: "peer-confirmed" });
+    async confirm(turnToken) {
+      ws.fakeMessage(turnToken === undefined ? { type: "peer-confirmed" } : { type: "peer-confirmed", turnToken });
       await flush();
       const pc = MockPC.instances.at(-1);
       if (!pc) throw new Error("ViewerPeer.start() did not create an RTCPeerConnection");

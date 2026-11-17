@@ -134,7 +134,12 @@ viewer IP never leaves the VPS). Both paths fill it: the unattended mirror (sent
 After sharer accepted.
 ```json
 { "type": "peer-confirmed" }
+{ "type": "peer-confirmed", "turnToken": "base64url-22-chars" }
 ```
+`turnToken` only on the unattended path (`pw-check-result: ok`): a random
+secret, new for every confirmed session, that the viewer sends with the device
+id to `POST /turn-credentials` (gh #152). Never logged; held in memory for the
+session's lifetime only.
 
 ### `peer-rejected` (→ viewer)
 After sharer declined or session ended.
@@ -422,6 +427,8 @@ legitimate request always finds the session confirmed.
 > helper types, not a secret, so the endpoint honours it only once the
 > device's session is **confirmed** (`pw-check-result: ok`), only from the
 > address that joined (its `rateLimitKey`: an IPv4 address or an IPv6 /64),
+> only with the `turnToken` from that session's `peer-confirmed` (the address
+> alone is shared by every host behind the viewer's NAT, gh #152),
 > and within the viewer's own budget of **2** per session
 > (`TURN_CREDENTIALS_PER_JOIN`, kept apart from the sharer's).
 > The viewer's pre-join fetch for a device id therefore gets 403. After
@@ -654,7 +661,8 @@ Handler: `backend/src/turn-credentials.ts`. Callers:
 registered when `TURN_SHARED_SECRET` is set (otherwise 404).
 
 Request: `Origin` header in the backend's allow-list (the sharer sets it
-explicitly) + JSON body `{ "code": "284-915-073" }`.
+explicitly) + JSON body `{ "code": "284-915-073" }`; for an unattended
+device id also `"turnToken"` from `peer-confirmed`.
 
 ```json
 { "urls": ["turn:turn.auffi.app:3478", "turns:turn.auffi.app:5349"], "username": "1715000000:uuid", "credential": "base64==", "ttl": 3600 }
@@ -662,9 +670,9 @@ explicitly) + JSON body `{ "code": "284-915-073" }`.
 
 | Status | Body | When |
 |--------|------|------|
-| 200 | credentials above | live ad-hoc session with budget left, or a confirmed unattended session for that device id, asked from its viewer's address, with budget left |
+| 200 | credentials above | live ad-hoc session with budget left, or a confirmed unattended session for that device id, asked from its viewer's address with its `turnToken`, with budget left |
 | 403 | `{"error":"origin not allowed"}` | `Origin` missing or not allow-listed |
-| 403 | `{"error":"no active session"}` | code unknown / malformed and no unattended match; for a device id also: session not confirmed yet, or asked from another address |
+| 403 | `{"error":"no active session"}` | code unknown / malformed and no unattended match; for a device id also: session not confirmed yet, asked from another address, or `turnToken` missing/wrong |
 | 429 | `{"error":"turn credential budget exhausted"}` | the ad-hoc code spent its budget: **4** credentials up front plus **2** per viewer join (`TURN_CREDENTIALS_UP_FRONT` / `_PER_JOIN`, `backend/src/codes.ts`); or, for an unattended device id, the viewer spent its **2** for this session (§ `turn-credentials`) |
 | 429 | `@fastify/rate-limit` default body | more than 10 requests/min/IP |
 

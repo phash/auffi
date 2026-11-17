@@ -469,8 +469,9 @@ export function registerSignaling(
           }
           if (msg.result === "ok") {
             resetPwFail(db, sess.deviceId);
-            sessions.transition(sess.deviceId, "confirmed");
-            send(sess.viewer, { type: "peer-confirmed" });
+            const turnToken = sessions.confirm(sess.deviceId);
+            if (turnToken === null) return;
+            send(sess.viewer, { type: "peer-confirmed", turnToken });
             // Mirror peer-joined to the sharer so its WebRTC code path
             // matches the ad-hoc one (the viewer creates the offer once
             // confirmed; the sharer waits for it). NB: `req` here is

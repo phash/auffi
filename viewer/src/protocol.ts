@@ -55,7 +55,11 @@ export type RelayMsg = { type: "relay"; payload: RelayPayload };
  */
 export type PwAttempt = { type: "pw-attempt"; password: string };
 
-export type PeerConfirmed = { type: "peer-confirmed" };
+/**
+ * `turnToken` only on the unattended path: sent with the device id to
+ * `POST /turn-credentials` after the password verified (gh #152).
+ */
+export type PeerConfirmed = { type: "peer-confirmed"; turnToken?: string };
 export type PeerRejected = {
   type: "peer-rejected";
   reason: "declined" | "expired" | "sharer-gone";

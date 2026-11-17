@@ -38,7 +38,18 @@ describe("SignalingClient", () => {
     const p = client.join("284-915-073");
     mock.fakeOpen();
     mock.fakeMessage({ type: "peer-confirmed" });
-    await expect(p).resolves.toBeUndefined();
+    await expect(p).resolves.toEqual({ turnToken: undefined });
+  });
+
+  // gh #152: the unattended path's peer-confirmed carries the token the
+  // viewer needs for its post-confirm /turn-credentials fetch.
+  it("resolves with the turn token peer-confirmed carries", async () => {
+    const mock = new MockWS();
+    const client = new SignalingClient("ws://x", { factory: () => mock as unknown as WebSocket });
+    const p = client.join("284-915-073");
+    mock.fakeOpen();
+    mock.fakeMessage({ type: "peer-confirmed", turnToken: "tok-152" });
+    await expect(p).resolves.toEqual({ turnToken: "tok-152" });
   });
 
   it("rejects on invalid-code error", async () => {

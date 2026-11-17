@@ -156,7 +156,7 @@ describe("UnattendedSessions", () => {
     expect(ss.findByViewer(v)?.state).toBe("awaiting-pw");
     ss.transition("123-456-789", "pw-in-flight");
     expect(ss.findByViewer(v)?.state).toBe("pw-in-flight");
-    ss.transition("123-456-789", "confirmed");
+    expect(ss.confirm("123-456-789")).toEqual(expect.any(String));
     expect(ss.findByViewer(v)?.state).toBe("confirmed");
   });
 
@@ -195,7 +195,7 @@ describe("UnattendedSessions", () => {
     ss.begin("111-111-111", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY, 0);
     ss.transition("111-111-111", "pw-in-flight");
     ss.begin("222-222-222", v2, s2, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY, 0);
-    ss.transition("222-222-222", "confirmed");
+    ss.confirm("222-222-222");
 
     const stale = ss.sweepStale(PW_ENTRY_TIMEOUT_MS + 1);
     expect(stale.map((x) => x.deviceId)).toEqual(["111-111-111"]);
@@ -208,31 +208,53 @@ describe("UnattendedSessions", () => {
   // only for the address that joined.
   it("issues a device id's viewer credentials only for a confirmed session", () => {
     const ss = new UnattendedSessions();
-    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, "x")).toBe("unknown");
     ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
-    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, "x")).toBe("unknown");
     ss.transition("123-456-789", "pw-in-flight");
-    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
-    ss.transition("123-456-789", "confirmed");
-    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("ok");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, "x")).toBe("unknown");
+    const token = ss.confirm("123-456-789") ?? "";
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, token)).toBe("ok");
     ss.detachViewer(v);
-    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("unknown");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, token)).toBe("unknown");
   });
 
   it("refuses a confirmed session's viewer credentials to any other address", () => {
     const ss = new UnattendedSessions();
     ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
-    ss.transition("123-456-789", "confirmed");
-    expect(ss.claimViewerTurnCredential("123-456-789", "203.0.113.9")).toBe("unknown");
-    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("ok");
+    const token = ss.confirm("123-456-789") ?? "";
+    expect(ss.claimViewerTurnCredential("123-456-789", "203.0.113.9", token)).toBe("unknown");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, token)).toBe("ok");
+  });
+
+  // gh #152: a second host behind the viewer's NAT shares its address and can
+  // read the device id off the screen, but never sees peer-confirmed.
+  it("refuses a confirmed session's viewer credentials without its turn token", () => {
+    const ss = new UnattendedSessions();
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
+    const token = ss.confirm("123-456-789") ?? "";
+    expect(token.length).toBeGreaterThanOrEqual(22);
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, "")).toBe("unknown");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, `${token.slice(0, -1)}x`)).toBe("unknown");
+    expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, token)).toBe("ok");
+  });
+
+  it("mints a new turn token for every confirmed session", () => {
+    const ss = new UnattendedSessions();
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
+    const first = ss.confirm("123-456-789");
+    ss.detachViewer(v);
+    ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
+    expect(ss.confirm("123-456-789")).not.toBe(first);
+    expect(ss.confirm("999-999-999")).toBeNull();
   });
 
   it("caps a confirmed session's viewer credentials at the per-join budget", () => {
     const ss = new UnattendedSessions();
     ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
-    ss.transition("123-456-789", "confirmed");
+    const token = ss.confirm("123-456-789") ?? "";
     const results = Array.from({ length: TURN_CREDENTIALS_PER_JOIN + 1 }, () =>
-      ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY),
+      ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, token),
     );
     expect(results).toEqual([...Array(TURN_CREDENTIALS_PER_JOIN).fill("ok"), "exhausted"]);
   });
@@ -244,7 +266,7 @@ describe("UnattendedSessions", () => {
     expect(ss.claimSharerTurnCredential(s)).toBe(false);
     ss.transition("123-456-789", "pw-in-flight");
     expect(ss.claimSharerTurnCredential(s)).toBe(false);
-    ss.transition("123-456-789", "confirmed");
+    ss.confirm("123-456-789");
     const granted = Array.from({ length: TURN_CREDENTIALS_PER_JOIN + 1 }, () =>
       ss.claimSharerTurnCredential(s),
     );
@@ -256,9 +278,9 @@ describe("UnattendedSessions", () => {
   it("a viewer REST fetch never spends the confirmed session's sharer budget", () => {
     const ss = new UnattendedSessions();
     ss.begin("123-456-789", v, s, { ipPrefix: "84.xxx", country: null }, VIEWER_KEY);
-    ss.transition("123-456-789", "confirmed");
+    const token = ss.confirm("123-456-789") ?? "";
     for (let i = 0; i < TURN_CREDENTIALS_PER_JOIN; i++) {
-      expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY)).toBe("ok");
+      expect(ss.claimViewerTurnCredential("123-456-789", VIEWER_KEY, token)).toBe("ok");
     }
     const granted = Array.from({ length: TURN_CREDENTIALS_PER_JOIN }, () => ss.claimSharerTurnCredential(s));
     expect(granted).toEqual(Array(TURN_CREDENTIALS_PER_JOIN).fill(true));
@@ -942,7 +964,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     sharer.send(
       JSON.stringify({ type: "pw-check-result", attemptId: checkB.attemptId, result: "ok" }),
     );
-    expect(await once(b, "message")).toEqual({ type: "peer-confirmed" });
+    expect(await once(b, "message")).toEqual({ type: "peer-confirmed", turnToken: expect.any(String) });
     b.close();
     sharer.close();
   });
@@ -956,7 +978,7 @@ describe("/signal unattended connect flow (gh #17)", () => {
     viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
     await once(sharer, "message"); // pw-check
     sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
-    expect(await once(viewer, "message")).toEqual({ type: "peer-confirmed" });
+    expect(await once(viewer, "message")).toEqual({ type: "peer-confirmed", turnToken: expect.any(String) });
     viewer.close();
     sharer.close();
   });
@@ -1384,6 +1406,13 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
   });
 
   async function confirmAViewer(url: string, sharer: WebSocket): Promise<WebSocket> {
+    return (await confirmAViewerWithToken(url, sharer)).viewer;
+  }
+
+  async function confirmAViewerWithToken(
+    url: string,
+    sharer: WebSocket,
+  ): Promise<{ viewer: WebSocket; turnToken: string }> {
     const viewer = new WebSocket(url, { headers: { origin: ORIGIN } });
     await new Promise<void>((r) => viewer.once("open", () => r()));
     const next = (ws: WebSocket): Promise<unknown> =>
@@ -1393,9 +1422,9 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
     viewer.send(JSON.stringify({ type: "pw-attempt", password: "right" }));
     await next(sharer); // pw-check
     sharer.send(JSON.stringify({ type: "pw-check-result", result: "ok" }));
-    await next(viewer); // peer-confirmed
+    const confirmed = (await next(viewer)) as { type: string; turnToken: string };
     await next(sharer); // peer-joined
-    return viewer;
+    return { viewer, turnToken: confirmed.turnToken };
   }
 
   type TurnCredentialsFrame = {
@@ -1461,19 +1490,20 @@ describe("/signal turn-credentials-request (unattended sharer)", () => {
     process.env.ALLOWED_ORIGINS = ORIGIN;
     const { app, url, db } = await startApp(true);
     const turnUrl = url.replace(/^ws/, "http").replace(/\/signal$/, "/turn-credentials");
-    const fetchTurn = async (): Promise<number> =>
+    const fetchTurn = async (turnToken?: string): Promise<number> =>
       (
         await fetch(turnUrl, {
           method: "POST",
           headers: { origin: ORIGIN, "content-type": "application/json" },
-          body: JSON.stringify({ code: deviceId }),
+          body: JSON.stringify({ code: deviceId, turnToken }),
         })
       ).status;
     try {
       const sharer = await openSharerAt(url);
       expect(await fetchTurn()).toBe(403);
-      const viewer = await confirmAViewer(url, sharer);
-      expect(await fetchTurn()).toBe(200);
+      const { viewer, turnToken } = await confirmAViewerWithToken(url, sharer);
+      expect(await fetchTurn()).toBe(403);
+      expect(await fetchTurn(turnToken)).toBe(200);
       viewer.close();
       sharer.close();
     } finally {
