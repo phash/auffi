@@ -54,13 +54,20 @@ stage() {
     # Caddy writes the renewed key and cert one after the other (gh #153).
     # A pass between the two writes would stage a mismatched pair, which
     # coturn loads and would keep until the next pass, 6 h later.
-    if [ "$(seconds_since_last_write "${crt}" "${key}" "${src_dir}/${TURN_REALM}.json")" -lt "${SETTLE}" ]; then
+    age="$(seconds_since_last_write "${crt}" "${key}" "${src_dir}/${TURN_REALM}.json")"
+    if [ "${age}" -lt "${SETTLE}" ]; then
       log "cert files changed less than ${SETTLE} s ago; staging once they have settled"
       return 2
     fi
     changed=false
     install_if_changed "${crt}" "${STAGED}/cert.pem" && changed=true
     install_if_changed "${key}" "${STAGED}/key.pem" && changed=true
+    # A write landing between the age check and the copies can still pair
+    # an old cert with a new key; the next settled pass replaces it.
+    if [ "$(seconds_since_last_write "${crt}" "${key}" "${src_dir}/${TURN_REALM}.json")" -lt "${age}" ]; then
+      log "cert files changed while staging; staging again once they have settled"
+      return 2
+    fi
     if [ "${changed}" = true ]; then
       log "staged cert and key from ${src_dir}"
     fi

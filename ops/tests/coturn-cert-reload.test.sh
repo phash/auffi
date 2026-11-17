@@ -199,4 +199,13 @@ assert_eq "true" "${ok}" "stage: the settled pair is staged after the settle tim
 kill -TERM "${MID_PID}"
 wait_for 3 exited "${MID_PID}" || true
 
+# compose waits for the sidecar's ready marker before it starts coturn. The
+# first pass can wait out the settle time when Caddy wrote the cert just
+# before `compose up`, so the healthcheck grace period has to cover it or
+# the deploy aborts with an unhealthy sidecar.
+settle_default="$(sed -n 's/^SETTLE="\${STAGE_SETTLE_SEC:-\([0-9]*\)}"$/\1/p' "${COTURN_DIR}/cert-stage.sh")"
+start_period="$(awk '/turn-cert-stage:/{s=1} s && /start_period:/{gsub(/[^0-9]/,"");print;exit}' "${OPS_DIR}/../docker-compose.cluster.yml")"
+assert_eq "true" "$([[ -n "${settle_default}" && -n "${start_period}" && "${start_period}" -gt $(( settle_default + 10 )) ]] && echo true || echo "false (settle ${settle_default}s, start_period ${start_period}s)")" \
+  "compose: the sidecar healthcheck grace covers the first settle wait"
+
 finish

@@ -100,13 +100,16 @@ services:
       TURN_REALM: ${TURN_REALM:-turn.auffi.app}
     entrypoint: ["/bin/sh", "/cert-stage.sh"]
     # Healthy once the first staging pass is done (cert copied or the empty
-    # pair written), so coturn's first start sees the current state.
+    # pair written), so coturn's first start sees the current state. The
+    # first pass waits out STAGE_SETTLE_SEC (60 s) when Caddy wrote the cert
+    # just before `compose up`; start_period covers that wait; a healthy
+    # sidecar still turns healthy on its first check.
     healthcheck:
       test: ["CMD-SHELL", "test -e /tmp/staged-once"]
       interval: 5s
       timeout: 2s
       retries: 3
-      start_period: 5s
+      start_period: 90s
 
   coturn:
     volumes:
