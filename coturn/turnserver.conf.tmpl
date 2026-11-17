@@ -64,7 +64,7 @@ denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 # plain v4 ranges above match native-v4-form peers only. Keeping it is safe: a
 # real WebRTC candidate is always a native v4 or native v6 address, never an
 # ::ffff-mapped one, so no legitimate peer is ever presented in the form this
-# range matches. Verified on coturn 4.6.3 and 4.18.0: native-v4 public peers
+# range matches. Verified on coturn 4.6.3, 4.18.0 and 4.19.0: native-v4 public peers
 # stay ALLOWED while ::ffff:<private> is DENIED.
 denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
 # NB: never add a bare `denied-peer-ip=::` alongside these. coturn parses the
