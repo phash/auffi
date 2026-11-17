@@ -14,6 +14,15 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.7.4 — released 2026-11-17. Security release: WebRTC stack on
+  // webrtc-rs 0.21 (fixes RUSTSEC-2026-0387), unattended viewers get TURN
+  // credentials only after the password verified (gh #149), brand-mark icon.
+  "Auffi_0.7.4_amd64.deb",
+  "Auffi-0.7.4-1.x86_64.rpm",
+  "Auffi_0.7.4_amd64.AppImage",
+  "Auffi_0.7.4_x64-setup.exe",
+  "Auffi_0.7.4_x64_en-US.msi",
+  "Auffi_0.7.4_x64_portable.exe",
   // 0.7.3 — released 2026-11-14. Reliability release from a full review:
   // the sharer starts hidden in the tray on autostart, a second launch
   // surfaces the running one, quitting tells the helper at once, unattended
