@@ -52,7 +52,7 @@ The script:
 |---------|-------------|
 | **backend** | Builds image locally (`auffi-backend:smoke`). Exposes port 8081 on localhost for the WS test. All env vars injected inline (no `.env.prod` needed at runtime). |
 | **caddy** | Mounts `caddy/Caddyfile.local` (site address = `localhost`, `tls internal`). Uses `caddy-data-smoke` volume to isolate Caddy's local-CA material. Ports remapped to `8080` (HTTP) / `8443` (HTTPS) via `CADDY_HTTP_PORT` / `CADDY_HTTPS_PORT` env vars. |
-| **coturn** | Same image as prod (`coturn/coturn:4.18.0-alpine`, from `docker-compose.prod.yml`). Mounts `coturn/turnserver.conf.notls.tmpl` (no TLS, no DTLS) so it works without certificates. `TURN_REALM=localhost`. |
+| **coturn** | Same image as prod (`coturn/coturn:4.19.0-alpine`, from `docker-compose.prod.yml`). Mounts `coturn/turnserver.conf.notls.tmpl` (no TLS, no DTLS) so it works without certificates. `TURN_REALM=localhost`. |
 | **viewer-build** | One-shot `busybox` container that copies `./viewer/dist` into the `viewer-static` volume for Caddy to serve. |
 
 ---
