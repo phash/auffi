@@ -100,6 +100,45 @@ pub(super) fn stop_signaled(stop_rx: &mpsc::Receiver<()>) -> bool {
     )
 }
 
+// ── Frame pacing for the polling backends ───────────────────────────────────
+
+/// Target cadence of the X11 `GetImage` loop: 60 fps. WGC and the PipeWire
+/// portal push frames at the compositor's own rate; the Windows GDI fallback
+/// keeps its own slower interval.
+#[cfg(target_os = "linux")]
+pub(super) const FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
+
+/// Deadline-based pacing for a polling capture loop.
+///
+/// The grab itself takes time (a 1080p X11 `GetImage` several milliseconds),
+/// so the old fixed sleep after it held the loops well below their nominal
+/// rate. A loop that fell behind resumes from the late grab instead of firing
+/// the missed slots back to back.
+pub(super) struct FramePacer {
+    next: std::time::Instant,
+    interval: std::time::Duration,
+}
+
+impl FramePacer {
+    pub(super) fn new(interval: std::time::Duration, now: std::time::Instant) -> Self {
+        Self {
+            next: now + interval,
+            interval,
+        }
+    }
+
+    /// How long to sleep after a grab that finished at `now`.
+    pub(super) fn wait(&mut self, now: std::time::Instant) -> std::time::Duration {
+        if now >= self.next {
+            self.next = now + self.interval;
+            return std::time::Duration::ZERO;
+        }
+        let wait = self.next - now;
+        self.next += self.interval;
+        wait
+    }
+}
+
 // ── Backend selection helper ────────────────────────────────────────────────
 
 /// The backend variant selected for this process invocation.
@@ -374,6 +413,40 @@ impl ScreenCapturer {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn the_pacer_sleeps_the_rest_of_the_interval_after_a_grab() {
+        let start = Instant::now();
+        let interval = Duration::from_millis(16);
+        let mut pacer = FramePacer::new(interval, start);
+        // The grab took 6 ms: sleep 10, not 16 — a fixed sleep after the grab
+        // is what held the X11 loop below its target rate.
+        assert_eq!(
+            pacer.wait(start + Duration::from_millis(6)),
+            Duration::from_millis(10)
+        );
+        assert_eq!(
+            pacer.wait(start + Duration::from_millis(20)),
+            Duration::from_millis(12)
+        );
+    }
+
+    #[test]
+    fn a_late_grab_does_not_sleep_and_does_not_burst_to_catch_up() {
+        let start = Instant::now();
+        let interval = Duration::from_millis(16);
+        let mut pacer = FramePacer::new(interval, start);
+        let late = start + Duration::from_millis(50);
+        assert_eq!(pacer.wait(late), Duration::ZERO);
+        // The schedule restarts from the late grab instead of firing the
+        // missed slots back to back.
+        assert_eq!(
+            pacer.wait(late + Duration::from_millis(4)),
+            Duration::from_millis(12)
+        );
+    }
+
     use super::*;
 
     // XDG_SESSION_TYPE is process-global and read at the same instant by

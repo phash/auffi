@@ -4,7 +4,8 @@ use x11rb::{
     connection::Connection,
     protocol::{
         randr::ConnectionExt as RandrExt,
-        xproto::{ConnectionExt as XprotoExt, ImageFormat},
+        shm::{self, ConnectionExt as ShmExt},
+        xproto::{ConnectionExt as XprotoExt, ImageFormat, Window},
     },
     rust_connection::RustConnection,
 };
@@ -92,8 +93,18 @@ impl X11Capturer {
         std::thread::Builder::new()
             .name("screen-capture-x11".to_string())
             .spawn(move || {
-                let interval = std::time::Duration::from_millis(33); // ~30 fps
+                let shm_image =
+                    match ShmImage::new(&conn, usize::from(frame_w) * usize::from(frame_h) * 4) {
+                        Ok(shm_image) => Some(shm_image),
+                        Err(e) => {
+                            crate::dbg_log(&format!(
+                                "[screen-capture] MIT-SHM unavailable ({e}); falling back to GetImage"
+                            ));
+                            None
+                        }
+                    };
                 let start = std::time::Instant::now();
+                let mut pacer = super::FramePacer::new(super::FRAME_INTERVAL, start);
                 loop {
                     if super::stop_signaled(&stop_rx) {
                         break;
@@ -101,20 +112,24 @@ impl X11Capturer {
 
                     let pts_us = start.elapsed().as_micros() as u64;
 
-                    let image = match conn
-                        .get_image(
-                            ImageFormat::Z_PIXMAP,
-                            root,
-                            frame_x,
-                            frame_y,
-                            frame_w,
-                            frame_h,
-                            !0u32,
-                        )
-                        .map_err(|e| e.to_string())
-                        .and_then(|cookie| cookie.reply().map_err(|e| e.to_string()))
-                    {
-                        Ok(img) => img,
+                    let grabbed = match &shm_image {
+                        Some(shm_image) => shm_image.grab(root, frame_x, frame_y, frame_w, frame_h),
+                        None => conn
+                            .get_image(
+                                ImageFormat::Z_PIXMAP,
+                                root,
+                                frame_x,
+                                frame_y,
+                                frame_w,
+                                frame_h,
+                                !0u32,
+                            )
+                            .map_err(|e| e.to_string())
+                            .and_then(|cookie| cookie.reply().map_err(|e| e.to_string()))
+                            .map(|img| (img.data, img.depth)),
+                    };
+                    let (data, depth) = match grabbed {
+                        Ok(image) => image,
                         Err(e) => {
                             // dbg_log, not eprintln!: tauri-cli pipe buffering
                             // eats stderr and release builds have no console —
@@ -129,7 +144,7 @@ impl X11Capturer {
                         }
                     };
 
-                    let bgra = convert_to_bgra(image.data, image.depth);
+                    let bgra = convert_to_bgra(data, depth);
                     let frame = BgraFrame { data: bgra, pts_us };
 
                     match tx.try_send(frame) {
@@ -143,7 +158,7 @@ impl X11Capturer {
                         }
                     }
 
-                    std::thread::sleep(interval);
+                    std::thread::sleep(pacer.wait(std::time::Instant::now()));
                 }
             })
             .map_err(|e| e.to_string())?;
@@ -154,6 +169,99 @@ impl X11Capturer {
             frame_width: frame_w as u32,
             frame_height: frame_h as u32,
         })
+    }
+}
+
+/// A SysV shared-memory segment the X server writes captured frames into.
+///
+/// Plain `GetImage` ships every frame through the X socket — about 8 MB per
+/// 1080p frame, which took ~17 ms on its own and held the loop below 60 fps
+/// (and near 30 at 1440p). With MIT-SHM the server writes straight into
+/// memory both sides map.
+struct ShmImage<'c> {
+    conn: &'c RustConnection,
+    seg: shm::Seg,
+    addr: *mut libc::c_void,
+    len: usize,
+}
+
+impl<'c> ShmImage<'c> {
+    fn new(conn: &'c RustConnection, len: usize) -> Result<Self, String> {
+        conn.shm_query_version()
+            .map_err(|e| e.to_string())?
+            .reply()
+            .map_err(|e| format!("no MIT-SHM extension: {e}"))?;
+        // SAFETY: plain SysV calls; every failure path below releases what
+        // was acquired before it.
+        let id = unsafe { libc::shmget(libc::IPC_PRIVATE, len, libc::IPC_CREAT | 0o600) };
+        if id < 0 {
+            return Err(format!("shmget: {}", std::io::Error::last_os_error()));
+        }
+        let addr = unsafe { libc::shmat(id, std::ptr::null(), 0) };
+        if addr as isize == -1 {
+            let err = std::io::Error::last_os_error();
+            unsafe { libc::shmctl(id, libc::IPC_RMID, std::ptr::null_mut()) };
+            return Err(format!("shmat: {err}"));
+        }
+        let attached = conn
+            .generate_id()
+            .map_err(|e| e.to_string())
+            .and_then(|seg| {
+                conn.shm_attach(seg, id as u32, false)
+                    .map_err(|e| e.to_string())?
+                    .check()
+                    .map_err(|e| format!("server cannot attach the segment: {e}"))?;
+                Ok(seg)
+            });
+        // Marked for removal once both sides are attached: the kernel frees it
+        // when the last of them detaches, so a crash cannot leak the segment.
+        unsafe { libc::shmctl(id, libc::IPC_RMID, std::ptr::null_mut()) };
+        match attached {
+            Ok(seg) => Ok(Self {
+                conn,
+                seg,
+                addr,
+                len,
+            }),
+            Err(e) => {
+                unsafe { libc::shmdt(addr) };
+                Err(e)
+            }
+        }
+    }
+
+    /// Capture one frame; returns its bytes and the image depth.
+    fn grab(&self, root: Window, x: i16, y: i16, w: u16, h: u16) -> Result<(Vec<u8>, u8), String> {
+        let reply = self
+            .conn
+            .shm_get_image(
+                root,
+                x,
+                y,
+                w,
+                h,
+                !0,
+                ImageFormat::Z_PIXMAP.into(),
+                self.seg,
+                0,
+            )
+            .map_err(|e| e.to_string())?
+            .reply()
+            .map_err(|e| e.to_string())?;
+        let size = (reply.size as usize).min(self.len);
+        // SAFETY: `addr` maps `len` bytes for as long as `self` lives, and the
+        // reply arrives only after the server finished writing them.
+        let data = unsafe { std::slice::from_raw_parts(self.addr.cast::<u8>(), size) }.to_vec();
+        Ok((data, reply.depth))
+    }
+}
+
+impl Drop for ShmImage<'_> {
+    fn drop(&mut self) {
+        let _ = self.conn.shm_detach(self.seg);
+        let _ = self.conn.flush();
+        // SAFETY: `addr` came from shmat in `new` and is detached only here.
+        unsafe { libc::shmdt(self.addr) };
     }
 }
 
@@ -186,6 +294,30 @@ pub(super) fn convert_to_bgra(data: Vec<u8>, depth: u8) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Frames the capture thread delivers per second when the consumer keeps
+    /// up. Needs an X server (e.g. `Xvfb :99 -screen 0 1920x1080x24` and
+    /// DISPLAY=:99); prints the rate rather than asserting a number, which
+    /// depends on the machine.
+    #[test]
+    #[ignore = "requires an X11 display"]
+    fn x11_capture_rate() {
+        let cap = X11Capturer::start(0).expect("x11 capture must start");
+        let started = std::time::Instant::now();
+        let mut frames = 0u32;
+        while started.elapsed() < std::time::Duration::from_secs(3) {
+            if cap
+                .rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .is_ok()
+            {
+                frames += 1;
+            }
+        }
+        let fps = f64::from(frames) / started.elapsed().as_secs_f64();
+        println!("x11 capture: {fps:.1} fps");
+        assert!(frames > 0, "no frame in 3 s");
+    }
 
     #[test]
     fn convert_to_bgra_sets_alpha_for_24bit() {

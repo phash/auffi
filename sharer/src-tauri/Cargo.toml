@@ -101,7 +101,7 @@ getrandom = "=0.4.3"
 image = { version = "=0.25.10", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-x11rb = { version = "=0.14.0", features = ["randr"] }
+x11rb = { version = "=0.14.0", features = ["randr", "shm"] }
 # Held at 0.10: ashpd 0.13+ (latest 0.14, on zbus 6) splits every portal
 # into its own feature and moves the screencast API to options structs. A
 # drop-in bump fails in gst_portal.rs (E0432 on desktop::screencast /

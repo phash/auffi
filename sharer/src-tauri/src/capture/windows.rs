@@ -9,7 +9,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 use xcap::Monitor;
 
-use super::{stop_signaled, BgraFrame, DisplayInfo};
+use super::{stop_signaled, BgraFrame, DisplayInfo, FramePacer};
 
 /// WGC is given this long to deliver its first frame before we declare it
 /// unusable and fall back to GDI. WGC `video_recorder()` can initialise yet
@@ -17,8 +17,9 @@ use super::{stop_signaled, BgraFrame, DisplayInfo};
 /// the viewer would see a permanently black screen with no error.
 const WGC_FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// GDI fallback capture cadence (~30 fps). BitBlt is synchronous and CPU-bound,
-/// so we pace it rather than spin.
+/// GDI fallback capture cadence (~30 fps), deliberately below the 60 fps of
+/// the other backends: BitBlt is synchronous and CPU-bound, and this path
+/// serves hosts without WGC, typically GPU-less servers reached over RDP.
 const GDI_FRAME_INTERVAL: Duration = Duration::from_millis(33);
 
 /// Enumerate monitors via xcap (Windows Graphics Capture under the hood).
@@ -305,6 +306,7 @@ fn gdi_worker(
         }
     }
 
+    let mut pacer = FramePacer::new(GDI_FRAME_INTERVAL, Instant::now());
     loop {
         if stop_signaled(&stop_rx) {
             break;
@@ -319,7 +321,7 @@ fn gdi_worker(
                 break;
             }
         }
-        std::thread::sleep(GDI_FRAME_INTERVAL);
+        std::thread::sleep(pacer.wait(Instant::now()));
     }
 }
 
