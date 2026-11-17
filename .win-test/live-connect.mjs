@@ -18,7 +18,7 @@ const { chromium } = require("playwright");
 const args = process.argv.slice(2);
 const code = args.find((a) => /^\d{3}-?\d{3}-?\d{3}$/.test(a));
 if (!code) {
-  console.error("usage: live-connect.mjs NNN-NNN-NNN [--wait SECONDS] [--out FILE] [--url URL]");
+  console.error("usage: live-connect.mjs NNN-NNN-NNN [--wait SECONDS] [--measure SECONDS] [--out FILE] [--url URL]");
   process.exit(2);
 }
 const opt = (flag, dflt) => {
@@ -26,6 +26,9 @@ const opt = (flag, dflt) => {
   return i >= 0 ? args[i + 1] : dflt;
 };
 const waitSec = Number(opt("--wait", "40"));
+// Once playing, sample the inbound video for this long and print the frame
+// rate the viewer actually decodes (0 = skip).
+const measureSec = Number(opt("--measure", "0"));
 const out = opt("--out", path.join(here, "share", "viewer.png"));
 const url = opt("--url", "https://auffi.app/");
 
@@ -101,6 +104,29 @@ while (Date.now() - started < waitSec * 1000) {
     break;
   }
   await page.waitForTimeout(1000);
+}
+if (playing && measureSec > 0) {
+  const sample = () =>
+    page.evaluate(async () => {
+      for (const pc of window.__pcs ?? []) {
+        for (const s of (await pc.getStats()).values()) {
+          if (s.type === "inbound-rtp" && s.kind === "video") {
+            return { decoded: s.framesDecoded, bytes: s.bytesReceived, w: s.frameWidth, h: s.frameHeight };
+          }
+        }
+      }
+      return null;
+    });
+  const first = await sample();
+  const t0 = Date.now();
+  await page.waitForTimeout(measureSec * 1000);
+  const last = await sample();
+  const secs = (Date.now() - t0) / 1000;
+  if (first && last) {
+    const fps = (last.decoded - first.decoded) / secs;
+    const kbps = ((last.bytes - first.bytes) * 8) / secs / 1000;
+    console.log(`measured ${secs.toFixed(1)} s: ${fps.toFixed(1)} fps decoded, ${kbps.toFixed(0)} kbps, ${last.w}x${last.h}`);
+  }
 }
 await page.waitForTimeout(1500);
 await page.screenshot({ path: out });
