@@ -566,6 +566,25 @@ impl ConnectionPlan {
     }
 }
 
+/// Passes `result` on, closing `pc` first when it is an error.
+///
+/// Between `ConnectionPlan::build` and the finished `SharerPeer` there is no
+/// `SharerPeer::close` to call, and dropping the connection does not stop its
+/// driver task, UDP sockets or mDNS responder (gh #154).
+async fn close_on_err<T>(
+    pc: &Arc<dyn PeerConnection>,
+    observers: &Observers,
+    result: Result<T, Error>,
+) -> Result<T, Error> {
+    if result.is_err() {
+        observers.clear();
+        if let Err(e) = pc.close().await {
+            crate::dbg_log(&format!("[webrtc] closing the half-built peer failed: {e}"));
+        }
+    }
+    result
+}
+
 impl SharerPeer {
     /// Create a new peer connection with the provided ICE servers.
     pub async fn new(ice_servers: Vec<RTCIceServer>) -> Result<Self, Error> {
@@ -612,9 +631,10 @@ impl SharerPeer {
         let _ = observers.pc.set(Arc::downgrade(&pc));
 
         let track = VideoTrack::new();
-        let sender = pc
+        let added = pc
             .add_track(Arc::clone(&track.track) as Arc<dyn TrackLocal>)
-            .await?;
+            .await;
+        let sender = close_on_err(&pc, &observers, added).await?;
 
         Ok(Self {
             pc,
@@ -923,6 +943,35 @@ mod tests {
         assert!(
             read_slot(&peer.observers.conn_type).is_none(),
             "close drops the observers lib.rs installed"
+        );
+    }
+
+    /// gh #154: between `plan.build()` and the finished `SharerPeer` there is
+    /// no `close()` to call, and dropping the connection does not stop its
+    /// driver. A failure in that window must close the connection itself.
+    #[tokio::test]
+    async fn a_setup_failure_after_build_closes_the_connection() {
+        let observers = Arc::new(Observers::default());
+        let plan = ConnectionPlan {
+            ice_servers: vec![],
+            primary: None,
+            public_ip: None,
+            observers: Arc::clone(&observers),
+        };
+        let pc = plan.build(MulticastDnsMode::Disabled).await.expect("build");
+        *observers.conn_type.lock().unwrap() = Some(Arc::new(|_| {}));
+
+        let result: Result<(), Error> =
+            close_on_err(&pc, &observers, Err(Error::ErrConnectionClosed)).await;
+
+        assert!(result.is_err(), "the setup error is passed on");
+        assert!(
+            pc.create_offer(None).await.is_err(),
+            "the half-built connection is closed"
+        );
+        assert!(
+            read_slot(&observers.conn_type).is_none(),
+            "its observers are dropped"
         );
     }
 
