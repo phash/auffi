@@ -5,6 +5,63 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.7.5] — 2026-11-17
+
+Linux-Paket-Release. Das .deb startete bis 0.7.4 nur dort, wo dieselbe
+libvpx-Version installiert ist wie auf dem Build-Rechner (Ubuntu 24.04,
+Debian 13) — auf Ubuntu 26.04 brach der Start mit
+`libvpx.so.9: cannot open shared object file` ab.
+
+### Behoben
+
+- **Sharer (Linux):** libvpx ist jetzt fest eingebaut statt dynamisch
+  gelinkt. Das .deb startet damit auch auf Ubuntu 26.04. Die CI bricht den
+  Build ab, falls die Binary libvpx wieder dynamisch lädt.
+- **Pakete:** .deb und .rpm deklarieren die GStreamer-Laufzeit
+  (inklusive PipeWire-Plugin für die Wayland-Aufnahme) als Abhängigkeit.
+
+### Geändert
+
+- Download-Seite nennt die tatsächlich unterstützten Distributionen:
+  Debian 13+, Ubuntu 24.04+, Fedora 42+ (glibc 2.39+). Debian 12,
+  Ubuntu 22.04 und RHEL 9 waren dort genannt, liefen aber nie.
+- Neues Skript `ops/sharer-distro-smoke.sh` installiert die Linux-Pakete
+  in frischen Distro-Containern und prüft, dass alle Bibliotheken auflösen.
+
+## [0.7.4] — 2026-11-17
+
+### Sicherheit
+
+- **Sharer:** WebRTC-Stack auf webrtc-rs 0.21 migriert; schließt
+  RUSTSEC-2026-0387.
+- **Unbeaufsichtigter Zugriff:** der Viewer bekommt TURN-Zugangsdaten erst,
+  nachdem das Geräte-Passwort geprüft ist (#149).
+
+### Geändert
+
+- Sharer und Website tragen das Auffi-Zeichen als Icon statt eines
+  Platzhalters.
+
+## [0.7.3] — 2026-11-14
+
+### Geändert
+
+- **Startet leise:** mit Autostart öffnet sich der Sharer im Tray statt mit
+  einem Fenster; ein zweiter Start holt das laufende Fenster nach vorn.
+- **Sauberes Beenden:** beendet der Nutzer den Sharer oder meldet sich ab,
+  erfährt der Helfer sofort, dass die Sitzung vorbei ist.
+
+### Sicherheit
+
+- Ein Passwort-Reset verwirft offene E-Mail-Änderungen; Relay-Zugangsdaten
+  für den unbeaufsichtigten Zugriff sind pro Gerät begrenzt (#139).
+
+### Behoben
+
+- Klicks landen genau an der Mausposition; große Dateien werden stückweise
+  gesendet; unbeaufsichtigte Sitzungen räumen nach einem Verbindungsabbruch
+  richtig auf.
+
 ## [0.7.2] — 2026-10-23
 
 Sicherheits- und Zuverlässigkeits-Release für Sharer und Server. Einzige
@@ -517,6 +574,10 @@ Bündelt die Ergebnisse eines Security- und UX-Reviews.
   Per-Account-Lockout, HMAC-ephemerale TURN-Credentials. Vollständiger
   Audit: [docs/security-review-2026-05.md](docs/security-review-2026-05.md).
 
+[0.7.5]: https://github.com/phash/auffi/releases/tag/v0.7.5
+[0.7.4]: https://github.com/phash/auffi/releases/tag/v0.7.4
+[0.7.3]: https://github.com/phash/auffi/releases/tag/v0.7.3
+[0.7.2]: https://github.com/phash/auffi/releases/tag/v0.7.2
 [0.7.1]: https://github.com/phash/auffi/releases/tag/v0.7.1
 [0.7.0]: https://github.com/phash/auffi/releases/tag/v0.7.0
 [0.6.9]: https://github.com/phash/auffi/releases/tag/v0.6.9
