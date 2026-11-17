@@ -67,6 +67,8 @@ cd viewer && npx playwright test tests/e2e/visual-audit.spec.ts --workers=1
 cd sharer && npm run tauri:dev     # native window + DevTools
 cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
 bash ops/sharer-distro-smoke.sh vX.Y.Z  # deb/rpm/AppImage in frischen Distro-Containern installieren + ldd (auf testbox, via tb-run)
+cargo test --release --lib bench_encode_path -- --ignored --nocapture   # Encode-Pfad-Bench (BGRA→I420 + VP8, 1080p/1440p); Live-fps: `--debug`-Log `fps=` / `avg_encode_ms=` alle 2 s
+bash ops/coturn-image-check.sh 4.19.0 <neu>      # vor jedem coturn-Bump: Deny-Liste erzwungen, keine ignorierten Optionen, SIGUSR2-Reload (auf testbox)
 cd sharer/src-tauri && cargo test --lib                          # Rust unit tests (Baseline s. DoD) — note nested dir
 cd sharer/src-tauri && cargo clippy --lib --tests -- -D warnings
 
@@ -82,8 +84,11 @@ cd viewer && npm run csp:sync     # csp:check = nur prüfen (CI-tauglich)
 # startet/rebootet die VM, Logon-Task fährt oem/smoke.bat, wartet auf RESULT (~4 min warm).
 # VM-Disk NIE mit `down -v` verwerfen (sonst 15–60 min Neuinstallation). Details: docs/ops-runbook.md § Windows-Emulator-Smoke
 .win-test/run.sh vX.Y.Z [--keep-running]          # noVNC: http://127.0.0.1:8007
+# Auf testbox (Pflicht laut Testbox-Regel): Assets+version.txt nach ~/work/auffi-win/share, oem/ rsyncen, dann
+# ssh testbox "tb-win run auffi ~/work/auffi-win --keep" — kehrt VOR RESULT zurück → `grep RESULT= share/install-result.txt` pollen;
+# noVNC-Tunnel `ssh -N -f -L 8007:127.0.0.1:<port> testbox`; Firewall-Dialog bei jedem ersten Stream: Allow (669,628)
 node .win-test/screenshot.mjs [--click X,Y]        # VM-Bildschirm als PNG (Code sichtbar? = TLS+WSS ok)
-node .win-test/live-connect.mjs NNN-NNN-NNN        # Browser-Seite des echten Connects; Klicks scripten (30-s-Media-Backstop)
+node .win-test/live-connect.mjs NNN-NNN-NNN [--wait 120] [--measure N]  # echter Connect; --measure = dekodierte fps/kbps (statischer Desktop = 0 fps, WGC liefert nur Änderungen)
 # Prod anfassen: Caddy 403t curl/HeadlessChrome-UAs → curl -A "Mozilla/5.0 …", Playwright mit normalem userAgent
 # Lokaler E2E-Backend: RATE_LIMIT_MAX=1000 setzen — seit 0.7.1 zählt JEDER Join (auch Treffer) aufs 5/min-Budget
 
@@ -97,6 +102,7 @@ docker compose up --build
 # von Hand ins Cluster-Caddyfile (Anker `wss://turn.auffi.app:5349`, `docker restart caddy-proxy`, kein reload)
 # Nach Deploy von Marketing-Änderungen: sitemap.xml-lastmod von Hand mitziehen (kein Generator), dann
 bash ops/indexnow-ping.sh         # Bing/ChatGPT-Search benachrichtigen — deploy.sh ruft es NICHT auf
+# coturn-Check nach Deploy: `docker logs auffi-coturn` 0× „Bad configuration", „Black listing" = 2× Anzahl denied-peer-ip (Config wird zweimal gelesen)
 
 # Nutzung/Feedback auf prod lesen (read-only; ssh + Node-Muster wie Admin-Promote in docs/ops-runbook.md):
 # `code_events` (nur id, created_at in ms-Epoch) = Code-Mints. Eigene Release-/Win-Smokes sind nicht
