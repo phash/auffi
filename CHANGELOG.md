@@ -5,6 +5,43 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.7.6] — 2026-11-17
+
+Performance- und Sicherheits-Release. Unter Linux (X11) überträgt der Sharer
+jetzt bis zu 60 Bilder pro Sekunde statt höchstens 30.
+
+### Geändert
+
+- **Sharer (Linux, X11):** Bildaufnahme über MIT-SHM mit festem
+  60-fps-Takt statt einer 33-ms-Pause nach jedem Bild; ohne MIT-SHM fällt
+  sie auf den bisherigen Weg zurück. Gemessen auf einem i5-9400: 60 fps bei
+  1080p und 1440p, im Viewer 57,9 fps dekodiert.
+- **Sharer:** Die Umrechnung BGRA → I420 läuft parallel und mit
+  wiederverwendetem Puffer (1080p: 7,3 → 1,3 ms pro Bild); die Farbanteile
+  werden über 2×2 Pixel gemittelt.
+- **Sharer:** Bitrate-Obergrenze 2,5 → 5 Mbit/s, Keyframe-Abstand
+  300 → 600 Bilder (bei 60 fps weiter etwa 10 s). Der Regler geht nur auf
+  verlustarmen Leitungen so hoch.
+- **Sharer (Windows, GDI-Fallback):** bleibt bei 30 fps, hält den Takt aber
+  jetzt ohne Drift.
+- coturn 4.19.0, igd-next 0.18, jsdom 31.
+
+### Sicherheit
+
+- **Unbeaufsichtigter Zugriff:** Relay-Zugangsdaten nach der Bestätigung
+  bekommt nur noch der Viewer, dessen Passwort geprüft wurde. Das Backend
+  schickt ihm im `peer-confirmed` ein zufälliges `turnToken`, das
+  `/turn-credentials` verlangt (gh #152). Ein Browser mit altem,
+  gecachtem Viewer bekommt beim unbeaufsichtigten Zugriff kein Relay mehr,
+  bis er die Seite neu lädt.
+
+### Behoben
+
+- **Sharer:** Scheitert der Aufbau nach dem Anlegen der PeerConnection,
+  wird die halbfertige Verbindung geschlossen (gh #154).
+- **coturn-Zertifikat:** Der Sidecar kopiert Zertifikat und Schlüssel erst,
+  wenn Caddy beide fertig geschrieben hat (gh #153).
+
 ## [0.7.5] — 2026-11-17
 
 Linux-Paket-Release. Das .deb startete bis 0.7.4 nur dort, wo dieselbe
@@ -574,6 +611,7 @@ Bündelt die Ergebnisse eines Security- und UX-Reviews.
   Per-Account-Lockout, HMAC-ephemerale TURN-Credentials. Vollständiger
   Audit: [docs/security-review-2026-05.md](docs/security-review-2026-05.md).
 
+[0.7.6]: https://github.com/phash/auffi/releases/tag/v0.7.6
 [0.7.5]: https://github.com/phash/auffi/releases/tag/v0.7.5
 [0.7.4]: https://github.com/phash/auffi/releases/tag/v0.7.4
 [0.7.3]: https://github.com/phash/auffi/releases/tag/v0.7.3
