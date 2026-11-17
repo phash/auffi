@@ -82,6 +82,18 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      # libvpx changes its soname per distro release; a dynamically linked
+      # binary only starts where the build host's soname exists (v0.7.4 did
+      # not start on Ubuntu 26.04 or Debian 12). build.rs links it statically
+      # when libvpx.a is present — make sure it actually did.
+      - name: Check libvpx is linked statically
+        run: |
+          if readelf -d sharer/src-tauri/target/release/auffi-sharer | grep -q 'libvpx'; then
+            echo "::error::auffi-sharer still links libvpx dynamically"
+            readelf -d sharer/src-tauri/target/release/auffi-sharer | grep NEEDED
+            exit 1
+          fi
+
       - name: Upload Linux bundles
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

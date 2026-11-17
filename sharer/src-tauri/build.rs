@@ -22,8 +22,48 @@ fn main() {
         // libvpx and its transitive deps — nothing more to do here.
     }
 
+    #[cfg(not(windows))]
+    let compiler = build.get_compiler();
+
     build.compile("vpx_shim");
 
     #[cfg(not(windows))]
-    println!("cargo:rustc-link-lib=vpx");
+    link_vpx_unix(&compiler);
+}
+
+/// Links libvpx statically when the static archive is installed.
+///
+/// libvpx changes its soname almost every release (Debian 12 ships .so.7,
+/// Ubuntu 24.04 .so.9, Ubuntu 26.04 .so.12), so a dynamically linked .deb
+/// only starts on the distro it was built on. The release build therefore
+/// has to embed it; `.github/workflows/build-sharer.yml` fails the build if
+/// the binary still lists libvpx as NEEDED. Dev hosts without the archive
+/// (Arch strips static libs) fall back to the shared library.
+///
+/// The archive is located by asking the C compiler, not pkg-config: Debian's
+/// vpx.pc claims `libdir=/usr/lib` while the archive sits in the multiarch
+/// directory.
+#[cfg(not(windows))]
+fn link_vpx_unix(compiler: &cc::Tool) {
+    let archive = compiler
+        .to_command()
+        .arg("-print-file-name=libvpx.a")
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+        .filter(|path| path.is_absolute() && path.is_file());
+    match archive.as_deref().and_then(std::path::Path::parent) {
+        Some(dir) => {
+            println!("cargo:rustc-link-search=native={}", dir.display());
+            println!("cargo:rustc-link-lib=static=vpx");
+        }
+        None => {
+            println!(
+                "cargo:warning=libvpx.a not found, linking libvpx dynamically; \
+                 the binary then only runs where the same libvpx soname exists"
+            );
+            println!("cargo:rustc-link-lib=vpx");
+        }
+    }
 }
