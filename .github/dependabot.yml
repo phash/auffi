@@ -30,6 +30,11 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # `rtc` must stay on webrtc's exact version (Cargo.toml), so the two
+      # only move together. Listed before the minor/patch group: Dependabot
+      # puts a dependency into the first group it matches.
+      webrtc-rtc:
+        patterns: [webrtc, rtc]
       cargo-minor-patch:
         update-types: [minor, patch]
     ignore:
@@ -37,8 +42,6 @@ updates:
       # why): none compiles as a drop-in. Their open major PRs filled all
       # five slots and stalled the minor/patch group from 2026-10-23 on.
       # Remove an entry when that migration lands.
-      - dependency-name: webrtc
-        update-types: ["version-update:semver-major"]
       - dependency-name: ashpd
         update-types: ["version-update:semver-major"]
       - dependency-name: "gstreamer*"
