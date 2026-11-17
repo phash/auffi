@@ -1,5 +1,6 @@
 use std::ffi::c_void;
 use std::os::raw::{c_int, c_uchar};
+use std::sync::OnceLock;
 
 /// FFI declarations for the vpx_shim.c C helper.
 mod ffi {
@@ -54,6 +55,8 @@ pub struct Vp8Encoder {
     /// Target bitrate currently configured in libvpx, so a repeated request
     /// for the same rate does not reconfigure the codec.
     bitrate_kbps: u32,
+    /// I420 conversion buffer, reused across frames.
+    i420: Vec<u8>,
 }
 
 /// Safety: The libvpx context is not shared; we move `Vp8Encoder` between threads only
@@ -97,6 +100,7 @@ impl Vp8Encoder {
             force_keyframe: false,
             last_keyframe_at: None,
             bitrate_kbps,
+            i420: Vec::new(),
         })
     }
 
@@ -172,7 +176,8 @@ impl Vp8Encoder {
         timestamp_us: u64,
     ) -> Result<Vec<EncodedPacket>, String> {
         let force = std::mem::take(&mut self.force_keyframe);
-        let i420 = bgra_to_i420(frame_bgra, self.src_width, self.src_height)?;
+        bgra_to_i420_into(frame_bgra, self.src_width, self.src_height, &mut self.i420)?;
+        let i420 = &self.i420;
         let mut packets: Vec<EncodedPacket> = Vec::new();
 
         let result = unsafe {
@@ -238,7 +243,18 @@ const MAX_FRAME_DIM: u32 = 16384;
 /// chroma plane and panic (the pre-fix behaviour — the panic killed the
 /// spawned streaming task silently). The source buffer is still read with the
 /// full `width` stride; only the output loses the last row/column.
-fn bgra_to_i420(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+///
+/// Chroma is the rounded average of each 2x2 block, as libyuv does; sampling
+/// only the top-left pixel dropped the colour of one-pixel strokes. `out` is
+/// reused across frames, and the frame is split into row bands converted in
+/// parallel: at 1080p the single-threaded loop took ~7 ms, half of the whole
+/// encode budget of a 60 fps frame.
+fn bgra_to_i420_into(
+    bgra: &[u8],
+    width: u32,
+    height: u32,
+    out: &mut Vec<u8>,
+) -> Result<(), String> {
     if width == 0 || height == 0 || width > MAX_FRAME_DIM || height > MAX_FRAME_DIM {
         return Err(format!(
             "unreasonable frame dimensions {width}x{height} (max {MAX_FRAME_DIM} per axis)"
@@ -267,39 +283,149 @@ fn bgra_to_i420(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String>
 
     let y_size = cw * ch;
     let uv_size = (cw / 2) * (ch / 2);
-    let mut i420 = vec![0u8; y_size + 2 * uv_size];
-
-    let (y_plane, uv_planes) = i420.split_at_mut(y_size);
+    out.resize(y_size + 2 * uv_size, 0);
+    let (y_plane, uv_planes) = out.split_at_mut(y_size);
     let (u_plane, v_plane) = uv_planes.split_at_mut(uv_size);
 
-    for row in 0..ch {
-        for col in 0..cw {
-            let idx = (row * w + col) * 4;
-            let b = bgra[idx] as i32;
-            let g = bgra[idx + 1] as i32;
-            let r = bgra[idx + 2] as i32;
+    let pairs = ch / 2;
+    let pairs_per_band = pairs.div_ceil(conversion_threads().min(pairs));
+    std::thread::scope(|scope| {
+        let bands = y_plane
+            .chunks_mut(pairs_per_band * 2 * cw)
+            .zip(u_plane.chunks_mut(pairs_per_band * cw / 2))
+            .zip(v_plane.chunks_mut(pairs_per_band * cw / 2));
+        for (band, ((y_band, u_band), v_band)) in bands.enumerate() {
+            let first_row = band * pairs_per_band * 2;
+            scope.spawn(move || convert_band(bgra, w, cw, first_row, y_band, u_band, v_band));
+        }
+    });
+    Ok(())
+}
 
-            let y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-            y_plane[row * cw + col] = y.clamp(0, 255) as u8;
+/// Threads for [`bgra_to_i420_into`]; libvpx runs its own on the same cores.
+fn conversion_threads() -> usize {
+    static THREADS: OnceLock<usize> = OnceLock::new();
+    *THREADS.get_or_init(|| {
+        std::thread::available_parallelism()
+            .map_or(1, std::num::NonZeroUsize::get)
+            .min(4)
+    })
+}
 
-            if row % 2 == 0 && col % 2 == 0 {
-                let uv_row = row / 2;
-                let uv_col = col / 2;
-                let uv_idx = uv_row * (cw / 2) + uv_col;
-                let u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-                let v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-                u_plane[uv_idx] = u.clamp(0, 255) as u8;
-                v_plane[uv_idx] = v.clamp(0, 255) as u8;
-            }
+/// Convert the row pairs starting at source row `first_row` into the given
+/// slices of the Y, U and V planes. All outputs stay within 16..=240 (235 for
+/// Y) for any input, so the narrowing casts cannot wrap.
+fn convert_band(
+    bgra: &[u8],
+    stride_px: usize,
+    cw: usize,
+    first_row: usize,
+    y_band: &mut [u8],
+    u_band: &mut [u8],
+    v_band: &mut [u8],
+) {
+    let luma = |b: i32, g: i32, r: i32| (((66 * r + 129 * g + 25 * b + 128) >> 8) + 16) as u8;
+    let rows = y_band
+        .chunks_exact_mut(2 * cw)
+        .zip(u_band.chunks_exact_mut(cw / 2))
+        .zip(v_band.chunks_exact_mut(cw / 2));
+    for (pair, ((y_rows, u_row), v_row)) in rows.enumerate() {
+        let top_start = (first_row + 2 * pair) * stride_px * 4;
+        let bottom_start = top_start + stride_px * 4;
+        let top = &bgra[top_start..top_start + cw * 4];
+        let bottom = &bgra[bottom_start..bottom_start + cw * 4];
+        let (y_top, y_bottom) = y_rows.split_at_mut(cw);
+        let blocks = top
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .zip(bottom.as_chunks::<8>().0)
+            .zip(
+                y_top
+                    .as_chunks_mut::<2>()
+                    .0
+                    .iter_mut()
+                    .zip(y_bottom.as_chunks_mut::<2>().0),
+            )
+            .zip(u_row.iter_mut().zip(v_row.iter_mut()));
+        for (((t, b), (yt, yb)), (u, v)) in blocks {
+            let px = [
+                (i32::from(t[0]), i32::from(t[1]), i32::from(t[2])),
+                (i32::from(t[4]), i32::from(t[5]), i32::from(t[6])),
+                (i32::from(b[0]), i32::from(b[1]), i32::from(b[2])),
+                (i32::from(b[4]), i32::from(b[5]), i32::from(b[6])),
+            ];
+            yt[0] = luma(px[0].0, px[0].1, px[0].2);
+            yt[1] = luma(px[1].0, px[1].1, px[1].2);
+            yb[0] = luma(px[2].0, px[2].1, px[2].2);
+            yb[1] = luma(px[3].0, px[3].1, px[3].2);
+            let bb = (px[0].0 + px[1].0 + px[2].0 + px[3].0 + 2) >> 2;
+            let gg = (px[0].1 + px[1].1 + px[2].1 + px[3].1 + 2) >> 2;
+            let rr = (px[0].2 + px[1].2 + px[2].2 + px[3].2 + 2) >> 2;
+            *u = (((-38 * rr - 74 * gg + 112 * bb + 128) >> 8) + 128) as u8;
+            *v = (((112 * rr - 94 * gg - 18 * bb + 128) >> 8) + 128) as u8;
         }
     }
+}
 
-    Ok(i420)
+#[cfg(test)]
+fn bgra_to_i420(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    bgra_to_i420_into(bgra, width, height, &mut out)?;
+    Ok(out)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Per-frame cost of the encode path on screen-like content (a page of
+    /// "text" scrolling 8 rows per frame). Not a pass/fail test: run it in
+    /// release on the target hardware to see how far 60 fps is away.
+    ///   cargo test --release --lib bench_encode_path -- --ignored --nocapture
+    #[test]
+    #[ignore = "benchmark; run in release with --nocapture"]
+    fn bench_encode_path() {
+        for (w, h) in [(1920u32, 1080u32), (2560, 1440)] {
+            let page_h = h as usize * 3;
+            let mut page = vec![0u8; w as usize * page_h * 4];
+            for y in 0..page_h {
+                for x in 0..w as usize {
+                    let glyph =
+                        ((x / 7) * 31 + (y / 12) * 17) % 5 == 0 && (y % 12) < 9 && (x % 7) < 5;
+                    let v = if glyph {
+                        30
+                    } else {
+                        235 - (x * 20 / w as usize) as u8
+                    };
+                    let i = (y * w as usize + x) * 4;
+                    page[i..i + 4].copy_from_slice(&[v, v, v.saturating_sub(10), 255]);
+                }
+            }
+            let frame_len = w as usize * h as usize * 4;
+            let frames = 120usize;
+            let mut enc = Vp8Encoder::new(w, h, crate::bitrate_controller::MAX_BITRATE_KBPS)
+                .expect("encoder");
+            let (mut conv, mut total) = (std::time::Duration::ZERO, std::time::Duration::ZERO);
+            for n in 0..frames {
+                let off = ((n * 8) % (page_h - h as usize)) * w as usize * 4;
+                let frame = &page[off..off + frame_len];
+                let t0 = std::time::Instant::now();
+                let _ = std::hint::black_box(bgra_to_i420(frame, w, h).expect("convert"));
+                conv += t0.elapsed();
+                let t1 = std::time::Instant::now();
+                enc.encode(frame, (n as u64) * 16_667).expect("encode");
+                total += t1.elapsed();
+            }
+            let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0 / frames as f64;
+            println!(
+                "{w}x{h}: bgra_to_i420 {:.2} ms/frame, encode (incl. conversion) {:.2} ms/frame -> max {:.0} fps",
+                ms(conv),
+                ms(total),
+                1000.0 / ms(total)
+            );
+        }
+    }
 
     // `slice::from_raw_parts` on a null pointer is UB even for size 0, and
     // the shim forwards whatever libvpx hands it.
@@ -417,6 +543,69 @@ mod tests {
         let y = |v: i32| ((((66 + 129 + 25) * v + 128) >> 8) + 16) as u8;
         let expected = [y(0), y(10), y(30), y(40)];
         assert_eq!(&i420[0..4], expected.as_slice());
+    }
+
+    // Chroma is subsampled 2x2. Sampling only the top-left pixel turns a
+    // one-pixel coloured glyph stroke on odd columns into no colour at all;
+    // averaging the block (what libyuv does) keeps it.
+    #[test]
+    fn bgra_to_i420_chroma_is_the_average_of_the_2x2_block() {
+        // 2x2: red, green / blue, white (BGRA byte order).
+        let bgra = [
+            0, 0, 255, 255, 0, 255, 0, 255, 255, 0, 0, 255, 255, 255, 255, 255,
+        ];
+        let i420 = bgra_to_i420(&bgra, 2, 2).expect("convert");
+        let (r, g, b) = (
+            (255 + 255) / 4 + 1,
+            (255 + 255 + 2) / 4,
+            (255 + 255 + 2) / 4,
+        );
+        let u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+        let v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+        assert_eq!(&i420[4..6], &[u as u8, v as u8]);
+    }
+
+    /// Straightforward per-pixel reference the fast path must match exactly.
+    fn reference_i420(bgra: &[u8], w: usize, h: usize) -> Vec<u8> {
+        let (cw, ch) = (w & !1, h & !1);
+        let mut y_p = vec![0u8; cw * ch];
+        let mut u_p = vec![0u8; cw * ch / 4];
+        let mut v_p = vec![0u8; cw * ch / 4];
+        let px = |r: usize, c: usize| {
+            let i = (r * w + c) * 4;
+            (
+                i32::from(bgra[i + 2]),
+                i32::from(bgra[i + 1]),
+                i32::from(bgra[i]),
+            )
+        };
+        for r in 0..ch {
+            for c in 0..cw {
+                let (rr, gg, bb) = px(r, c);
+                y_p[r * cw + c] = (((66 * rr + 129 * gg + 25 * bb + 128) >> 8) + 16) as u8;
+            }
+        }
+        for r in (0..ch).step_by(2) {
+            for c in (0..cw).step_by(2) {
+                let ps = [px(r, c), px(r, c + 1), px(r + 1, c), px(r + 1, c + 1)];
+                let avg = |f: fn(&(i32, i32, i32)) -> i32| (ps.iter().map(f).sum::<i32>() + 2) >> 2;
+                let (rr, gg, bb) = (avg(|p| p.0), avg(|p| p.1), avg(|p| p.2));
+                let i = (r / 2) * (cw / 2) + c / 2;
+                u_p[i] = (((-38 * rr - 74 * gg + 112 * bb + 128) >> 8) + 128) as u8;
+                v_p[i] = (((112 * rr - 94 * gg - 18 * bb + 128) >> 8) + 128) as u8;
+            }
+        }
+        [y_p, u_p, v_p].concat()
+    }
+
+    // The fast path splits the frame into row bands converted in parallel; a
+    // band boundary must not shift or skip a row. Odd sizes on purpose.
+    #[test]
+    fn bgra_to_i420_matches_the_per_pixel_reference_on_a_large_odd_frame() {
+        let (w, h) = (643usize, 481usize);
+        let bgra: Vec<u8> = (0..w * h * 4).map(|i| (i * 7919 % 251) as u8).collect();
+        let fast = bgra_to_i420(&bgra, w as u32, h as u32).expect("convert");
+        assert_eq!(fast, reference_i420(&bgra, w, h));
     }
 
     #[test]
