@@ -15,6 +15,7 @@ SRC_ROOT="${CADDY_CERT_ROOT:-/caddy-data/caddy/certificates}"
 STAGED="${STAGE_DIR:-/staged}"
 INTERVAL="${STAGE_INTERVAL_SEC:-21600}"
 READY_MARKER="${STAGE_READY_MARKER:-/tmp/staged-once}"
+SETTLE="${STAGE_SETTLE_SEC:-60}"
 
 log() {
   echo "[turn-cert-stage] $*" >&2
@@ -32,11 +33,31 @@ install_if_changed() {
   mv -f "${dst}.new" "${dst}"
 }
 
+# Seconds since the most recently modified of the given files changed.
+seconds_since_last_write() {
+  newest=0
+  for f in "$@"; do
+    [ -e "${f}" ] || continue
+    m="$(stat -c %Y "${f}")"
+    [ "${m}" -gt "${newest}" ] && newest="${m}"
+  done
+  echo $(( $(date +%s) - newest ))
+}
+
+# Returns 2 when the source pair is still being written; the caller retries
+# after SETTLE seconds.
 stage() {
   src_dir="$(find "${SRC_ROOT}" -type d -name "${TURN_REALM}" 2>/dev/null | head -n1)"
   crt="${src_dir}/${TURN_REALM}.crt"
   key="${src_dir}/${TURN_REALM}.key"
   if [ -n "${src_dir}" ] && [ -s "${crt}" ] && [ -s "${key}" ]; then
+    # Caddy writes the renewed key and cert one after the other (gh #153).
+    # A pass between the two writes would stage a mismatched pair, which
+    # coturn loads and would keep until the next pass, 6 h later.
+    if [ "$(seconds_since_last_write "${crt}" "${key}" "${src_dir}/${TURN_REALM}.json")" -lt "${SETTLE}" ]; then
+      log "cert files changed less than ${SETTLE} s ago; staging once they have settled"
+      return 2
+    fi
     changed=false
     install_if_changed "${crt}" "${STAGED}/cert.pem" && changed=true
     install_if_changed "${key}" "${STAGED}/key.pem" && changed=true
@@ -56,11 +77,25 @@ stage() {
 # `compose down` would wait out the 10 s kill timeout.
 trap 'exit 0' TERM INT
 
-stage
+nap() {
+  sleep "$1" &
+  wait $! || true
+}
+
+stage_settled() {
+  rc=0
+  stage || rc=$?
+  while [ "${rc}" -eq 2 ]; do
+    nap "${SETTLE}"
+    rc=0
+    stage || rc=$?
+  done
+}
+
+stage_settled
 : > "${READY_MARKER}"
 
 while :; do
-  sleep "${INTERVAL}" &
-  wait $! || true
-  stage
+  nap "${INTERVAL}"
+  stage_settled
 done

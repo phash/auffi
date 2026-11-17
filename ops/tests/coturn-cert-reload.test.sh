@@ -139,7 +139,7 @@ SRC="${S}/caddy/acme-v02.api.letsencrypt.org-directory/turn.test"
 printf 'crt-1' > "${SRC}/turn.test.crt"
 printf 'key-1' > "${SRC}/turn.test.key"
 TURN_REALM=turn.test CADDY_CERT_ROOT="${S}/caddy" STAGE_DIR="${S}/staged" \
-  STAGE_INTERVAL_SEC=1 STAGE_READY_MARKER="${S}/ready" \
+  STAGE_INTERVAL_SEC=1 STAGE_SETTLE_SEC=1 STAGE_READY_MARKER="${S}/ready" \
   sh "${COTURN_DIR}/cert-stage.sh" 2> "${S}/stage.err" &
 STAGE_PID=$!
 wait_for 5 test -e "${S}/ready" && ok=true || ok=false
@@ -171,5 +171,32 @@ assert_eq "true" "${ok}" "stage: missing source empties the staged pair"
 kill -TERM "${STAGE_PID}"
 wait_for 3 exited "${STAGE_PID}" && ok=true || ok=false
 assert_eq "true" "${ok}" "stage: exits promptly on SIGTERM"
+
+# gh #153: Caddy writes the renewed key and cert one after the other. A pass
+# that lands between the two writes must not stage the new key next to the
+# old cert (coturn would load the mismatched pair and keep it until the next
+# pass, 6 h later). It waits until the files have settled and retries then,
+# not after the full interval.
+M="${TMP}/stage-midwrite"
+MSRC="${M}/caddy/acme-v02.api.letsencrypt.org-directory/turn.test"
+mkdir -p "${MSRC}" "${M}/staged"
+printf 'crt-old' > "${MSRC}/turn.test.crt"
+touch -d '-5 minutes' "${MSRC}/turn.test.crt"
+printf 'key-new' > "${MSRC}/turn.test.key"
+TURN_REALM=turn.test CADDY_CERT_ROOT="${M}/caddy" STAGE_DIR="${M}/staged" \
+  STAGE_INTERVAL_SEC=600 STAGE_SETTLE_SEC=2 STAGE_READY_MARKER="${M}/ready" \
+  sh "${COTURN_DIR}/cert-stage.sh" > /dev/null 2> "${M}/stage.err" &
+MID_PID=$!
+sleep 0.5
+assert_eq "absent" "$([[ -s "${M}/staged/key.pem" ]] && echo staged || echo absent)" \
+  "stage: a pair caught mid-renewal is not staged"
+printf 'crt-new' > "${MSRC}/turn.test.crt"
+pair_is_new() {
+  [[ "$(cat "${M}/staged/cert.pem" 2>/dev/null)" == crt-new && "$(cat "${M}/staged/key.pem" 2>/dev/null)" == key-new ]]
+}
+wait_for 8 pair_is_new && ok=true || ok=false
+assert_eq "true" "${ok}" "stage: the settled pair is staged after the settle time, not the interval"
+kill -TERM "${MID_PID}"
+wait_for 3 exited "${MID_PID}" || true
 
 finish
