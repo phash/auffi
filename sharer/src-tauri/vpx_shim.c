@@ -12,11 +12,11 @@
 #include <vpx/vp8cx.h>
 #include <vpx/vpx_image.h>
 
-/* Upper bound on frames between automatic keyframes. At the ~30 fps ceiling
- * this is roughly 10 s; on a near-static screen, where WGC delivers only a
- * couple of frames a second, it is correspondingly longer in wall-clock but
+/* Upper bound on frames between automatic keyframes. At the 60 fps capture
+ * rate this is roughly 10 s; on a near-static screen, where WGC delivers only
+ * a couple of frames a second, it is correspondingly longer in wall-clock but
  * still bounded — unlike libvpx's 9999-frame default. */
-#define VPX_SHIM_KF_MAX_DIST 300
+#define VPX_SHIM_KF_MAX_DIST 600
 
 /* VP8 realtime speed setting. Per libvpx, VP8E_SET_CPUUSED > 0 trades quality
  * for speed (valid range -16..16); the default of 0 is the slowest path and

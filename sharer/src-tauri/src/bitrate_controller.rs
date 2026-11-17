@@ -46,9 +46,11 @@
 /// still-legible slideshow beats a smooth blur.
 pub const MIN_BITRATE_KBPS: u32 = 150;
 
-/// Never go above this. Screen content at 2.5 Mbps is already visually clean;
-/// higher just buys loss on links that turn out to be worse than they looked.
-pub const MAX_BITRATE_KBPS: u32 = 2500;
+/// Never go above this. Screen content at 2.5 Mbps was visually clean at
+/// 30 fps; capture now runs at 60, and 5 Mbps keeps the bits per frame where
+/// they were. The ceiling is only reached on a link that stayed below 2 %
+/// loss the whole way up, so a weak link never gets there.
+pub const MAX_BITRATE_KBPS: u32 = 5000;
 
 /// Where a session starts, unchanged from the old fixed value so a good link
 /// behaves exactly as it did before.
@@ -179,7 +181,7 @@ mod tests {
         for _ in 0..100 {
             c.on_receiver_report(loss(0.0));
         }
-        assert_eq!(c.current_kbps(), 2500);
+        assert_eq!(c.current_kbps(), 5000);
         // At the top there is nothing left to report.
         assert_eq!(c.on_receiver_report(loss(0.0)), None);
     }
