@@ -73,6 +73,12 @@ The sender MUST NOT stream a single chunk before `file-accept` (`docs/protocol.m
 
 - **`PRAGMA foreign_keys` ist innerhalb einer Transaktion ein No-op**, und `applyMigrations` (`backend/src/db.ts`) wickelt jede Datei in eine. Die Table-Rebuild-Migrationen 0009/0011 glaubten, FKs abzuschalten, liefen aber mit Enforcement ON — harmlos nur, weil `feedback`/`audit_log` Kind-Tabellen sind. Derselbe Rebuild an `accounts` oder `devices` hätte beim Deploy per ON-DELETE-CASCADE Sessions, Devices, connection_log, feedback und device_pairings gelöscht. Der Runner erkennt seit 2026-09-02 ein `PRAGMA foreign_keys` in der Datei, schaltet FKs **außerhalb** der Transaktion ab, läuft `PRAGMA foreign_key_check` vor dem Commit und rollt bei Verletzungen zurück (`backend/tests/db.test.ts` pinnt beides). Für Rebuilds gilt also weiterhin das SQLite-FAQ-Rezept — aber nur, weil der Runner es real macht.
 
+## Linux-Pakete: libvpx statisch, glibc-Boden
+
+- **libvpx wechselt den soname fast jedes Release** (Debian 12 `.so.7`, Ubuntu 24.04 `.so.9`, Ubuntu 26.04 `.so.12`). Dynamisch gelinkt startet das `.deb` nur auf der Distro, auf der es gebaut wurde — `dpkg` installiert trotzdem sauber, weil Tauri libvpx nicht in `Depends` schreibt. So ging v0.7.4 auf Ubuntu 26.04 raus. `sharer/src-tauri/build.rs` linkt deshalb `libvpx.a` statisch, wenn der Compiler sie findet (`cc -print-file-name=libvpx.a`; Debians `vpx.pc` meldet ein falsches `libdir`), sonst mit `cargo:warning` dynamisch (Arch hat kein `.a`). `build-sharer.yml` bricht ab, wenn das Release-Binary libvpx noch als NEEDED führt.
+- **glibc-Boden = Build-Host.** CI baut auf ubuntu-24.04 → Binary braucht glibc 2.39. Debian 12 / Ubuntu 22.04 / RHEL 9 gehen nicht, auch nicht per AppImage. Die Download-Seite nennt deshalb Debian 13+, Ubuntu 24.04+, Fedora 42+. Wer den Runner anhebt, hebt den Boden mit — Download-Seite mitziehen.
+- **Prüfen:** `ops/sharer-distro-smoke.sh vX.Y.Z` (auf testbox via `tb-run`) installiert deb/rpm/AppImage in frischen Containern und meldet jede nicht auflösbare Bibliothek.
+
 ## AppImage-Build Footguns
 
 Tauri's AppImage-Bundling scheitert zuverlässig auf modernen Arch-Installs aus zwei Gründen — der Wrapper `ops/build-sharer-appimage.sh` umschifft beide. Wer ihn ignoriert und nur `npm run tauri:build` aufruft, bekommt `.deb` und `.rpm`, aber keinen AppImage:

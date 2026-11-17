@@ -60,6 +60,9 @@ gh release create vX.Y.Z --title "vX.Y.Z — short summary" --notes "..." \
 # 4) Bump filenames in viewer/public/download/index.html + the
 #    KNOWN_ASSETS-Set in backend/src/downloads/handlers.ts
 #    (Portable baut die CI seit v0.6.4 mit — aber `?tag=vX.Y.Z`-Pin nicht vergessen, s. unten)
+# 4b) Linux-Pakete auf frischen Distros prüfen (installiert + ldd, auf testbox):
+#    ssh testbox "tb-run 'screenshare:distro-smoke' -- bash ~/work/screenshare/ops/sharer-distro-smoke.sh vX.Y.Z"
+#    (v0.7.4 installierte sauber, startete aber auf Ubuntu 26.04 nicht — libvpx-soname)
 # 5) ./ops/deploy.sh --yes
 # Windows-Builds laufen jetzt im CI (release.yml / build-sharer.yml auf
 # windows-2025, seit PR #117; Runner-Image gepinnt, nicht windows-latest). Die separate Windows-Box / das gh-Issue-

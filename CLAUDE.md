@@ -66,6 +66,7 @@ cd viewer && npx playwright test tests/e2e/visual-audit.spec.ts --workers=1
 # Sharer (Tauri desktop app)
 cd sharer && npm run tauri:dev     # native window + DevTools
 cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
+bash ops/sharer-distro-smoke.sh vX.Y.Z  # deb/rpm/AppImage in frischen Distro-Containern installieren + ldd (auf testbox, via tb-run)
 cd sharer/src-tauri && cargo test --lib                          # Rust unit tests (Baseline s. DoD) — note nested dir
 cd sharer/src-tauri && cargo clippy --lib --tests -- -D warnings
 
