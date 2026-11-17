@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "auffi-sharer"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "argon2",
  "ashpd 0.10.3",
