@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REPO = resolve(__dirname, "../..");
@@ -18,6 +18,7 @@ const SURFACES: string[] = [
   "viewer/src/styles.css",
   "viewer/public/site-chrome.css",
   "dashboard/src/styles.css",
+  "sharer/src/styles.css",
 ];
 
 const LEGACY = [
@@ -63,5 +64,30 @@ describe("design system guard", () => {
       if (!/outline\s*:/.test(body) || /outline\s*:\s*(none|0)/.test(body)) continue;
       expect(body, selector.trim()).toMatch(ON_VIDEO.test(selector) ? /var\(--fg\)|#ffffff/ : /var\(--fg\)/);
     }
+  });
+});
+
+// With every surface migrated, the light/dark switch lives in exactly one
+// place: design/tokens.css (and its byte-copy for the static pages).
+const SCAN = ["viewer/src", "viewer/public", "viewer/index.html", "viewer/en", "dashboard/src",
+  "dashboard/index.html", "sharer/src", "sharer/index.html"];
+const TOKEN_FILES = new Set(["design/tokens.css", "viewer/public/tokens.css"]);
+
+function files(rel: string): string[] {
+  const abs = resolve(REPO, rel);
+  if (!statSync(abs).isDirectory()) return [rel];
+  return readdirSync(abs).flatMap((e) => files(`${rel}/${e}`));
+}
+
+describe("one light/dark switch", () => {
+  it("only the token files mention prefers-color-scheme in CSS", () => {
+    const hits = SCAN.flatMap(files)
+      .filter((f) => /\.(css|html|ts)$/.test(f) && !TOKEN_FILES.has(f))
+      .filter((f) => {
+        const text = readFileSync(resolve(REPO, f), "utf8");
+        // theme-color metas legitimately carry a media query per scheme
+        return /prefers-color-scheme/.test(text.replace(/<meta name="theme-color"[^>]*>/g, ""));
+      });
+    expect(hits).toEqual([]);
   });
 });

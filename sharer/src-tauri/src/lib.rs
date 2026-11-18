@@ -2203,6 +2203,7 @@ mod tests {
                 "https://buymeacoffee.com/phash",
                 "https://mr-development.de",
                 "https://phash.de",
+                "https://www.paypal.com/paypalme/mroedig",
             ]
         );
     }

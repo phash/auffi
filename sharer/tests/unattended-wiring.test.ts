@@ -6,6 +6,7 @@
 // end to end against the real DOM and the real in-app confirm dialog.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import html from "../index.html?raw";
+import stylesCss from "../src/styles.css?raw";
 
 type Handler = (e: { payload: unknown }) => void | Promise<void>;
 
@@ -56,7 +57,10 @@ async function mount(): Promise<void> {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string) => Promise.resolve(INVOKE_RESULTS[cmd]));
   document.body.innerHTML = html.slice(html.indexOf("<body>") + "<body>".length, html.lastIndexOf("</body>"));
-  document.head.innerHTML = html.slice(html.indexOf("<style>"), html.indexOf("</style>") + "</style>".length);
+  // The @import of the shared tokens cannot resolve in jsdom; the layout
+  // rules under test do not depend on it.
+  const css = stylesCss.replace(/@import[^;]+;/g, "");
+  document.head.innerHTML = `<style>${css}</style>`;
   vi.resetModules();
   await import("../src/unattended.js");
   await flush();

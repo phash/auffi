@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 // Pure UI handlers + Tauri command bindings; safe to import even when
 // the user never enters unattended mode.
 import "./unattended.js";
+import "./styles.css";
 import { refreshFeedbackFab } from "./feedback-fab.js";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { load } from "@tauri-apps/plugin-store";
@@ -107,6 +108,7 @@ const openLogBtn = document.getElementById("open-log-btn") as HTMLButtonElement;
 
 // About
 const bmcBtn = document.getElementById("bmc-btn")! as HTMLButtonElement;
+const paypalBtn = document.getElementById("paypal-btn")! as HTMLButtonElement;
 const linkPhash = document.getElementById("link-phash")! as HTMLButtonElement;
 const linkMrd = document.getElementById("link-mrd")! as HTMLButtonElement;
 const aboutVersionEl = document.getElementById("about-version")!;
@@ -833,6 +835,10 @@ sendFileBtn.addEventListener("click", () => {
 
 bmcBtn.addEventListener("click", () => {
   openUrl("https://buymeacoffee.com/phash").catch(() => {});
+});
+
+paypalBtn.addEventListener("click", () => {
+  openUrl("https://www.paypal.com/paypalme/mroedig").catch(() => {});
 });
 
 linkPhash.addEventListener("click", () => {

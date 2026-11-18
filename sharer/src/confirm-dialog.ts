@@ -43,12 +43,12 @@ export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
     backdrop.setAttribute("aria-describedby", "sharer-confirm-desc");
     backdrop.style.cssText =
       "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;" +
-      "justify-content:center;background:rgba(0,0,0,0.45);padding:1rem;";
+      "justify-content:center;background:color-mix(in srgb, var(--bg) 70%, transparent);padding:1rem;";
 
     const modal = document.createElement("div");
     modal.style.cssText =
-      "background:var(--card-bg);color:var(--text);border:1px solid var(--border);" +
-      "border-radius:var(--radius);box-shadow:var(--shadow-lift);max-width:24rem;" +
+      "background:var(--panel);color:var(--fg);border:1px solid var(--line);" +
+      "border-radius:var(--radius);max-width:24rem;" +
       "width:100%;padding:1.25rem;";
 
     const h = document.createElement("h2");
@@ -59,7 +59,7 @@ export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
     const p = document.createElement("p");
     p.id = "sharer-confirm-desc";
     p.textContent = opts.message;
-    p.style.cssText = "font-size:0.875rem;color:var(--text-secondary);margin-bottom:1rem;";
+    p.style.cssText = "font-size:0.875rem;color:var(--muted);margin-bottom:1rem;";
 
     const row = document.createElement("div");
     row.className = "btn-row";

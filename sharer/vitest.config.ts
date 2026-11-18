@@ -3,6 +3,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
+    // Vitest stubs CSS modules to "" unless they are processed; the wiring
+    // tests read the webview stylesheet as ?raw to get real layout rules.
+    css: { include: [/src\/styles\.css/] },
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],

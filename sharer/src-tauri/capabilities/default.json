@@ -15,6 +15,7 @@
       "allow": [
         { "url": "https://buymeacoffee.com/phash" },
         { "url": "https://phash.de" },
+        { "url": "https://www.paypal.com/paypalme/mroedig" },
         { "url": "https://mr-development.de" },
         { "url": "https://auffi.app/**" }
       ]
