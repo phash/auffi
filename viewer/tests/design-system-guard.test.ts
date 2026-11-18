@@ -15,6 +15,8 @@ const SURFACES: string[] = [
   "viewer/public/404.css",
   "viewer/public/download/style.css",
   "viewer/public/legal/style.css",
+  "viewer/src/styles.css",
+  "viewer/public/site-chrome.css",
 ];
 
 const LEGACY = [
@@ -50,11 +52,15 @@ describe("design system guard", () => {
       .map(([, n]) => n);
     expect(defs).toEqual([]);
   });
+  // Controls drawn on top of the video sit on a fixed dark overlay in both
+  // modes, so their ring is white rather than --fg.
+  const ON_VIDEO = /#video-controls|\.pan-btn|#input-toggle|#file-send-btn|#disconnect/;
   it.each(SURFACES)("%s draws focus rings with --fg", (f) => {
     const css = read(f);
-    for (const m of css.matchAll(/:focus-visible[^{]*{([^}]*)}/g)) {
-      if (/outline\s*:/.test(m[1]) && !/outline\s*:\s*(none|0)/.test(m[1]))
-        expect(m[1]).toMatch(/var\(--fg\)/);
+    for (const m of css.matchAll(/([^{}]*):focus-visible[^{]*{([^}]*)}/g)) {
+      const [, selector, body] = m;
+      if (!/outline\s*:/.test(body) || /outline\s*:\s*(none|0)/.test(body)) continue;
+      expect(body, selector.trim()).toMatch(ON_VIDEO.test(selector) ? /var\(--fg\)|#ffffff/ : /var\(--fg\)/);
     }
   });
 });
