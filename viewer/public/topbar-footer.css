@@ -12,13 +12,23 @@
 
 /* ── @font-face ──────────────────────────────────────────────── */
 @font-face {
-  font-family: "Plex Sans";
-  src: url("/fonts/IBMPlexSans-Regular.woff2") format("woff2");
+  font-family: "Manrope";
+  src: url("/fonts/Manrope-300.woff2") format("woff2");
+  font-weight: 300; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/Manrope-400.woff2") format("woff2");
   font-weight: 400; font-style: normal; font-display: swap;
 }
 @font-face {
-  font-family: "Plex Sans";
-  src: url("/fonts/IBMPlexSans-SemiBold.woff2") format("woff2");
+  font-family: "Manrope";
+  src: url("/fonts/Manrope-500.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/Manrope-600.woff2") format("woff2");
   font-weight: 600; font-style: normal; font-display: swap;
 }
 @font-face {
@@ -65,7 +75,7 @@
   --text-secondary: var(--muted);
   --error: #a83b3b;
 
-  --font-sans: "Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Manrope", -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font: var(--font-sans);
   --topbar-height: 56px;
