@@ -7,7 +7,15 @@ const REPO = resolve(__dirname, "../..");
 // Surfaces that are migrated to design/tokens.css. Each migration task adds
 // its stylesheets here; once listed, a file may not bring back its own
 // palette or its own light/dark switch.
-const SURFACES: string[] = [];
+const SURFACES: string[] = [
+  "viewer/public/topbar-footer.css",
+  "viewer/public/feedback-fab.css",
+  "viewer/public/matomo-consent.css",
+  "viewer/public/compare.css",
+  "viewer/public/404.css",
+  "viewer/public/download/style.css",
+  "viewer/public/legal/style.css",
+];
 
 const LEGACY = [
   "--paper", "--surface", "--ink", "--ink-soft", "--ink-on-brand", "--brand", "--brand-2",

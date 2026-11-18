@@ -1,14 +1,14 @@
 /* ============================================================
- * AUFFI · SHARED MARKETING TOPBAR + FOOTER · CALM FRESH
+ * AUFFI · SHARED TOPBAR + FOOTER + PAGE COMPONENTS · DARK ENGINEERING
  * ============================================================
- * Used by impressum/, datenschutz/, download/. The SPA at
- * viewer/index.html ships an identical token-set + components via
- * Vite (viewer/src/styles.css). Keep both in sync when changing
- * visual rules; HTML class names are stable across the SPA + the
- * static-page set so the same selectors apply.
+ * Loaded by every static page after /tokens.css (colours, type, radii
+ * all come from there — this file defines no colour values of its own).
+ * The SPA at viewer/index.html styles the same class names through
+ * viewer/src/styles.css; keep both in step when changing visual rules.
  *
- * Aesthetic: emerald/mint, rounded corners, soft card shadows,
- * mono eyebrow labels kept. Fonts are self-hosted under /fonts/. */
+ * Look: green-black ground with a hairline grid and a green glow at the
+ * foot, 1-px panels, segment navigation, teal→mint gradient for the one
+ * primary action. Fonts are self-hosted under /fonts/. */
 
 /* ── @font-face ──────────────────────────────────────────────── */
 @font-face {
@@ -42,82 +42,143 @@
   font-weight: 500; font-style: normal; font-display: swap;
 }
 
-/* ── Design tokens ───────────────────────────────────────────── */
+/* ── Layout-only tokens (colours live in /tokens.css) ─────────── */
 :root {
-  --paper: #f6faf8;
-  --surface: #ffffff;
-  --ink: #0f1f1a;
-  --muted: #5b6b64;
-  --brand: #10b981;
-  --brand-2: #34d399;
-  --brand-strong: #047857;
-  --ink-on-brand: #06231b;
-  --line: #e3ece8;
-  --focus: #10b981;
-  --radius-card: 16px;
-  --radius-input: 12px;
-  --radius-pill: 999px;
-  --radius-sm: 10px;
-  --shadow-sm: 0 1px 2px rgba(15,31,26,0.05), 0 2px 8px rgba(16,185,129,0.06);
-  --shadow-lift: 0 4px 12px rgba(15,31,26,0.08), 0 8px 24px rgba(16,185,129,0.10);
-
-  /* legacy bridges */
-  --bg: var(--paper);
-  --text: var(--ink);
-  --card-bg: var(--surface);
-  --accent: var(--brand-strong);
-
-  /* kept for components that reference them directly */
-  --ink-soft: var(--muted);
-  --edge: var(--line);
-  --accent-hover: var(--brand);
-  --border: var(--line);
-  --text-secondary: var(--muted);
-  --error: #a83b3b;
-
-  --font-sans: "Manrope", -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --font: var(--font-sans);
-  --topbar-height: 56px;
-  --footer-height: 48px;
+  --topbar-height: 60px;
+  --footer-height: 52px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0c1714;
-    --surface: #11201c;
-    --ink: #e8f1ec;
-    --muted: #9fb2aa;
-    --brand: #34d399;
-    --brand-2: #10b981;
-    --brand-strong: #34d399;
-    --ink-on-brand: #06231b;
-    --line: #20312b;
-    --focus: #34d399;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
-    --shadow-lift: 0 6px 20px rgba(0,0,0,0.5);
-  }
-}
+html { -webkit-text-size-adjust: 100%; }
 
+/* Page ground: hairline grid + green glow at the foot of the document.
+   The body background propagates to the canvas and is positioned against
+   the root box, so the glow sits at the end of the page, not the viewport. */
 body {
   font-family: var(--font-sans);
-  background: var(--paper);
-  color: var(--ink);
+  font-size: 1rem;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(120% 60% at 50% 115%, var(--glow), transparent 60%),
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 100% 100%, 160px 160px, 160px 160px;
+  color: var(--fg);
   margin: 0;
+  min-height: 100vh;
   padding-top: calc(var(--topbar-height) + 1.5rem);
-  padding-bottom: calc(var(--footer-height) + 1rem);
-  line-height: 1.55;
+  padding-bottom: calc(var(--footer-height) + 2rem);
+  line-height: 1.6;
 }
 
 a {
-  color: var(--brand-strong);
+  color: var(--accent-text);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 100ms ease;
 }
-a:hover { border-bottom-color: var(--brand-strong); }
+a:hover { border-bottom-color: currentColor; }
 
-/* ── Topbar — frosted surface, 1px line border, pill buttons ── */
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+/* ── Shared components (static pages + start page) ────────────── */
+.hl { color: var(--accent-text); }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 40px;
+  padding: 0.625rem 1.125rem;
+  border-radius: var(--radius-sm);
+  font: 600 0.9375rem/1.2 var(--font-sans);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter 120ms ease, background 120ms ease;
+}
+.btn-primary {
+  background: var(--grad-accent);
+  color: var(--on-accent);
+  border: 0;
+}
+.btn-primary:hover { filter: brightness(1.06); border-bottom: 0; }
+.btn-secondary {
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+.btn-secondary:hover { background: var(--panel); border-bottom-color: var(--line); }
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+.chip {
+  display: inline-block;
+  font: 600 0.625rem/1.2 var(--font-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.chip--accent {
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--mint) 10%, transparent);
+  border-color: color-mix(in srgb, var(--mint) 28%, transparent);
+}
+
+.tile {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Donation buttons (footer, start-page strip). The coloured dots carry the
+   payment providers' own brand colours, hence the literal values. */
+.donate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.75rem 0.3125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--fg);
+  font: 600 0.8125rem/1.2 var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.donate-btn:hover { background: var(--panel); border-bottom-color: var(--line); }
+.donate-btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.donate-dot {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+.donate-btn--bmc .donate-dot { background: #ffdd00; color: #0e1311; }
+.donate-btn--paypal .donate-dot { background: #1f6fd0; color: #ffffff; font-weight: 700; }
+
+/* ── Topbar — ground-coloured band, hairline bottom, segment centre ── */
 #top-bar {
   position: fixed;
   top: 0;
@@ -129,51 +190,49 @@ a:hover { border-bottom-color: var(--brand-strong); }
   align-items: center;
   justify-content: space-between;
   padding: 0 1.5rem;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
   gap: 1rem;
 }
 
 .topbar-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
   font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 0.875rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #fff;
-  background: var(--brand-strong);
-  padding: 0.25rem 0.625rem;
-  border-radius: var(--radius-sm);
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+  color: var(--fg);
   white-space: nowrap;
   flex-shrink: 0;
   text-decoration: none;
   border-bottom: none;
-  transition: background 120ms ease, transform 120ms ease;
 }
-.topbar-wordmark:hover {
-  border-bottom: none;
-  background: var(--brand);
-  color: var(--ink-on-brand);
-  transform: translateY(-1px);
+.topbar-wordmark::before {
+  content: "";
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  background: url("/brand-mark.svg") center / contain no-repeat;
 }
+.topbar-wordmark:hover { border-bottom: none; color: var(--fg); }
 
-/* 3-Zonen-Layout (mirror von viewer/src/styles.css): links | Mitte | rechts.
-   Linke und rechte Zone wachsen gleich, damit die mittlere Gruppe
-   (Verbinden + Sharer) echt zentriert bleibt. */
+/* 3-zone layout: left | centre | right. Left and right grow equally so the
+   centre segment stays truly centred. */
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex: 1 1 0;
   min-width: 0;
 }
 
 .topbar-tagline {
-  font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 500;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
@@ -181,8 +240,6 @@ a:hover { border-bottom-color: var(--brand-strong); }
   text-overflow: ellipsis;
   flex: 0 1 auto;
   min-width: 0;
-  text-align: left;
-  padding-left: 0.5rem;
 }
 @media (max-width: 580px) {
   .topbar-tagline { display: none; }
@@ -191,166 +248,110 @@ a:hover { border-bottom-color: var(--brand-strong); }
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.5rem;
   flex: 1 1 0;
   min-width: 0;
   justify-content: flex-end;
 }
 
-/* Topbar buttons: ghost default, ALL CAPS mono tracked, pill corners.
-   Three variants: default (ghost), primary (emerald-filled), coffee (emerald). */
 .topbar-btn {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   padding: 0.4375rem 0.875rem;
-  min-height: 32px;
+  min-height: 34px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
   text-decoration: none;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
   background: transparent;
-  color: var(--ink);
+  color: var(--fg);
   -webkit-appearance: none;
-  outline: none;
 }
-.topbar-btn:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-.topbar-btn:hover {
-  background: var(--surface);
-  border-color: var(--brand);
-  color: var(--brand-strong);
-  transform: translateY(-1px);
-}
+.topbar-btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.topbar-btn:hover { background: var(--panel-2); border-bottom-color: var(--line); }
 
-/* Buy-Me-A-Coffee — branded BMC-yellow button (self-hosted, no external
-   script). Dark text on yellow works in both schemes — no dark override. */
-.topbar-btn-coffee {
-  background: #ffdd00;
-  border-color: #ffdd00;
-  color: #0d0c22;
-  box-shadow: var(--shadow-sm);
-}
-.topbar-btn-coffee:hover {
-  background: #ffe24d;
-  border-color: #ffe24d;
-  color: #0d0c22;
-  box-shadow: var(--shadow-lift);
-}
+/* Small coffee button: same weight as its neighbours, the cup carries it. */
+.topbar-btn-coffee { background: var(--panel-2); }
+.topbar-btn-coffee:hover { background: var(--panel); }
 
 .topbar-btn-primary {
-  background: var(--brand-strong);
-  border-color: var(--brand-strong);
-  color: #fff;
-  box-shadow: var(--shadow-sm);
+  background: var(--grad-accent);
+  border-color: transparent;
+  color: var(--on-accent);
+  font-weight: 600;
 }
-.topbar-btn-primary:hover {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: var(--ink-on-brand);
-  box-shadow: var(--shadow-lift);
-}
+.topbar-btn-primary:hover { background: var(--grad-accent); filter: brightness(1.06); border-color: transparent; }
 
 .topbar-btn-label { display: inline; }
 
-/* „?"-Hilfe-Trigger: rundes Icon-Button (vom help-overlay.js injiziert). */
+/* "?" help trigger (injected by help-overlay.js on static pages). */
 .topbar-btn-icon {
   width: 34px;
   min-width: 34px;
   padding: 0;
   justify-content: center;
-  font-family: var(--font-sans);
   font-size: 0.9375rem;
-  font-weight: 700;
-  border-radius: var(--radius-pill);
+  font-weight: 600;
 }
 
 @media (max-width: 380px) {
   .topbar-btn-label { display: none; }
   .topbar-btn { padding: 0.4375rem 0.5rem; }
 }
-
-@media (max-width: 720px) {
+@media (max-width: 1100px) {
   #topbar-coffee .topbar-btn-label { display: none; }
 }
 
-/* ── Center-Zone: Verbinden + Sharer-Download (mirror von styles.css) ── */
+/* ── Centre segment: Verbinden + Sharer download ── */
 .topbar-center {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-items: stretch;
   flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
 }
 .topbar-cta {
   height: 34px;
-  padding: 0 1.125rem;
+  padding: 0 1rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4375rem;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
   text-decoration: none;
   white-space: nowrap;
-  border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line);
+  transition: background 120ms ease, filter 120ms ease;
   -webkit-appearance: none;
-  outline: none;
 }
-.topbar-cta:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-/* Label-Hook (spiegelt .topbar-btn-label). */
+.topbar-cta:last-child { border-right: 0; }
+.topbar-cta:hover { background: var(--panel-2); border-bottom: 0; }
+.topbar-cta:focus-visible { outline: 2px solid var(--fg); outline-offset: -2px; }
 .topbar-cta-label { display: inline; }
 .topbar-cta-connect {
-  background: var(--brand-strong);
-  border: 1px solid var(--brand-strong);
-  color: #fff;
-  box-shadow: var(--shadow-sm);
+  background: var(--grad-accent);
+  color: var(--on-accent);
+  font-weight: 600;
 }
-.topbar-cta-connect::before {
-  content: "";
-  width: 4px;
-  height: 0.85em;
-  border-radius: var(--radius-pill);
-  background: rgba(255,255,255,0.55);
-  flex-shrink: 0;
-}
-.topbar-cta-connect:hover {
-  background: var(--brand);
-  border-color: var(--brand);
-  box-shadow: var(--shadow-lift);
-  transform: translateY(-1px);
-}
-.topbar-cta-sharer {
-  background: var(--surface);
-  border: 1.5px solid var(--brand-strong);
-  color: var(--brand-strong);
-}
-.topbar-cta-sharer:hover {
-  background: rgba(16,185,129,0.12);
-  box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
-}
+.topbar-cta-connect:hover { background: var(--grad-accent); filter: brightness(1.06); }
 
-/* Bis ~1400px zweizeilig: Wordmark + Aktionen oben, Verbinden + Sharer
-   zentriert darunter. Der --topbar-height-Override zieht Body-Padding etc. */
+/* Up to ~1400px two rows: wordmark + actions on top, segment centred below. */
 @media (max-width: 1400px) {
-  :root { --topbar-height: 100px; }
+  :root { --topbar-height: 104px; }
   #top-bar {
     height: auto;
     min-height: var(--topbar-height);
@@ -361,13 +362,15 @@ a:hover { border-bottom-color: var(--brand-strong); }
   }
   .topbar-left { order: 1; flex: 0 0 auto; }
   .topbar-actions { order: 2; flex: 1 1 auto; justify-content: flex-end; }
-  .topbar-center { order: 3; flex-basis: 100%; justify-content: center; }
+  /* Forced line break: the segment always gets its own centred row. */
+  #top-bar::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+  .topbar-center { order: 4; margin-inline: auto; }
 }
 @media (max-width: 420px) {
-  .topbar-cta { height: 30px; font-size: 0.625rem; padding: 0 0.875rem; }
+  .topbar-cta { height: 32px; font-size: 0.75rem; padding: 0 0.75rem; }
 }
 
-/* ── Hilfe-Modal („?") — gefüllt vom help-overlay.js ── */
+/* ── Help modal ("?") — filled by help-overlay.js ── */
 .help-modal {
   position: fixed;
   inset: 0;
@@ -381,17 +384,17 @@ a:hover { border-bottom-color: var(--brand-strong); }
 .help-modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 31, 26, 0.45);
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(2px);
 }
 .help-modal-dialog {
   position: relative;
   width: min(560px, 100%);
   max-height: 86vh;
   overflow-y: auto;
-  background: var(--surface);
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-lift);
+  border-radius: var(--radius);
 }
 .help-modal-head {
   position: sticky;
@@ -401,14 +404,14 @@ a:hover { border-bottom-color: var(--brand-strong); }
   justify-content: space-between;
   gap: 1rem;
   padding: 1.125rem 1.25rem;
-  background: var(--surface);
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
 .help-modal-title {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--ink);
+  font-size: 1.0625rem;
+  font-weight: 500;
+  color: var(--fg);
 }
 .help-modal-close {
   flex-shrink: 0;
@@ -421,14 +424,14 @@ a:hover { border-bottom-color: var(--brand-strong); }
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 1rem;
   transition: background 120ms ease, color 120ms ease;
   -webkit-appearance: none;
 }
-.help-modal-close:hover { background: var(--paper); color: var(--ink); }
-.help-modal-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.help-modal-close:hover { background: var(--panel-2); color: var(--fg); }
+.help-modal-close:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .help-modal-body { padding: 0.25rem 1.25rem 1.25rem; }
 .help-section { border-bottom: 1px solid var(--line); }
 .help-section:last-child { border-bottom: none; }
@@ -441,7 +444,7 @@ a:hover { border-bottom-color: var(--brand-strong); }
   padding: 0.9375rem 0;
   font-weight: 600;
   font-size: 0.9375rem;
-  color: var(--ink);
+  color: var(--fg);
 }
 .help-section > summary::-webkit-details-marker { display: none; }
 .help-section > summary::after {
@@ -453,7 +456,7 @@ a:hover { border-bottom-color: var(--brand-strong); }
 }
 .help-section[open] > summary::after { content: "–"; }
 .help-section > summary:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--fg);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -463,9 +466,9 @@ a:hover { border-bottom-color: var(--brand-strong); }
   font-size: 0.875rem;
   line-height: 1.6;
 }
-.help-section a { color: var(--brand-strong); }
+.help-section a { color: var(--accent-text); }
 
-/* ── Footer — slim mono band, surface bg, 1px line ── */
+/* ── Footer — slim fixed band: legal links left, donations right ── */
 #site-footer {
   position: fixed;
   left: 0;
@@ -475,40 +478,43 @@ a:hover { border-bottom-color: var(--brand-strong); }
   z-index: 400;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
+  justify-content: space-between;
+  gap: 0.5rem 1.25rem;
   flex-wrap: wrap;
   padding: 0.5rem 1.5rem;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
   border-top: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
   line-height: 1.4;
   color: var(--muted);
-  text-align: center;
 }
 
-#site-footer .legal-links {
-  white-space: nowrap;
-}
+#site-footer .legal-links { white-space: nowrap; }
 
-#site-footer a {
+#site-footer a:not(.donate-btn) {
   color: var(--muted);
   text-decoration: none;
-  font-weight: 500;
   border-bottom: 1px solid transparent;
   transition: color 100ms ease, border-color 100ms ease;
 }
-#site-footer a:hover {
-  color: var(--brand-strong);
-  border-bottom-color: var(--brand-strong);
+#site-footer a:not(.donate-btn):hover {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
 }
-#site-footer a:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+#site-footer a:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+.footer-donate {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* The band wraps to two or three rows on narrow screens; reserve that. */
+@media (max-width: 760px) {
+  :root { --footer-height: 96px; }
+  #site-footer { justify-content: center; text-align: center; }
+  .footer-donate { margin-left: 0; }
 }
 
 /* ── Accessibility utility — visually-hidden text for screen readers
@@ -527,11 +533,9 @@ a:hover { border-bottom-color: var(--brand-strong); }
 }
 
 /* ============================================================
-   Marketing-page content typography. Pages that import this CSS
-   (impressum/, datenschutz/, download/) render long-form prose
-   in plain <h1>..<h3>, <p>, <ul>, <code>. Typography conventions:
-   emerald rounded-bar marker on headings, mono code,
-   tabular-aligned list bullets via custom counter-style.
+   Content typography for the static pages (long-form prose in plain
+   <h1>..<h3>, <p>, <ul>, <code>): light headlines, muted secondary text,
+   hairline section rules.
    ============================================================ */
 main.container {
   max-width: 56rem;
@@ -541,46 +545,31 @@ main.container {
 
 h1, h2, h3 {
   font-family: var(--font-sans);
-  font-weight: 600;
-  color: var(--ink);
+  color: var(--fg);
   margin: 0;
-  letter-spacing: -0.005em;
+  text-wrap: balance;
 }
-h1 { font-size: 1.875rem; margin-bottom: 0.625rem; }
-h2 { font-size: 1.125rem; margin-top: 2.25rem; margin-bottom: 0.625rem; }
-h2::before {
-  content: "";
-  display: inline-block;
-  width: 4px;
-  height: 1em;
-  margin-right: 0.5em;
-  vertical-align: -0.12em;
-  border-radius: var(--radius-pill);
-  background: var(--brand);
-  font-weight: 400;
-}
-h3 { font-size: 1rem; margin-top: 1.25rem; margin-bottom: 0.375rem; color: var(--muted); font-weight: 600; }
+h1 { font-size: clamp(2rem, 4vw, 2.75rem); font-weight: 300; line-height: 1.15; letter-spacing: -0.02em; margin-bottom: 0.75rem; }
+h2 { font-size: 1.375rem; font-weight: 400; line-height: 1.3; letter-spacing: -0.01em; margin-top: 2.25rem; margin-bottom: 0.625rem; }
+h3 { font-size: 1rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.375rem; color: var(--fg); }
 h3.platform-heading {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.16em;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink);
+  color: var(--muted);
   border-top: 1px solid var(--line);
   padding-top: 0.875rem;
   margin-top: 2rem;
 }
 
-p, li { font-size: 0.9375rem; color: var(--ink); line-height: 1.6; }
+p, li { font-size: 1rem; color: var(--fg); line-height: 1.65; }
 p { margin: 0 0 0.875rem; }
-p.lead { font-size: 1.0625rem; color: var(--ink); }
+p.lead { font-size: 1.0625rem; color: var(--muted); }
 p.hint {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
+  font-size: 0.875rem;
   color: var(--muted);
-  border-left: 3px solid var(--brand);
-  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--mint);
   padding: 0.5rem 0.875rem;
   margin: 1.25rem 0;
 }
@@ -591,13 +580,13 @@ li { margin-bottom: 0.375rem; }
 code {
   font-family: var(--font-mono);
   font-size: 0.875em;
-  background: var(--surface);
+  background: var(--panel-2);
   border: 1px solid var(--line);
   padding: 0.0625rem 0.375rem;
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
 }
 
-strong { color: var(--ink); font-weight: 600; }
+strong { color: var(--fg); font-weight: 600; }
 
 section {
   margin-top: 1.5rem;
@@ -607,16 +596,19 @@ section {
 section:first-of-type { border-top: none; padding-top: 0; }
 
 /* ============================================================
-   /download/ — package list. The HTML uses the same <ul class=
-   "download-list"> / <li class="download-item"> + .download-btn
-   structure across Windows + Linux blocks.
+   /download/ — package list (same <ul class="download-list"> /
+   <li class="download-item"> + .download-btn markup for all blocks).
    ============================================================ */
 .download-list {
   list-style: none;
   margin: 0 0 1.25rem;
   padding: 0;
   display: grid;
-  gap: 0.875rem;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
 }
 .download-item {
   display: flex;
@@ -624,24 +616,17 @@ section:first-of-type { border-top: none; padding-top: 0; }
   justify-content: space-between;
   gap: 1.25rem;
   padding: 1.25rem 1.5rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow 150ms ease, transform 150ms ease;
+  border-top: 1px solid var(--line);
+  transition: background 150ms ease;
 }
-.download-item:hover {
-  box-shadow: var(--shadow-lift);
-  transform: translateY(-2px);
-}
-.download-meta {
-  flex: 1;
-}
+.download-item:first-child { border-top: 0; }
+.download-item:hover { background: var(--panel-2); }
+.download-meta { flex: 1; }
 .download-meta h3 {
   margin: 0 0 0.375rem;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--ink);
+  color: var(--fg);
 }
 .download-meta p {
   margin: 0;
@@ -651,94 +636,51 @@ section:first-of-type { border-top: none; padding-top: 0; }
 }
 .download-meta .size {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
+  font-size: 0.75rem;
   color: var(--muted);
-  text-transform: uppercase;
 }
 .download-btn {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 0.5625rem 1.125rem;
+  font: 600 0.875rem/1.2 var(--font-sans);
+  padding: 0.625rem 1.125rem;
   border: none;
-  border-radius: var(--radius-pill);
-  background: var(--brand-strong);
-  color: #fff;
+  border-radius: var(--radius-sm);
+  background: var(--grad-accent);
+  color: var(--on-accent);
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
   align-self: center;
-  box-shadow: var(--shadow-sm);
-  transition: background 120ms ease, box-shadow 150ms ease, transform 120ms ease;
+  transition: filter 120ms ease;
 }
-.download-btn:hover {
-  background: var(--brand);
-  color: var(--ink-on-brand);
-  box-shadow: var(--shadow-lift);
-  transform: translateY(-1px);
-  border-bottom: none;
-}
-.download-btn:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
+.download-btn:hover { filter: brightness(1.06); border-bottom: none; }
+.download-btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .download-count {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
+  font-size: 0.75rem;
   color: var(--muted);
-  text-transform: uppercase;
   margin-top: 0.375rem;
 }
 
-/* /download/ release-notes section: emerald rounded border-left */
 .release-list { list-style: none; margin: 0; padding: 0; }
 .release-list li {
-  padding: 0.375rem 0 0.375rem 1.5rem;
-  border-left: 3px solid var(--brand);
-  border-radius: var(--radius-sm);
+  padding: 0.375rem 0 0.375rem 1.25rem;
+  border-left: 2px solid var(--mint);
   margin-bottom: 0.625rem;
   font-size: 0.9375rem;
 }
 
-/* Numeric prefix on h3 release headings */
 .release-notes h3 {
   font-family: var(--font-mono);
   font-size: 0.875rem;
-  letter-spacing: 0.06em;
-  color: var(--ink);
+  font-weight: 500;
+  color: var(--fg);
   margin-top: 1.5rem;
   margin-bottom: 0.625rem;
-  text-transform: none;
-}
-.release-notes h3::before {
-  content: "";
-  display: inline-block;
-  width: 4px;
-  height: 1em;
-  margin-right: 0.5em;
-  vertical-align: -0.12em;
-  border-radius: var(--radius-pill);
-  background: var(--brand);
 }
 
 @media (max-width: 580px) {
   .download-item { flex-direction: column; }
   .download-btn { align-self: flex-start; }
-}
-
-/* Dark-mode AA contrast: brand-background elements with white text. */
-@media (prefers-color-scheme: dark) {
-  .topbar-wordmark { color: var(--ink-on-brand); }
-  .topbar-btn-primary { color: var(--ink-on-brand); }
-  .topbar-cta-connect { color: var(--ink-on-brand); }
-  .topbar-cta-connect::before { background: rgba(6,35,27,0.45); }
-  .topbar-cta-sharer { color: var(--brand); border-color: var(--brand); }
-  .help-section a { color: var(--brand); }
-  .download-btn { color: var(--ink-on-brand); }
 }
 
 /* Touch targets: the topbar stays visually compact on desktop, but on a
