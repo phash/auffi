@@ -28,10 +28,10 @@ body {
    Hero section — eyebrow + light headline above the connect card.
    ============================================================ */
 .hero {
-  padding: clamp(2rem, 6vw, 5rem) clamp(1rem, 4vw, 3rem);
+  padding: clamp(1.5rem, 5vw, 3.5rem) 0 0;
   text-align: center;
   width: 100%;
-  max-width: 560px;
+  max-width: 960px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -56,13 +56,73 @@ body.streaming .hero-title { display: none; }
 /* ============================================================
    The connect card — 1-px panel, no shadow.
    ============================================================ */
-#app {
+/* Entry box: "Ich helfe" (#app, the connect card) | "Ich brauche Hilfe"
+   (sharer download). While a stream runs the box collapses to #app alone. */
+.entry {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: clamp(1.5rem, 5vw, 1.875rem) clamp(1.25rem, 5vw, 1.875rem) 1.5rem;
+  text-align: left;
+}
+.entry > #app + .entry-need { border-left: 1px solid var(--line); }
+.entry-who {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.entry-who::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mint);
+}
+.entry-need {
+  padding: clamp(1.5rem, 4vw, 1.875rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  min-width: 0;
+}
+.entry-need-heading {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.entry-need-text { margin: 0; font-size: 0.9375rem; color: var(--muted); }
+.entry-dl { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.entry-dl .btn-primary,
+.entry-dl .btn-secondary { min-height: 48px; }
+.entry-version {
+  margin: auto 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+body.streaming .entry { display: block; background: none; border: 0; }
+body.streaming .entry-need { display: none; }
+body.streaming .entry-who { display: none; }
+@media (max-width: 760px) {
+  .entry { grid-template-columns: 1fr; }
+  .entry > #app + .entry-need { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+#app {
+  padding: clamp(1.5rem, 4vw, 1.875rem);
   width: 100%;
-  max-width: 460px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -71,7 +131,10 @@ body.streaming .hero-title { display: none; }
 }
 #app.streaming {
   max-width: min(96vw, 1280px);
+  margin-inline: auto;
   background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 #app.streaming .video-wrapper {
   aspect-ratio: 16 / 9;
@@ -137,7 +200,7 @@ body.streaming .hero-title { display: none; }
   padding: 0.75rem 1.125rem;
   gap: 0.75rem;
 }
-#app.compact > .brand,
+#app.compact > .entry-who,
 #app.compact > .instruction,
 #app.compact > .input-group,
 #app.compact > #status,
@@ -147,34 +210,9 @@ body.streaming .hero-title { display: none; }
   display: none !important;
 }
 
-/* Brand ── */
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-.brand-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: var(--grad-accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.brand-icon svg { width: 16px; height: 16px; fill: var(--on-accent); }
-.brand-name {
-  font-family: var(--font-sans);
-  font-size: 1.1875rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--fg);
-}
-
 .instruction {
-  font-size: 0.9375rem;
-  line-height: 1.55;
+  font-size: 1.0625rem;
+  line-height: 1.5;
   color: var(--fg);
 }
 
@@ -272,68 +310,6 @@ body.streaming .hero-title { display: none; }
 }
 .icon-btn:hover { background: var(--panel); }
 
-/* Sekundärer Hero-CTA: „oder jemand anderen um Hilfe bitten — Sharer laden".
-   Nur im Idle sichtbar; bei body.streaming ausgeblendet (wie eyebrow/title). */
-.hero-alt-cta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.875rem;
-}
-.hero-alt-cta-divider {
-  display: flex;
-  align-items: center;
-  align-self: stretch;
-  gap: 0.625rem;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-.hero-alt-cta-divider::before,
-.hero-alt-cta-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-.hero-alt-cta-text {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-  text-align: center;
-}
-.hero-alt-cta-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4375rem;
-  width: 100%;
-  min-height: 46px;
-  padding: 0 1rem;
-  background: color-mix(in srgb, var(--mint) 8%, transparent);
-  color: var(--accent-text);
-  border: 1.5px solid var(--teal);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-decoration: none;
-  transition: background .12s ease, box-shadow .12s ease, transform .12s ease;
-}
-.hero-alt-cta-btn:hover {
-  background: color-mix(in srgb, var(--mint) 16%, transparent);
-  transform: translateY(-1px);
-}
-.hero-alt-cta-btn:focus-visible {
-  outline: 2px solid var(--fg);
-  outline-offset: 2px;
-}
-body.streaming .hero-alt-cta { display: none; }
 
 .reconnect-wrap { display: none; }
 .reconnect-wrap.active { display: block; }
@@ -915,11 +891,7 @@ body.streaming .hero-alt-cta { display: none; }
   font-weight: 500;
   color: var(--fg);
 }
-.account-cta-heading::before,
-.news-section > h2::before,
-.download-section > h2::before,
-.trust-section > h2::before,
-.faq-section > h2::before {
+.account-cta-heading::before {
   content: "";
   display: inline-block;
   width: 4px;
@@ -957,111 +929,160 @@ body.streaming .hero-alt-cta { display: none; }
 }
 .account-cta-btn:hover { background: var(--panel); transform: translateY(-1px); }
 .account-cta-btn-primary {
-  background: var(--teal);
-  border-color: var(--teal);
-  color: #ffffff;
-}
-.account-cta-btn-primary:hover {
-  background: var(--mint);
-  border-color: var(--mint);
+  background: var(--grad-accent);
+  border-color: transparent;
   color: var(--on-accent);
 }
+.account-cta-btn-primary:hover { filter: brightness(1.06); }
 
 /* ============================================================
-   Landing-Sections wrapper (gh #38)
+   Landing sections (flow, why-bento, donation strip, news,
+   download, FAQ) — hidden while a stream runs.
    ============================================================ */
 .landing-sections {
   width: 100%;
-  max-width: 760px;
+  min-width: 0;
+  max-width: 960px;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: clamp(3rem, 8vw, 5.5rem);
+  padding-top: 1rem;
 }
 body.streaming .landing-sections { display: none; }
 
-/* ============================================================
-   News-Sektion (gh #38)
-   ============================================================ */
-.news-section { width: 100%; }
-.news-section > h2 {
-  margin: 0 0 1rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+.landing-sections h2 {
+  margin: 0 0 1.25rem;
+  font-size: clamp(1.75rem, 3.6vw, 2.5rem);
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
   color: var(--fg);
-  border-top: 1px solid var(--line);
-  padding-top: 0.875rem;
+  text-align: left;
+  text-wrap: balance;
+}
+
+/* Flow diagram ── slanted steps; colours from tokens so it follows the mode. */
+.flow { margin: 0; width: 100%; min-width: 0; display: grid; gap: 1rem; justify-items: center; }
+.flow svg { display: block; width: 100%; height: auto; }
+.flow text { font: 500 13px var(--font-sans); fill: var(--fg); }
+.flow .flow-dim { fill: var(--muted); font-weight: 400; }
+.flow-step { fill: var(--panel); stroke: var(--line); }
+.flow-step--lead { stroke: var(--mint); stroke-opacity: 0.6; }
+.flow-step--active { fill: color-mix(in srgb, var(--mint) 16%, var(--panel)); stroke: var(--mint); }
+.flow-step--next { stroke-dasharray: 4 4; }
+.flow-pin { stroke: var(--mint); stroke-width: 1.2; fill: none; }
+.flow-dot { fill: var(--mint); }
+.flow-caption { max-width: 60ch; margin: 0; font-size: 0.9375rem; color: var(--muted); text-align: center; }
+@media (max-width: 640px) {
+  .flow { display: block; overflow-x: auto; }
+  .flow svg { min-width: 620px; }
+  .flow-caption { margin-top: 1rem; text-align: left; }
+}
+
+/* Why-bento ── intro tile spanning two rows + four fact tiles, shared hairlines. */
+.why {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
   text-align: left;
 }
+.why-intro {
+  grid-row: span 2;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.why-intro h2 { margin-bottom: 0.5rem; }
+.trust-compare-link { margin: 0; font-size: 0.9375rem; color: var(--muted); line-height: 1.6; }
+.trust-compare-link a { color: var(--accent-text); }
+.why-fact {
+  padding: 1.5rem;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.why-fact:nth-of-type(n+3) { border-top: 1px solid var(--line); }
+.why-value {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--accent-text);
+}
+.why-title { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--fg); }
+.why-body { margin: 0; font-size: 0.875rem; line-height: 1.55; color: var(--muted); }
+@media (max-width: 900px) {
+  .why { grid-template-columns: 1fr 1fr; }
+  .why-intro { grid-column: 1 / -1; grid-row: auto; }
+  .why-fact { border-top: 1px solid var(--line); }
+  .why-fact:nth-of-type(odd) { border-left: 0; }
+}
+@media (max-width: 560px) {
+  .why { grid-template-columns: 1fr; }
+  .why-fact { border-left: 0; }
+}
+
+/* Donation strip ── */
+.support {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1.5rem;
+  align-items: center;
+  padding: 1.75rem;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--teal) 9%, var(--panel)), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-align: left;
+}
+.support h2 { margin: 0 0 0.375rem; font-size: clamp(1.5rem, 3vw, 1.875rem); }
+.support p { margin: 0; color: var(--muted); max-width: 60ch; }
+.support-btns { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+.support .donate-btn { padding: 0.625rem 1rem 0.625rem 0.625rem; font-size: 0.9375rem; }
+@media (max-width: 760px) { .support { grid-template-columns: 1fr; } }
+
+/* News ── */
+.news-section { width: 100%; text-align: left; }
 .news-list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
-  gap: 0;
   border-top: 1px solid var(--line);
 }
-.news-item {
-  padding: 0.875rem 0;
-  background: transparent;
-  border-bottom: 1px solid var(--line);
-}
+.news-item { padding: 1rem 0; border-bottom: 1px solid var(--line); }
 .news-date {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: 0.75rem;
   color: var(--muted);
   margin-bottom: 0.25rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
 }
-.news-title {
-  margin: 0 0 0.375rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--fg);
-}
-.news-body {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  color: var(--fg);
-}
+.news-title { margin: 0 0 0.375rem; font-size: 1rem; font-weight: 600; color: var(--fg); }
+.news-body { margin: 0; font-size: 0.9375rem; line-height: 1.55; color: var(--muted); }
+.news-body a { color: var(--accent-text); }
 
-/* ============================================================
-   Download-Sektion (Hauptseite-Inline) — panel
-   ============================================================ */
+/* Download (inline on the start page) ── */
 .download-section {
   width: 100%;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--mint) 16%, var(--bg)) 0%, var(--bg) 70%);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: clamp(1.25rem, 4vw, 1.625rem);
+  padding: clamp(1.25rem, 4vw, 1.75rem);
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  text-align: left;
   scroll-margin-top: calc(var(--topbar-height) + 1rem);
 }
-.download-section > h2 {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--fg);
-}
-.download-lede {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-  color: var(--fg);
-}
+.download-section > h2 { margin: 0; }
+.download-lede { margin: 0; font-size: 1rem; line-height: 1.55; color: var(--muted); }
 .download-lede strong { color: var(--fg); font-weight: 600; }
-
 .download-features {
   list-style: none;
   padding: 0;
@@ -1074,32 +1095,23 @@ body.streaming .landing-sections { display: none; }
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   line-height: 1.45;
-  color: var(--fg);
+  color: var(--muted);
 }
+.download-features li strong { color: var(--fg); }
 .download-features li::before {
   content: "✓";
   flex-shrink: 0;
   color: var(--accent-text);
   font-weight: 700;
-  font-family: var(--font-mono);
-  margin-top: 0.0625rem;
 }
-
-.download-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
+.download-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .download-btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: var(--font-sans);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font: 600 0.9375rem/1.2 var(--font-sans);
   padding: 0.625rem 1.125rem;
   min-height: 44px;
   background: var(--grad-accent);
@@ -1108,137 +1120,46 @@ body.streaming .landing-sections { display: none; }
   border-radius: var(--radius-sm);
   text-decoration: none;
   cursor: pointer;
-  transition: background .12s ease, transform .12s ease, box-shadow .12s ease;
+  transition: filter .12s ease;
 }
-.download-btn-primary:hover { background: var(--mint); color: var(--on-accent); transform: translateY(-1px); }
-.download-btn-primary:active { transform: translateY(1px); box-shadow: none; }
+.download-btn-primary:hover { filter: brightness(1.06); border-bottom: 0; }
 .download-btn-secondary {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: var(--font-sans);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font: 600 0.875rem/1.2 var(--font-sans);
   padding: 0.5rem 0.875rem;
-  min-height: 38px;
-  background: transparent;
+  min-height: 44px;
+  background: var(--panel-2);
   color: var(--fg);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   text-decoration: none;
   cursor: pointer;
-  transition: background .12s ease, box-shadow .12s ease, transform .12s ease;
+  transition: background .12s ease;
 }
-.download-btn-secondary:hover { background: var(--panel); transform: translateY(-1px); }
-
+.download-btn-secondary:hover { background: var(--panel); border-bottom-color: var(--line); }
 .download-meta {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   color: var(--muted);
-  letter-spacing: 0.06em;
-  line-height: 1.5;
+  line-height: 1.55;
 }
-.download-meta a { color: var(--accent-text); text-decoration: none; border-bottom: 1px solid transparent; }
-.download-meta a:hover { border-bottom-color: var(--accent-text); }
+.download-meta a { color: var(--accent-text); }
 
-/* ============================================================
-   Trust- / Geo-SEO-Sektion (gh #38) — 4 vertrauens-kacheln
-   ============================================================ */
-.trust-section { width: 100%; }
-.trust-section > h2 {
-  margin: 0 0 1rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--fg);
-  border-top: 1px solid var(--line);
-  padding-top: 0.875rem;
-  text-align: left;
-}
-.trust-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.75rem;
-}
-.trust-item {
-  padding: 1rem 1.125rem;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-.trust-item:hover { transform: translateY(-1px); }
-.trust-title {
-  margin: 0 0 0.375rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--fg);
-}
-.trust-body {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  color: var(--fg);
-}
-
-/* FAQ ── sichtbare Q&A, deckungsgleich mit dem FAQPage-JSON-LD. */
-.faq-section { width: 100%; }
-.faq-section > h2 {
-  margin: 0 0 1rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--fg);
-  border-top: 1px solid var(--line);
-  padding-top: 0.875rem;
-  text-align: left;
-}
+/* FAQ ── visible Q&A, identical to the FAQPage JSON-LD. */
+.faq-section { width: 100%; text-align: left; }
 .faq-list {
   display: grid;
-  gap: 0.75rem;
-}
-.faq-item {
-  padding: 1rem 1.125rem;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  text-align: left;
+  overflow: hidden;
 }
-.faq-question {
-  margin: 0 0 0.375rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--fg);
-}
-.faq-answer {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  color: var(--fg);
-}
+.faq-item { padding: 1.25rem 1.5rem; border-top: 1px solid var(--line); }
+.faq-item:first-child { border-top: 0; }
+.faq-question { margin: 0 0 0.375rem; font-size: 1rem; font-weight: 600; line-height: 1.4; color: var(--fg); }
+.faq-answer { margin: 0; font-size: 0.9375rem; line-height: 1.55; color: var(--muted); }
 
-/* Hidden ── (the static pages' .visually-hidden lives in
-   public/topbar-footer.css — the app bundle has no user of it) */
+/* Hidden ── */
 .hidden { display: none !important; }
-
-/* Respect the OS "reduce motion" setting (WCAG 2.3.3): neutralise all
-   animation/transition/auto-scroll for users who get motion sick. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
