@@ -67,7 +67,7 @@ export function confirmWithReason(opts: ConfirmOptions): Promise<string | null> 
     const label = document.createElement("label");
     label.style.display = "block";
     label.style.fontSize = "0.8125rem";
-    label.style.color = "var(--text-secondary)";
+    label.style.color = "var(--muted)";
     label.textContent = `Grund (mindestens ${MIN_REASON_LEN} Zeichen)`;
     modal.appendChild(label);
 

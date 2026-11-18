@@ -55,7 +55,7 @@ export const renderSignup: RouteRenderer = (root: HTMLElement, _ctx: RouteContex
   const successBox = document.createElement("p");
   successBox.setAttribute("role", "status");
   successBox.setAttribute("aria-live", "polite");
-  successBox.style.color = "var(--success)";
+  successBox.style.color = "var(--accent-text)";
   successBox.style.fontSize = "0.9375rem";
   successBox.style.marginTop = "0.5rem";
 

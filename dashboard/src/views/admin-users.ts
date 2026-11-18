@@ -240,7 +240,7 @@ export const renderAdminUsers: RouteRenderer = (
       if (!user.email_verified_at) tdStatus.appendChild(makeBadge("Unverifiziert", "user-badge-unverified"));
       if (!user.admin && !user.suspended_at && user.email_verified_at) {
         tdStatus.textContent = "Aktiv";
-        tdStatus.style.color = "var(--text-secondary)";
+        tdStatus.style.color = "var(--muted)";
       }
       tr.appendChild(tdStatus);
 
@@ -253,12 +253,12 @@ export const renderAdminUsers: RouteRenderer = (
       tdLogin.textContent = user.last_login_at
         ? formatDate(user.last_login_at)
         : "—";
-      tdLogin.style.color = "var(--text-secondary)";
+      tdLogin.style.color = "var(--muted)";
       tr.appendChild(tdLogin);
 
       const tdCreated = document.createElement("td");
       tdCreated.textContent = formatDate(user.created_at);
-      tdCreated.style.color = "var(--text-secondary)";
+      tdCreated.style.color = "var(--muted)";
       tr.appendChild(tdCreated);
 
       tbody.appendChild(tr);

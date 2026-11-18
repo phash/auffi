@@ -85,7 +85,7 @@ function renderList(root: HTMLElement, items: Device[]): void {
 
   if (items.length === 0) {
     const empty = document.createElement("p");
-    empty.style.color = "var(--text-secondary)";
+    empty.style.color = "var(--muted)";
     empty.style.fontSize = "0.9375rem";
     empty.style.padding = "1.5rem 0";
     empty.style.textAlign = "center";
@@ -114,13 +114,13 @@ function renderDeviceItem(dev: Device): HTMLLIElement {
   item.style.alignItems = "center";
   item.style.justifyContent = "space-between";
   item.style.padding = "0.75rem 0";
-  item.style.borderTop = "1px solid var(--border)";
+  item.style.borderTop = "1px solid var(--line)";
 
   const left = document.createElement("div");
   const alias = document.createElement("a");
   alias.href = BASE_PATH + "/devices/" + encodeURIComponent(dev.id);
   alias.style.fontWeight = "600";
-  alias.style.color = "var(--text)";
+  alias.style.color = "var(--fg)";
   alias.style.textDecoration = "none";
   alias.style.fontSize = "1rem";
   alias.textContent = dev.alias;
@@ -128,7 +128,7 @@ function renderDeviceItem(dev: Device): HTMLLIElement {
 
   const sub = document.createElement("div");
   sub.style.fontSize = "0.8125rem";
-  sub.style.color = "var(--text-secondary)";
+  sub.style.color = "var(--muted)";
   sub.style.fontFamily = "monospace";
   sub.style.marginTop = "0.125rem";
   sub.textContent = dev.id;
@@ -146,18 +146,18 @@ function renderDeviceItem(dev: Device): HTMLLIElement {
   onlineDot.style.height = "0.5rem";
   onlineDot.style.borderRadius = "50%";
   onlineDot.style.marginRight = "0.375rem";
-  onlineDot.style.background = dev.online ? "var(--success)" : "var(--text-secondary)";
+  onlineDot.style.background = dev.online ? "var(--accent-text)" : "var(--muted)";
   onlineDot.setAttribute("aria-hidden", "true");
 
   const onlineText = document.createElement("span");
   onlineText.textContent = dev.online ? "Online" : "Offline";
-  onlineText.style.color = dev.online ? "var(--success)" : "var(--text-secondary)";
+  onlineText.style.color = dev.online ? "var(--accent-text)" : "var(--muted)";
 
   right.appendChild(onlineDot);
   right.appendChild(onlineText);
 
   const lastSeen = document.createElement("div");
-  lastSeen.style.color = "var(--text-secondary)";
+  lastSeen.style.color = "var(--muted)";
   lastSeen.style.marginTop = "0.125rem";
   lastSeen.textContent = dev.lastSeenAt === null
     ? "Noch nie verbunden"

@@ -19,7 +19,7 @@ export const renderLogin: RouteRenderer = (root: HTMLElement, ctx: RouteContext)
   if (ctx.query.get("reset") === "ok") {
     const notice = document.createElement("p");
     notice.setAttribute("role", "status");
-    notice.style.color = "var(--success)";
+    notice.style.color = "var(--accent-text)";
     notice.style.fontSize = "0.9375rem";
     notice.textContent =
       "Passwort gesetzt. Alle Sitzungen wurden abgemeldet. Melde dich mit dem neuen Passwort an.";

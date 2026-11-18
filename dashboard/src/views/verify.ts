@@ -40,7 +40,7 @@ export const renderVerify: RouteRenderer = (root: HTMLElement, ctx: RouteContext
   void (async (): Promise<void> => {
     const res = await verifyEmail(token);
     if (res.ok) {
-      status.style.color = "var(--success)";
+      status.style.color = "var(--accent-text)";
       // Sec H-2: backend deliberately does NOT auto-login on verify
       // anymore. The user has to sign in explicitly so a fishy mail
       // link can't silently log them in via an embed/redirect.

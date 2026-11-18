@@ -18,7 +18,7 @@ export const renderForgot: RouteRenderer = (root: HTMLElement, _ctx: RouteContex
 
   const desc = document.createElement("p");
   desc.style.fontSize = "0.875rem";
-  desc.style.color = "var(--text-secondary)";
+  desc.style.color = "var(--muted)";
   desc.style.marginBottom = "0.75rem";
   desc.textContent =
     "Gib deine Account-E-Mail-Adresse ein. Wir schicken dir einen Link, mit dem du ein neues Passwort setzen kannst.";
@@ -50,7 +50,7 @@ export const renderForgot: RouteRenderer = (root: HTMLElement, _ctx: RouteContex
   const successBox = document.createElement("p");
   successBox.setAttribute("role", "status");
   successBox.setAttribute("aria-live", "polite");
-  successBox.style.color = "var(--success)";
+  successBox.style.color = "var(--accent-text)";
   successBox.style.fontSize = "0.9375rem";
   successBox.style.marginTop = "0.5rem";
 

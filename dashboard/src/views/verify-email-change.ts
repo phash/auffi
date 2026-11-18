@@ -49,7 +49,7 @@ export const renderVerifyEmailChange: RouteRenderer = (
   void (async (): Promise<void> => {
     const res = await confirmEmailChange(token);
     if (res.ok) {
-      status.style.color = "var(--success)";
+      status.style.color = "var(--accent-text)";
       status.textContent =
         "E-Mail-Adresse geändert. Melde dich mit der neuen Adresse an.";
       loginLink();

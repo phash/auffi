@@ -108,7 +108,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
 
   const verifiedRow = document.createElement("p");
   verifiedRow.style.fontSize = "0.8125rem";
-  verifiedRow.style.color = "var(--text-secondary)";
+  verifiedRow.style.color = "var(--muted)";
   verifiedRow.style.marginBottom = "0.75rem";
   verifiedRow.textContent = me.emailVerifiedAt === null
     ? "Noch nicht bestätigt"
@@ -119,8 +119,8 @@ function renderEditor(root: HTMLElement, me: Me): void {
     const pending = document.createElement("p");
     pending.style.fontSize = "0.875rem";
     pending.style.padding = "0.5rem 0.75rem";
-    pending.style.background = "var(--surface)";
-    pending.style.border = "1px solid var(--border)";
+    pending.style.background = "var(--panel)";
+    pending.style.border = "1px solid var(--line)";
     pending.style.borderRadius = "6px";
     pending.style.marginBottom = "0.75rem";
     pending.textContent =
@@ -191,7 +191,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
     if (res.ok) {
       emailNewInput.value = "";
       emailPwInput.value = "";
-      emailStatus.style.color = "var(--success)";
+      emailStatus.style.color = "var(--accent-text)";
       emailStatus.textContent =
         "Bestätigungs-Mail an die neue Adresse unterwegs. Klick den Link, dann ist die Adresse aktiv.";
       return;
@@ -216,7 +216,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
 
   const pwDesc = document.createElement("p");
   pwDesc.style.fontSize = "0.8125rem";
-  pwDesc.style.color = "var(--text-secondary)";
+  pwDesc.style.color = "var(--muted)";
   pwDesc.style.marginBottom = "0.75rem";
   pwDesc.textContent =
     "Eine Passwort-Änderung meldet dich auf allen Geräten ab, auch in diesem Tab.";
@@ -307,7 +307,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
 
   const dDesc = document.createElement("p");
   dDesc.style.fontSize = "0.8125rem";
-  dDesc.style.color = "var(--text-secondary)";
+  dDesc.style.color = "var(--muted)";
   dDesc.style.marginBottom = "0.75rem";
   dDesc.textContent =
     'Löscht den Account, alle Geräte und das gesamte Verbindungs-Protokoll unwiderruflich. ' +
@@ -339,13 +339,7 @@ function renderEditor(root: HTMLElement, me: Me): void {
 
   const dSubmit = document.createElement("button");
   dSubmit.type = "submit";
-  dSubmit.style.background = "var(--error)";
-  dSubmit.style.color = "#fff";
-  dSubmit.style.border = "none";
-  dSubmit.style.padding = "0.5rem 0.875rem";
-  dSubmit.style.borderRadius = "6px";
-  dSubmit.style.cursor = "pointer";
-  dSubmit.style.fontSize = "0.9375rem";
+  dSubmit.className = "danger";
   dSubmit.textContent = "Account unwiderruflich löschen";
   dForm.appendChild(dSubmit);
 

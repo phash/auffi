@@ -38,7 +38,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
 
   const subtitle = document.createElement("p");
   subtitle.style.fontSize = "0.875rem";
-  subtitle.style.color = "var(--text-secondary)";
+  subtitle.style.color = "var(--muted)";
   subtitle.style.marginBottom = "0.75rem";
   subtitle.textContent = "Letzte Verbindungen für " + deviceId;
   card.appendChild(subtitle);
@@ -105,7 +105,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
     }
     if (wasEmpty && res.data.items.length === 0) {
       status.className = "";
-      status.style.color = "var(--text-secondary)";
+      status.style.color = "var(--muted)";
       status.style.fontSize = "0.9375rem";
       status.style.padding = "1rem 0";
       status.style.textAlign = "center";
@@ -140,7 +140,7 @@ export const renderConnectionLog: RouteRenderer = (root: HTMLElement, ctx: Route
 function renderRow(row: ConnectionLogRow): HTMLLIElement {
   const item = document.createElement("li");
   item.style.padding = "0.75rem 0";
-  item.style.borderTop = "1px solid var(--border)";
+  item.style.borderTop = "1px solid var(--line)";
   item.style.display = "grid";
   item.style.gridTemplateColumns = "1fr auto";
   item.style.alignItems = "start";
@@ -156,7 +156,7 @@ function renderRow(row: ConnectionLogRow): HTMLLIElement {
 
   const meta = document.createElement("div");
   meta.style.fontSize = "0.8125rem";
-  meta.style.color = "var(--text-secondary)";
+  meta.style.color = "var(--muted)";
   meta.style.marginTop = "0.125rem";
   meta.textContent =
     `${formatDuration(row.startedAt, row.endedAt)} · ` +
@@ -169,7 +169,7 @@ function renderRow(row: ConnectionLogRow): HTMLLIElement {
   const right = document.createElement("div");
   right.style.textAlign = "right";
   right.style.fontSize = "0.8125rem";
-  right.style.color = "var(--text-secondary)";
+  right.style.color = "var(--muted)";
   right.textContent = formatBytes(row.bytesRelayed);
   item.appendChild(right);
 

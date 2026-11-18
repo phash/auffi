@@ -212,7 +212,7 @@ export const renderAdminUserDetail: RouteRenderer = (
       for (const d of user.devices) {
         const li = document.createElement("li");
         li.style.padding = "0.375rem 0";
-        li.style.borderBottom = "1px solid var(--border)";
+        li.style.borderBottom = "1px solid var(--line)";
         li.style.display = "flex";
         li.style.justifyContent = "space-between";
         li.style.gap = "0.5rem";
@@ -226,7 +226,7 @@ export const renderAdminUserDetail: RouteRenderer = (
           : d.last_seen_at
             ? `Zuletzt gesehen: ${formatDate(d.last_seen_at)}`
             : "Noch nie verbunden";
-        if (d.online) right.style.color = "var(--success)";
+        if (d.online) right.style.color = "var(--accent-text)";
         li.appendChild(left);
         li.appendChild(right);
         ul.appendChild(li);
@@ -270,7 +270,7 @@ export const renderAdminUserDetail: RouteRenderer = (
       for (const a of user.recent_audits) {
         const li = document.createElement("li");
         li.style.padding = "0.375rem 0";
-        li.style.borderBottom = "1px solid var(--border)";
+        li.style.borderBottom = "1px solid var(--line)";
         const time = document.createElement("span");
         time.className = "muted";
         time.style.fontSize = "0.75rem";

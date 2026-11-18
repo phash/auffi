@@ -99,7 +99,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   const idLine = document.createElement("p");
   idLine.style.fontFamily = "monospace";
   idLine.style.fontSize = "0.875rem";
-  idLine.style.color = "var(--text-secondary)";
+  idLine.style.color = "var(--muted)";
   idLine.style.marginBottom = "0.75rem";
   idLine.textContent = dev.id;
   card.appendChild(idLine);
@@ -112,7 +112,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   dot.style.width = "0.5rem";
   dot.style.height = "0.5rem";
   dot.style.borderRadius = "50%";
-  dot.style.background = dev.online ? "var(--success)" : "var(--text-secondary)";
+  dot.style.background = dev.online ? "var(--accent-text)" : "var(--muted)";
   dot.style.marginRight = "0.375rem";
   dot.setAttribute("aria-hidden", "true");
   statusLine.appendChild(dot);
@@ -166,7 +166,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
       return;
     }
     if (next === dev.alias) {
-      aliasStatus.style.color = "var(--text-secondary)";
+      aliasStatus.style.color = "var(--muted)";
       aliasStatus.textContent = "Keine Änderung.";
       return;
     }
@@ -179,7 +179,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
     if (res.ok) {
       dev.alias = next;
       h1.textContent = next;
-      aliasStatus.style.color = "var(--success)";
+      aliasStatus.style.color = "var(--accent-text)";
       aliasStatus.textContent = "Name gespeichert.";
       return;
     }
@@ -196,8 +196,8 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   autoRow.style.justifyContent = "space-between";
   autoRow.style.gap = "1rem";
   autoRow.style.padding = "0.75rem 0";
-  autoRow.style.borderTop = "1px solid var(--border)";
-  autoRow.style.borderBottom = "1px solid var(--border)";
+  autoRow.style.borderTop = "1px solid var(--line)";
+  autoRow.style.borderBottom = "1px solid var(--line)";
 
   const autoCol = document.createElement("div");
   const autoLabel = document.createElement("label");
@@ -209,7 +209,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   const autoDesc = document.createElement("div");
   autoDesc.id = "dev-auto-accept-desc";
   autoDesc.style.fontSize = "0.8125rem";
-  autoDesc.style.color = "var(--text-secondary)";
+  autoDesc.style.color = "var(--muted)";
   autoDesc.style.marginTop = "0.125rem";
   autoDesc.textContent =
     "Bei eingeschaltetem Toggle verbindet sich der Helfer ohne Bestätigung " +
@@ -238,13 +238,13 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   autoToggle.addEventListener("change", async () => {
     const next = autoToggle.checked;
     autoToggle.disabled = true;
-    autoStatus.style.color = "var(--text-secondary)";
+    autoStatus.style.color = "var(--muted)";
     autoStatus.textContent = "Speichere …";
     const res = await patchDevice(dev.id, { auto_accept: next });
     autoToggle.disabled = false;
     if (res.ok) {
       dev.autoAccept = next;
-      autoStatus.style.color = "var(--success)";
+      autoStatus.style.color = "var(--accent-text)";
       autoStatus.textContent = next
         ? "Auto-Akzeptieren aktiviert."
         : "Auto-Akzeptieren deaktiviert.";
@@ -272,7 +272,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
 
   const dangerDesc = document.createElement("p");
   dangerDesc.style.fontSize = "0.8125rem";
-  dangerDesc.style.color = "var(--text-secondary)";
+  dangerDesc.style.color = "var(--muted)";
   dangerDesc.style.marginBottom = "0.5rem";
   dangerDesc.textContent =
     "Das Token wird widerrufen, eine laufende Sitzung wird sofort getrennt. " +
@@ -282,13 +282,7 @@ function renderEditor(root: HTMLElement, dev: Device): void {
   const dangerBtn = document.createElement("button");
   dangerBtn.type = "button";
   dangerBtn.textContent = "Gerät entkoppeln";
-  dangerBtn.style.background = "var(--error)";
-  dangerBtn.style.color = "#fff";
-  dangerBtn.style.border = "none";
-  dangerBtn.style.padding = "0.5rem 0.875rem";
-  dangerBtn.style.borderRadius = "6px";
-  dangerBtn.style.cursor = "pointer";
-  dangerBtn.style.fontSize = "0.9375rem";
+  dangerBtn.className = "danger";
 
   const dangerStatus = document.createElement("p");
   dangerStatus.setAttribute("role", "status");

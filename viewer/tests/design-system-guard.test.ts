@@ -91,3 +91,33 @@ describe("one light/dark switch", () => {
     expect(hits).toEqual([]);
   });
 });
+
+// Inline styles built in markup or TS (element.style, cssText, style="…")
+// bypass the stylesheet guard above. A removed token name there resolves to
+// nothing: borders vanish, status dots turn transparent, muted text loses
+// its hierarchy. Same legacy list, plus names that never existed.
+const NEVER_DEFINED = ["--danger"];
+
+describe("inline styles in markup and scripts", () => {
+  const sources = SCAN.flatMap(files).filter(
+    (f) => /\.(ts|js|html)$/.test(f) && !/\.test\.ts$/.test(f),
+  );
+  it("reference no removed or undefined token names", () => {
+    const hits = sources.flatMap((f) => {
+      const text = readFileSync(resolve(REPO, f), "utf8");
+      return [...LEGACY, ...NEVER_DEFINED]
+        .filter((n) => new RegExp(`var\\(\\s*${n}(?![\\w-])`).test(text))
+        .map((n) => `${f}: ${n}`);
+    });
+    expect(hits).toEqual([]);
+  });
+  it("never put white text on the error colour (fails AA on the dark default)", () => {
+    const hits = sources.filter((f) =>
+      // CSS text or element.style assignments within a few lines of each other
+      /background["']?\s*[:=]\s*["']?var\(--error\)[\s\S]{0,200}?color["']?\s*[:=]\s*["']?(#fff\b|#ffffff|white)|color["']?\s*[:=]\s*["']?(#fff\b|#ffffff|white)[\s\S]{0,200}?background["']?\s*[:=]\s*["']?var\(--error\)/.test(
+        readFileSync(resolve(REPO, f), "utf8"),
+      ),
+    );
+    expect(hits).toEqual([]);
+  });
+});

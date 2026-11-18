@@ -86,8 +86,8 @@ function renderSuccess(root: HTMLElement, code: string, expiresAt: number): () =
   codeBox.style.textAlign = "center";
   codeBox.style.padding = "1rem";
   codeBox.style.margin = "0.5rem 0 1rem";
-  codeBox.style.background = "var(--surface)";
-  codeBox.style.border = "1px solid var(--border)";
+  codeBox.style.background = "var(--panel)";
+  codeBox.style.border = "1px solid var(--line)";
   codeBox.style.borderRadius = "var(--radius)";
   codeBox.textContent = code;
   card.appendChild(codeBox);
@@ -96,13 +96,13 @@ function renderSuccess(root: HTMLElement, code: string, expiresAt: number): () =
   expiryText.setAttribute("role", "status");
   expiryText.setAttribute("aria-live", "polite");
   expiryText.style.fontSize = "0.875rem";
-  expiryText.style.color = "var(--text-secondary)";
+  expiryText.style.color = "var(--muted)";
   expiryText.style.textAlign = "center";
   card.appendChild(expiryText);
 
   const hint = document.createElement("p");
   hint.style.fontSize = "0.8125rem";
-  hint.style.color = "var(--text-secondary)";
+  hint.style.color = "var(--muted)";
   hint.style.marginTop = "0.75rem";
   hint.textContent =
     "Sobald das Gerät den Code eingelöst hat, taucht es in deiner Geräte-Liste auf — diese Seite kannst du dann schließen.";
