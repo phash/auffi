@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0e1311" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f3f6f4" media="(prefers-color-scheme: light)" />
     <title>Splashtop-Alternative: ohne Lizenz pro Techniker — Auffi</title>
     <meta name="description" content="Splashtop-Alternative im ehrlichen Vergleich: Splashtop SOS ist ein ausgereiftes, kostenpflichtiges Helpdesk-Tool mit Jahreslizenz pro Techniker. Auffi ist kostenlos (auch gewerblich), Open Source (AGPL-3.0) und selbst hostbar — die helfende Person braucht nur einen Browser, kein Konto. Server in Deutschland." />
     <meta name="robots" content="index, follow" />
@@ -26,10 +28,9 @@
     <meta name="twitter:description" content="Splashtop SOS: Jahreslizenz pro Techniker. Auffi: kostenlos, AGPL-3.0, Helfer nur mit Browser." />
     <meta name="twitter:image" content="https://auffi.app/og-image.png" />
 
-    <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
     <link rel="preload" href="/fonts/Manrope-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/tokens.css" />
     <link rel="stylesheet" href="/topbar-footer.css" />
     <link rel="stylesheet" href="/legal/style.css" />
     <link rel="stylesheet" href="/compare.css" />
@@ -140,7 +141,7 @@
         <a id="topbar-signup" href="/dashboard/signup" class="topbar-btn topbar-btn-primary" aria-label="Konto anlegen">
           <span class="topbar-btn-label">Konto anlegen</span>
         </a>
-        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee (öffnet buymeacoffee.com in neuem Tab)">
+        <a id="topbar-coffee" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer" class="topbar-btn topbar-btn-coffee" aria-label="Buy me a coffee — Auffi unterstützen">
           ☕ <span class="topbar-btn-label">Buy me a coffee</span>
         </a>
       </nav>
@@ -299,8 +300,10 @@
         <a href="https://github.com/phash/auffi" target="_blank" rel="noopener noreferrer">GitHub</a>
         ·
         <a href="https://github.com/phash/auffi/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
-        ·
-        <a href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer">☕ Buy me a coffee</a>
+      </span>
+      <span class="footer-donate">
+        <a class="donate-btn donate-btn--bmc" href="https://buymeacoffee.com/phash" target="_blank" rel="noopener noreferrer"><span class="donate-dot" aria-hidden="true">☕</span>Buy me a coffee</a>
+        <a class="donate-btn donate-btn--paypal" href="https://www.paypal.com/paypalme/mroedig" target="_blank" rel="noopener noreferrer" aria-label="Per PayPal spenden"><span class="donate-dot" aria-hidden="true">P</span>PayPal</a>
       </span>
     </footer>
   </body>
