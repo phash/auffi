@@ -1,0 +1,348 @@
+<title>Auffi Terminal-Look</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: ZeBeyond-style dark engineering canvas: green-black ground, hairline panels, centered hero, slanted process diagram, bento facts, glow at the foot */
+:root {
+  --bg: #0e1311;
+  --panel: #151b18;
+  --panel-2: #1a211e;
+  --line: #262f2b;
+  --line-soft: #1d2522;
+  --fg: #eef3f1;
+  --muted: #95a39d;
+  --mint: #3ee6a8;
+  --teal: #22d3c5;
+  --ink: #04211a;
+  --sans: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 0;
+  background-image:
+    radial-gradient(120% 60% at 50% 115%, rgba(16, 150, 100, .55), transparent 60%),
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 100% 100%, 160px 160px, 160px 160px;
+  background-attachment: scroll;
+}
+.wrap { max-width: 1140px; margin: 0 auto; display: grid; gap: 88px; padding-bottom: 120px; }
+.note { margin-top: 20px; border: 1px dashed var(--line); padding: 10px 14px; font-size: 13px; color: var(--muted); background: var(--bg); border-radius: 8px; }
+.note b { color: var(--mint); font-weight: 600; }
+
+/* nav */
+nav { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding-block: 22px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 21px; letter-spacing: -.01em; }
+.brand svg { width: 30px; height: 30px; }
+.brand .o { color: var(--mint); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-inline: auto; }
+.seg a { color: var(--fg); text-decoration: none; font-size: 13px; padding: 7px 14px; border-right: 1px solid var(--line); }
+.seg a:last-child { border-right: 0; }
+.seg a:hover, .seg a:focus-visible { background: var(--panel-2); outline: none; }
+.tools { display: flex; gap: 8px; align-items: center; }
+.ibtn { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--fg); }
+.ibtn svg { width: 16px; height: 16px; }
+.cta {
+  font: 600 13px var(--sans); color: var(--ink); text-decoration: none; border: 0; cursor: pointer;
+  padding: 9px 16px; border-radius: 7px; background: linear-gradient(90deg, var(--teal), var(--mint));
+}
+.cta:focus-visible, .ghost:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.ghost { font: 500 14px var(--sans); color: var(--fg); background: var(--panel-2); border: 1px solid var(--line); padding: 10px 18px; border-radius: 7px; text-decoration: none; }
+
+/* hero */
+.hero { text-align: center; display: grid; justify-items: center; gap: 20px; padding-top: 36px; }
+.eyebrow { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.eyebrow svg { width: 15px; height: 15px; color: var(--fg); }
+h1 { font: 300 clamp(34px, 5vw, 60px)/1.12 var(--sans); letter-spacing: -.025em; margin: 0; max-width: 18ch; text-wrap: balance; }
+.hl { color: var(--mint); }
+.lead { color: var(--muted); max-width: 56ch; margin: 0; font-size: 17px; }
+.connect { display: flex; gap: 8px; width: min(480px, 100%); margin-top: 10px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.connect input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--fg); font: 500 22px var(--mono); letter-spacing: .1em; padding: 8px 12px; }
+.connect input::placeholder { color: #55625d; }
+.connect input:focus { outline: none; }
+.connect:focus-within { border-color: var(--mint); }
+.connect .cta { font-size: 15px; padding: 12px 22px; }
+.entry { display: grid; grid-template-columns: 1fr 1fr; gap: 0; width: min(920px, 100%); margin-top: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; text-align: left; }
+.entry > div { padding: 24px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.entry > div + div { border-left: 1px solid var(--line); }
+.entry .who { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.entry .who svg { width: 15px; height: 15px; color: var(--mint); }
+.entry h2 { margin: 0; font: 400 22px/1.25 var(--sans); letter-spacing: -.01em; }
+.entry .connect { width: 100%; margin-top: 4px; }
+.entry .hint { margin: 0; font-size: 13px; color: var(--muted); }
+.dl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.dl .cta, .dl .ghost { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; padding: 12px 16px; }
+.dl svg { width: 16px; height: 16px; }
+.donate { display: inline-flex; align-items: center; gap: 8px; font: 600 13px var(--sans); text-decoration: none; padding: 8px 14px; border-radius: 7px; border: 1px solid var(--line); color: var(--fg); background: var(--panel-2); }
+.donate:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.donate .dot { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; }
+.donate.bmc .dot { background: #ffdd00; color: #0e1311; }
+.donate.pp .dot { background: #1f6fd0; color: #fff; font-weight: 700; }
+.support { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; padding: 28px; background: linear-gradient(90deg, rgba(34,211,197,.08), rgba(62,230,168,.03)); border: 1px solid var(--line); border-radius: 12px; }
+.support h2 { margin: 0 0 6px; font: 300 28px/1.2 var(--sans); letter-spacing: -.02em; }
+.support p { margin: 0; color: var(--muted); max-width: 60ch; }
+.support .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.support .donate { padding: 11px 16px; font-size: 14px; }
+footer { border-top: 1px solid var(--line); padding-block: 24px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
+footer .links { display: flex; gap: 16px; flex-wrap: wrap; }
+footer a { color: var(--muted); text-decoration: none; }
+footer .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 760px) { .entry { grid-template-columns: 1fr; } .entry > div + div { border-left: 0; border-top: 1px solid var(--line); } .support { grid-template-columns: 1fr; } }
+
+/* process diagram */
+.process { position: relative; display: grid; gap: 0; justify-items: center; }
+.callout { width: min(400px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; text-align: left; position: relative; z-index: 1; }
+.callout svg { width: 26px; height: 26px; color: var(--fg); }
+.callout p { margin: 10px 0 0; font-size: 14px; color: var(--fg); }
+.flow { width: 100%; max-width: 900px; overflow-x: auto; }
+.flow svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.flow text { font: 500 13px var(--sans); fill: var(--fg); }
+.flow .dim { fill: var(--muted); font-weight: 400; }
+
+/* bento */
+.bento { display: grid; grid-template-columns: 1.6fr 1fr 1fr; grid-template-rows: auto auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.bento > div { padding: 26px; border-left: 1px solid var(--line); min-width: 0; }
+.bento .intro { grid-row: span 2; border-left: 0; display: flex; flex-direction: column; gap: 14px; }
+.bento .intro h2 { font: 300 32px/1.15 var(--sans); letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+.bento .intro p { margin: 0; color: var(--muted); font-size: 15px; max-width: 46ch; }
+.bento .intro .cta { align-self: flex-start; margin-top: auto; }
+.bento .fact { display: flex; flex-direction: column; gap: 6px; min-height: 180px; }
+.bento .fact:nth-child(n+4) { border-top: 1px solid var(--line); }
+.fact svg { width: 30px; height: 30px; color: var(--fg); margin-bottom: auto; }
+.fact .v { font: 400 24px/1.2 var(--sans); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.fact .l { font-size: 13px; color: var(--muted); }
+
+/* chips cards */
+.cards-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.cards-head h2 { font: 300 clamp(30px, 4vw, 48px)/1.1 var(--sans); letter-spacing: -.02em; margin: 0; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.card { padding: 22px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card:first-child { border-left: 0; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font: 600 10px var(--sans); letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+.chip.m { color: var(--mint); background: rgba(62, 230, 168, .08); border-color: rgba(62, 230, 168, .2); }
+.card h3 { margin: 0; font: 500 17px/1.35 var(--sans); }
+.card p { margin: 0; font-size: 14px; color: var(--muted); }
+.card a { margin-top: auto; color: var(--mint); font-size: 14px; text-decoration: none; }
+
+/* icons */
+.icons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.icon-card { padding: 22px; border-left: 1px solid var(--line); display: grid; gap: 14px; align-content: start; min-width: 0; }
+.icon-card:first-child { border-left: 0; }
+.icon-card.pick { background: linear-gradient(180deg, rgba(62,230,168,.08), transparent 60%); }
+.icon-card h3 { margin: 0; font: 500 16px var(--sans); }
+.icon-card p { margin: 0; font-size: 14px; color: var(--muted); }
+.sizes { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
+.sizes svg { display: block; }
+.s128 { width: 112px; height: 112px; } .s48 { width: 48px; height: 48px; } .s32 { width: 32px; height: 32px; } .s16 { width: 16px; height: 16px; }
+.section-h { font: 300 clamp(28px, 3.6vw, 40px)/1.15 var(--sans); letter-spacing: -.02em; margin: 0 0 8px; }
+.section-lead { color: var(--muted); margin: 0 0 22px; max-width: 62ch; }
+
+@media (max-width: 900px) {
+  .seg { order: 3; margin-inline: 0; }
+  .bento { grid-template-columns: 1fr 1fr; }
+  .bento .intro { grid-column: 1 / -1; grid-row: auto; }
+  .bento .fact { border-top: 1px solid var(--line); }
+  .bento .fact:nth-child(2), .bento .fact:nth-child(4) { border-left: 0; }
+  .cards, .icons { grid-template-columns: 1fr 1fr; }
+  .card:nth-child(3), .icon-card:nth-child(3) { border-left: 0; }
+  .card:nth-child(n+3), .icon-card:nth-child(n+3) { border-top: 1px solid var(--line); }
+}
+@media (max-width: 560px) {
+  .tools .ibtn { display: none; }
+  .bento { grid-template-columns: 1fr; }
+  .bento .fact { border-left: 0; min-height: 0; }
+  .fact svg { margin-bottom: 8px; }
+  .cards, .icons { grid-template-columns: 1fr; }
+  .card, .icon-card { border-left: 0; border-top: 1px solid var(--line); }
+  .card:first-child, .icon-card:first-child { border-top: 0; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g-old" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#047857"/></linearGradient>
+    <linearGradient id="g-cta" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#22d3c5"/><stop offset="1" stop-color="#3ee6a8"/></linearGradient>
+    <linearGradient id="rain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ee6a8" stop-opacity="0"/><stop offset=".75" stop-color="#3ee6a8" stop-opacity=".5"/><stop offset="1" stop-color="#c4ffe6"/></linearGradient>
+    <radialGradient id="glow" cx=".5" cy="1.05" r=".75"><stop offset="0" stop-color="#119c69" stop-opacity=".7"/><stop offset="1" stop-color="#119c69" stop-opacity="0"/></radialGradient>
+    <symbol id="i-old" viewBox="0 0 1024 1024">
+      <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#g-old)"/>
+      <rect x="200" y="248" width="624" height="420" rx="56" fill="#fff"/>
+      <rect x="252" y="300" width="520" height="316" rx="22" fill="#064e3b"/>
+      <rect x="468" y="668" width="88" height="76" fill="#fff"/>
+      <rect x="352" y="736" width="320" height="56" rx="28" fill="#fff"/>
+      <path d="M498 352 V560 L548 512 L584 590 L622 572 L586 496 L654 496 Z" fill="#fff" stroke="#fff" stroke-width="14" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-a" viewBox="0 0 1024 1024">
+      <rect x="32" y="32" width="960" height="960" rx="216" fill="#0e1311"/>
+      <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#glow)"/>
+      <rect x="200" y="248" width="624" height="420" rx="40" fill="#151b18" stroke="#3ee6a8" stroke-width="40"/>
+      <g fill="#3ee6a8" font-family="JetBrains Mono, monospace" font-weight="700" font-size="58">
+        <text x="262" y="340" opacity=".3">01</text><text x="262" y="410" opacity=".55">1F</text><text x="262" y="480" opacity=".85">7A</text>
+        <text x="372" y="380" opacity=".45">C4</text><text x="372" y="450" opacity=".75">0E</text>
+      </g>
+      <rect x="474" y="668" width="76" height="70" fill="#3ee6a8"/>
+      <rect x="352" y="736" width="320" height="48" rx="24" fill="#3ee6a8"/>
+      <path d="M510 340 V560 L560 512 L596 590 L634 572 L598 496 L666 496 Z" fill="#c4ffe6" stroke="#0e1311" stroke-width="22" stroke-linejoin="round" paint-order="stroke"/>
+    </symbol>
+    <symbol id="i-b" viewBox="0 0 1024 1024">
+      <rect x="32" y="32" width="960" height="960" rx="216" fill="#0e1311"/>
+      <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#glow)"/>
+      <g fill="url(#rain)">
+        <rect x="150" y="80" width="56" height="420" rx="8"/><rect x="270" y="230" width="56" height="560" rx="8"/>
+        <rect x="390" y="120" width="56" height="300" rx="8"/><rect x="750" y="160" width="56" height="620" rx="8"/>
+        <rect x="870" y="300" width="56" height="360" rx="8"/>
+      </g>
+      <g fill="#0e1311">
+        <rect x="140" y="140" width="76" height="8"/><rect x="140" y="220" width="76" height="8"/><rect x="140" y="300" width="76" height="8"/><rect x="140" y="380" width="76" height="8"/><rect x="140" y="460" width="76" height="8"/>
+        <rect x="260" y="290" width="76" height="8"/><rect x="260" y="370" width="76" height="8"/><rect x="260" y="450" width="76" height="8"/><rect x="260" y="530" width="76" height="8"/><rect x="260" y="610" width="76" height="8"/><rect x="260" y="690" width="76" height="8"/>
+        <rect x="380" y="180" width="76" height="8"/><rect x="380" y="260" width="76" height="8"/><rect x="380" y="340" width="76" height="8"/>
+        <rect x="740" y="220" width="76" height="8"/><rect x="740" y="300" width="76" height="8"/><rect x="740" y="380" width="76" height="8"/><rect x="740" y="460" width="76" height="8"/><rect x="740" y="540" width="76" height="8"/><rect x="740" y="620" width="76" height="8"/><rect x="740" y="700" width="76" height="8"/>
+        <rect x="860" y="360" width="76" height="8"/><rect x="860" y="440" width="76" height="8"/><rect x="860" y="520" width="76" height="8"/><rect x="860" y="600" width="76" height="8"/>
+      </g>
+      <path d="M440 300 V760 L540 664 L612 820 L690 784 L618 632 L752 632 Z" fill="url(#g-cta)" stroke="#0e1311" stroke-width="36" stroke-linejoin="round" paint-order="stroke"/>
+    </symbol>
+    <symbol id="i-c" viewBox="0 0 1024 1024">
+      <rect x="32" y="32" width="960" height="960" rx="216" fill="#0e1311"/>
+      <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#glow)"/>
+      <g fill="#3ee6a8">
+        <g id="dotrow"><circle cx="232" cy="0" r="26"/><circle cx="312" cy="0" r="26"/><circle cx="392" cy="0" r="26"/><circle cx="472" cy="0" r="26"/><circle cx="552" cy="0" r="26"/><circle cx="632" cy="0" r="26"/><circle cx="712" cy="0" r="26"/><circle cx="792" cy="0" r="26"/></g>
+        <use href="#dotrow" y="260"/><use href="#dotrow" y="660"/>
+        <circle cx="232" cy="340" r="26"/><circle cx="232" cy="420" r="26"/><circle cx="232" cy="500" r="26"/><circle cx="232" cy="580" r="26"/>
+        <circle cx="792" cy="340" r="26"/><circle cx="792" cy="420" r="26"/><circle cx="792" cy="500" r="26"/><circle cx="792" cy="580" r="26"/>
+        <circle cx="512" cy="740" r="26"/>
+        <circle cx="392" cy="800" r="26"/><circle cx="472" cy="800" r="26"/><circle cx="552" cy="800" r="26"/><circle cx="632" cy="800" r="26"/>
+      </g>
+      <g fill="#3ee6a8" opacity=".28"><circle cx="312" cy="340" r="18"/><circle cx="392" cy="420" r="18"/><circle cx="312" cy="500" r="18"/><circle cx="392" cy="580" r="18"/><circle cx="712" cy="340" r="18"/><circle cx="712" cy="580" r="18"/></g>
+      <path d="M480 330 V590 L534 540 L574 626 L616 606 L576 522 L650 522 Z" fill="#c4ffe6" stroke="#0e1311" stroke-width="22" stroke-linejoin="round" paint-order="stroke"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <p class="note"><b>Entwurf v2, nach deinen ZeBeyond-Bildern.</b> Grünschwarzer Grund, feine Linien, leichte Headlines mit mint-farbigen Wortteilen, Verlaufsbutton, schräges Ablaufdiagramm, Bento-Kennzahlen, grüner Glow unten. Texte von der echten Startseite.</p>
+
+  <header>
+    <nav aria-label="Hauptnavigation">
+      <span class="brand"><svg aria-hidden="true"><use href="#i-b"/></svg>Auffi</span>
+      <div class="seg"><a href="#so">So geht's</a><a href="#warum">Sicherheit</a><a href="#vergleich">Vergleich</a><a href="#hilfe">Hilfe</a></div>
+      <div class="tools">
+        <span class="ibtn" aria-label="Sprache"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg></span>
+        <span class="ibtn" aria-label="Einloggen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></span>
+        <a class="donate bmc" href="https://buymeacoffee.com/phash"><span class="dot" aria-hidden="true">☕</span>Kaffee</a>
+        <a class="cta" href="#download">Sharer herunterladen</a>
+      </div>
+    </nav>
+  </header>
+
+  <section class="hero" aria-labelledby="hero-h">
+    <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Bildschirm-Freigabe · Open Source</span>
+    <h1 id="hero-h">Bildschirm teilen <span class="hl">in Sekunden</span> — ohne <span class="hl">Installation</span></h1>
+    <p class="lead">Der Helfer öffnet auffi.app, tippt den 9-stelligen Code ein und sieht den Bildschirm. Ende-zu-Ende verschlüsselt, gehostet in Deutschland, kein Konto nötig.</p>
+    <div class="entry" id="verbinden">
+      <div>
+        <span class="who"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>Ich helfe</span>
+        <h2>Code eingeben und <span class="hl">verbinden</span></h2>
+        <form class="connect" onsubmit="event.preventDefault()">
+          <input id="code" inputmode="numeric" placeholder="123-456-789" aria-label="9-stelliger Code">
+          <button class="cta" type="submit">Verbinden</button>
+        </form>
+        <p class="hint">Den Code zeigt der Sharer auf dem anderen Rechner. Nichts zu installieren.</p>
+      </div>
+      <div id="download">
+        <span class="who"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Ich brauche Hilfe</span>
+        <h2>Sharer <span class="hl">herunterladen</span></h2>
+        <div class="dl">
+          <a class="cta" href="#"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5l7.5-1v7H3zm0 13l7.5 1v-7H3zm8.5-14.1L21 3v8.5h-9.5zm0 15.2L21 21v-8.5h-9.5z"/></svg>Windows</a>
+          <a class="ghost" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3c-2 0-3 2-3 4.5S8 12 6.5 14 5 18 7 19.5s3 .5 5 .5 3.5.5 5-.5 1.5-3.5.5-5.5S15 10 15 7.5 14 3 12 3z"/></svg>Linux</a>
+        </div>
+        <p class="hint">Version 0.7.6 · Windows 10/11, Debian 13+, Ubuntu 24.04+, Fedora 42+. Danach den Code an den Helfer durchgeben.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="process" id="so" aria-label="Ablauf einer Sitzung">
+    <div class="callout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="8" r="1.2" fill="#3ee6a8" stroke="none"/><path d="M9.5 17v-3M12 17v-5M14.5 17v-2"/></svg>
+      <p>Der Mensch am geteilten Rechner bestätigt jede Verbindung. Danach läuft das Bild direkt zwischen beiden Rechnern, DTLS-SRTP-verschlüsselt.</p>
+    </div>
+    <div class="flow">
+      <svg viewBox="0 0 900 230" role="img" aria-label="Code durchgeben, Code eintippen, Bestätigen, Bild läuft">
+        <defs><linearGradient id="act" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3ee6a8" stop-opacity=".25"/><stop offset="1" stop-color="#3ee6a8" stop-opacity=".04"/></linearGradient></defs>
+        <path d="M268 0 L310 80" stroke="#3ee6a8" stroke-width="1.2" fill="none"/>
+        <circle cx="310" cy="80" r="3.5" fill="#3ee6a8"/>
+        <polygon points="40,80 190,80 214,128 64,128" fill="#151b18" stroke="#3ee6a8" stroke-opacity=".6"/>
+        <text x="127" y="109" text-anchor="middle">Code durchgeben</text>
+        <polygon points="190,80 380,80 404,128 214,128" fill="url(#act)" stroke="#3ee6a8"/>
+        <text x="297" y="109" text-anchor="middle">Code eintippen</text>
+        <polygon points="216,132 404,132 424,172 236,172" fill="#151b18" stroke="#262f2b"/>
+        <text x="320" y="157" text-anchor="middle" class="dim">Anfrage aus Deutschland · 88.xxx</text>
+        <polygon points="440,132 640,132 620,172 420,172" fill="#151b18" stroke="#262f2b" stroke-dasharray="4 4"/>
+        <text x="530" y="157" text-anchor="middle" class="dim">Verbinden zulassen</text>
+        <polygon points="560,80 760,80 736,128 536,128" fill="#151b18" stroke="#262f2b" stroke-dasharray="4 4"/>
+        <text x="648" y="109" text-anchor="middle" class="dim">Bildschirm wählen</text>
+        <polygon points="760,80 880,80 856,128 736,128" fill="#151b18" stroke="#262f2b" stroke-dasharray="4 4"/>
+        <text x="808" y="109" text-anchor="middle" class="dim">Bild läuft</text>
+        <polygon points="300,176 600,176 580,216 320,216" fill="#151b18" stroke="#262f2b"/>
+        <text x="450" y="201" text-anchor="middle" class="dim">Verbindung direkt oder über Relay in Deutschland</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="bento" id="warum" aria-labelledby="why-h">
+    <div class="intro">
+      <span class="eyebrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Warum Auffi</span>
+      <h2 id="why-h">Helfen <span class="hl">ohne Konto</span>, mit <span class="hl">offenem Quelltext</span></h2>
+      <p>Der Helfer braucht nur einen Browser. Wer seinen Bildschirm teilt, startet den Sharer und klickt „Verbinden zulassen“. Der Server steht in Deutschland, der Code ist AGPL.</p>
+      <div class="dl" style="margin-top:auto"><a class="cta" href="#verbinden">Jetzt verbinden</a><a class="donate bmc" href="https://buymeacoffee.com/phash"><span class="dot" aria-hidden="true">☕</span>Projekt unterstützen</a></div>
+    </div>
+    <div class="fact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span class="v">&lt;10 Sekunden</span><span class="l">vom Code bis zum Bild</span></div>
+    <div class="fact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M7 21h10"/><path d="M7 13l3-3 3 2 4-4" stroke="#3ee6a8"/></svg><span class="v">60 fps</span><span class="l">flüssiges Bild unter Linux, bis 5 Mbit/s</span></div>
+    <div class="fact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.3" fill="#3ee6a8" stroke="none"/></svg><span class="v">DTLS-SRTP</span><span class="l">Ende-zu-Ende, bei jeder Verbindung</span></div>
+    <div class="fact"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 3h12v4l-4 5 4 5v4H6v-4l4-5-4-5z"/></svg><span class="v">10 Minuten</span><span class="l">dann läuft der Code ab</span></div>
+  </section>
+
+  <section aria-labelledby="cards-h">
+    <div class="cards-head"><h2 id="cards-h">Auffi im <span class="hl">Vergleich</span></h2><a class="ghost" href="#vergleich">Alle Vergleiche</a></div>
+    <div class="cards">
+      <div class="card"><div class="chips"><span class="chip">Vergleich</span><span class="chip m">Fernwartung</span></div><h3>Auffi oder TeamViewer?</h3><p>Ohne Konto, ohne Lizenz, Server in Deutschland.</p><a href="#">Vergleich lesen →</a></div>
+      <div class="card"><div class="chips"><span class="chip">Vergleich</span><span class="chip m">Windows</span></div><h3>Auffi oder Quick Assist?</h3><p>Funktioniert auch unter Linux und ohne Microsoft-Konto.</p><a href="#">Vergleich lesen →</a></div>
+      <div class="card"><div class="chips"><span class="chip">Anleitung</span><span class="chip m">Familie</span></div><h3>Eltern am Telefon helfen</h3><p>Code vorlesen lassen, eintippen, bestätigen lassen.</p><a href="#">Anleitung lesen →</a></div>
+    </div>
+  </section>
+
+  <section class="support" aria-labelledby="sup-h">
+    <div>
+      <h2 id="sup-h">Auffi ist <span class="hl">kostenlos</span> und werbefrei</h2>
+      <p>Server, Relay und Domain zahlt ein einzelner Entwickler. Wenn Auffi dir geholfen hat, freut sich das Projekt über einen Kaffee.</p>
+    </div>
+    <div class="btns">
+      <a class="donate bmc" href="https://buymeacoffee.com/phash"><span class="dot" aria-hidden="true">☕</span>Buy me a coffee</a>
+      <a class="donate pp" href="https://www.paypal.com/paypalme/mroedig"><span class="dot" aria-hidden="true">P</span>PayPal</a>
+    </div>
+  </section>
+
+  <section aria-labelledby="icons-h">
+    <h2 id="icons-h" class="section-h">App-Icon im <span class="hl">Matrix-Look</span></h2>
+    <p class="section-lead">Jede Variante in 112, 48, 32 und 16 Pixel. Die kleinen Größen entscheiden: so erscheint das Icon in Taskleiste, Tray und Browser-Tab.</p>
+    <div class="icons">
+      <div class="icon-card"><div class="chips"><span class="chip">Heute</span></div><div class="sizes"><svg class="s128"><use href="#i-old"/></svg><svg class="s48"><use href="#i-old"/></svg><svg class="s32"><use href="#i-old"/></svg><svg class="s16"><use href="#i-old"/></svg></div><h3>Grüner Monitor</h3><p>Aktuelles Icon seit 0.7.4, zum Vergleich.</p></div>
+      <div class="icon-card"><div class="chips"><span class="chip">Variante A</span></div><div class="sizes"><svg class="s128"><use href="#i-a"/></svg><svg class="s48"><use href="#i-a"/></svg><svg class="s32"><use href="#i-a"/></svg><svg class="s16"><use href="#i-a"/></svg></div><h3>Phosphor-Monitor</h3><p>Bekannte Form, leuchtende Kontur, Hex-Zeichen auf dem Schirm. Klein bleibt der Monitor erkennbar.</p></div>
+      <div class="icon-card pick"><div class="chips"><span class="chip m">Variante B · Favorit</span></div><div class="sizes"><svg class="s128"><use href="#i-b"/></svg><svg class="s48"><use href="#i-b"/></svg><svg class="s32"><use href="#i-b"/></svg><svg class="s16"><use href="#i-b"/></svg></div><h3>Zeichenregen + Cursor</h3><p>Fallende Spalten wie in Matrix, Cursor im Türkis-Mint-Verlauf der Buttons. Trägt noch bei 16 Pixel.</p></div>
+      <div class="icon-card"><div class="chips"><span class="chip">Variante C</span></div><div class="sizes"><svg class="s128"><use href="#i-c"/></svg><svg class="s48"><use href="#i-c"/></svg><svg class="s32"><use href="#i-c"/></svg><svg class="s16"><use href="#i-c"/></svg></div><h3>Pixel-Monitor</h3><p>Monitor aus einem Punktraster wie eine LED-Matrix. Ruhiger, unter 32 Pixel unscharf.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="links"><span>© Auffi · AGPL-3.0</span><a href="#">Impressum</a><a href="#">Datenschutz</a><a href="#">GitHub</a></div>
+    <div class="btns"><a class="donate bmc" href="https://buymeacoffee.com/phash"><span class="dot" aria-hidden="true">☕</span>Buy me a coffee</a><a class="donate pp" href="https://www.paypal.com/paypalme/mroedig"><span class="dot" aria-hidden="true">P</span>PayPal</a></div>
+  </footer>
+</div>
