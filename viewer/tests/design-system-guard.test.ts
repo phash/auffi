@@ -17,6 +17,7 @@ const SURFACES: string[] = [
   "viewer/public/legal/style.css",
   "viewer/src/styles.css",
   "viewer/public/site-chrome.css",
+  "dashboard/src/styles.css",
 ];
 
 const LEGACY = [
