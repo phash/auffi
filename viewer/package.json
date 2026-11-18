@@ -16,7 +16,9 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "csp:sync": "tsx scripts/sync-csp-hashes.ts",
-    "csp:check": "tsx scripts/sync-csp-hashes.ts --check"
+    "csp:check": "tsx scripts/sync-csp-hashes.ts --check",
+    "tokens:sync": "tsx scripts/sync-tokens.ts",
+    "tokens:check": "tsx scripts/sync-tokens.ts --check"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",

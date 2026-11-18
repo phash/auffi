@@ -1,0 +1,50 @@
+/* Auffi design tokens — single source of truth for colour, type and radii
+   on every surface (static pages, viewer app, dashboard, sharer webview).
+   Dark is the default; the light set only overrides what differs and follows
+   the OS setting (no in-page toggle).
+   Vite surfaces @import this file; static pages load the copy
+   viewer/public/tokens.css, written by `npm run tokens:sync` in viewer/
+   (guard: viewer/tests/tokens-sync.test.ts). Edit only this file. */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0e1311;
+  --panel: #151b18;
+  --panel-2: #1a211e;
+  --line: #262f2b;
+  --line-soft: #1d2522;
+  --fg: #eef3f1;
+  --muted: #95a39d;
+  --accent-text: #3ee6a8;
+  --teal: #22d3c5;
+  --mint: #3ee6a8;
+  --on-accent: #04211a;
+  --glow: rgba(16, 150, 100, 0.55);
+  --error: #ff7a7a;
+  --warn: #f5c451;
+
+  --font-sans: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Plex Mono", ui-monospace, Consolas, monospace;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --grad-accent: linear-gradient(90deg, var(--teal), var(--mint));
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --bg: #f3f6f4;
+    --panel: #ffffff;
+    --panel-2: #eaf0ec;
+    --line: #d6e0db;
+    --line-soft: #e4ebe7;
+    --fg: #0f1a15;
+    --muted: #52615a;
+    --accent-text: #087a54;
+    --glow: rgba(16, 185, 129, 0.18);
+    --error: #b42318;
+    --warn: #8a5a00;
+  }
+}

@@ -3,21 +3,27 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const css = readFileSync(
-  fileURLToPath(new URL("../src/styles.css", import.meta.url)),
+  fileURLToPath(new URL("../../design/tokens.css", import.meta.url)),
   "utf8",
 );
 
-function token(name: string): string {
-  const m = css.match(new RegExp(`(?<![\\w-])${name}(?![\\w-])\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
-  if (!m) throw new Error(`token ${name} not found in styles.css`);
-  return m[1];
+type Mode = "dark" | "light";
+
+const lightStart = css.indexOf("@media (prefers-color-scheme: light)");
+const darkBlock = lightStart === -1 ? css : css.slice(0, lightStart);
+const lightBlock = lightStart === -1 ? "" : css.slice(lightStart);
+
+function find(block: string, name: string): string | undefined {
+  const m = block.match(new RegExp(`(?<![\\w-])${name}(?![\\w-])\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
+  return m?.[1];
 }
-function darkToken(name: string): string {
-  const dark = css.slice(css.indexOf("prefers-color-scheme: dark"));
-  const m = dark.match(new RegExp(`(?<![\\w-])${name}(?![\\w-])\\s*:\\s*(#[0-9a-fA-F]{3,8})`));
-  if (!m) throw new Error(`dark token ${name} not found`);
-  return m[1];
+
+function token(name: string, mode: Mode): string {
+  const v = (mode === "light" ? find(lightBlock, name) : undefined) ?? find(darkBlock, name);
+  if (!v) throw new Error(`token ${name} (${mode}) not found in design/tokens.css`);
+  return v;
 }
+
 function luminance(hex: string): number {
   const h = hex.replace("#", "");
   const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
@@ -31,21 +37,30 @@ function contrast(a: string, b: string): number {
   return (ls[0] + 0.05) / (ls[1] + 0.05);
 }
 
-describe("design tokens", () => {
-  it("defines the emerald/mint palette", () => {
-    expect(token("--brand")).toBe("#10b981");
-    expect(token("--brand-strong")).toBe("#047857");
+describe("design tokens (design/tokens.css)", () => {
+  it.each(["dark", "light"] as const)("%s: text tokens meet AA on bg and panel", (m) => {
+    for (const fg of ["--fg", "--muted", "--accent-text"])
+      for (const bg of ["--bg", "--panel"])
+        expect(contrast(token(fg, m), token(bg, m)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
   });
-  it("primary button (brand-strong bg + white text) meets WCAG AA", () => {
-    expect(contrast(token("--brand-strong"), "#ffffff")).toBeGreaterThanOrEqual(4.5);
+  it.each(["dark", "light"] as const)("%s: on-accent meets AA on both gradient ends", (m) => {
+    expect(contrast(token("--on-accent", m), token("--teal", m))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(token("--on-accent", m), token("--mint", m))).toBeGreaterThanOrEqual(4.5);
   });
-  it("body text (ink on paper) meets WCAG AA", () => {
-    expect(contrast(token("--ink"), token("--paper"))).toBeGreaterThanOrEqual(4.5);
+  it.each(["dark", "light"] as const)("%s: error and warn are readable on bg", (m) => {
+    expect(contrast(token("--error", m), token("--bg", m))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(token("--warn", m), token("--bg", m))).toBeGreaterThanOrEqual(4.5);
   });
-  it("dark primary button (ink-on-brand on brand-strong) meets WCAG AA", () => {
-    expect(contrast(darkToken("--ink-on-brand"), darkToken("--brand-strong"))).toBeGreaterThanOrEqual(4.5);
+  it("dark is the default and light only overrides inside the media query", () => {
+    expect(token("--bg", "dark")).toBe("#0e1311");
+    expect(token("--bg", "light")).toBe("#f3f6f4");
+    expect(darkBlock).toMatch(/:root\s*{[^}]*color-scheme:\s*dark/);
+    expect(lightBlock).toMatch(/color-scheme:\s*light/);
   });
-  it("dark body text (ink on paper) meets WCAG AA", () => {
-    expect(contrast(darkToken("--ink"), darkToken("--paper"))).toBeGreaterThanOrEqual(4.5);
+  it("defines only custom properties, no component selectors", () => {
+    const selectors = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+){/g)]
+      .map((m) => m[1].trim())
+      .filter((s) => !s.startsWith("@media"));
+    expect(new Set(selectors)).toEqual(new Set([":root"]));
   });
 });
