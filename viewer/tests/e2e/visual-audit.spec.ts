@@ -1,22 +1,24 @@
-/* Visual audit of the live Engineering-Brief redesign on auffi.app.
- * Run with:  npx playwright test /tmp/visual-audit.spec.ts --config=playwright.config.ts --reporter=list
+/* Visual audit of auffi.app (light, dark, mobile).
+ * Run with:  npx playwright test tests/e2e/visual-audit.spec.ts --workers=1
+ * AUDIT_BASE=http://127.0.0.1:<port> points it at a local stack instead of prod.
  * Screenshots land in /tmp/visual-audit/.
  */
 import { test, expect } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+const BASE = process.env.AUDIT_BASE ?? "https://auffi.app";
 const OUT = "/tmp/visual-audit";
 fs.mkdirSync(OUT, { recursive: true });
 
 const PAGES: Array<{ name: string; url: string }> = [
-  { name: "viewer-home", url: "https://auffi.app/" },
-  { name: "viewer-impressum", url: "https://auffi.app/impressum/" },
-  { name: "viewer-datenschutz", url: "https://auffi.app/datenschutz/" },
-  { name: "viewer-download", url: "https://auffi.app/download/" },
-  { name: "dashboard-login", url: "https://auffi.app/dashboard/login" },
-  { name: "dashboard-signup", url: "https://auffi.app/dashboard/signup" },
-  { name: "dashboard-forgot", url: "https://auffi.app/dashboard/forgot" },
+  { name: "viewer-home", url: `${BASE}/` },
+  { name: "viewer-impressum", url: `${BASE}/impressum/` },
+  { name: "viewer-datenschutz", url: `${BASE}/datenschutz/` },
+  { name: "viewer-download", url: `${BASE}/download/` },
+  { name: "dashboard-login", url: `${BASE}/dashboard/login` },
+  { name: "dashboard-signup", url: `${BASE}/dashboard/signup` },
+  { name: "dashboard-forgot", url: `${BASE}/dashboard/forgot` },
 ];
 
 for (const { name, url } of PAGES) {
@@ -55,7 +57,7 @@ for (const { name, url } of PAGES) {
 test("password eye-toggle on /dashboard/login", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("https://auffi.app/dashboard/login", { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/dashboard/login`, { waitUntil: "networkidle" });
 
   // Initial state — password hidden, eye open.
   const pw = page.locator("#login-password");
@@ -91,7 +93,7 @@ test("password eye-toggle on /dashboard/login", async ({ page }) => {
 test("notch button focus flow from impressum", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("https://auffi.app/impressum/", { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/impressum/`, { waitUntil: "networkidle" });
   await page.screenshot({
     path: path.join(OUT, "notch-1-impressum-top.png"),
     fullPage: false,
@@ -115,7 +117,7 @@ test("matomo consent banner on first visit", async ({ browser }) => {
     // Force-clear any cached consent: fresh ephemeral context.
   });
   const page = await ctx.newPage();
-  await page.goto("https://auffi.app/", { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
   // Give the banner a beat to mount.
   await page.waitForTimeout(300);
   await page.screenshot({
