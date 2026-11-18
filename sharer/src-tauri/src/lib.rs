@@ -2167,6 +2167,21 @@ mod tests {
     // opener plugin enforces its scope; pin the exact set the webview uses
     // (About links + the update banner's download page) and that no shell
     // permission comes back.
+    // setup() hands the tray this exact file; the tray-icon crate needs
+    // 32x32 8-bit RGBA after decoding (see the comment there). Pins the
+    // regenerated Icon A raster against a wrong size or an undecodable PNG.
+    #[test]
+    fn tray_icon_png_decodes_to_32x32_rgba() {
+        let decoded = image::load_from_memory_with_format(
+            include_bytes!("../icons/32x32.png"),
+            image::ImageFormat::Png,
+        )
+        .expect("decodes")
+        .to_rgba8();
+        assert_eq!(decoded.dimensions(), (32, 32));
+        assert_eq!(decoded.into_raw().len(), 32 * 32 * 4);
+    }
+
     #[test]
     fn webview_may_open_exactly_the_links_it_uses_and_nothing_via_shell() {
         let caps: serde_json::Value =
