@@ -7,8 +7,8 @@
 #       Release build. Needs a golden disk that carries the toolchain.
 #   ops/sharer-build-windows.sh --toolchain <git-ref> <out-dir>
 #       One-time: installs the toolchain (ops/winbuild/toolchain.cmd) in a
-#       copy of the golden disk, does a warm build of <ref>, and promotes the
-#       copy to the new golden disk. The old golden is kept as a reflink
+#       copy of the golden disk, promotes the copy to the new golden disk,
+#       then does a normal release build of <ref> in a fresh copy. The old golden is kept as a reflink
 #       backup (/srv/win/golden.bak-<timestamp>, costs no space until it
 #       diverges). Affects every project's later tb-win runs.
 #
@@ -68,6 +68,7 @@ if [ $toolchain = 1 ]; then
   sudo chmod -R a+rX /srv/win/golden
   tb-win stop "$name"
   say "golden ersetzt (Backup: /srv/win/golden.bak-$stamp)"
+  exec "$0" "$ref" "$out"
 fi
 
 cp "$work"/share/out/* "$out/"

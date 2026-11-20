@@ -2,7 +2,8 @@
 REM One-time toolchain install for building the Windows sharer in a tb-win VM.
 REM Runs in a throw-away copy of the golden disk; ops/sharer-build-windows.sh
 REM --toolchain then promotes that copy to the new golden disk, so every later
-REM build run starts with the tools (and warm caches) in place.
+REM build run starts with the tools in place. The build itself runs afterwards
+REM in a fresh copy, so a build failure never throws away the hour of installs.
 REM Versions match .github/workflows/build-sharer.yml (Rust 1.99.1, Node 22,
 REM vcpkg libvpx x64-windows-static-md, VS 2022 C++ build tools).
 setlocal EnableExtensions
@@ -62,10 +63,6 @@ setx /M VCPKG_ROOT C:\vcpkg >> %LOG% 2>&1
 
 echo [%date% %time%] machine PATH >> %LOG%
 powershell -NoProfile -Command "$p=[Environment]::GetEnvironmentVariable('Path','Machine'); foreach($d in 'C:\rust\cargo\bin','C:\vcpkg'){ if($p -notlike ('*'+$d+'*')){ $p=$p+';'+$d } }; [Environment]::SetEnvironmentVariable('Path',$p,'Machine')" >> %LOG% 2>&1
-
-REM Warm build: fills the cargo registry, the target dir and Tauri's WiX/NSIS
-REM download cache, and proves the toolchain end to end.
-call %S%\oem\build.cmd || goto fail
 
 del %D%\*.exe %D%\*.msi %D%\*.zip 2>nul
 REM Let the next copy of this disk run its project's install.bat again.
