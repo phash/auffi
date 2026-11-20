@@ -7,8 +7,6 @@ REM ops/sharer-build-windows.sh waits for. Mirrors the build-windows job of
 REM .github/workflows/build-sharer.yml.
 setlocal EnableExtensions
 set S=\\host.lan\Data
-REM Not LOG: the MSVC environment scripts reuse that name, and every later
-REM line of this log vanished after vcvars64.
 set BLOG=%S%\build.log
 set RUSTUP_HOME=C:\rust\rustup
 set CARGO_HOME=C:\rust\cargo
@@ -22,9 +20,17 @@ for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -property ins
 if not defined VSDIR set "VSDIR=%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools"
 set STEP=vcvars
 if not exist "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" goto fail
-call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >> %BLOG% 2>&1
+REM Own file, never build.log: once vcvars64 had written to build.log, no
+REM later line reached it, while new files on the share still worked.
+call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" > %S%\vcvars.log 2>&1
 set STEP=rc.exe
-where rc.exe >> %BLOG% 2>&1 || goto fail
+where rc.exe > %S%\rc.txt 2>&1 && goto rcok
+REM vcvars64 found no SDK bin dir: take the newest x64 rc.exe the SDK installed.
+for /f "delims=" %%r in ('dir /b /s /o:n "%ProgramFiles(x86)%\Windows Kits\10\bin\rc.exe" 2^>nul ^| findstr /i "\\x64\\rc.exe"') do set "RCDIR=%%~dpr"
+echo RCDIR=%RCDIR% >> %S%\rc.txt
+if not defined RCDIR goto fail
+set "PATH=%RCDIR%;%PATH%"
+:rcok
 
 echo [%date% %time%] build start >> %BLOG%
 REM Fresh sources; the cargo target dir and node_modules stay for speed.
