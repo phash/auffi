@@ -54,6 +54,9 @@ report() {  # <kind> <image> <output>
 }
 
 run() {  # <image> <script>
+  # Pull first: an implicit pull writes its progress into the captured output,
+  # and a fresh image then reads as a failed package.
+  docker pull -q "$1" >/dev/null 2>&1 || true
   docker run --rm -v "$DIR:/p:ro" "$1" bash -c "$2" 2>&1 || true
 }
 
