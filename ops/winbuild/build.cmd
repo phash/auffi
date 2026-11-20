@@ -13,6 +13,14 @@ set CARGO_HOME=C:\rust\cargo
 set VCPKG_ROOT=C:\vcpkg
 set VCPKGRS_TRIPLET=x64-windows-static-md
 set PATH=C:\rust\cargo\bin;C:\Program Files\nodejs;C:\Program Files\Git\cmd;%PATH%
+REM The MSVC developer environment puts rc.exe (Windows SDK) on PATH; Tauri's
+REM resource step (tauri-winres) needs it. CI runners preload it, a VM does not.
+set VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe
+for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -property installationPath`) do set VSDIR=%%i
+if not defined VSDIR set "VSDIR=%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools"
+if not exist "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" goto fail
+call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >> %LOG% 2>&1
+where rc.exe >> %LOG% 2>&1 || goto fail
 
 echo [%date% %time%] build start >> %LOG%
 REM Fresh sources; the cargo target dir and node_modules stay for speed.

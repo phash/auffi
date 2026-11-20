@@ -21,7 +21,7 @@ dism /Online /Add-Capability /CapabilityName:VBSCRIPT~~~~ /NoRestart >nul 2>&1
 
 echo [%date% %time%] vs build tools >> %LOG%
 curl.exe -fsSL -o %D%\vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtools.exe || goto fail
-%D%\vs_buildtools.exe --quiet --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended >> %LOG% 2>&1
+%D%\vs_buildtools.exe --quiet --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.Windows11SDK.22621 >> %LOG% 2>&1
 set RC=%errorlevel%
 if not "%RC%"=="0" if not "%RC%"=="3010" goto fail
 
