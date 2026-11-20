@@ -16,7 +16,8 @@ REM Defender scanning every object file doubles a Rust build.
 powershell -NoProfile -Command "Add-MpPreference -ExclusionPath 'C:\build','C:\rust','C:\vcpkg'" >> %LOG% 2>&1
 
 REM WiX 3 (Tauri's MSI bundler) runs VBScript custom actions; 24H2 ships it as an optional feature.
-dism /Online /Add-Capability /CapabilityName:VBSCRIPT~~~~ /NoRestart >> %LOG% 2>&1
+REM dism writes UTF-16; keep it out of the log.
+dism /Online /Add-Capability /CapabilityName:VBSCRIPT~~~~ /NoRestart >nul 2>&1
 
 echo [%date% %time%] vs build tools >> %LOG%
 curl.exe -fsSL -o %D%\vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtools.exe || goto fail
@@ -38,7 +39,18 @@ setx /M CARGO_HOME C:\rust\cargo >> %LOG% 2>&1
 set RUSTUP_HOME=C:\rust\rustup
 set CARGO_HOME=C:\rust\cargo
 curl.exe -fsSL -o %D%\rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe || goto fail
-%D%\rustup-init.exe -y --profile minimal --default-toolchain 1.99.1 --no-modify-path >> %LOG% 2>&1 || goto fail
+REM rustup-init can exit non-zero on "timeout reading rustc version" (first
+REM rustc start under Defender) although the toolchain is in place; judge by
+REM rustc itself instead of the installer's exit code.
+%D%\rustup-init.exe -y --profile minimal --default-toolchain 1.99.1 --no-modify-path >> %LOG% 2>&1
+set N=0
+:rustc
+C:\rust\cargo\bin\rustc.exe --version >> %LOG% 2>&1 && goto rustok
+set /a N+=1
+if %N% GEQ 5 goto fail
+timeout /t 15 /nobreak >nul
+goto rustc
+:rustok
 
 echo [%date% %time%] vcpkg + libvpx >> %LOG%
 curl.exe -fsSL -o %D%\vcpkg.zip https://github.com/microsoft/vcpkg/archive/refs/tags/2026.10.16.zip || goto fail
