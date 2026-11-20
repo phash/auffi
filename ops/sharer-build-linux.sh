@@ -33,7 +33,7 @@ docker run --rm \
   -v auffi-linux-rustup:/root/.rustup \
   -v auffi-linux-build:/build \
   -e NODE_VERSION="$NODE_VERSION" -e RUST_VERSION="$RUST_VERSION" \
-  -e APPIMAGE_EXTRACT_AND_RUN=1 -e NO_STRIP=1 \
+  -e APPIMAGE_EXTRACT_AND_RUN=1 -e NO_STRIP=1 -e OWNER="$(id -u):$(id -g)" \
   ubuntu:24.04 bash -euo pipefail -c '
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
@@ -54,6 +54,10 @@ docker run --rm \
     # Fresh sources each run, but keep the cargo target dir for speed.
     rsync -a --delete --exclude sharer/src-tauri/target /src/ /build/ws/
     cd /build/ws/sharer
+    v=$(sed -n "s/^version = \"\(.*\)\"/\1/p" src-tauri/Cargo.toml | head -1)
+    # The target dir persists in a volume; the bundler never clears old
+    # packages, so drop them before bundling.
+    rm -rf src-tauri/target/release/bundle
     npm ci --no-audit --no-fund
     npm run tauri:build
     bin=src-tauri/target/release/auffi-sharer
@@ -63,6 +67,8 @@ docker run --rm \
       exit 1
     fi
     b=src-tauri/target/release/bundle
-    cp "$b"/deb/*.deb "$b"/rpm/*.rpm "$b"/appimage/*.AppImage /out/
+    cp "$b/deb/Auffi_${v}_amd64.deb" "$b/rpm/Auffi-${v}-1.x86_64.rpm" \
+       "$b/appimage/Auffi_${v}_amd64.AppImage" /out/
+    chown -R "$OWNER" /out
   '
 ls -l "$out"

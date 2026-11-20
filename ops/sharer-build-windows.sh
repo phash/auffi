@@ -57,8 +57,9 @@ if [ $toolchain = 1 ]; then
     docker inspect -f '{{.State.Running}}' "tbwin-$name" 2>/dev/null | grep -q true || break
     sleep 5
   done
+  # Promote only a disk Windows shut down by itself; a forced stop may leave it dirty.
   docker inspect -f '{{.State.Running}}' "tbwin-$name" 2>/dev/null | grep -q true \
-    && { docker stop -t 120 "tbwin-$name" >/dev/null; }
+    && { tb-win stop "$name"; die "Windows ist nicht von selbst heruntergefahren — golden nicht ersetzt"; }
   others=$(docker ps --format '{{.Names}}' | grep '^tbwin-' || true)
   [ -z "$others" ] || { tb-win stop "$name"; die "andere tb-win-VMs laufen ($others) — golden nicht ersetzt"; }
   stamp=$(date +%Y%m%d-%H%M)
