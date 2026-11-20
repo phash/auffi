@@ -96,7 +96,9 @@ cd viewer && npm run csp:sync     # csp:check = nur prüfen (CI-tauglich)
 # noVNC-Tunnel `ssh -N -f -L 8007:127.0.0.1:<port> testbox`; Firewall-Dialog bei jedem ersten Stream: Allow (669,628)
 node .win-test/screenshot.mjs [--click X,Y]        # VM-Bildschirm als PNG (Code sichtbar? = TLS+WSS ok)
 node .win-test/live-connect.mjs NNN-NNN-NNN [--wait 120] [--measure N]  # echter Connect; --measure = dekodierte fps/kbps (statischer Desktop = 0 fps, WGC liefert nur Änderungen)
+# Golden trägt seit 0.8.0 VS + C++-Laufzeit: Smoke darauf übersieht fehlende DLLs. Bei geänderter Linkage gegen saubere Platte /srv/win/golden.bak-20261120-1126 testen
 # Prod anfassen: Caddy 403t curl/HeadlessChrome-UAs → curl -A "Mozilla/5.0 …", Playwright mit normalem userAgent
+# Download-Proxy prüfen: nur `curl -I` (HEAD, zählt nicht). Ein GET lädt alles herunter, auch mit -r/Range, und erhöht den Zähler auf prod
 # Lokaler E2E-Backend: RATE_LIMIT_MAX=1000 setzen — seit 0.7.1 zählt JEDER Join (auch Treffer) aufs 5/min-Budget
 
 # Local stack (nur backend — voller Stack lokal via ./ops/smoke.sh)
