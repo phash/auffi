@@ -67,6 +67,10 @@ cd viewer && npx playwright test tests/e2e/visual-audit.spec.ts --workers=1
 cd sharer && npm run tauri:dev     # native window + DevTools
 cd sharer && npm run tauri:build   # .deb / .rpm / .AppImage
 bash ops/sharer-distro-smoke.sh vX.Y.Z  # deb/rpm/AppImage in frischen Distro-Containern installieren + ldd (auf testbox, via tb-run)
+# Release-Builds ohne GitHub Actions, auf testbox (Actions sind aus): Linux im ubuntu:24.04-Container, Windows in tb-win
+ops/sharer-build-linux.sh <ref> <out>    # via tb-run; danach sharer-distro-smoke.sh --dir <out>
+ops/sharer-build-windows.sh <ref> <out>  # Golden-Platte trägt die Toolchain (--toolchain = einmalig neu installieren);
+#   Ergebnis share/build-result.txt nennt den gescheiterten Schritt. vcvars64 biegt VCPKG_ROOT um → build.cmd setzt ihn danach
 cargo test --release --lib bench_encode_path -- --ignored --nocapture   # Encode-Pfad-Bench (BGRA→I420 + VP8, 1080p/1440p); Live-fps: `--debug`-Log `fps=` / `avg_encode_ms=` alle 2 s
 bash ops/coturn-image-check.sh 4.19.0 <neu>      # vor jedem coturn-Bump: Deny-Liste erzwungen, keine ignorierten Optionen, SIGUSR2-Reload (auf testbox)
 cd sharer/src-tauri && cargo test --lib                          # Rust unit tests (Baseline s. DoD) — note nested dir
@@ -181,7 +185,7 @@ Production-Deploy-Flags, OG-image-Rebuild, Sharer-Release-Prozedur und Admin-Pro
 
 A task is done when **all** of these hold:
 
-1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-11-17: backend 605, sharer-lib 410 (+ 16 `#[ignore]` Display-/GPU-requiring), viewer 955, dashboard 321, sharer-js 178, ops shell tests 15 files via `bash ops/tests/run-all.sh`. Suites can timeout-flake under parallel load — re-run the flaked file ISOLATED before believing a red run. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
+1. All tests pass: `npm test`, `cargo test`, etc. (Baseline at 2026-11-20: backend 605, sharer-lib 411 (+ 16 `#[ignore]` Display-/GPU-requiring), viewer 1175, dashboard 323, sharer-js 180, ops shell tests 15 files via `bash ops/tests/run-all.sh`. Suites can timeout-flake under parallel load — re-run the flaked file ISOLATED before believing a red run. Drops are regressions. Run sharer's display-requiring tests via `cd sharer/src-tauri && cargo test --lib -- --ignored` on a host with X11/Wayland.)
 2. Coverage ≥ 70 % for new code.
 3. Lint passes: `cargo clippy --lib --tests -- -D warnings` (CI pins Rust 1.99.1 and adds `--no-deps`; reproduce with `rustup run 1.99.1 cargo clippy --lib --tests --no-deps -- -D warnings`). (ESLint is NOT wired in any package despite being listed here historically — tracked in gh #108. Interim TS gate: `tsc --noEmit` runs in CI for backend/viewer/dashboard/sharer-webview.)
 4. Type check passes: `tsc --noEmit`, `cargo check`.
