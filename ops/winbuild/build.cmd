@@ -10,11 +10,7 @@ set S=\\host.lan\Data
 set BLOG=%S%\build.log
 set RUSTUP_HOME=C:\rust\rustup
 set CARGO_HOME=C:\rust\cargo
-set VCPKG_ROOT=C:\vcpkg
 set VCPKGRS_TRIPLET=x64-windows-static-md
-REM vcpkg-rs reads installed\vcpkg\updates and fails when it is missing; vcpkg
-REM creates it only after a second install, which a fresh toolchain never did.
-if not exist %VCPKG_ROOT%\installed\vcpkg\updates mkdir %VCPKG_ROOT%\installed\vcpkg\updates
 set PATH=C:\rust\cargo\bin;C:\Program Files\nodejs;C:\Program Files\Git\cmd;%PATH%
 REM The MSVC developer environment puts rc.exe (Windows SDK) on PATH; Tauri's
 REM resource step (tauri-winres) needs it. CI runners preload it, a VM does not.
@@ -34,6 +30,11 @@ echo RCDIR=%RCDIR% >> %S%\rc.txt
 if not defined RCDIR goto fail
 set "PATH=%RCDIR%;%PATH%"
 :rcok
+REM After vcvars64: it points VCPKG_ROOT at the vcpkg bundled with Visual
+REM Studio, which has no libvpx.
+set VCPKG_ROOT=C:\vcpkg
+REM vcpkg-rs reads installed\vcpkg\updates and fails when it is missing.
+if not exist %VCPKG_ROOT%\installed\vcpkg\updates mkdir %VCPKG_ROOT%\installed\vcpkg\updates
 
 echo [%date% %time%] build start >> %BLOG%
 REM Fresh sources; the cargo target dir and node_modules stay for speed.
