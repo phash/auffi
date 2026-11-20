@@ -5,6 +5,29 @@ Alle nennenswerten Änderungen an Auffi werden in dieser Datei dokumentiert.
 Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/) und das
 Projekt nutzt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.8.0] — 2026-11-20
+
+Neues Aussehen für Website, Viewer, Dashboard und Sharer („Dark Engineering“)
+und ein neues App-Icon. An Verbindung, Protokoll und Sicherheit ändert sich
+nichts.
+
+### Geändert
+
+- **Design:** Alle Oberflächen beziehen Farben, Schriften und Radien aus einer
+  gemeinsamen Datei `design/tokens.css`; hell und dunkel folgen der
+  Systemeinstellung, dunkel ist der Grundzustand. Schrift Manrope
+  (selbst gehostet), Codes weiter in Plex Mono.
+- **Startseite:** Einstiegskasten mit Code-Eingabe („Ich helfe“) und
+  Sharer-Download für Windows und Linux („Ich brauche Hilfe“) direkt unter der
+  Überschrift; Ablaufgrafik, „Warum Auffi“-Kacheln.
+- **Icon:** Neues App-Icon (grüner Monitor im Matrix-Stil) für Sharer, Tray
+  und Website.
+- **Spenden:** Buy me a coffee und PayPal in Topbar, Footer, auf der
+  Startseite und im Info-Tab des Sharers.
+- **Build:** Die Sharer-Pakete entstehen auf dem Testrechner
+  (`ops/sharer-build-linux.sh`, `ops/sharer-build-windows.sh`) statt in
+  GitHub Actions.
+
 ## [0.7.6] — 2026-11-17
 
 Performance- und Sicherheits-Release. Unter Linux (X11) überträgt der Sharer

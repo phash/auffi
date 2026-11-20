@@ -14,6 +14,14 @@ import type { Db } from "../db.js";
  * GET endpoint returns whatever rows exist for the listed names.
  */
 export const KNOWN_ASSETS: ReadonlySet<string> = new Set([
+  // 0.8.0 — released 2026-11-20. Dark Engineering redesign of the sharer
+  // window and Icon A; first release built on the testbox, not GitHub Actions.
+  "Auffi_0.8.0_amd64.deb",
+  "Auffi-0.8.0-1.x86_64.rpm",
+  "Auffi_0.8.0_amd64.AppImage",
+  "Auffi_0.8.0_x64-setup.exe",
+  "Auffi_0.8.0_x64_en-US.msi",
+  "Auffi_0.8.0_x64_portable.exe",
   // 0.7.6 — released 2026-11-17. X11 capture at 60 fps (MIT-SHM), faster
   // BGRA->I420 conversion, bitrate ceiling 5 Mbps; unattended viewer TURN
   // credentials bound to a per-confirm token (gh #152).
