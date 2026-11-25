@@ -57,7 +57,7 @@ services:
   # before proxying, so nginx sees /, /assets/..., /login, etc.
   # See `nginx/auffi-dashboard.conf` for the SPA fallback config.
   dashboard:
-    image: nginx:1.30.6-alpine
+    image: nginx:1.30.7-alpine
     container_name: auffi-dashboard
     restart: unless-stopped
     user: "101:101"
@@ -123,7 +123,7 @@ services:
       - internal
 
   coturn:
-    image: coturn/coturn:4.19.0-alpine
+    image: coturn/coturn:4.19.2-alpine
     container_name: auffi-coturn
     restart: unless-stopped
     network_mode: host
