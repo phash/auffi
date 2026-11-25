@@ -10,8 +10,8 @@ repository = "https://github.com/phash/auffi"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "=2.7.4", features = [] }
-cc = "=1.11.2"
+tauri-build = { version = "=2.7.6", features = [] }
+cc = "=1.11.3"
 
 [dependencies]
 tauri = { version = "=2.12.5", features = ["tray-icon"] }
@@ -33,7 +33,7 @@ futures-util = "=0.3.34"
 webrtc = "=0.21.1"
 rtc = { version = "=0.21.1", default-features = false }
 async-trait = "=0.1.92"
-rand = "=0.10.3"
+rand = "=0.10.4"
 enigo = "=0.6.1"
 log = "=0.4.35"
 tauri-plugin-global-shortcut = "=2.4.1"
@@ -42,7 +42,7 @@ tauri-plugin-dialog = "=2.8.4"
 # tauri-plugin-autostart still pulls dirs 6, so the bump only adds a
 # duplicate crate to the graph.
 dirs = "=6.0.0"
-bytes = "=1.12.1"
+bytes = "=1.12.2"
 reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "json"] }
 # rustls 0.23+ refuses to auto-pick a CryptoProvider when both 'ring'
 # (via webrtc-rs) and 'aws-lc-rs' (via rustls-platform-verifier) are in
@@ -50,7 +50,7 @@ reqwest = { version = "=0.13.5", default-features = false, features = ["rustls",
 # The version is pinned to the same release the rest of the graph
 # resolves to (see Cargo.lock).
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
-uuid = { version = "=1.29.2", features = ["v4"] }
+uuid = { version = "=1.29.3", features = ["v4"] }
 tauri-plugin-store = "=2.5.1"
 # Opens the diagnostic log (Rust side) and the About/update links (webview).
 # Unlike the shell plugin's `open`, it enforces the capability's URL scope.
